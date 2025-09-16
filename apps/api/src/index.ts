@@ -9,13 +9,17 @@ const PORT = Number(process.env.PORT) || 3001;
 app.use(helmet());
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost:4173",
+    ],
   }),
 );
 app.use(morgan("combined"));
 app.use(express.json());
 
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "api",
@@ -23,7 +27,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/api/hello", (req, res) => {
+app.get("/api/hello", (_req, res) => {
   res.json({
     message: "Hello from API",
   });
