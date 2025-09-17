@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: zero1-api
+    env: node
+    plan: free
+    buildCommand: "npm --prefix apps/api run build"
+    startCommand: "npm --prefix apps/api run start"
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL_NAME
+        value: gpt-4o-mini
