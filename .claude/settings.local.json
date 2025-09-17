@@ -1,6 +1,19 @@
 {
   "permissions": {
-    "allow": ["Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)"],
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(npm i:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(npm:*)",
+      "Bash(for i in {1..3})",
+      "Bash(do echo \"Request $i:\")",
+      "Bash(done)"
+    ],
     "deny": [],
     "ask": []
   }

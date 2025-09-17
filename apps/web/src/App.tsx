@@ -1,64 +1,101 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import "./App.css";
+import ThinkingPane from "./components/ThinkingPane";
+import PromptPane from "./components/PromptPane";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+interface ProjectStep {
+  step_number: number;
+  prompt_text: string;
+  why_text: string;
+  completed: boolean;
+  created_at: string;
+}
+
+interface ProjectHistory {
+  id: string;
+  project_id: string;
+  input_text: string;
+  output_text: string;
+  created_at: string;
+}
+
+interface Project {
+  id: string;
+  goal: string;
+  status: "active" | "completed" | "paused";
+  current_step: number;
+  steps: ProjectStep[];
+  history: ProjectHistory[];
+  created_at: string;
+  updated_at: string;
+}
 
 function App() {
-  const [message, setMessage] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>("");
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchMessage = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/hello`,
-        );
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setMessage(data.message);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch");
-      } finally {
-        setLoading(false);
+  const createProject = async (goal: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goal,
+          os: "windows",
+          skill: "beginner",
+        }),
+      });
+      const data = await response.json();
+      if (data.ok && data.project) {
+        setProject(data.project);
       }
-    };
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to create project:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchMessage();
-  }, []);
+  const advanceProject = async (stepNumber: number) => {
+    if (!project) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/projects/${project.id}/advance`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            completed_step_number: stepNumber,
+            user_feedback: `Completed step ${stepNumber}`,
+            context_update: `projectId: ${project.id}, Step ${stepNumber} completed successfully`,
+          }),
+        },
+      );
+      const data = await response.json();
+      if (data.ok && data.project) {
+        setProject(data.project);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to advance project:", error);
+    }
+  };
+
+  // No auto-creation - user starts fresh
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-          Zero1 Monorepo
-        </h1>
-
-        <div className="space-y-4">
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <h2 className="text-lg font-semibold text-blue-900 mb-2">
-              API Integration
-            </h2>
-            {loading && (
-              <p className="text-blue-700">Loading message from API...</p>
-            )}
-            {error && <p className="text-red-600">Error: {error}</p>}
-            {message && !loading && (
-              <p className="text-green-700 font-medium">{message}</p>
-            )}
-          </div>
-
-          <div className="text-sm text-gray-600 text-center">
-            <p>React + TypeScript + Vite</p>
-            <p>Connected to Express API</p>
-          </div>
-
-          <footer className="text-xs text-gray-500 text-center mt-4">
-            Built with ❤️ using the Zero1 monorepo
-          </footer>
-        </div>
-      </div>
+    <div className="h-screen grid grid-cols-2">
+      <ThinkingPane
+        onCreateProject={createProject}
+        loading={loading}
+        projectId={project?.id}
+      />
+      <PromptPane project={project} onStepComplete={advanceProject} />
     </div>
   );
 }
