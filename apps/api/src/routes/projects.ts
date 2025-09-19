@@ -39,7 +39,14 @@ router.post("/", async (req, res) => {
 router.post("/:projectId/advance", async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { completed_step_number, user_feedback, context_update } = req.body;
+    const {
+      step_number,
+      substep_id,
+      completed_step_number,
+      completed_substep_id,
+      user_feedback,
+      context_update,
+    } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
       return res.status(400).json({
@@ -47,17 +54,41 @@ router.post("/:projectId/advance", async (req, res) => {
       });
     }
 
-    if (
-      typeof completed_step_number !== "number" ||
-      completed_step_number < 1
-    ) {
+    // Check if either substep completion or step completion is provided
+    const hasSubstepCompletion = substep_id || completed_substep_id;
+    const hasStepCompletion = step_number || completed_step_number;
+
+    if (!hasSubstepCompletion && !hasStepCompletion) {
       return res.status(400).json({
-        error: "Valid completed_step_number is required",
+        error: "Either substep_id or step_number is required",
       });
     }
 
+    // Validate step number if provided
+    if (hasStepCompletion) {
+      const stepNum = step_number || completed_step_number;
+      if (typeof stepNum !== "number" || stepNum < 1) {
+        return res.status(400).json({
+          error: "Valid step_number is required",
+        });
+      }
+    }
+
+    // Validate substep ID if provided
+    if (hasSubstepCompletion) {
+      const substepId = substep_id || completed_substep_id;
+      if (typeof substepId !== "string" || !substepId.trim()) {
+        return res.status(400).json({
+          error: "Valid substep_id is required",
+        });
+      }
+    }
+
     const result = await orchestrator.advanceProject(projectId, {
-      completed_step_number,
+      step_number: step_number || completed_step_number,
+      substep_id: substep_id || completed_substep_id,
+      completed_step_number, // backward compatibility
+      completed_substep_id, // backward compatibility
       user_feedback,
       context_update,
     });
@@ -125,6 +156,42 @@ router.get("/", async (req, res) => {
     console.error("Error fetching projects:", error);
     res.status(500).json({
       error: "Failed to fetch projects",
+    });
+  }
+});
+
+// POST /api/projects/:projectId/clarify - Handle clarification Q&A
+router.post("/:projectId/clarify", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { user_response } = req.body;
+
+    if (!projectId || typeof projectId !== "string") {
+      return res.status(400).json({
+        error: "Valid project ID is required",
+      });
+    }
+
+    const result = await orchestrator.handleClarification({
+      project_id: projectId,
+      user_response,
+    });
+
+    res.json({
+      ok: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error handling clarification:", error);
+
+    if (error instanceof Error && error.message === "Project not found") {
+      return res.status(404).json({
+        error: "Project not found",
+      });
+    }
+
+    res.status(500).json({
+      error: "Failed to handle clarification",
     });
   }
 });
