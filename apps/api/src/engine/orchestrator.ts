@@ -3,12 +3,12 @@ import { ENV } from "../env";
 import {
   Project,
   ProjectHistory,
-  StepGenerationRequest,
-  StepGenerationResponse,
-  AdvanceProjectRequest,
-  AdvanceProjectResponse,
-  ClarificationRequest,
-  ClarificationResponse,
+  PhaseGenerationRequest,
+  PhaseGenerationResponse,
+  PhaseExpansionRequest,
+  PhaseExpansionResponse,
+  CompleteSubstepRequest,
+  CompleteSubstepResponse,
 } from "./types";
 
 // In-memory storage for demo purposes
@@ -20,253 +20,306 @@ export class StepOrchestrator {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 
-  async generateSteps(
-    request: StepGenerationRequest,
-  ): Promise<StepGenerationResponse> {
+  // Progressive revelation: Only expand Phase 1 initially
+  async createProjectWithPhase1(goal: string): Promise<Project> {
     const client = makeOpenAI();
     if (!client) {
       throw new Error("AI not configured");
     }
 
-    const systemPrompt = `You are an expert Zero-to-One Project Builder. Your job is to create comprehensive action plans with expert prompts that help users build any project from scratch, regardless of their experience level.
+    console.log("🎯 [CREATE] Creating project with Phase 1 expansion for:", goal);
 
-CONTEXT: You have rich clarification data about this project. Use it to create domain-specific, expert-level prompts.
+    // First generate high-level phases
+    const phaseResponse = await this.generatePhases({
+      goal,
+      clarification_context: "Initial project creation - no clarification needed.",
+    });
+
+    // Now expand only Phase 1 with substeps
+    const phase1 = phaseResponse.phases[0];
+    if (phase1) {
+      const expandedPhase1 = await this.expandPhaseWithSubsteps(phase1, goal);
+
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: this.generateId(),
+        goal,
+        status: "active",
+        current_phase: 1,
+        phases: [
+          // Phase 1: Fully expanded with substeps
+          {
+            ...expandedPhase1,
+            phase_number: 1,
+            expanded: true,
+            locked: false,
+            completed: false,
+            created_at: now,
+          },
+          // Phase 2+: High-level only, locked
+          ...phaseResponse.phases.slice(1).map((phase, index) => ({
+            ...phase,
+            phase_number: index + 2,
+            substeps: [], // No substeps until unlocked
+            expanded: false,
+            locked: true,
+            completed: false,
+            created_at: now,
+          }))
+        ],
+        history: [],
+        created_at: now,
+        updated_at: now,
+      };
+
+      projects.set(project.id, project);
+      console.log("✅ [CREATE] Project created with Phase 1 expanded");
+      return project;
+    }
+
+    throw new Error("Failed to generate initial phases");
+  }
+
+  async createProject(goal: string): Promise<Project> {
+    return this.createProjectWithPhase1(goal);
+  }
+
+  async generatePhases(request: PhaseGenerationRequest): Promise<PhaseGenerationResponse> {
+    console.log("🎯 [PHASES] Generating phases for project:", request.goal);
+    console.log("📋 [PHASES] Using clarification context:", request.clarification_context?.substring(0, 100) + "...");
+
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("AI not configured");
+    }
+
+    const systemPrompt = `You are an expert Zero-to-One Project Builder specializing in phase-based project scaffolding.
+
+Your job is to break down any project into 5-8 high-level phases that represent the major milestones from conception to completion.
 
 RULES:
-1. Generate 4-8 main Steps based on project complexity (Planning, Environment, Architecture, Implementation, Testing, Deployment)
-2. Each Step contains 2-5 Substeps (1A, 1B, 1C...)
-3. Each Substep contains an EXPERT PROMPT that includes full project context
-4. Prompts should act as domain experts: "Act as a senior [domain] expert with 10+ years experience..."
-5. Include specific project details in every prompt so AI has full context when user pastes it back
-6. Make prompts progressive - later steps build on earlier completions
-7. Cover the entire project lifecycle from zero to production-ready
-
-EXPERT PROMPT FORMAT:
-Each prompt_to_send should follow this pattern:
-"Act as a senior [domain expert] with 10+ years experience. For our [specific project description with key details], [specific task]. Consider [relevant constraints/requirements]. Provide [specific deliverables expected]."
+1. Generate exactly 5-8 phases
+2. Each phase should be a major milestone (not tiny tasks)
+3. Phases should be sequential and build upon each other
+4. Include goal, why_it_matters, acceptance_criteria, and rollback_plan for each
+5. Make phases domain-appropriate (business vs technical vs creative projects)
 
 RESPONSE FORMAT:
 {
-  "steps": [
+  "phases": [
     {
-      "step_number": 1,
-      "title": "Project Architecture & Planning",
-      "why_text": "Create a solid foundation before coding",
-      "substeps": [
-        {
-          "substep_id": "1A",
-          "label": "Technical Architecture Design",
-          "prompt_to_send": "Act as a senior [domain] architect with 10+ years experience. For our [specific project with context], design the complete technical architecture including [specific components]. Consider [constraints from clarification]. Provide detailed architecture diagrams, tech stack recommendations, and implementation approach.",
-          "commands": "No commands - design and planning phase"
-        }
-      ]
+      "phase_id": "P1",
+      "goal": "Clear, actionable phase goal",
+      "why_it_matters": "Why this phase is critical for project success",
+      "acceptance_criteria": ["Criteria 1", "Criteria 2", "Criteria 3"],
+      "rollback_plan": ["Rollback step 1", "Rollback step 2"],
+      "substeps": []
     }
-  ],
-  "reasoning": "Expert prompts with full project context for zero-to-one building"
-}`;
+  ]
+}
 
-    // Get recent clarifications if we have a project context
-    let recentClarifications = "";
-    if (
-      request.current_context &&
-      request.current_context.includes("projectId:")
-    ) {
-      const projectId = request.current_context
-        .split("projectId:")[1]
-        .split(",")[0]
-        .trim();
-      const history = this.getRecentHistory(projectId, 3);
-      if (history.length > 0) {
-        recentClarifications = `\n\nRecent clarifications:\n${history.map((h) => `Q: ${h.input_text}\nA: ${h.output_text}`).join("\n\n")}`;
-      }
-    }
+PROJECT: ${request.goal}
+CONTEXT: ${request.clarification_context}
 
-    const userPrompt = `PROJECT GOAL: ${request.goal}
-
-PROJECT DETAILS FROM CLARIFICATION:
-${request.current_context || "No clarification context available"}
-
-${request.previous_steps?.length ? `COMPLETED STEPS: ${request.previous_steps.map((s) => `${s.step_number}. ${s.title}`).join(", ")}` : ""}${recentClarifications}
-
-INSTRUCTIONS: Generate a comprehensive action plan with expert prompts that use all the project details above. Each prompt should include specific project context so when the user copies and pastes it back, the AI has everything needed to provide expert guidance for this exact project.`;
-
-    const result = await client.chat.completions.create({
-      model: ENV.OPENAI_MODEL_NAME,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.3,
-      max_tokens: 2000,
-    });
-
-    const responseText = result.choices?.[0]?.message?.content ?? "";
+Generate the high-level phase roadmap now.`;
 
     try {
+      const result = await client.chat.completions.create({
+        model: ENV.OPENAI_MODEL_NAME,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Generate the phase roadmap for this project." },
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+      });
+
+      const responseText = result.choices?.[0]?.message?.content ?? "";
       const parsed = JSON.parse(responseText);
-      console.log(
-        "Successfully parsed AI response:",
-        JSON.stringify(parsed, null, 2),
-      );
+
+      console.log("✅ [PHASES] Generated", parsed.phases?.length || 0, "phases");
       return parsed;
     } catch (error) {
-      // Fallback if JSON parsing fails
-      console.log("JSON parsing failed:", error);
-      console.log("Response text:", responseText);
+      console.error("❌ [PHASES] Generation failed:", error);
+      // Fallback with basic phases
       return {
-        steps: [
+        phases: [
           {
-            step_number: 1,
-            title: "Plan Creation",
-            why_text: "Starting with a clear plan helps ensure success",
-            substeps: [
-              {
-                substep_id: "1A",
-                label: "Define Your Goal",
-                prompt_to_send:
-                  "Help me clarify my project goal by asking specific questions about what I want to build, who it's for, and what problems it solves",
-                commands: "",
-              },
-            ],
+            phase_id: "P1",
+            goal: "Project Foundation & Planning",
+            why_it_matters: "Establish solid foundation for successful project execution",
+            acceptance_criteria: ["Clear project scope defined", "Initial research completed"],
+            rollback_plan: ["Reset to initial state"],
+            substeps: [],
+          },
+          {
+            phase_id: "P2",
+            goal: "Core Development & Implementation",
+            why_it_matters: "Build the essential components of the project",
+            acceptance_criteria: ["Core functionality working", "Basic structure in place"],
+            rollback_plan: ["Return to planning phase"],
+            substeps: [],
           },
         ],
-        reasoning: "Generated fallback step due to parsing error",
       };
     }
   }
 
-  async createProject(goal: string): Promise<Project> {
-    const now = new Date().toISOString();
-    const project: Project = {
-      id: this.generateId(),
-      goal,
-      status: "clarifying", // Start in clarifying status
-      current_step: 0, // No steps yet
-      steps: [], // Empty steps until clarification is complete
-      history: [],
-      clarification_context: "", // Will accumulate clarification Q&A
-      created_at: now,
-      updated_at: now,
-    };
+  // Expand a single phase with substeps and master prompts
+  async expandPhaseWithSubsteps(phase: any, goal: string): Promise<any> {
+    console.log("🔍 [EXPAND] Expanding phase with substeps:", phase.goal);
 
-    projects.set(project.id, project);
-    return project;
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("AI not configured");
+    }
+
+    const systemPrompt = `You are an expert Zero-to-One Project Builder. Your job is to break down a single phase into detailed substeps with master prompts.
+
+PHASE TO EXPAND: ${phase.goal}
+PROJECT CONTEXT: ${goal}
+
+RULES:
+1. Generate 3-5 substeps for this specific phase
+2. Each substep should be a concrete, actionable micro-task
+3. Each substep needs a "master prompt" for ChatGPT-style workspace
+4. Substeps should be sequential and build on each other
+5. Each substep = 15-30 minutes of focused work
+
+RESPONSE FORMAT:
+{
+  "substeps": [
+    {
+      "substep_id": "1A",
+      "step_number": 1,
+      "label": "Clear action-oriented title",
+      "prompt_to_send": "Detailed master prompt for ChatGPT workspace",
+      "commands": "Any specific tools/resources needed",
+      "completed": false
+    }
+  ]
+}
+
+Focus on practical, hands-on tasks that move the project forward.`;
+
+    try {
+      const result = await client.chat.completions.create({
+        model: ENV.OPENAI_MODEL_NAME,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Generate the substeps for this phase." },
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+      });
+
+      const responseText = result.choices?.[0]?.message?.content ?? "";
+      const parsed = JSON.parse(responseText);
+
+      return {
+        ...phase,
+        substeps: parsed.substeps.map((substep: any, index: number) => ({
+          ...substep,
+          step_number: index + 1,
+          completed: false,
+          created_at: new Date().toISOString(),
+        }))
+      };
+    } catch (error) {
+      console.error("❌ [EXPAND] Failed to expand phase:", error);
+      // Fallback with basic substeps
+      return {
+        ...phase,
+        substeps: [
+          {
+            substep_id: "1A",
+            step_number: 1,
+            label: `Start ${phase.goal}`,
+            prompt_to_send: `Help me begin working on: ${phase.goal}. For the project: ${goal}. Provide step-by-step guidance for getting started.`,
+            commands: "Basic setup and planning",
+            completed: false,
+            created_at: new Date().toISOString(),
+          }
+        ]
+      };
+    }
   }
 
-  async advanceProject(
-    projectId: string,
-    request: AdvanceProjectRequest,
-  ): Promise<AdvanceProjectResponse> {
-    const project = projects.get(projectId);
+  // Manual substep completion with phase unlocking logic
+  async completeSubstep(request: CompleteSubstepRequest): Promise<CompleteSubstepResponse> {
+    console.log("✅ [COMPLETE] Completing substep:", request.substep_id, "for project:", request.project_id);
+
+    const project = projects.get(request.project_id);
     if (!project) {
       throw new Error("Project not found");
     }
 
-    let message = "";
+    // Find and mark substep as complete
+    let substepFound = false;
+    let currentPhase: any = null;
 
-    // Handle substep completion (new format or backward compatibility)
-    const substepId = request.substep_id || request.completed_substep_id;
-    if (substepId) {
-      const [stepNum] = substepId.split(/(?=[A-Z])/);
-      const stepNumber = parseInt(stepNum);
-
-      const step = project.steps.find((s) => s.step_number === stepNumber);
-      if (step) {
-        const substep = step.substeps.find(
-          (sub) => sub.substep_id === substepId,
-        );
-        if (substep) {
-          substep.completed = true;
-
-          // Check if all substeps in this step are complete
-          step.all_substeps_complete = step.substeps.every(
-            (sub) => sub.completed,
-          );
-          step.completed = step.all_substeps_complete;
-
-          // Update current step if this step is complete
-          if (step.completed && project.current_step === stepNumber) {
-            project.current_step = stepNumber + 1;
-          }
-
-          message = `Substep ${substepId} completed!${step.completed ? ` Step ${stepNumber} is now complete!` : ""}`;
-        }
+    for (const phase of project.phases) {
+      const substep = phase.substeps.find((s: any) => s.substep_id === request.substep_id);
+      if (substep) {
+        substep.completed = true;
+        substepFound = true;
+        currentPhase = phase;
+        break;
       }
     }
-    // Handle step completion (new format or backward compatibility)
-    else if (request.step_number || request.completed_step_number) {
-      const stepNumber = request.step_number || request.completed_step_number;
-      const stepToComplete = project.steps.find(
-        (s) => s.step_number === stepNumber,
+
+    if (!substepFound) {
+      throw new Error("Substep not found");
+    }
+
+    // Check if all substeps in current phase are complete
+    const allSubstepsComplete = currentPhase.substeps.every((s: any) => s.completed);
+
+    let unlockedPhase: any = null;
+
+    if (allSubstepsComplete) {
+      // Complete current phase
+      currentPhase.completed = true;
+      console.log(`🎉 [COMPLETE] Phase ${currentPhase.phase_number} completed!`);
+
+      // Find and unlock next phase
+      const nextPhase = project.phases.find((p: any) =>
+        p.phase_number === currentPhase.phase_number + 1 && p.locked
       );
-      if (stepToComplete) {
-        // Mark all substeps as complete
-        stepToComplete.substeps.forEach((substep) => {
-          substep.completed = true;
-        });
-        stepToComplete.all_substeps_complete = true;
-        stepToComplete.completed = true;
 
-        // Update current step
-        project.current_step = Math.max(project.current_step, stepNumber + 1);
+      if (nextPhase) {
+        console.log(`🔓 [UNLOCK] Unlocking Phase ${nextPhase.phase_number}`);
 
-        message = `Step ${stepNumber} marked as complete.`;
+        // Expand next phase with substeps
+        const expandedNextPhase = await this.expandPhaseWithSubsteps(nextPhase, project.goal);
+
+        // Update the phase in the project
+        const nextPhaseIndex = project.phases.findIndex((p: any) => p.phase_id === nextPhase.phase_id);
+        project.phases[nextPhaseIndex] = {
+          ...expandedNextPhase,
+          phase_number: nextPhase.phase_number,
+          expanded: true,
+          locked: false,
+          completed: false,
+          created_at: nextPhase.created_at,
+        };
+
+        project.current_phase = nextPhase.phase_number;
+        unlockedPhase = project.phases[nextPhaseIndex];
       }
     }
 
     project.updated_at = new Date().toISOString();
-
-    // Check if project is complete
-    const allStepsCompleted = project.steps.every((s) => s.completed);
-    if (allStepsCompleted) {
-      project.status = "completed";
-      message =
-        "Congratulations! You have completed all steps for this project.";
-    }
-
-    // Generate next steps if needed and user provided context
-    let nextSteps = undefined;
-    if (request.context_update && !allStepsCompleted) {
-      try {
-        const stepResponse = await this.generateSteps({
-          goal: project.goal,
-          current_context: request.context_update,
-          previous_steps: project.steps.filter((s) => s.completed),
-        });
-        nextSteps = stepResponse.steps;
-
-        // Add new steps to project
-        const maxStepNumber = Math.max(
-          ...project.steps.map((s) => s.step_number),
-        );
-        const newSteps = stepResponse.steps.map((step, index) => ({
-          ...step,
-          step_number: maxStepNumber + index + 1,
-          all_substeps_complete: false,
-          completed: false,
-          substeps: step.substeps.map((substep) => ({
-            ...substep,
-            completed: false,
-            created_at: new Date().toISOString(),
-          })),
-          created_at: new Date().toISOString(),
-        }));
-        project.steps.push(...newSteps);
-
-        if (message) {
-          message += " New steps have been generated based on your progress.";
-        }
-      } catch (error) {
-        console.error("Failed to generate next steps:", error);
-      }
-    }
-
-    projects.set(projectId, project);
+    projects.set(request.project_id, project);
 
     return {
       project,
-      next_steps: nextSteps,
-      message: message || "Continue with the next step.",
+      phase_unlocked: unlockedPhase,
+      message: allSubstepsComplete
+        ? unlockedPhase
+          ? `Phase ${currentPhase.phase_number} completed! Phase ${unlockedPhase.phase_number} unlocked.`
+          : `Phase ${currentPhase.phase_number} completed! Project finished!`
+        : `Substep ${request.substep_id} completed.`
     };
   }
 
@@ -278,143 +331,12 @@ INSTRUCTIONS: Generate a comprehensive action plan with expert prompts that use 
     return Array.from(projects.values());
   }
 
-  addHistoryEntry(
-    projectId: string,
-    inputText: string,
-    outputText: string,
-  ): ProjectHistory | null {
-    const project = projects.get(projectId);
-    if (!project) return null;
-
-    const historyEntry: ProjectHistory = {
-      id: this.generateId(),
-      project_id: projectId,
-      input_text: inputText,
-      output_text: outputText,
-      created_at: new Date().toISOString(),
-    };
-
-    project.history.push(historyEntry);
-    project.updated_at = new Date().toISOString();
-    projects.set(projectId, project);
-
-    return historyEntry;
-  }
-
-  getRecentHistory(projectId: string, limit: number = 3): ProjectHistory[] {
+  private getRecentHistory(projectId: string, limit: number): ProjectHistory[] {
     const project = projects.get(projectId);
     if (!project) return [];
 
-    return project.history.slice(-limit).reverse(); // Most recent first
-  }
-
-  async handleClarification(
-    request: ClarificationRequest,
-  ): Promise<ClarificationResponse> {
-    const project = projects.get(request.project_id);
-    if (!project) {
-      throw new Error("Project not found");
-    }
-
-    const client = makeOpenAI();
-    if (!client) {
-      throw new Error("AI not configured");
-    }
-
-    // Update clarification context with user response
-    if (request.user_response) {
-      project.clarification_context += `User: ${request.user_response}\n`;
-    }
-
-    // Count how many questions have been asked
-    const questionCount = (project.clarification_context?.match(/AI:/g) || [])
-      .length;
-
-    // System prompt for clarification
-    const systemPrompt = `You are an expert project clarification assistant. Your job is to ask exactly 3 high-quality clarifying questions to deeply understand a project so you can later generate expert prompts for building it.
-
-RULES:
-1. Ask ONE specific, insightful question at a time
-2. Focus on the 3 most essential aspects: target users/problem, technical scope, and constraints/success criteria
-3. After exactly 3 questions, respond with "CLARIFICATION_COMPLETE"
-4. Questions should be domain-specific and get maximum context quickly
-
-QUESTION PROGRESSION:
-Question 1: Target users and core problem being solved
-Question 2: Technical scope and requirements
-Question 3: Constraints, timeline, and success criteria
-
-CURRENT PROJECT: ${project.goal}
-
-PREVIOUS CLARIFICATION:
-${project.clarification_context || "No previous clarification"}
-
-QUESTION COUNT: ${questionCount}/3
-
-${questionCount >= 3 ? 'You have asked 3 questions. Respond with exactly "CLARIFICATION_COMPLETE".' : `Ask question ${questionCount + 1} of 3. Focus on getting essential context for generating expert prompts.`}`;
-
-    const result = await client.chat.completions.create({
-      model: ENV.OPENAI_MODEL_NAME,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content:
-            "Please provide the next clarifying question or indicate if clarification is complete.",
-        },
-      ],
-      temperature: 0.3,
-      max_tokens: 200,
-    });
-
-    const responseText = result.choices?.[0]?.message?.content ?? "";
-
-    if (responseText.includes("CLARIFICATION_COMPLETE")) {
-      // Clarification is complete, transition to active status and generate steps
-      project.status = "active";
-      project.current_step = 1;
-
-      // Generate action plan with expert prompts using clarification context
-      const stepResponse = await this.generateSteps({
-        goal: project.goal,
-        current_context: project.clarification_context,
-      });
-
-      const now = new Date().toISOString();
-      project.steps = stepResponse.steps.map((step) => ({
-        ...step,
-        all_substeps_complete: false,
-        completed: false,
-        substeps: step.substeps.map((substep) => ({
-          ...substep,
-          completed: false,
-          created_at: now,
-        })),
-        created_at: now,
-      }));
-
-      project.updated_at = now;
-      projects.set(request.project_id, project);
-
-      return {
-        project,
-        is_complete: true,
-        message:
-          "Great! I have enough context to create your action plan. Your expert prompts are ready!",
-      };
-    } else {
-      // Continue clarification
-      project.clarification_context += `AI: ${responseText}\n`;
-      project.updated_at = new Date().toISOString();
-      projects.set(request.project_id, project);
-
-      return {
-        project,
-        question: responseText,
-        is_complete: false,
-        message:
-          "Let me ask a clarifying question to better understand your project.",
-      };
-    }
+    return project.history
+      .slice(-limit)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 }

@@ -10,13 +10,17 @@ export interface ProjectSubstep {
   created_at: string;
 }
 
-export interface ProjectStep {
-  step_number: number;
-  title: string; // "Environment Setup"
-  why_text: string; // Why this step matters
+export interface ProjectPhase {
+  phase_id: string; // "P1", "P2", "P3"
+  phase_number: number; // 1, 2, 3
+  goal: string;
+  why_it_matters: string;
   substeps: ProjectSubstep[];
-  all_substeps_complete: boolean;
-  completed: boolean; // Only true when all substeps done
+  acceptance_criteria: string[];
+  rollback_plan: string[];
+  expanded: boolean; // Whether substeps have been generated
+  locked: boolean; // Whether phase is accessible
+  completed: boolean;
   created_at: string;
 }
 
@@ -31,55 +35,40 @@ export interface ProjectHistory {
 export interface Project {
   id: string;
   goal: string;
-  status: "clarifying" | "active" | "completed" | "paused";
-  current_step: number;
-  steps: ProjectStep[];
+  status: "active" | "completed" | "paused";
+  current_phase: number;
+  phases: ProjectPhase[];
   history: ProjectHistory[];
-  clarification_context?: string; // Accumulated context from clarification Q&A
   created_at: string;
   updated_at: string;
 }
 
-export interface StepGenerationRequest {
+export interface PhaseExpansionRequest {
+  project_id: string;
+  phase_id: string;
+}
+
+export interface PhaseGenerationRequest {
   goal: string;
-  current_context?: string;
-  previous_steps?: ProjectStep[];
+  clarification_context: string;
 }
 
-export interface StepGenerationResponse {
-  steps: Omit<
-    ProjectStep,
-    "all_substeps_complete" | "completed" | "created_at"
-  >[];
-  reasoning: string;
+export interface PhaseGenerationResponse {
+  phases: Omit<ProjectPhase, "expanded" | "completed" | "created_at">[];
 }
 
-export interface AdvanceProjectRequest {
-  step_number?: number; // For step completion
-  substep_id?: string; // For substep completion (e.g. "1A")
-  completed_substep_id?: string; // For backward compatibility
-  completed_step_number?: number; // For backward compatibility
-  user_feedback?: string;
-  context_update?: string;
-}
-
-export interface AdvanceProjectResponse {
-  project: Project;
-  next_steps?: Omit<
-    ProjectStep,
-    "all_substeps_complete" | "completed" | "created_at"
-  >[];
+export interface PhaseExpansionResponse {
+  phase: ProjectPhase;
   message: string;
 }
 
-export interface ClarificationRequest {
+export interface CompleteSubstepRequest {
   project_id: string;
-  user_response?: string; // User's answer to previous question
+  substep_id: string;
 }
 
-export interface ClarificationResponse {
+export interface CompleteSubstepResponse {
   project: Project;
-  question?: string; // Next clarifying question, or undefined if done
-  is_complete: boolean; // True when clarification is complete and ready for action plan
+  phase_unlocked?: ProjectPhase; // If completing substep unlocked next phase
   message: string;
 }

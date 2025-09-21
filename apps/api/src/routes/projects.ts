@@ -23,30 +23,23 @@ router.post("/", async (req, res) => {
 
     const project = await orchestrator.createProject(goal.trim());
 
-    res.status(201).json({
+    return res.status(201).json({
       ok: true,
       project,
     });
   } catch (error) {
     console.error("Error creating project:", error);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to create project",
     });
   }
 });
 
-// POST /api/projects/:projectId/advance - Advance a project
-router.post("/:projectId/advance", async (req, res) => {
+// POST /api/projects/:projectId/complete-substep - Mark substep as complete
+router.post("/:projectId/complete-substep", async (req, res) => {
   try {
     const { projectId } = req.params;
-    const {
-      step_number,
-      substep_id,
-      completed_step_number,
-      completed_substep_id,
-      user_feedback,
-      context_update,
-    } = req.body;
+    const { substep_id } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
       return res.status(400).json({
@@ -54,51 +47,23 @@ router.post("/:projectId/advance", async (req, res) => {
       });
     }
 
-    // Check if either substep completion or step completion is provided
-    const hasSubstepCompletion = substep_id || completed_substep_id;
-    const hasStepCompletion = step_number || completed_step_number;
-
-    if (!hasSubstepCompletion && !hasStepCompletion) {
+    if (!substep_id || typeof substep_id !== "string") {
       return res.status(400).json({
-        error: "Either substep_id or step_number is required",
+        error: "Valid substep_id is required",
       });
     }
 
-    // Validate step number if provided
-    if (hasStepCompletion) {
-      const stepNum = step_number || completed_step_number;
-      if (typeof stepNum !== "number" || stepNum < 1) {
-        return res.status(400).json({
-          error: "Valid step_number is required",
-        });
-      }
-    }
-
-    // Validate substep ID if provided
-    if (hasSubstepCompletion) {
-      const substepId = substep_id || completed_substep_id;
-      if (typeof substepId !== "string" || !substepId.trim()) {
-        return res.status(400).json({
-          error: "Valid substep_id is required",
-        });
-      }
-    }
-
-    const result = await orchestrator.advanceProject(projectId, {
-      step_number: step_number || completed_step_number,
-      substep_id: substep_id || completed_substep_id,
-      completed_step_number, // backward compatibility
-      completed_substep_id, // backward compatibility
-      user_feedback,
-      context_update,
+    const result = await orchestrator.completeSubstep({
+      project_id: projectId,
+      substep_id,
     });
 
-    res.json({
+    return res.json({
       ok: true,
       ...result,
     });
   } catch (error) {
-    console.error("Error advancing project:", error);
+    console.error("Error completing substep:", error);
 
     if (error instanceof Error && error.message === "Project not found") {
       return res.status(404).json({
@@ -106,8 +71,14 @@ router.post("/:projectId/advance", async (req, res) => {
       });
     }
 
-    res.status(500).json({
-      error: "Failed to advance project",
+    if (error instanceof Error && error.message === "Substep not found") {
+      return res.status(404).json({
+        error: "Substep not found",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Failed to complete substep",
     });
   }
 });
@@ -131,67 +102,96 @@ router.get("/:projectId", async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       ok: true,
       project,
     });
   } catch (error) {
     console.error("Error fetching project:", error);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to fetch project",
     });
   }
 });
 
 // GET /api/projects - Get all projects
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const projects = orchestrator.getAllProjects();
 
-    res.json({
+    return res.json({
       ok: true,
       projects,
     });
   } catch (error) {
     console.error("Error fetching projects:", error);
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to fetch projects",
     });
   }
 });
 
-// POST /api/projects/:projectId/clarify - Handle clarification Q&A
-router.post("/:projectId/clarify", async (req, res) => {
+
+// POST /api/projects/:projectId/expand - Expand phase with master prompt
+router.post("/:projectId/expand", async (req, res) => {
   try {
+    console.log("🎯 [API] Phase expansion request for project:", req.params.projectId);
+    console.log("📝 [API] Input length:", req.body.thinking_input?.length || 0);
+
     const { projectId } = req.params;
-    const { user_response } = req.body;
+    const { thinking_input } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
+      console.error("❌ [API] Invalid project ID:", projectId);
       return res.status(400).json({
         error: "Valid project ID is required",
       });
     }
 
-    const result = await orchestrator.handleClarification({
-      project_id: projectId,
-      user_response,
-    });
+    if (!thinking_input || typeof thinking_input !== "string") {
+      console.error("❌ [API] Missing thinking input");
+      return res.status(400).json({
+        error: "Thinking input is required",
+      });
+    }
 
-    res.json({
-      ok: true,
-      ...result,
-    });
-  } catch (error) {
-    console.error("Error handling clarification:", error);
-
-    if (error instanceof Error && error.message === "Project not found") {
+    const project = orchestrator.getProject(projectId);
+    if (!project) {
+      console.error("❌ [API] Project not found:", projectId);
       return res.status(404).json({
         error: "Project not found",
       });
     }
 
-    res.status(500).json({
-      error: "Failed to handle clarification",
+    console.log("📋 [API] Project has", project.phases?.length || 0, "phases");
+
+    const detectedPhaseId = orchestrator.detectMasterPrompt(thinking_input, project.phases);
+
+    if (detectedPhaseId) {
+      console.log("✅ [API] Master prompt detected, expanding phase:", detectedPhaseId);
+      const result = await orchestrator.expandPhase({
+        project_id: projectId,
+        phase_id: detectedPhaseId,
+        master_prompt_input: thinking_input,
+      });
+
+      return res.json({
+        ok: true,
+        phase_expanded: true,
+        ...result,
+      });
+    } else {
+      console.log("❌ [API] No master prompt detected");
+      return res.json({
+        ok: true,
+        phase_expanded: false,
+        message: "No master prompt detected - treating as general clarification",
+      });
+    }
+  } catch (error) {
+    console.error("❌ [API] Error expanding phase:", error);
+    return res.status(500).json({
+      error: "Failed to expand phase",
     });
   }
 });
