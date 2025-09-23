@@ -2,7 +2,6 @@ import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 import {
   Project,
-  ProjectHistory,
   PhaseGenerationRequest,
   PhaseGenerationResponse,
   CompleteSubstepRequest,
@@ -160,6 +159,7 @@ Generate the high-level phase roadmap now.`;
         phases: [
           {
             phase_id: "P1",
+            phase_number: 1,
             goal: "Project Foundation & Planning",
             why_it_matters:
               "Establish solid foundation for successful project execution",
@@ -169,9 +169,11 @@ Generate the high-level phase roadmap now.`;
             ],
             rollback_plan: ["Reset to initial state"],
             substeps: [],
+            locked: false,
           },
           {
             phase_id: "P2",
+            phase_number: 2,
             goal: "Core Development & Implementation",
             why_it_matters: "Build the essential components of the project",
             acceptance_criteria: [
@@ -180,6 +182,7 @@ Generate the high-level phase roadmap now.`;
             ],
             rollback_plan: ["Return to planning phase"],
             substeps: [],
+            locked: true,
           },
         ],
       };
@@ -188,7 +191,6 @@ Generate the high-level phase roadmap now.`;
 
   // Expand a single phase with substeps and master prompts
   async expandPhaseWithSubsteps(phase: any, goal: string): Promise<any> {
-     
     console.log("🔍 [EXPAND] Expanding phase with substeps:", phase.goal);
 
     const client = makeOpenAI();
@@ -241,7 +243,6 @@ Focus on practical, hands-on tasks that move the project forward.`;
       return {
         ...phase,
         substeps: parsed.substeps.map((substep: any, index: number) => ({
-           
           ...substep,
           step_number: index + 1,
           completed: false,
@@ -291,7 +292,7 @@ Focus on practical, hands-on tasks that move the project forward.`;
     for (const phase of project.phases) {
       const substep = phase.substeps.find(
         (s: any) => s.substep_id === request.substep_id,
-      );  
+      );
       if (substep) {
         substep.completed = true;
         substepFound = true;
@@ -307,7 +308,7 @@ Focus on practical, hands-on tasks that move the project forward.`;
     // Check if all substeps in current phase are complete
     const allSubstepsComplete = currentPhase.substeps.every(
       (s: any) => s.completed,
-    );  
+    );
 
     let unlockedPhase: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -337,7 +338,7 @@ Focus on practical, hands-on tasks that move the project forward.`;
         // Update the phase in the project
         const nextPhaseIndex = project.phases.findIndex(
           (p: any) => p.phase_id === nextPhase.phase_id,
-        );  
+        );
         project.phases[nextPhaseIndex] = {
           ...expandedNextPhase,
           phase_number: nextPhase.phase_number,
@@ -374,15 +375,80 @@ Focus on practical, hands-on tasks that move the project forward.`;
     return Array.from(projects.values());
   }
 
-  private getRecentHistory(projectId: string, limit: number): ProjectHistory[] {
-    const project = projects.get(projectId);
-    if (!project) return [];
+  detectMasterPrompt(input: string, phases: any[]): string | null {
+    // Simple detection logic - look for phase-related keywords
+    const lowerInput = input.toLowerCase();
 
-    return project.history
-      .slice(-limit)
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
+    for (const phase of phases) {
+      const phaseKeywords = [
+        phase.goal?.toLowerCase(),
+        phase.phase_id?.toLowerCase(),
+        `phase ${phase.phase_number}`,
+      ].filter(Boolean);
+
+      for (const keyword of phaseKeywords) {
+        if (lowerInput.includes(keyword)) {
+          return phase.phase_id;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async expandPhase(request: {
+    project_id: string;
+    phase_id: string;
+    master_prompt_input: string;
+  }): Promise<any> {
+    const project = projects.get(request.project_id);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const phase = project.phases.find(
+      (p: any) => p.phase_id === request.phase_id,
+    );
+    if (!phase) {
+      throw new Error("Phase not found");
+    }
+
+    if (phase.expanded) {
+      return {
+        project,
+        phase,
+        message: "Phase already expanded",
+      };
+    }
+
+    // Expand the phase with substeps
+    const expandedPhase = await this.expandPhaseWithSubsteps(
+      phase,
+      project.goal,
+    );
+
+    // Update the phase in the project
+    const phaseIndex = project.phases.findIndex(
+      (p: any) => p.phase_id === request.phase_id,
+    );
+    project.phases[phaseIndex] = {
+      ...expandedPhase,
+      expanded: true,
+      locked: false,
+    };
+
+    // Update project's current phase if needed
+    if (phase.phase_number <= project.current_phase) {
+      project.current_phase = phase.phase_number;
+    }
+
+    project.updated_at = new Date().toISOString();
+    projects.set(request.project_id, project);
+
+    return {
+      project,
+      phase: project.phases[phaseIndex],
+      message: `Phase ${phase.phase_number} expanded successfully`,
+    };
   }
 }

@@ -6,7 +6,7 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import { ENV } from "./env";
 import { makeOpenAI } from "./ai";
-import projectsRouter, { orchestrator } from "./routes/projects";
+import projectsRouter from "./routes/projects";
 
 const app = express();
 
@@ -87,10 +87,10 @@ app.post("/api/ai/complete", express.json(), async (req, res) => {
     });
 
     const text = result.choices?.[0]?.message?.content ?? "";
-    res.json({ ok: true, text });
+    return res.json({ ok: true, text });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "AI request failed" });
+    return res.status(500).json({ error: "AI request failed" });
   }
 });
 
@@ -100,7 +100,6 @@ app.post("/api/ai/clarify", express.json(), async (req, res) => {
     if (!client) return res.status(503).json({ error: "AI not configured" });
 
     const thought = (req.body?.thinking ?? "").toString();
-    const projectId = (req.body?.projectId ?? "").toString();
 
     if (!thought || thought.length < 5) {
       return res
@@ -130,14 +129,15 @@ app.post("/api/ai/clarify", express.json(), async (req, res) => {
     const text = result.choices?.[0]?.message?.content ?? "";
 
     // Save to project history if projectId provided
-    if (projectId && text) {
-      orchestrator.addHistoryEntry(projectId, thought, text);
-    }
+    // TODO: Implement addHistoryEntry method
+    // if (projectId && text) {
+    //   orchestrator.addHistoryEntry(projectId, thought, text);
+    // }
 
-    res.json({ ok: true, clarifications: text });
+    return res.json({ ok: true, clarifications: text });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "AI request failed" });
+    return res.status(500).json({ error: "AI request failed" });
   }
 });
 
