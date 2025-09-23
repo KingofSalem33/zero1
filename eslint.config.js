@@ -64,6 +64,9 @@ export default [
         URLSearchParams: "readonly",
         localStorage: "readonly",
         sessionStorage: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        navigator: "readonly",
       },
     },
     plugins: {
