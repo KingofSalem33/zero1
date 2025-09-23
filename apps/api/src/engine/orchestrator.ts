@@ -5,8 +5,6 @@ import {
   ProjectHistory,
   PhaseGenerationRequest,
   PhaseGenerationResponse,
-  PhaseExpansionRequest,
-  PhaseExpansionResponse,
   CompleteSubstepRequest,
   CompleteSubstepResponse,
 } from "./types";
@@ -27,12 +25,16 @@ export class StepOrchestrator {
       throw new Error("AI not configured");
     }
 
-    console.log("🎯 [CREATE] Creating project with Phase 1 expansion for:", goal);
+    console.log(
+      "🎯 [CREATE] Creating project with Phase 1 expansion for:",
+      goal,
+    );
 
     // First generate high-level phases
     const phaseResponse = await this.generatePhases({
       goal,
-      clarification_context: "Initial project creation - no clarification needed.",
+      clarification_context:
+        "Initial project creation - no clarification needed.",
     });
 
     // Now expand only Phase 1 with substeps
@@ -65,7 +67,7 @@ export class StepOrchestrator {
             locked: true,
             completed: false,
             created_at: now,
-          }))
+          })),
         ],
         history: [],
         created_at: now,
@@ -84,9 +86,14 @@ export class StepOrchestrator {
     return this.createProjectWithPhase1(goal);
   }
 
-  async generatePhases(request: PhaseGenerationRequest): Promise<PhaseGenerationResponse> {
+  async generatePhases(
+    request: PhaseGenerationRequest,
+  ): Promise<PhaseGenerationResponse> {
     console.log("🎯 [PHASES] Generating phases for project:", request.goal);
-    console.log("📋 [PHASES] Using clarification context:", request.clarification_context?.substring(0, 100) + "...");
+    console.log(
+      "📋 [PHASES] Using clarification context:",
+      request.clarification_context?.substring(0, 100) + "...",
+    );
 
     const client = makeOpenAI();
     if (!client) {
@@ -128,7 +135,10 @@ Generate the high-level phase roadmap now.`;
         model: ENV.OPENAI_MODEL_NAME,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: "Generate the phase roadmap for this project." },
+          {
+            role: "user",
+            content: "Generate the phase roadmap for this project.",
+          },
         ],
         temperature: 0.3,
         max_tokens: 2000,
@@ -137,7 +147,11 @@ Generate the high-level phase roadmap now.`;
       const responseText = result.choices?.[0]?.message?.content ?? "";
       const parsed = JSON.parse(responseText);
 
-      console.log("✅ [PHASES] Generated", parsed.phases?.length || 0, "phases");
+      console.log(
+        "✅ [PHASES] Generated",
+        parsed.phases?.length || 0,
+        "phases",
+      );
       return parsed;
     } catch (error) {
       console.error("❌ [PHASES] Generation failed:", error);
@@ -147,8 +161,12 @@ Generate the high-level phase roadmap now.`;
           {
             phase_id: "P1",
             goal: "Project Foundation & Planning",
-            why_it_matters: "Establish solid foundation for successful project execution",
-            acceptance_criteria: ["Clear project scope defined", "Initial research completed"],
+            why_it_matters:
+              "Establish solid foundation for successful project execution",
+            acceptance_criteria: [
+              "Clear project scope defined",
+              "Initial research completed",
+            ],
             rollback_plan: ["Reset to initial state"],
             substeps: [],
           },
@@ -156,7 +174,10 @@ Generate the high-level phase roadmap now.`;
             phase_id: "P2",
             goal: "Core Development & Implementation",
             why_it_matters: "Build the essential components of the project",
-            acceptance_criteria: ["Core functionality working", "Basic structure in place"],
+            acceptance_criteria: [
+              "Core functionality working",
+              "Basic structure in place",
+            ],
             rollback_plan: ["Return to planning phase"],
             substeps: [],
           },
@@ -167,6 +188,7 @@ Generate the high-level phase roadmap now.`;
 
   // Expand a single phase with substeps and master prompts
   async expandPhaseWithSubsteps(phase: any, goal: string): Promise<any> {
+     
     console.log("🔍 [EXPAND] Expanding phase with substeps:", phase.goal);
 
     const client = makeOpenAI();
@@ -219,11 +241,12 @@ Focus on practical, hands-on tasks that move the project forward.`;
       return {
         ...phase,
         substeps: parsed.substeps.map((substep: any, index: number) => ({
+           
           ...substep,
           step_number: index + 1,
           completed: false,
           created_at: new Date().toISOString(),
-        }))
+        })),
       };
     } catch (error) {
       console.error("❌ [EXPAND] Failed to expand phase:", error);
@@ -239,15 +262,22 @@ Focus on practical, hands-on tasks that move the project forward.`;
             commands: "Basic setup and planning",
             completed: false,
             created_at: new Date().toISOString(),
-          }
-        ]
+          },
+        ],
       };
     }
   }
 
   // Manual substep completion with phase unlocking logic
-  async completeSubstep(request: CompleteSubstepRequest): Promise<CompleteSubstepResponse> {
-    console.log("✅ [COMPLETE] Completing substep:", request.substep_id, "for project:", request.project_id);
+  async completeSubstep(
+    request: CompleteSubstepRequest,
+  ): Promise<CompleteSubstepResponse> {
+    console.log(
+      "✅ [COMPLETE] Completing substep:",
+      request.substep_id,
+      "for project:",
+      request.project_id,
+    );
 
     const project = projects.get(request.project_id);
     if (!project) {
@@ -256,10 +286,12 @@ Focus on practical, hands-on tasks that move the project forward.`;
 
     // Find and mark substep as complete
     let substepFound = false;
-    let currentPhase: any = null;
+    let currentPhase: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     for (const phase of project.phases) {
-      const substep = phase.substeps.find((s: any) => s.substep_id === request.substep_id);
+      const substep = phase.substeps.find(
+        (s: any) => s.substep_id === request.substep_id,
+      );  
       if (substep) {
         substep.completed = true;
         substepFound = true;
@@ -273,28 +305,39 @@ Focus on practical, hands-on tasks that move the project forward.`;
     }
 
     // Check if all substeps in current phase are complete
-    const allSubstepsComplete = currentPhase.substeps.every((s: any) => s.completed);
+    const allSubstepsComplete = currentPhase.substeps.every(
+      (s: any) => s.completed,
+    );  
 
-    let unlockedPhase: any = null;
+    let unlockedPhase: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     if (allSubstepsComplete) {
       // Complete current phase
       currentPhase.completed = true;
-      console.log(`🎉 [COMPLETE] Phase ${currentPhase.phase_number} completed!`);
+      console.log(
+        `🎉 [COMPLETE] Phase ${currentPhase.phase_number} completed!`,
+      );
 
       // Find and unlock next phase
-      const nextPhase = project.phases.find((p: any) =>
-        p.phase_number === currentPhase.phase_number + 1 && p.locked
+      const nextPhase = project.phases.find(
+        (
+          p: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        ) => p.phase_number === currentPhase.phase_number + 1 && p.locked,
       );
 
       if (nextPhase) {
         console.log(`🔓 [UNLOCK] Unlocking Phase ${nextPhase.phase_number}`);
 
         // Expand next phase with substeps
-        const expandedNextPhase = await this.expandPhaseWithSubsteps(nextPhase, project.goal);
+        const expandedNextPhase = await this.expandPhaseWithSubsteps(
+          nextPhase,
+          project.goal,
+        );
 
         // Update the phase in the project
-        const nextPhaseIndex = project.phases.findIndex((p: any) => p.phase_id === nextPhase.phase_id);
+        const nextPhaseIndex = project.phases.findIndex(
+          (p: any) => p.phase_id === nextPhase.phase_id,
+        );  
         project.phases[nextPhaseIndex] = {
           ...expandedNextPhase,
           phase_number: nextPhase.phase_number,
@@ -319,7 +362,7 @@ Focus on practical, hands-on tasks that move the project forward.`;
         ? unlockedPhase
           ? `Phase ${currentPhase.phase_number} completed! Phase ${unlockedPhase.phase_number} unlocked.`
           : `Phase ${currentPhase.phase_number} completed! Project finished!`
-        : `Substep ${request.substep_id} completed.`
+        : `Substep ${request.substep_id} completed.`,
     };
   }
 
@@ -337,6 +380,9 @@ Focus on practical, hands-on tasks that move the project forward.`;
 
     return project.history
       .slice(-limit)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
   }
 }

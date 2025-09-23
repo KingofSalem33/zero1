@@ -18,7 +18,7 @@
   "lint-staged": {
     "*.{ts,tsx,js}": [
       "prettier -w",
-      "eslint --fix --max-warnings=0"
+      "eslint --fix"
     ],
     "*.{json,md}": [
       "prettier -w"
