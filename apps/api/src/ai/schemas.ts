@@ -18,6 +18,16 @@ export const calculatorSchema = z.object({
   expression: z.string().describe("Mathematical expression to evaluate"),
 });
 
+export const fileSearchSchema = z.object({
+  query: z.string().describe("Search query to find relevant files"),
+  topK: z
+    .number()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe("Number of top results to return (1-10, default 5)"),
+});
+
 export const chatRequestSchema = z.object({
   message: z.string().describe("User message"),
   format: z.enum(["text", "json"]).optional().describe("Response format"),
@@ -40,5 +50,6 @@ export const chatJsonResponseSchema = z.object({
 export type WebSearchParams = z.infer<typeof webSearchSchema>;
 export type HttpFetchParams = z.infer<typeof httpFetchSchema>;
 export type CalculatorParams = z.infer<typeof calculatorSchema>;
+export type FileSearchParams = z.infer<typeof fileSearchSchema>;
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 export type ChatJsonResponse = z.infer<typeof chatJsonResponseSchema>;

@@ -2,7 +2,13 @@ import type { ChatCompletionTool } from "openai/resources";
 import { webSearch } from "./webSearch";
 import { http_fetch } from "./httpFetch";
 import { calculator } from "./calculator";
-import { webSearchSchema, httpFetchSchema, calculatorSchema } from "../schemas";
+import { file_search } from "./fileSearch";
+import {
+  webSearchSchema,
+  httpFetchSchema,
+  calculatorSchema,
+  fileSearchSchema,
+} from "../schemas";
 
 // OpenAI function tool definitions
 export const toolSpecs: ChatCompletionTool[] = [
@@ -67,6 +73,30 @@ export const toolSpecs: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "file_search",
+      description:
+        "Search through uploaded files to find relevant content based on a query",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query to find relevant files and content",
+          },
+          topK: {
+            type: "number",
+            description: "Number of top results to return (1-10, default 5)",
+            minimum: 1,
+            maximum: 10,
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
 ];
 
 // Tool function map with validation
@@ -82,6 +112,10 @@ export const toolMap = {
   calculator: async (args: unknown) => {
     const params = calculatorSchema.parse(args);
     return await calculator(params);
+  },
+  file_search: async (args: unknown) => {
+    const params = fileSearchSchema.parse(args);
+    return await file_search(params);
   },
 } as const;
 

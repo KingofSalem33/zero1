@@ -8,6 +8,7 @@ import projectsRouter from "./routes/projects";
 import { runModel } from "./ai/runModel";
 import { toolSpecs, toolMap } from "./ai/tools";
 import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
+import { handleFileUpload } from "./files";
 
 const app = express();
 
@@ -35,6 +36,9 @@ app.use(express.json());
 // Mount project routes
 app.use("/api/projects", projectsRouter);
 
+// File upload endpoint
+app.post("/api/files", handleFileUpload);
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -55,7 +59,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
 
     // Build conversation messages
     let systemMessage =
-      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, or perform calculations. Always include source URLs in your final answer.";
+      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. Always include source URLs in your final answer.";
 
     // Add JSON formatting instruction if needed
     if (format === "json") {
