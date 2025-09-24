@@ -18,6 +18,27 @@ export const calculatorSchema = z.object({
   expression: z.string().describe("Mathematical expression to evaluate"),
 });
 
+export const chatRequestSchema = z.object({
+  message: z.string().describe("User message"),
+  format: z.enum(["text", "json"]).optional().describe("Response format"),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string(),
+      }),
+    )
+    .optional()
+    .describe("Conversation history"),
+});
+
+export const chatJsonResponseSchema = z.object({
+  answer: z.string().describe("The response to the user's question"),
+  sources: z.array(z.string()).optional().describe("Source URLs referenced"),
+});
+
 export type WebSearchParams = z.infer<typeof webSearchSchema>;
 export type HttpFetchParams = z.infer<typeof httpFetchSchema>;
 export type CalculatorParams = z.infer<typeof calculatorSchema>;
+export type ChatRequest = z.infer<typeof chatRequestSchema>;
+export type ChatJsonResponse = z.infer<typeof chatJsonResponseSchema>;

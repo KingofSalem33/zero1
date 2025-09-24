@@ -7,6 +7,7 @@ import { ENV } from "./env";
 import projectsRouter from "./routes/projects";
 import { runModel } from "./ai/runModel";
 import { toolSpecs, toolMap } from "./ai/tools";
+import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
 
 const app = express();
 
@@ -42,58 +43,99 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// AI Chat endpoint with tools
+// AI Chat endpoint with tools and optional JSON format
 app.post("/api/chat", express.json(), async (req, res) => {
   try {
-    const { messages, message } = req.body;
+    // Validate request body
+    const {
+      message,
+      format = "text",
+      history = [],
+    } = chatRequestSchema.parse(req.body);
 
-    if (!messages && !message) {
-      return res.status(400).json({
-        error: "Either 'messages' array or single 'message' string is required",
-      });
+    // Build conversation messages
+    let systemMessage =
+      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, or perform calculations. Always include source URLs in your final answer.";
+
+    // Add JSON formatting instruction if needed
+    if (format === "json") {
+      systemMessage +=
+        "\n\nIf the user asks for structured output, respond as JSON that matches this schema: {answer:string, sources?:string[]}";
     }
 
-    // Handle single message or messages array
-    let conversationMessages;
-    if (message && typeof message === "string") {
-      conversationMessages = [
-        {
-          role: "system",
-          content:
-            "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, or perform calculations. Always include source URLs in your final answer.",
-        },
-        {
-          role: "user",
-          content: message,
-        },
-      ];
-    } else if (Array.isArray(messages)) {
-      // Add system message if not present
-      conversationMessages = messages;
-      if (!messages.some((msg) => msg.role === "system")) {
-        conversationMessages = [
-          {
-            role: "system",
-            content:
-              "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, or perform calculations. Always include source URLs in your final answer.",
-          },
-          ...messages,
-        ];
-      }
-    } else {
-      return res.status(400).json({
-        error: "Invalid message format",
-      });
-    }
+    const conversationMessages = [
+      {
+        role: "system",
+        content: systemMessage,
+      },
+      ...history,
+      {
+        role: "user",
+        content: message,
+      },
+    ];
 
     const result = await runModel(conversationMessages, {
       toolSpecs,
       toolMap,
     });
 
+    // Handle JSON format response
+    if (format === "json") {
+      try {
+        // Try to parse the response as JSON
+        const jsonResponse = JSON.parse(result.text);
+        const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
+
+        return res.json({
+          answer: validatedResponse.answer,
+          sources: validatedResponse.sources || result.citations,
+        });
+      } catch {
+        console.log(
+          "Initial JSON parsing failed, asking model to return valid JSON",
+        );
+
+        // If parsing fails, ask the model to return valid JSON only
+        const retryMessages = [
+          ...conversationMessages,
+          {
+            role: "assistant",
+            content: result.text,
+          },
+          {
+            role: "user",
+            content: "Return valid JSON only.",
+          },
+        ];
+
+        const retryResult = await runModel(retryMessages, {
+          toolSpecs,
+          toolMap,
+        });
+
+        try {
+          const jsonResponse = JSON.parse(retryResult.text);
+          const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
+
+          return res.json({
+            answer: validatedResponse.answer,
+            sources: validatedResponse.sources || retryResult.citations,
+          });
+        } catch (retryError) {
+          console.error("JSON retry failed:", retryError);
+          // Fallback to structured response
+          return res.json({
+            answer: result.text,
+            sources: result.citations,
+          });
+        }
+      }
+    }
+
+    // Return text format response
     return res.json({
-      ok: true,
-      response: result.text,
+      text: result.text,
       citations: result.citations,
     });
   } catch (error) {
