@@ -1,5 +1,7 @@
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
+import { runModel } from "../ai/runModel";
+import { toolSpecs, toolMap } from "../ai/tools";
 import {
   Project,
   PhaseGenerationRequest,
@@ -425,7 +427,7 @@ Focus on practical, hands-on tasks that move the project forward.`;
       (s) => s.step_number === project.current_substep,
     );
 
-    const contextPrompt = `You are an expert AI assistant helping with project execution.
+    const systemMessage = `You are an expert AI assistant helping with project execution. You can call tools to search the web, fetch content from URLs, or perform calculations. Always cite any URLs you used in your response.
 
 PROJECT CONTEXT:
 - Goal: ${project.goal}
@@ -433,35 +435,37 @@ PROJECT CONTEXT:
 - Current Step: ${currentSubstep?.label || "Unknown"}
 
 MASTER PROMPT FROM SYSTEM:
-${request.master_prompt}
+${request.master_prompt}`;
 
-USER MESSAGE:
-${request.user_message || "Please help me with this step."}
-
-Provide detailed, actionable guidance to help the user complete this specific step. Be practical and specific to their project context.`;
+    const userMessage =
+      request.user_message ||
+      "Please help me with this step. Provide detailed, actionable guidance to help me complete this specific step. Be practical and specific to my project context.";
 
     try {
-      const result = await client.chat.completions.create({
-        model: ENV.OPENAI_MODEL_NAME,
-        messages: [
+      const result = await runModel(
+        [
           {
             role: "system",
-            content:
-              "You are a helpful AI assistant providing detailed project guidance. Be practical, specific, and actionable in your responses.",
+            content: systemMessage,
           },
-          { role: "user", content: contextPrompt },
+          {
+            role: "user",
+            content: userMessage,
+          },
         ],
-        temperature: 0.4,
-        max_tokens: 800,
-      });
-
-      const aiResponse = result.choices?.[0]?.message?.content ?? "";
+        {
+          toolSpecs,
+          toolMap,
+          model: ENV.OPENAI_MODEL_NAME,
+        },
+      );
 
       console.log("✅ [EXECUTE] AI response generated successfully");
 
       return {
         ok: true,
-        response: aiResponse,
+        response: result.text,
+        citations: result.citations,
         context: {
           phase: currentPhase?.goal,
           step: currentSubstep?.label,
