@@ -1,6 +1,6 @@
 import type { ChatCompletionTool } from "openai/resources";
 import { webSearch } from "./webSearch";
-import { httpFetch } from "./httpFetch";
+import { http_fetch } from "./httpFetch";
 import { calculator } from "./calculator";
 import { webSearchSchema, httpFetchSchema, calculatorSchema } from "../schemas";
 
@@ -77,7 +77,7 @@ export const toolMap = {
   },
   http_fetch: async (args: unknown) => {
     const params = httpFetchSchema.parse(args);
-    return await httpFetch(params);
+    return await http_fetch(params);
   },
   calculator: async (args: unknown) => {
     const params = calculatorSchema.parse(args);
