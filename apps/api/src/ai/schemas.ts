@@ -31,6 +31,7 @@ export const fileSearchSchema = z.object({
 export const chatRequestSchema = z.object({
   message: z.string().describe("User message"),
   format: z.enum(["text", "json"]).optional().describe("Response format"),
+  userId: z.string().optional().describe("User ID for memory/personalization"),
   history: z
     .array(
       z.object({

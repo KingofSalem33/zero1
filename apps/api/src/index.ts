@@ -9,6 +9,7 @@ import { runModel } from "./ai/runModel";
 import { toolSpecs, toolMap } from "./ai/tools";
 import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
 import { handleFileUpload } from "./files";
+import { getFacts, addFact, pushToThread, clearFacts } from "./memory";
 
 const app = express();
 
@@ -39,6 +40,61 @@ app.use("/api/projects", projectsRouter);
 // File upload endpoint
 app.post("/api/files", handleFileUpload);
 
+// Memory endpoints
+app.get("/api/memory", async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ error: "userId query parameter is required" });
+    }
+
+    const facts = await getFacts(userId);
+    res.json({ facts });
+  } catch (error) {
+    console.error("Get memory error:", error);
+    res.status(500).json({ error: "Failed to get memory" });
+  }
+});
+
+app.post("/api/memory", async (req, res) => {
+  try {
+    const { userId, fact } = req.body;
+
+    if (!userId || !fact) {
+      return res.status(400).json({ error: "userId and fact are required" });
+    }
+
+    await addFact(userId, fact);
+    const facts = await getFacts(userId);
+    res.json({
+      message: "Fact added successfully",
+      facts,
+    });
+  } catch (error) {
+    console.error("Add memory error:", error);
+    res.status(500).json({ error: "Failed to add memory" });
+  }
+});
+
+app.delete("/api/memory", async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ error: "userId query parameter is required" });
+    }
+
+    await clearFacts(userId);
+    res.json({ message: "Facts cleared successfully" });
+  } catch (error) {
+    console.error("Clear memory error:", error);
+    res.status(500).json({ error: "Failed to clear memory" });
+  }
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -54,12 +110,24 @@ app.post("/api/chat", express.json(), async (req, res) => {
     const {
       message,
       format = "text",
+      userId = "anonymous",
       history = [],
     } = chatRequestSchema.parse(req.body);
 
     // Build conversation messages
     let systemMessage =
       "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. Always include source URLs in your final answer.";
+
+    // Add known facts about the user if available
+    if (userId && userId !== "anonymous") {
+      const userFacts = await getFacts(userId);
+      if (userFacts.length > 0) {
+        systemMessage +=
+          "\n\nKnown facts about user:\n- " +
+          userFacts.join("\n- ") +
+          "\nOnly use when relevant.";
+      }
+    }
 
     // Add JSON formatting instruction if needed
     if (format === "json") {
@@ -83,6 +151,12 @@ app.post("/api/chat", express.json(), async (req, res) => {
       toolSpecs,
       toolMap,
     });
+
+    // Store conversation in memory if userId is provided
+    if (userId && userId !== "anonymous") {
+      await pushToThread(userId, { role: "user", content: message });
+      await pushToThread(userId, { role: "assistant", content: result.text });
+    }
 
     // Handle JSON format response
     if (format === "json") {
