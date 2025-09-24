@@ -15,7 +15,9 @@
       "Bash(done)",
       "Bash(npx tailwindcss init:*)",
       "Bash(npx --yes tailwindcss init -p)",
-      "Bash(.node_modules.bintailwindcss init -p)"
+      "Bash(.node_modules.bintailwindcss init -p)",
+      "Bash(rm:*)",
+      "Bash(rmdir:*)"
     ],
     "deny": [],
     "ask": []
