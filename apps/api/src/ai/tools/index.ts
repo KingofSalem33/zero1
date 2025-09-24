@@ -10,7 +10,8 @@ export const toolSpecs: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "web_search",
-      description: "Search the web for current information on any topic",
+      description:
+        "Search the web for current information using DuckDuckGo HTML scraping (no API key required)",
       parameters: {
         type: "object",
         properties: {

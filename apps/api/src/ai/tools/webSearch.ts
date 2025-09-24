@@ -1,13 +1,16 @@
 import { request } from "undici";
+import * as cheerio from "cheerio";
+import { URL } from "url";
 import type { WebSearchParams } from "../schemas";
 
 export interface SearchResult {
   title: string;
-  link: string;
+  url: string;
   snippet: string;
 }
 
 export interface SearchResponse {
+  query: string;
   results: SearchResult[];
   citations: string[];
 }
@@ -18,73 +21,121 @@ export async function webSearch(
   const { q, count = 5 } = params;
 
   try {
-    // Using DuckDuckGo Instant Answer API as a fallback search
-    // In production, you'd use a proper search API like Google Custom Search, Bing, etc.
-    const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`;
+    const query = encodeURIComponent(q);
+    const url = `https://html.duckduckgo.com/html/?q=${query}`;
 
-    const { body } = await request(searchUrl, {
+    const { body } = await request(url, {
+      method: "GET",
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; SearchBot/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; AI-Agent/1.0)",
       },
     });
 
-    const data = (await body.json()) as any;
+    const html = await body.text();
+    const $ = cheerio.load(html);
 
-    // Mock search results for demonstration
-    // In production, parse actual search API responses
     const results: SearchResult[] = [];
     const citations: string[] = [];
 
-    // Add abstract if available
-    if (data.Abstract) {
-      results.push({
-        title: data.Heading || "Search Result",
-        link: data.AbstractURL || "#",
-        snippet: data.Abstract,
-      });
-      if (data.AbstractURL) citations.push(data.AbstractURL);
-    }
+    // Try multiple selector patterns for DuckDuckGo results
+    const selectors = [
+      {
+        container: ".result",
+        title: ".result__a",
+        link: ".result__a",
+        snippet: ".result__snippet",
+      },
+      {
+        container: ".web-result",
+        title: "h2 a",
+        link: "h2 a",
+        snippet: ".result-snippet",
+      },
+      {
+        container: ".links_main",
+        title: ".result__a",
+        link: ".result__a",
+        snippet: ".result__snippet",
+      },
+      {
+        container: "[data-testid='result']",
+        title: "h3 a",
+        link: "h3 a",
+        snippet: ".VwiC3b",
+      },
+    ];
 
-    // Add related topics
-    if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-      data.RelatedTopics.slice(0, count - 1).forEach((topic: any) => {
-        if (topic.Text && topic.FirstURL) {
+    for (const selector of selectors) {
+      if (results.length >= count) break;
+
+      $(selector.container).each((i, el) => {
+        if (results.length >= count) return;
+
+        const titleEl = $(el).find(selector.title);
+        const title = titleEl.text().trim();
+        let link = titleEl.attr("href");
+        const snippet = $(el).find(selector.snippet).text().trim();
+
+        // Clean up DuckDuckGo redirect links
+        if (link && link.includes("/l/?uddg=")) {
+          try {
+            const urlParams = new URL("https://duckduckgo.com" + link);
+            const uddgParam = urlParams.searchParams.get("uddg");
+            if (uddgParam) {
+              link = decodeURIComponent(uddgParam);
+            }
+          } catch {
+            // Keep original link if parsing fails
+          }
+        }
+
+        // Filter out empty or invalid links
+        if (
+          title &&
+          link &&
+          (link.startsWith("http") || link.startsWith("//"))
+        ) {
+          // Ensure proper protocol
+          if (link.startsWith("//")) {
+            link = "https:" + link;
+          }
+
           results.push({
-            title: topic.Text.split(" - ")[0] || "Related Topic",
-            link: topic.FirstURL,
-            snippet: topic.Text,
+            title,
+            url: link,
+            snippet: snippet || "No description available",
           });
-          citations.push(topic.FirstURL);
+          citations.push(link);
         }
       });
     }
 
-    // Fallback mock results if no data
+    console.log(
+      `DuckDuckGo search for "${q}" returned ${results.length} results`,
+    );
     if (results.length === 0) {
-      for (let i = 1; i <= Math.min(count, 3); i++) {
-        results.push({
-          title: `Search result ${i} for "${q}"`,
-          link: `https://example.com/result-${i}`,
-          snippet: `This is a mock search result ${i} for the query "${q}". In production, this would be real search data.`,
-        });
-        citations.push(`https://example.com/result-${i}`);
-      }
+      console.log("HTML structure:", $.html().substring(0, 500));
     }
 
-    return { results: results.slice(0, count), citations };
-  } catch (error) {
-    console.error("Search error:", error);
-
-    // Fallback results
     return {
+      query: q,
+      results: results.slice(0, count),
+      citations: [...new Set(citations)], // Remove duplicates
+    };
+  } catch (error) {
+    console.error("DuckDuckGo search error:", error);
+
+    // Return fallback results
+    return {
+      query: q,
       results: [
         {
-          title: `Search results for "${q}"`,
-          link: "https://example.com",
-          snippet: `Unable to fetch live search results. This is a fallback result for "${q}".`,
+          title: `Unable to search for "${q}"`,
+          url: "https://duckduckgo.com/?q=" + encodeURIComponent(q),
+          snippet: `Search failed, but you can try searching manually on DuckDuckGo.`,
         },
       ],
-      citations: ["https://example.com"],
+      citations: ["https://duckduckgo.com/?q=" + encodeURIComponent(q)],
     };
   }
 }

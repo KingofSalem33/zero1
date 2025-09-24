@@ -60,7 +60,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
         {
           role: "system",
           content:
-            "You are a helpful AI assistant. You can call tools to search the web, fetch content from URLs, or perform calculations. Always cite any URLs you used in your response.",
+            "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, or perform calculations. Always include source URLs in your final answer.",
         },
         {
           role: "user",
@@ -75,7 +75,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
           {
             role: "system",
             content:
-              "You are a helpful AI assistant. You can call tools to search the web, fetch content from URLs, or perform calculations. Always cite any URLs you used in your response.",
+              "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, or perform calculations. Always include source URLs in your final answer.",
           },
           ...messages,
         ];
