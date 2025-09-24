@@ -47,6 +47,7 @@ export class StepOrchestrator {
         goal,
         status: "active",
         current_phase: 1,
+        current_substep: 1,
         phases: [
           // Phase 1: Fully expanded with substeps
           {
@@ -394,6 +395,83 @@ Focus on practical, hands-on tasks that move the project forward.`;
     }
 
     return null;
+  }
+
+  async executeStep(request: {
+    project_id: string;
+    master_prompt: string;
+    user_message?: string;
+  }): Promise<any> {
+    console.log(
+      "🚀 [EXECUTE] Processing master prompt for project:",
+      request.project_id,
+    );
+
+    const project = projects.get(request.project_id);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("AI not configured");
+    }
+
+    // Get current context
+    const currentPhase = project.phases.find(
+      (p) => p.phase_number === project.current_phase,
+    );
+    const currentSubstep = currentPhase?.substeps?.find(
+      (s) => s.step_number === project.current_substep,
+    );
+
+    const contextPrompt = `You are an expert AI assistant helping with project execution.
+
+PROJECT CONTEXT:
+- Goal: ${project.goal}
+- Current Phase: ${currentPhase?.goal || "Unknown"}
+- Current Step: ${currentSubstep?.label || "Unknown"}
+
+MASTER PROMPT FROM SYSTEM:
+${request.master_prompt}
+
+USER MESSAGE:
+${request.user_message || "Please help me with this step."}
+
+Provide detailed, actionable guidance to help the user complete this specific step. Be practical and specific to their project context.`;
+
+    try {
+      const result = await client.chat.completions.create({
+        model: ENV.OPENAI_MODEL_NAME,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a helpful AI assistant providing detailed project guidance. Be practical, specific, and actionable in your responses.",
+          },
+          { role: "user", content: contextPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 800,
+      });
+
+      const aiResponse = result.choices?.[0]?.message?.content ?? "";
+
+      console.log("✅ [EXECUTE] AI response generated successfully");
+
+      return {
+        ok: true,
+        response: aiResponse,
+        context: {
+          phase: currentPhase?.goal,
+          step: currentSubstep?.label,
+          project_goal: project.goal,
+        },
+      };
+    } catch (error) {
+      console.error("❌ [EXECUTE] AI request failed:", error);
+      throw new Error("Failed to process master prompt with AI");
+    }
   }
 
   async expandPhase(request: {

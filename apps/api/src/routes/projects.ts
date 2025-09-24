@@ -131,11 +131,75 @@ router.get("/", async (_req, res) => {
   }
 });
 
+// POST /api/projects/:projectId/execute-step - Execute step with AI guidance
+router.post("/:projectId/execute-step", async (req, res) => {
+  try {
+    console.log(
+      "🚀 [API] Step execution request for project:",
+      req.params.projectId,
+    );
+
+    const { projectId } = req.params;
+    const { master_prompt, user_message } = req.body;
+
+    if (!projectId || typeof projectId !== "string") {
+      console.error("❌ [API] Invalid project ID:", projectId);
+      return res.status(400).json({
+        error: "Valid project ID is required",
+      });
+    }
+
+    if (!master_prompt || typeof master_prompt !== "string") {
+      console.error("❌ [API] Missing master prompt");
+      return res.status(400).json({
+        error: "Master prompt is required",
+      });
+    }
+
+    const project = orchestrator.getProject(projectId);
+    if (!project) {
+      console.error("❌ [API] Project not found:", projectId);
+      return res.status(404).json({
+        error: "Project not found",
+      });
+    }
+
+    const result = await orchestrator.executeStep({
+      project_id: projectId,
+      master_prompt,
+      user_message,
+    });
+
+    console.log("✅ [API] Step executed successfully");
+    return res.json(result);
+  } catch (error) {
+    console.error("❌ [API] Error executing step:", error);
+
+    if (error instanceof Error && error.message === "Project not found") {
+      return res.status(404).json({
+        error: "Project not found",
+      });
+    }
+
+    if (error instanceof Error && error.message === "AI not configured") {
+      return res.status(503).json({
+        error: "AI service not available",
+      });
+    }
+
+    return res.status(500).json({
+      error: "Failed to execute step",
+    });
+  }
+});
 
 // POST /api/projects/:projectId/expand - Expand phase with master prompt
 router.post("/:projectId/expand", async (req, res) => {
   try {
-    console.log("🎯 [API] Phase expansion request for project:", req.params.projectId);
+    console.log(
+      "🎯 [API] Phase expansion request for project:",
+      req.params.projectId,
+    );
     console.log("📝 [API] Input length:", req.body.thinking_input?.length || 0);
 
     const { projectId } = req.params;
@@ -165,10 +229,16 @@ router.post("/:projectId/expand", async (req, res) => {
 
     console.log("📋 [API] Project has", project.phases?.length || 0, "phases");
 
-    const detectedPhaseId = orchestrator.detectMasterPrompt(thinking_input, project.phases);
+    const detectedPhaseId = orchestrator.detectMasterPrompt(
+      thinking_input,
+      project.phases,
+    );
 
     if (detectedPhaseId) {
-      console.log("✅ [API] Master prompt detected, expanding phase:", detectedPhaseId);
+      console.log(
+        "✅ [API] Master prompt detected, expanding phase:",
+        detectedPhaseId,
+      );
       const result = await orchestrator.expandPhase({
         project_id: projectId,
         phase_id: detectedPhaseId,
@@ -185,7 +255,8 @@ router.post("/:projectId/expand", async (req, res) => {
       return res.json({
         ok: true,
         phase_expanded: false,
-        message: "No master prompt detected - treating as general clarification",
+        message:
+          "No master prompt detected - treating as general clarification",
       });
     }
   } catch (error) {

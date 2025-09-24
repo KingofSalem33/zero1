@@ -37,6 +37,7 @@ export interface Project {
   goal: string;
   status: "active" | "completed" | "paused";
   current_phase: number;
+  current_substep: number;
   phases: ProjectPhase[];
   history: ProjectHistory[];
   created_at: string;
