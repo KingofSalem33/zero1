@@ -779,33 +779,46 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         </div>
 
         {/* Chat Messages */}
-        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+        <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={cls(
-                "flex",
-                message.type === "user" ? "justify-end" : "justify-start",
-              )}
-            >
-              <div
-                className={cls(
-                  "max-w-[80%] rounded-2xl p-4",
-                  message.type === "user"
-                    ? "bg-gradient-to-br from-blue-600 to-purple-600 text-white"
-                    : "bg-gradient-to-br from-gray-800 to-gray-700 text-gray-100 border border-gray-600/50",
-                )}
-              >
-                <p className="leading-relaxed">{message.content}</p>
-                <div
-                  className={cls(
-                    "text-xs mt-2",
-                    message.type === "user" ? "text-blue-100" : "text-gray-400",
-                  )}
-                >
-                  {message.timestamp.toLocaleTimeString()}
+            <div key={message.id}>
+              {message.type === "user" ? (
+                // User messages: Bubble style (right-aligned)
+                <div className="flex justify-end">
+                  <div className="max-w-[80%] rounded-2xl p-4 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
+                    <p className="leading-relaxed">{message.content}</p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                // AI messages: Document style (left-aligned plain text)
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-emerald-400 font-medium">
+                      AI Assistant
+                    </span>
+                  </div>
+                  <div className="pl-8 pr-4">
+                    <div className="text-gray-200 leading-relaxed whitespace-pre-wrap font-normal text-base">
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -51,5 +51,26 @@
         "content": "The result of \\(\\sqrt{144} + 3^4\\) is 93."
       }
     ]
+  },
+  "test-elite": {
+    "facts": [],
+    "thread": [
+      {
+        "role": "user",
+        "content": "Search the web for the latest AI developments in 2024 and summarize the top 3 trends"
+      },
+      {
+        "role": "assistant",
+        "content": "Here are the top three AI trends in 2024 based on recent developments:\n\n1. **Generative AI Expansion**: Generative AI continues to grow rapidly, integrating into new platforms, mediums, and devices. This expansion is making generative AI tools more accessible and useful for everyday users, beyond just tech enthusiasts. The technology is being applied in creative fields, business solutions, and personal productivity tools, showcasing its versatility and broad appeal [Forbes](https://www.forbes.com/sites/bernardmarr/2024/12/16/6-game-changing-ai-breakthroughs-that-defined-2024/), [Digital Trends](https://www.digitaltrends.com/computing/the-10-biggest-ai-announcements-of-2024/).\n\n2. **AI in Automation and Machine Learning**: 2024 has seen significant advancements in automation and machine learning. These technologies are being increasingly integrated into various industries, enhancing efficiency and productivity. AI-driven automation is reshaping workflows and processes, enabling businesses to operate more effectively and with greater precision [Analytics Insight](https://www.analyticsinsight.net/artificial-intelligence/top-ai-developments-we-saw-in-2024).\n\n3. **Human-AI Collaboration**: There is a growing focus on human-AI collaboration, where AI tools are designed to augment human capabilities rather than replace them. This trend emphasizes the development of AI systems that work alongside humans, enhancing decision-making and creativity. Such collaboration is becoming crucial in sectors like healthcare, education, and creative industries [MIT Technology Review](https://www.technologyreview.com/2024/01/04/1086046/whats-next-for-ai-in-2024/).\n\nThese trends highlight the transformative impact of AI technologies across various domains, driving innovation and changing how we interact with technology."
+      },
+      {
+        "role": "user",
+        "content": "Calculate the compound interest on 0,000 at 7% annual rate for 5 years using the formula A = P(1 + r)^t"
+      },
+      {
+        "role": "assistant",
+        "content": "The amount after 5 years with a principal of $10,000 at an annual interest rate of 7% compounded annually is approximately $14,025.52."
+      }
+    ]
   }
 }
