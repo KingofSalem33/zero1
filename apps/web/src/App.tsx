@@ -5,6 +5,29 @@ import "./App.css";
 const cls = (...arr: (string | boolean | undefined)[]) =>
   arr.filter(Boolean).join(" ");
 
+// Convert markdown to plain text
+const markdownToPlainText = (markdown: string): string => {
+  return (
+    markdown
+      // Remove headers (# ## ###)
+      .replace(/^#{1,6}\s+/gm, "")
+      // Remove bold/italic (*text* **text** _text_ __text__)
+      .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+      .replace(/_{1,2}([^_]+)_{1,2}/g, "$1")
+      // Remove code blocks (```text```)
+      .replace(/```[\s\S]*?```/g, "")
+      // Remove inline code (`text`)
+      .replace(/`([^`]+)`/g, "$1")
+      // Remove links [text](url)
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      // Remove strikethrough (~~text~~)
+      .replace(/~~([^~]+)~~/g, "$1")
+      // Clean up extra whitespace
+      .replace(/\n\s*\n/g, "\n\n")
+      .trim()
+  );
+};
+
 // Get API URL from environment or default to localhost
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -628,23 +651,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
   useEffect(() => {
     if (project && !isWorkspace) {
       setIsWorkspace(true);
-      // Initialize with first master prompt if available
-      const currentPhase = project.phases?.find(
-        (p) => p.phase_number === project.current_phase,
-      );
-      const currentSubstep = currentPhase?.substeps?.find(
-        (s) => s.step_number === project.current_substep,
-      );
-      if (currentSubstep) {
-        setMessages([
-          {
-            id: "initial",
-            type: "user",
-            content: currentSubstep.prompt_to_send,
-            timestamp: new Date(),
-          },
-        ]);
-      }
+      // Start with empty messages - user will manually copy master prompt
     }
   }, [project, isWorkspace]);
 
@@ -702,7 +709,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         const aiMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           type: "ai",
-          content: data.response,
+          content: markdownToPlainText(data.response),
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, aiMessage]);
@@ -1000,9 +1007,35 @@ function App() {
       const data = await response.json();
 
       if (response.ok && data.project) {
-        setProject(data.project);
-        setGuidance("🎯 Generating your action plan...");
-        setTimeout(() => handleGeneratePhases(data.project.id), 500);
+        // Process the project phases immediately for progressive revelation
+        const processedProject = {
+          ...data.project,
+          current_phase: 1,
+          current_substep: 1,
+          phases: (data.project.phases || []).map(
+            (phase: ProjectPhase, index: number) => ({
+              ...phase,
+              phase_number: index + 1,
+              expanded: index === 0, // Only first phase expanded
+              locked: index > 0, // Lock future phases
+              substeps:
+                index === 0
+                  ? (phase.substeps || []).map(
+                      (substep: ProjectSubstep, subIndex: number) => ({
+                        ...substep,
+                        step_number: subIndex + 1,
+                        completed: false,
+                      }),
+                    )
+                  : [],
+            }),
+          ),
+        };
+
+        setProject(processedProject);
+        setGuidance(
+          "🎯 Perfect! Your action plan is ready. Start with the first master prompt in your execution workspace!",
+        );
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to create project"}`);
       }
@@ -1042,80 +1075,25 @@ function App() {
     }
   };
 
-  const handleGeneratePhases = async (projectId: string) => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/projects/${projectId}/clarify`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        },
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Simulate progressive revelation: Phase 1 fully expanded, others locked
-        const processedProject = {
-          ...data.project,
-          current_phase: 1,
-          current_substep: 1,
-          phases: data.project.phases.map(
-            (phase: ProjectPhase, index: number) => ({
-              ...phase,
-              phase_number: index + 1,
-              expanded: index === 0, // Only first phase expanded
-              locked: index > 0, // Lock future phases
-              substeps:
-                index === 0
-                  ? (phase.substeps || []).map(
-                      (substep: ProjectSubstep, subIndex: number) => ({
-                        ...substep,
-                        step_number: subIndex + 1,
-                        completed: false,
-                      }),
-                    )
-                  : [],
-            }),
-          ),
-        };
-
-        setProject(processedProject);
-        setGuidance(
-          "🎯 Perfect! Your action plan is ready. Start with the first master prompt in your execution workspace!",
-        );
-      } else {
-        setGuidance(
-          `❌ Error: ${data?.error || "Failed to generate action plan"}`,
-        );
-      }
-    } catch {
-      setGuidance(
-        "🔌 Network error. Please check your connection and try again.",
-      );
-    }
-  };
-
   const handleSubstepComplete = async (substepId: string) => {
     if (!project) return;
 
     try {
+      // Use the existing complete-substep API endpoint
       const response = await fetch(
-        `${API_URL}/api/projects/${project.id}/advance`,
+        `${API_URL}/api/projects/${project.id}/complete-substep`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             substep_id: substepId,
-            user_feedback: `Completed substep ${substepId}`,
           }),
         },
       );
 
       const data = await response.json();
 
-      if (response.ok && data.project) {
+      if (response.ok) {
         // Update project with completed substep and advance to next
         const updatedProject = { ...project };
         const currentPhase = updatedProject.phases.find(
