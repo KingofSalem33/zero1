@@ -72,5 +72,50 @@
         "content": "The amount after 5 years with a principal of $10,000 at an annual interest rate of 7% compounded annually is approximately $14,025.52."
       }
     ]
+  },
+  "vision-generator": {
+    "facts": [],
+    "thread": [
+      {
+        "role": "user",
+        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to build a bike repair buisness\"\n\nReturn only the polished statement with no additional text or numbering."
+      },
+      {
+        "role": "assistant",
+        "content": "Empowering communities through seamless mobility, we revolutionize the cycling experience by delivering unparalleled bike repair services that inspire freedom and sustainability on every journey."
+      },
+      {
+        "role": "user",
+        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to build a bike repair buisness\"\n\nReturn only the polished statement with no additional text or numbering."
+      },
+      {
+        "role": "assistant",
+        "content": "\"Empowering communities through seamless mobility, our mission is to revolutionize the cycling experience by delivering unparalleled bike repair services that ensure every ride is a journey of freedom and sustainability.\""
+      },
+      {
+        "role": "user",
+        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to write a book about raising pigs\"\n\nReturn only the polished statement with no additional text or numbering."
+      },
+      {
+        "role": "assistant",
+        "content": "\"Empowering sustainable agriculture through storytelling, our mission is to illuminate the art of pig farming, inspiring a new generation of ethical farmers and fostering a deeper connection between people and the land.\""
+      },
+      {
+        "role": "user",
+        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"\"Empowering sustainable agriculture through storytelling, our mission is to illuminate the art of pig farming, inspiring a new generation of ethical farmers and fostering a deeper connection between people and the land.\"\"\n\nReturn only the polished statement with no additional text or numbering."
+      },
+      {
+        "role": "assistant",
+        "content": "\"Through the transformative power of storytelling, we champion sustainable agriculture by showcasing the artistry of pig farming, inspiring a new generation of ethical farmers and cultivating a profound bond between communities and the land.\""
+      },
+      {
+        "role": "user",
+        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"\"Through the transformative power of storytelling, we champion sustainable agriculture by showcasing the artistry of pig farming, inspiring a new generation of ethical farmers and cultivating a profound bond between communities and the land.\"\"\n\nReturn only the polished statement with no additional text or numbering."
+      },
+      {
+        "role": "assistant",
+        "content": "Harnessing the transformative power of storytelling, we illuminate the artistry of sustainable pig farming, inspiring a new generation of ethical farmers and forging a deep, enduring connection between communities and the land."
+      }
+    ]
   }
 }

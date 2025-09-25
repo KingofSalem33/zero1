@@ -629,7 +629,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
 interface IdeationHubProps {
   project: Project | null;
   onCreateProject: (goal: string) => void;
-  onInspireMe: (goal: string) => void;
+  onInspireMe: (goal: string, setThinking: (text: string) => void) => void;
   creating: boolean;
   inspiring: boolean;
 }
@@ -912,7 +912,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => onInspireMe(thinking)}
+              onClick={() => onInspireMe(thinking, setThinking)}
               disabled={!thinking.trim() || creating || inspiring}
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-700 disabled:to-gray-600 text-white py-3 px-4 rounded-xl font-medium transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-purple-500/20"
             >
@@ -1064,34 +1064,44 @@ function App() {
     }
   };
 
-  const handleInspireMe = async (currentGoal: string) => {
+  const handleInspireMe = async (
+    currentGoal: string,
+    setThinking: (text: string) => void,
+  ) => {
     if (!currentGoal.trim() || inspiring) return;
 
     setInspiring(true);
-    setGuidance("✨ Finding inspiration for your idea...");
 
     try {
-      // Simulate AI inspiration API call
-      setTimeout(() => {
-        const inspirations = [
-          "Transform your idea into a platform that uses AI to automate client onboarding and smart invoice predictions...",
-          "Expand into a comprehensive freelancer ecosystem with integrated payment processing and client collaboration tools...",
-          "Focus on a niche-specific solution for creative freelancers with portfolio integration and project showcase features...",
-          "Build a mobile-first platform with time tracking, expense management, and real-time client communication...",
-        ];
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.
 
-        const randomInspiration =
-          inspirations[Math.floor(Math.random() * inspirations.length)];
-        setGuidance(`💡 Inspiration: ${randomInspiration}`);
-        setInspiring(false);
+Original idea: "${currentGoal}"
 
-        // Clear inspiration message after 6 seconds
-        setTimeout(() => setGuidance(""), 6000);
-      }, 2000);
+Return only the polished statement with no additional text or numbering.`,
+          format: "text",
+          userId: "vision-generator",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.text) {
+        // Replace the text in the input box with the inspired statement
+        setThinking(data.text.trim());
+      } else {
+        setGuidance("❌ Unable to generate inspiration. Please try again.");
+        setTimeout(() => setGuidance(""), 3000);
+      }
     } catch {
       setGuidance("🔌 Network error. Please try again.");
-      setInspiring(false);
+      setTimeout(() => setGuidance(""), 3000);
     }
+
+    setInspiring(false);
   };
 
   const handleSubstepComplete = async (substepId: string) => {
