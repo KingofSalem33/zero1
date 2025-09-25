@@ -11,6 +11,23 @@ import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
 import { handleFileUpload } from "./files";
 import { getFacts, addFact, pushToThread, clearFacts } from "./memory";
 
+// Extract URLs from text using regex
+function extractUrls(text: string): string[] {
+  const urlRegex =
+    /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&=]*)/g;
+  const matches = text.match(urlRegex);
+  return matches ? [...new Set(matches)] : []; // Remove duplicates
+}
+
+// Deduplicate and combine URLs
+function combineAndDedupeUrls(
+  existingUrls: string[],
+  extractedUrls: string[],
+): string[] {
+  const allUrls = [...existingUrls, ...extractedUrls];
+  return [...new Set(allUrls)]; // Remove duplicates
+}
+
 const app = express();
 
 app.use(helmet());
@@ -116,7 +133,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
 
     // Build conversation messages
     let systemMessage =
-      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. Always include source URLs in your final answer.";
+      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. When you use the web, include 2-5 source links at the end. Always include source URLs in your final answer.";
 
     // Add known facts about the user if available
     if (userId && userId !== "anonymous") {
@@ -152,6 +169,13 @@ app.post("/api/chat", express.json(), async (req, res) => {
       toolMap,
     });
 
+    // Extract URLs from assistant response and combine with tool citations
+    const extractedUrls = extractUrls(result.text);
+    const enhancedCitations = combineAndDedupeUrls(
+      result.citations || [],
+      extractedUrls,
+    );
+
     // Store conversation in memory if userId is provided
     if (userId && userId !== "anonymous") {
       await pushToThread(userId, { role: "user", content: message });
@@ -167,7 +191,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
 
         return res.json({
           answer: validatedResponse.answer,
-          sources: validatedResponse.sources || result.citations,
+          sources: validatedResponse.sources || enhancedCitations,
         });
       } catch {
         console.log(
@@ -196,16 +220,23 @@ app.post("/api/chat", express.json(), async (req, res) => {
           const jsonResponse = JSON.parse(retryResult.text);
           const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
 
+          // For retry, extract URLs from retry result and combine
+          const retryExtractedUrls = extractUrls(retryResult.text);
+          const retryEnhancedCitations = combineAndDedupeUrls(
+            retryResult.citations || [],
+            retryExtractedUrls,
+          );
+
           return res.json({
             answer: validatedResponse.answer,
-            sources: validatedResponse.sources || retryResult.citations,
+            sources: validatedResponse.sources || retryEnhancedCitations,
           });
         } catch (retryError) {
           console.error("JSON retry failed:", retryError);
           // Fallback to structured response
           return res.json({
             answer: result.text,
-            sources: result.citations,
+            sources: enhancedCitations,
           });
         }
       }
@@ -214,7 +245,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
     // Return text format response
     return res.json({
       text: result.text,
-      citations: result.citations,
+      citations: enhancedCitations,
     });
   } catch (error) {
     console.error("Chat error:", error);

@@ -18,7 +18,8 @@
       "Bash(.node_modules.bintailwindcss init -p)",
       "Bash(rm:*)",
       "Bash(rmdir:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []
