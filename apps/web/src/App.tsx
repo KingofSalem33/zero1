@@ -1049,6 +1049,9 @@ function App() {
         setGuidance(
           "🎯 Perfect! Your action plan is ready. Start with the first master prompt in your execution workspace!",
         );
+
+        // Clear guidance message after 4 seconds
+        setTimeout(() => setGuidance(""), 4000);
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to create project"}`);
       }
@@ -1081,6 +1084,9 @@ function App() {
           inspirations[Math.floor(Math.random() * inspirations.length)];
         setGuidance(`💡 Inspiration: ${randomInspiration}`);
         setInspiring(false);
+
+        // Clear inspiration message after 6 seconds
+        setTimeout(() => setGuidance(""), 6000);
       }, 2000);
     } catch {
       setGuidance("🔌 Network error. Please try again.");
@@ -1141,10 +1147,16 @@ function App() {
               setGuidance(
                 `🎉 Phase ${currentPhase.phase_number} completed! Starting Phase ${nextPhase.phase_number}...`,
               );
+
+              // Clear completion message after 4 seconds
+              setTimeout(() => setGuidance(""), 4000);
             } else {
               setGuidance(
                 "🏆 Congratulations! All phases completed. Your project is ready!",
               );
+
+              // Clear completion message after 5 seconds
+              setTimeout(() => setGuidance(""), 5000);
             }
           } else {
             // Advance to next substep in current phase
@@ -1154,6 +1166,9 @@ function App() {
               setGuidance(
                 `✅ Substep completed! Moving to: ${nextSubstep.label}`,
               );
+
+              // Clear substep message after 3 seconds
+              setTimeout(() => setGuidance(""), 3000);
             }
           }
         }

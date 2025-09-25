@@ -433,7 +433,9 @@ Focus on practical, hands-on tasks that move the project forward.`;
 - \`calculator\`: Perform mathematical calculations
 - \`file_search\`: Search through uploaded files for relevant content
 
-When you use web tools, include 2-5 source links at the end. Always include source URLs in your final answer.
+Provide comprehensive, helpful responses using the tools when appropriate. Do not include source URLs in your responses.
+
+After providing your response, ask the immediate next logical question to aid the user in completing the task. Be direct and specific - focus on the exact next action needed.
 
 PROJECT CONTEXT:
 - Goal: ${project.goal}
