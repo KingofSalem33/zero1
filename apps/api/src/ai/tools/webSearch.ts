@@ -68,7 +68,7 @@ export async function webSearch(
     for (const selector of selectors) {
       if (results.length >= count) break;
 
-      $(selector.container).each((i, el) => {
+      $(selector.container).each((_i, el) => {
         if (results.length >= count) return;
 
         const titleEl = $(el).find(selector.title);

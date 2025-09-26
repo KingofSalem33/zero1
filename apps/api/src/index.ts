@@ -68,10 +68,10 @@ app.get("/api/memory", async (req, res) => {
     }
 
     const facts = await getFacts(userId);
-    res.json({ facts });
+    return res.json({ facts });
   } catch (error) {
     console.error("Get memory error:", error);
-    res.status(500).json({ error: "Failed to get memory" });
+    return res.status(500).json({ error: "Failed to get memory" });
   }
 });
 
@@ -85,13 +85,13 @@ app.post("/api/memory", async (req, res) => {
 
     await addFact(userId, fact);
     const facts = await getFacts(userId);
-    res.json({
+    return res.json({
       message: "Fact added successfully",
       facts,
     });
   } catch (error) {
     console.error("Add memory error:", error);
-    res.status(500).json({ error: "Failed to add memory" });
+    return res.status(500).json({ error: "Failed to add memory" });
   }
 });
 
@@ -105,10 +105,10 @@ app.delete("/api/memory", async (req, res) => {
     }
 
     await clearFacts(userId);
-    res.json({ message: "Facts cleared successfully" });
+    return res.json({ message: "Facts cleared successfully" });
   } catch (error) {
     console.error("Clear memory error:", error);
-    res.status(500).json({ error: "Failed to clear memory" });
+    return res.status(500).json({ error: "Failed to clear memory" });
   }
 });
 
@@ -154,12 +154,12 @@ app.post("/api/chat", express.json(), async (req, res) => {
 
     const conversationMessages = [
       {
-        role: "system",
+        role: "system" as const,
         content: systemMessage,
       },
       ...history,
       {
-        role: "user",
+        role: "user" as const,
         content: message,
       },
     ];
@@ -202,11 +202,11 @@ app.post("/api/chat", express.json(), async (req, res) => {
         const retryMessages = [
           ...conversationMessages,
           {
-            role: "assistant",
+            role: "assistant" as const,
             content: result.text,
           },
           {
-            role: "user",
+            role: "user" as const,
             content: "Return valid JSON only.",
           },
         ];

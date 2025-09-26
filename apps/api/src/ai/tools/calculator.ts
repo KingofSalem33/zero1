@@ -1,4 +1,3 @@
-import { evaluate } from "mathjs";
 import type { CalculatorParams } from "../schemas";
 
 export interface CalculationResult {
@@ -12,7 +11,8 @@ export async function calculator(
   const { expression } = params;
 
   try {
-    // Use mathjs to safely evaluate the mathematical expression
+    // Use dynamic import for mathjs to handle ESM/CJS compatibility
+    const { evaluate } = await import("mathjs");
     const result = evaluate(expression);
 
     // Format the result for display
