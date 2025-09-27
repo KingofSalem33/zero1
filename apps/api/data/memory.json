@@ -78,14 +78,6 @@
     "thread": [
       {
         "role": "user",
-        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to write a book about raising pigs\"\n\nReturn only the polished statement with no additional text or numbering."
-      },
-      {
-        "role": "assistant",
-        "content": "\"Empowering sustainable agriculture through storytelling, our mission is to illuminate the art of pig farming, inspiring a new generation of ethical farmers and fostering a deeper connection between people and the land.\""
-      },
-      {
-        "role": "user",
         "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"\"Empowering sustainable agriculture through storytelling, our mission is to illuminate the art of pig farming, inspiring a new generation of ethical farmers and fostering a deeper connection between people and the land.\"\"\n\nReturn only the polished statement with no additional text or numbering."
       },
       {
@@ -235,6 +227,14 @@
       {
         "role": "assistant",
         "content": "\"I want to build a business that sells gourmet cookies so that I can delight dessert enthusiasts with unique and high-quality flavors.\""
+      },
+      {
+        "role": "user",
+        "content": "You are a senior strategist.\n\nHelp me refine my vision into one clear sentence using this format:\n\n\"I want to build ______ so that ______.\"\n\nOriginal idea: \"write a book about trading stocks\"\n\nReturn only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience."
+      },
+      {
+        "role": "assistant",
+        "content": "\"I want to build a comprehensive guide on trading stocks so that aspiring investors can confidently navigate the stock market.\""
       }
     ]
   }
