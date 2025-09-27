@@ -78,22 +78,6 @@
     "thread": [
       {
         "role": "user",
-        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to build a bike repair buisness\"\n\nReturn only the polished statement with no additional text or numbering."
-      },
-      {
-        "role": "assistant",
-        "content": "Empowering communities through seamless mobility, we revolutionize the cycling experience by delivering unparalleled bike repair services that inspire freedom and sustainability on every journey."
-      },
-      {
-        "role": "user",
-        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to build a bike repair buisness\"\n\nReturn only the polished statement with no additional text or numbering."
-      },
-      {
-        "role": "assistant",
-        "content": "\"Empowering communities through seamless mobility, our mission is to revolutionize the cycling experience by delivering unparalleled bike repair services that ensure every ride is a journey of freedom and sustainability.\""
-      },
-      {
-        "role": "user",
         "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to write a book about raising pigs\"\n\nReturn only the polished statement with no additional text or numbering."
       },
       {
@@ -219,6 +203,38 @@
       {
         "role": "assistant",
         "content": "\"I want to build a reliable car repair business so that local vehicle owners receive dependable and superior service.\""
+      },
+      {
+        "role": "user",
+        "content": "You are a senior strategist.\n\nHelp me refine my vision into one clear sentence using this format:\n\n\"I want to build ______ so that ______.\"\n\nOriginal idea: \"i want to start a online clothing business\"\n\nReturn only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience."
+      },
+      {
+        "role": "assistant",
+        "content": "\"I want to build an online clothing business so that fashion-conscious individuals can access trendy and affordable apparel conveniently.\""
+      },
+      {
+        "role": "user",
+        "content": "You are a senior strategist.\n\nHelp me refine my vision into one clear sentence using this format:\n\n\"I want to build ______ so that ______.\"\n\nOriginal idea: \"i want to buid a dropshipping buisness for babay shoes\"\n\nReturn only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience."
+      },
+      {
+        "role": "assistant",
+        "content": "\"I want to build a dropshipping business for baby shoes so that parents can easily access affordable and stylish footwear for their children.\""
+      },
+      {
+        "role": "user",
+        "content": "You are a senior strategist.\n\nHelp me refine my vision into one clear sentence using this format:\n\n\"I want to build ______ so that ______.\"\n\nOriginal idea: \"I want build a chocolate chip cookie business \"\n\nReturn only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience."
+      },
+      {
+        "role": "assistant",
+        "content": "\"I want to build a chocolate chip cookie business so that I can provide homemade, gourmet treats to local dessert enthusiasts.\""
+      },
+      {
+        "role": "user",
+        "content": "You are a senior strategist.\n\nHelp me refine my vision into one clear sentence using this format:\n\n\"I want to build ______ so that ______.\"\n\nOriginal idea: \"build a business that sells cookies\"\n\nReturn only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience."
+      },
+      {
+        "role": "assistant",
+        "content": "\"I want to build a business that sells gourmet cookies so that I can delight dessert enthusiasts with unique and high-quality flavors.\""
       }
     ]
   }
