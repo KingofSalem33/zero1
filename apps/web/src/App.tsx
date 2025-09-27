@@ -174,7 +174,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-white mb-2">
-                Project Roadmap
+                {project.goal}
               </h2>
               <p className="text-blue-400 font-medium">
                 {progress}% Complete • {project.phases.length} Phases
@@ -493,18 +493,6 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                     </svg>
                   </button>
                 </div>
-
-                <button
-                  onClick={() =>
-                    copyToClipboard(
-                      currentSubstep.prompt_to_send,
-                      "Master Prompt",
-                    )
-                  }
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-xl font-medium transition-colors"
-                >
-                  Copy Master Prompt
-                </button>
               </div>
             )}
 
@@ -518,7 +506,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                   <div
                     key={substep.substep_id}
                     className={cls(
-                      "flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
+                      "flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group",
                       substep.completed
                         ? "bg-green-950/30 border border-green-500/20"
                         : substep.substep_id === currentSubstep?.substep_id
@@ -532,7 +520,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                         substep.completed
                           ? "bg-green-500 text-white"
                           : substep.substep_id === currentSubstep?.substep_id
-                            ? "bg-blue-500 text-white"
+                            ? "border-2 border-green-400 text-green-400 bg-transparent"
                             : "bg-gray-600 text-gray-300",
                       )}
                     >
@@ -540,7 +528,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                     </div>
                     <span
                       className={cls(
-                        "font-medium",
+                        "font-medium flex-1",
                         substep.completed
                           ? "text-green-400"
                           : substep.substep_id === currentSubstep?.substep_id
@@ -550,6 +538,30 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                     >
                       {substep.label}
                     </span>
+                    <button
+                      onClick={() =>
+                        copyToClipboard(
+                          substep.prompt_to_send || "",
+                          "Master Prompt",
+                        )
+                      }
+                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-6 h-6 rounded-md bg-gray-700/60 hover:bg-gray-600/80 flex items-center justify-center"
+                      title="Copy master prompt"
+                    >
+                      <svg
+                        className="w-3 h-3 text-gray-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1077,11 +1089,15 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.
+          message: `You are a senior strategist.
+
+Help me refine my vision into one clear sentence using this format:
+
+"I want to build ______ so that ______."
 
 Original idea: "${currentGoal}"
 
-Return only the polished statement with no additional text or numbering.`,
+Return only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience.`,
           format: "text",
           userId: "vision-generator",
         }),

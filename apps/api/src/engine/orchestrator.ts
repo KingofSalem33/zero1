@@ -91,127 +91,159 @@ export class StepOrchestrator {
   async generatePhases(
     request: PhaseGenerationRequest,
   ): Promise<PhaseGenerationResponse> {
-    console.log("🎯 [PHASES] Generating phases for project:", request.goal);
+    console.log("🎯 [PHASES] Using P1-P7 roadmap for project:", request.goal);
+
+    // Fixed P1-P7 roadmap structure based on claude.md
+    const phases = [
+      {
+        phase_id: "P1",
+        phase_number: 1,
+        goal: "Build Environment",
+        why_it_matters:
+          "Create a professional workflow so you feel like a pro from day one",
+        acceptance_criteria: [
+          "Essential tools identified and installed",
+          "Clean project workspace created",
+          "Hello World milestone completed to confirm everything works",
+        ],
+        rollback_plan: [
+          "Reset workspace",
+          "Remove installed tools",
+          "Return to vision phase",
+        ],
+        substeps: [],
+      },
+      {
+        phase_id: "P2",
+        phase_number: 2,
+        goal: "Core Loop",
+        why_it_matters:
+          "Build the smallest possible input → process → output cycle to prove the concept",
+        acceptance_criteria: [
+          "Minimal version of core value created",
+          "Basic input-process-output cycle working",
+          "Micro-prototype demonstrates core idea",
+        ],
+        rollback_plan: [
+          "Return to environment setup",
+          "Simplify scope further",
+        ],
+        substeps: [],
+      },
+      {
+        phase_id: "P3",
+        phase_number: 3,
+        goal: "Layered Expansion",
+        why_it_matters:
+          "Add complexity gradually, one concept at a time without overwhelming",
+        acceptance_criteria: [
+          "One new valuable feature added successfully",
+          "Working version maintained between additions",
+          "Noticeable upgrade delivered",
+        ],
+        rollback_plan: [
+          "Remove last addition",
+          "Return to core loop",
+          "Simplify feature set",
+        ],
+        substeps: [],
+      },
+      {
+        phase_id: "P4",
+        phase_number: 4,
+        goal: "Reality Test",
+        why_it_matters:
+          "Validate assumptions with real users before final polish",
+        acceptance_criteria: [
+          "Authentic feedback gathered from 3-5 real users",
+          "Gaps between vision and reality identified",
+          "Clear pivot or proceed decision made",
+        ],
+        rollback_plan: [
+          "Return to expansion phase",
+          "Revise based on feedback",
+        ],
+        substeps: [],
+      },
+      {
+        phase_id: "P5",
+        phase_number: 5,
+        goal: "Polish & Freeze Scope",
+        why_it_matters:
+          "Reach launch-ready quality while preventing endless iteration",
+        acceptance_criteria: [
+          "Essential bugs and gaps fixed",
+          "Scope frozen to prevent feature creep",
+          "Final stable version achieved",
+        ],
+        rollback_plan: ["Return to testing phase", "Reduce scope further"],
+        substeps: [],
+      },
+      {
+        phase_id: "P6",
+        phase_number: 6,
+        goal: "Launch",
+        why_it_matters:
+          "Release the project publicly with clear call-to-action",
+        acceptance_criteria: [
+          "Launch assets and messaging prepared",
+          "Project is live and accessible",
+          "Initial response and key metrics measured",
+        ],
+        rollback_plan: ["Return to polish phase", "Fix critical launch issues"],
+        substeps: [],
+      },
+      {
+        phase_id: "P7",
+        phase_number: 7,
+        goal: "Reflect & Evolve",
+        why_it_matters: "Capture lessons learned and prepare for future growth",
+        acceptance_criteria: [
+          "What worked and didn't work documented",
+          "Personal toolkit built for future projects",
+          "Roadmap for next project or iteration created",
+        ],
+        rollback_plan: ["Return to launch phase", "Gather more data"],
+        substeps: [],
+      },
+    ];
+
     console.log(
-      "📋 [PHASES] Using clarification context:",
-      request.clarification_context?.substring(0, 100) + "...",
+      "✅ [PHASES] Using fixed P1-P7 roadmap with",
+      phases.length,
+      "phases",
     );
 
-    const client = makeOpenAI();
-    if (!client) {
-      throw new Error("AI not configured");
-    }
-
-    const systemPrompt = `You are an expert Zero-to-One Project Builder specializing in phase-based project scaffolding.
-
-Your job is to break down any project into 5-8 high-level phases that represent the major milestones from conception to completion.
-
-RULES:
-1. Generate exactly 5-8 phases
-2. Each phase should be a major milestone (not tiny tasks)
-3. Phases should be sequential and build upon each other
-4. Include goal, why_it_matters, acceptance_criteria, and rollback_plan for each
-5. Make phases domain-appropriate (business vs technical vs creative projects)
-
-RESPONSE FORMAT:
-{
-  "phases": [
-    {
-      "phase_id": "P1",
-      "goal": "Clear, actionable phase goal",
-      "why_it_matters": "Why this phase is critical for project success",
-      "acceptance_criteria": ["Criteria 1", "Criteria 2", "Criteria 3"],
-      "rollback_plan": ["Rollback step 1", "Rollback step 2"],
-      "substeps": []
-    }
-  ]
-}
-
-PROJECT: ${request.goal}
-CONTEXT: ${request.clarification_context}
-
-Generate the high-level phase roadmap now.`;
-
-    try {
-      const result = await client.chat.completions.create({
-        model: ENV.OPENAI_MODEL_NAME,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: "Generate the phase roadmap for this project.",
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-      });
-
-      const responseText = result.choices?.[0]?.message?.content ?? "";
-      const parsed = JSON.parse(responseText);
-
-      console.log(
-        "✅ [PHASES] Generated",
-        parsed.phases?.length || 0,
-        "phases",
-      );
-      return parsed;
-    } catch (error) {
-      console.error("❌ [PHASES] Generation failed:", error);
-      // Fallback with basic phases
-      return {
-        phases: [
-          {
-            phase_id: "P1",
-            phase_number: 1,
-            goal: "Project Foundation & Planning",
-            why_it_matters:
-              "Establish solid foundation for successful project execution",
-            acceptance_criteria: [
-              "Clear project scope defined",
-              "Initial research completed",
-            ],
-            rollback_plan: ["Reset to initial state"],
-            substeps: [],
-            locked: false,
-          },
-          {
-            phase_id: "P2",
-            phase_number: 2,
-            goal: "Core Development & Implementation",
-            why_it_matters: "Build the essential components of the project",
-            acceptance_criteria: [
-              "Core functionality working",
-              "Basic structure in place",
-            ],
-            rollback_plan: ["Return to planning phase"],
-            substeps: [],
-            locked: true,
-          },
-        ],
-      };
-    }
+    return {
+      phases: phases,
+    };
   }
 
   // Expand a single phase with substeps and master prompts
   async expandPhaseWithSubsteps(phase: any, goal: string): Promise<any> {
     console.log("🔍 [EXPAND] Expanding phase with substeps:", phase.goal);
 
+    // Get the predefined master prompt for this specific phase
+    const masterPrompt = this.getMasterPromptForPhase(phase.phase_id, goal);
+
+    // Generate substeps using AI with the specific master prompt
     const client = makeOpenAI();
     if (!client) {
       throw new Error("AI not configured");
     }
 
-    const systemPrompt = `You are an expert Zero-to-One Project Builder. Your job is to break down a single phase into detailed substeps with master prompts.
+    const systemPrompt = `You are an expert Zero-to-One Project Builder. Break down this phase into 3-5 actionable substeps, each with its own senior-level master prompt.
 
-PHASE TO EXPAND: ${phase.goal}
-PROJECT CONTEXT: ${goal}
+PHASE: ${phase.goal}
+PROJECT VISION: ${goal}
+PHASE PURPOSE: ${phase.why_it_matters}
 
 RULES:
-1. Generate 3-5 substeps for this specific phase
-2. Each substep should be a concrete, actionable micro-task
-3. Each substep needs a "master prompt" for ChatGPT-style workspace
-4. Substeps should be sequential and build on each other
-5. Each substep = 15-30 minutes of focused work
+1. Generate 3-5 substeps that build toward the phase goal
+2. Each substep should be a concrete, actionable micro-task (15-30 minutes)
+3. Substeps should be sequential and build on each other
+4. Focus on practical, hands-on tasks that move the project forward
+5. CRITICAL: Each substep must have its own unique senior-level master prompt that provides expert guidance for that specific substep
 
 RESPONSE FORMAT:
 {
@@ -220,14 +252,12 @@ RESPONSE FORMAT:
       "substep_id": "1A",
       "step_number": 1,
       "label": "Clear action-oriented title",
-      "prompt_to_send": "Detailed master prompt for ChatGPT workspace",
+      "prompt_to_send": "You are a senior [domain expert]. [Detailed expert-level guidance specific to this substep that provides 20+ years of domain knowledge]",
       "commands": "Any specific tools/resources needed",
       "completed": false
     }
   ]
-}
-
-Focus on practical, hands-on tasks that move the project forward.`;
+}`;
 
     try {
       const result = await client.chat.completions.create({
@@ -245,10 +275,13 @@ Focus on practical, hands-on tasks that move the project forward.`;
 
       return {
         ...phase,
+        master_prompt: masterPrompt,
         substeps: parsed.substeps.map((substep: any, index: number) => ({
           ...substep,
           step_number: index + 1,
           completed: false,
+          // Keep the unique master prompt generated for each substep
+          prompt_to_send: substep.prompt_to_send,
           created_at: new Date().toISOString(),
         })),
       };
@@ -257,12 +290,13 @@ Focus on practical, hands-on tasks that move the project forward.`;
       // Fallback with basic substeps
       return {
         ...phase,
+        master_prompt: masterPrompt,
         substeps: [
           {
             substep_id: "1A",
             step_number: 1,
             label: `Start ${phase.goal}`,
-            prompt_to_send: `Help me begin working on: ${phase.goal}. For the project: ${goal}. Provide step-by-step guidance for getting started.`,
+            prompt_to_send: masterPrompt,
             commands: "Basic setup and planning",
             completed: false,
             created_at: new Date().toISOString(),
@@ -270,6 +304,97 @@ Focus on practical, hands-on tasks that move the project forward.`;
         ],
       };
     }
+  }
+
+  // Get the expert master prompt for each phase based on claude.md
+  private getMasterPromptForPhase(phaseId: string, userVision: string): string {
+    const masterPrompts: Record<string, string> = {
+      P1: `You are a senior architect guiding a complete beginner.
+
+Design a step-by-step plan to set up a professional environment for my project. Analyze the project type and recommend the appropriate setup.
+
+For my project: ${userVision}
+
+Provide:
+- Essential tools, resources, or systems needed for this type of project
+- Professional workspace setup (physical, digital, or both as appropriate)
+- Key accounts, permits, or credentials to establish
+- A simple "proof of concept" milestone to confirm everything is ready
+
+Adapt your recommendations to the specific domain (business, tech, creative, etc.) and make me feel professional and prepared from day one.`,
+
+      P2: `You are a senior builder.
+
+Design the simplest possible version of my project that takes input, processes it, and outputs a result.
+
+It must be small enough to complete today and clearly demonstrate the core idea.
+
+Project Vision: ${userVision}
+
+Focus on creating the smallest input → process → output cycle that proves the concept works.`,
+
+      P3: `You are a senior development strategist.
+
+Based on my current prototype, identify the single most valuable new feature to add.
+
+Guide me step-by-step to implement it without breaking what already works.
+
+After completing, suggest the next layer of expansion.
+
+Project Vision: ${userVision}
+
+Prevent overwhelm by limiting changes to one new concept at a time.`,
+
+      P4: `You are a senior product strategist.
+
+Create a lightweight test plan to validate my project with 3-5 real people.
+
+Include:
+- What to show them
+- Questions to ask
+- Metrics to measure
+- How to decide whether to pivot or proceed
+
+Project Vision: ${userVision}
+
+Help me gather authentic feedback before final polish.`,
+
+      P5: `You are a senior quality assurance lead.
+
+Identify the minimum essential fixes and improvements required for my project to be launch-ready.
+
+List them in priority order and guide me to complete them step-by-step.
+
+Project Vision: ${userVision}
+
+Focus on reaching launch quality while preventing endless iteration and feature creep.`,
+
+      P6: `You are a senior launch manager.
+
+Create a simple, focused launch plan for my project that includes:
+- A single clear call-to-action
+- Where and how to announce it
+- The first 3 metrics to track post-launch
+
+Project Vision: ${userVision}
+
+Help me release the project publicly with maximum impact.`,
+
+      P7: `You are a senior project retrospective facilitator.
+
+Help me analyze what worked, what didn't, and why.
+
+Create a simple reflection document and suggest a roadmap for my next version or next project.
+
+Project Vision: ${userVision}
+
+Focus on capturing lessons learned and building a personal toolkit for future projects.`,
+    };
+
+    return (
+      masterPrompts[phaseId] ||
+      `Help me work on ${phaseId} for the project: ${userVision}`
+    );
   }
 
   // Manual substep completion with phase unlocking logic
