@@ -112,6 +112,7 @@ export class StepOrchestrator {
           "Return to vision phase",
         ],
         substeps: [],
+        locked: false,
       },
       {
         phase_id: "P2",
@@ -129,6 +130,7 @@ export class StepOrchestrator {
           "Simplify scope further",
         ],
         substeps: [],
+        locked: true,
       },
       {
         phase_id: "P3",
@@ -147,6 +149,7 @@ export class StepOrchestrator {
           "Simplify feature set",
         ],
         substeps: [],
+        locked: true,
       },
       {
         phase_id: "P4",
@@ -164,6 +167,7 @@ export class StepOrchestrator {
           "Revise based on feedback",
         ],
         substeps: [],
+        locked: true,
       },
       {
         phase_id: "P5",
@@ -178,6 +182,7 @@ export class StepOrchestrator {
         ],
         rollback_plan: ["Return to testing phase", "Reduce scope further"],
         substeps: [],
+        locked: true,
       },
       {
         phase_id: "P6",
@@ -192,6 +197,7 @@ export class StepOrchestrator {
         ],
         rollback_plan: ["Return to polish phase", "Fix critical launch issues"],
         substeps: [],
+        locked: true,
       },
       {
         phase_id: "P7",
@@ -205,6 +211,7 @@ export class StepOrchestrator {
         ],
         rollback_plan: ["Return to launch phase", "Gather more data"],
         substeps: [],
+        locked: true,
       },
     ];
 
