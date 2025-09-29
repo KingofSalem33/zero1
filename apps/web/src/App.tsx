@@ -1703,15 +1703,25 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `You are a senior strategist.
+          message: `A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:
 
-Help me refine my vision into one clear sentence using this format:
+**Original idea:** "${currentGoal}"
 
-"I want to build ______ so that ______."
+**The Vision Formula:** "I want to build ______ so that ______"
 
-Original idea: "${currentGoal}"
+**Refinement principles:**
+1. **First blank**: Be specific and concrete (not "an app" but "a mobile app for busy parents")
+2. **Second blank**: Focus on user benefit, not features (not "has GPS" but "parents never lose track of pickup times")
+3. **Clarity test**: Could someone else explain your project after hearing this once?
 
-Return only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience.`,
+**Common mistakes to avoid:**
+- Too vague ("productivity app")
+- Feature-focused ("app with notifications")
+- Multiple audiences in one sentence
+
+**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**
+
+Return only the refined vision statement using the format "I want to build ______ so that ______."`,
           format: "text",
           userId: "vision-generator",
         }),

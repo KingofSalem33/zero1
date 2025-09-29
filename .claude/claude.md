@@ -56,13 +56,21 @@ It uses a **two-pane interface**:
 
 ```
 
-You are a senior strategist.
+A crystal-clear vision sentence is the foundation of any successful project.
 
-Help me refine my vision into one clear sentence using this format:
+Complete this format: "I want to build **\_\_** so that **\_\_**"
 
-"I want to build **\_\_** so that **\_\_**."
+- First blank: Be specific and concrete
+- Second blank: Focus on user benefit, not features
+- Test: Can someone else understand your project in 5 seconds?
 
-Then define the top 3 success metrics and main constraints for this project.
+Success metrics emerge from your vision:
+
+1. Does it solve the stated problem?
+2. Do users take the desired action?
+3. Can you sustain/scale the solution?
+
+Common constraints to consider: time, budget, skills, market size, competition.
 
 ```
 
@@ -80,17 +88,18 @@ Then define the top 3 success metrics and main constraints for this project.
 
 ```
 
-You are a senior architect guiding a complete beginner.
+A professional environment is the foundation of success. Here's your setup strategy:
 
-Design a step-by-step plan to set up a professional environment for my project.
+**Project Vision:** {{User Vision Sentence}}
 
-Include:
+**Essential Setup Framework:**
 
-- Which tools to install and why,
-- Exact steps to test each tool,
-- How to create a clean folder structure,
-- A simple "Hello World" milestone to confirm success.
-  Project Vision: {{User Vision Sentence}}
+- **Tools**: Identify the 3-5 core tools professionals in this domain use daily
+- **Workspace**: Design for deep work - remove distractions, organize resources
+- **Credentials**: Secure necessary licenses, permits, or accounts to operate legitimately
+- **Proof Point**: Create a simple demonstration that your setup works
+
+**The Professional Standard:** After this phase, you should confidently say "I'm ready to start building."
 
 ```
 
@@ -107,11 +116,17 @@ Include:
 
 ```
 
-You are a senior builder.
+Every successful project starts with the simplest version that proves the core concept.
 
-Design the simplest possible version of my project that takes input, processes it, and outputs a result.
+**The Input→Process→Output Framework:**
 
-It must be small enough to complete today and clearly demonstrate the core idea.
+1. **Input**: What's the simplest raw material your project consumes?
+2. **Process**: What's the ONE transformation that creates value?
+3. **Output**: What's the minimal result that proves your concept works?
+
+**The 24-Hour Rule**: Your core loop must be completable in one focused session.
+
+Success metric: Someone should understand your project's value in 30 seconds.
 
 ```
 

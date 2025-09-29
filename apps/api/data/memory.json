@@ -78,22 +78,6 @@
     "thread": [
       {
         "role": "user",
-        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"\"Empowering sustainable agriculture through storytelling, our mission is to illuminate the art of pig farming, inspiring a new generation of ethical farmers and fostering a deeper connection between people and the land.\"\"\n\nReturn only the polished statement with no additional text or numbering."
-      },
-      {
-        "role": "assistant",
-        "content": "\"Through the transformative power of storytelling, we champion sustainable agriculture by showcasing the artistry of pig farming, inspiring a new generation of ethical farmers and cultivating a profound bond between communities and the land.\""
-      },
-      {
-        "role": "user",
-        "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"\"Through the transformative power of storytelling, we champion sustainable agriculture by showcasing the artistry of pig farming, inspiring a new generation of ethical farmers and cultivating a profound bond between communities and the land.\"\"\n\nReturn only the polished statement with no additional text or numbering."
-      },
-      {
-        "role": "assistant",
-        "content": "Harnessing the transformative power of storytelling, we illuminate the artistry of sustainable pig farming, inspiring a new generation of ethical farmers and forging a deep, enduring connection between communities and the land."
-      },
-      {
-        "role": "user",
         "content": "Transform this idea into a professional, creative mission or vision statement that is business-ready and inspiring. Make it 1-2 sentences and sound like it belongs in a Fortune 500 company presentation. Focus on one unique angle or perspective.\n\nOriginal idea: \"I want to start book about growing a garden\"\n\nReturn only the polished statement with no additional text or numbering."
       },
       {
@@ -235,6 +219,22 @@
       {
         "role": "assistant",
         "content": "\"I want to build a comprehensive guide on trading stocks so that aspiring investors can confidently navigate the stock market.\""
+      },
+      {
+        "role": "user",
+        "content": "You are a senior strategist.\n\nHelp me refine my vision into one clear sentence using this format:\n\n\"I want to build ______ so that ______.\"\n\nOriginal idea: \"i want to start a book about trading stocks. \"\n\nReturn only the refined vision statement using the exact format above. Be direct and specific about the purpose and target audience."
+      },
+      {
+        "role": "assistant",
+        "content": "\"I want to build a comprehensive book on stock trading strategies so that aspiring investors can confidently navigate the stock market.\""
+      },
+      {
+        "role": "user",
+        "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"i want to build  a company that sells baseball cards online like a market place\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
+      },
+      {
+        "role": "assistant",
+        "content": "I want to build an online marketplace for baseball card enthusiasts so that collectors can easily buy, sell, and trade cards with confidence and convenience."
       }
     ]
   }

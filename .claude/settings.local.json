@@ -1,26 +1,6 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(gh repo create:*)",
-      "Bash(git remote set-url:*)",
-      "Bash(npm i:*)",
-      "Bash(npm run dev:*)",
-      "Bash(curl:*)",
-      "Bash(npm:*)",
-      "Bash(for i in {1..3})",
-      "Bash(do echo \"Request $i:\")",
-      "Bash(done)",
-      "Bash(npx tailwindcss init:*)",
-      "Bash(npx --yes tailwindcss init -p)",
-      "Bash(.node_modules.bintailwindcss init -p)",
-      "Bash(rm:*)",
-      "Bash(rmdir:*)",
-      "Bash(npx tsc:*)",
-      "Bash(powershell:*)"
-    ],
+    "allow": ["Bash(npx ts-node:*)"],
     "deny": [],
     "ask": []
   }

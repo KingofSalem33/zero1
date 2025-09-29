@@ -239,7 +239,7 @@ export class StepOrchestrator {
       throw new Error("AI not configured");
     }
 
-    const systemPrompt = `You are an expert Zero-to-One Project Builder. Break down this phase into 3-5 actionable substeps, each with its own senior-level master prompt.
+    const systemPrompt = `Break down this phase into 3-5 actionable substeps, each with expert-written guidance.
 
 PHASE: ${phase.goal}
 PROJECT VISION: ${goal}
@@ -250,7 +250,7 @@ RULES:
 2. Each substep should be a concrete, actionable micro-task (15-30 minutes)
 3. Substeps should be sequential and build on each other
 4. Focus on practical, hands-on tasks that move the project forward
-5. CRITICAL: Each substep must have its own unique senior-level master prompt that provides expert guidance for that specific substep
+5. CRITICAL: Each substep must have its own expert-written guidance (NOT "You are a..." prompts)
 
 RESPONSE FORMAT:
 {
@@ -259,7 +259,7 @@ RESPONSE FORMAT:
       "substep_id": "1A",
       "step_number": 1,
       "label": "Clear action-oriented title",
-      "prompt_to_send": "You are a senior [domain expert]. [Detailed expert-level guidance specific to this substep that provides 20+ years of domain knowledge]",
+      "prompt_to_send": "[Expert-written guidance that sounds like it came from someone with 20+ years experience. Direct, actionable advice without role-playing.]",
       "commands": "Any specific tools/resources needed",
       "completed": false
     }
@@ -316,86 +316,172 @@ RESPONSE FORMAT:
   // Get the expert master prompt for each phase based on claude.md
   private getMasterPromptForPhase(phaseId: string, userVision: string): string {
     const masterPrompts: Record<string, string> = {
-      P1: `You are a senior architect guiding a complete beginner.
+      P1: `A professional environment is the foundation of success. Here's how to set up like a pro:
 
-Design a step-by-step plan to set up a professional environment for my project. Analyze the project type and recommend the appropriate setup.
+**Project Context:** ${userVision}
 
-For my project: ${userVision}
+**Essential Setup Strategy:**
 
-Provide:
-- Essential tools, resources, or systems needed for this type of project
-- Professional workspace setup (physical, digital, or both as appropriate)
-- Key accounts, permits, or credentials to establish
-- A simple "proof of concept" milestone to confirm everything is ready
+1. **Tools & Infrastructure**: Identify the core tools professionals in this domain use daily. Don't over-engineer - start with the 3-5 most critical ones.
 
-Adapt your recommendations to the specific domain (business, tech, creative, etc.) and make me feel professional and prepared from day one.`,
+2. **Workspace Architecture**: Design your space (physical or digital) for deep work. Remove distractions, organize resources within arm's reach, establish clear boundaries.
 
-      P2: `You are a senior builder.
+3. **Professional Credibility**: Secure any licenses, permits, accounts, or credentials needed to operate legitimately in this space.
 
-Design the simplest possible version of my project that takes input, processes it, and outputs a result.
+4. **Proof-of-Concept Milestone**: Create the smallest possible demonstration that your setup works - a "hello world" moment that proves you're ready to build.
 
-It must be small enough to complete today and clearly demonstrate the core idea.
+**Pro Tip**: The goal isn't perfection, it's professional capability. You should feel confident saying "I'm ready to start" after this phase.
 
-Project Vision: ${userVision}
+**Domain-Specific Considerations**: Different project types need different setups. A tech project needs development environment, a business needs legal structure, a creative project needs production tools.`,
 
-Focus on creating the smallest input → process → output cycle that proves the concept works.`,
+      P2: `Every successful project starts with the simplest version that proves the core concept. Here's the input→process→output framework:
 
-      P3: `You are a senior development strategist.
+**Project Vision:** ${userVision}
 
-Based on my current prototype, identify the single most valuable new feature to add.
+**Core Loop Essentials:**
 
-Guide me step-by-step to implement it without breaking what already works.
+1. **Define Your Input**: What's the simplest form of raw material your project consumes? (customer request, data, raw material, etc.)
 
-After completing, suggest the next layer of expansion.
+2. **Design Your Process**: What's the ONE core transformation that creates value? Strip away everything else.
 
-Project Vision: ${userVision}
+3. **Deliver Your Output**: What's the minimal viable result that proves your concept works?
 
-Prevent overwhelm by limiting changes to one new concept at a time.`,
+**The 24-Hour Rule**: Your core loop must be completable in one focused work session. If it takes longer, it's not minimal enough.
 
-      P4: `You are a senior product strategist.
+**Real-World Examples:**
+- App: Single button → simple function → visible result
+- Business: One customer → core service → payment received
+- Content: One piece → distribution → audience feedback
 
-Create a lightweight test plan to validate my project with 3-5 real people.
+**Success Metric**: Someone else should be able to understand your project's value proposition within 30 seconds of seeing your core loop in action.`,
 
-Include:
-- What to show them
-- Questions to ask
-- Metrics to measure
-- How to decide whether to pivot or proceed
+      P3: `Strategic expansion beats feature creep every time. Here's how to grow systematically:
 
-Project Vision: ${userVision}
+**Current Foundation:** ${userVision}
 
-Help me gather authentic feedback before final polish.`,
+**The Single-Addition Principle:**
 
-      P5: `You are a senior quality assurance lead.
+1. **Assess What's Working**: Document exactly what your current version does well. Don't break what's already valuable.
 
-Identify the minimum essential fixes and improvements required for my project to be launch-ready.
+2. **Identify the One Big Gap**: What's the single most obvious limitation preventing wider adoption or deeper value?
 
-List them in priority order and guide me to complete them step-by-step.
+3. **Layer, Don't Replace**: Add new functionality as a layer on top of existing systems, not a replacement for them.
 
-Project Vision: ${userVision}
+4. **Test Continuously**: Each addition should be validated independently before moving to the next layer.
 
-Focus on reaching launch quality while preventing endless iteration and feature creep.`,
+**Expansion Priority Framework:**
+- **Must-Have**: Solves a real user pain point
+- **Should-Have**: Enhances existing value significantly
+- **Could-Have**: Nice to have, but doesn't move the needle
 
-      P6: `You are a senior launch manager.
+**The Golden Rule**: If you can't explain why this specific addition matters in one sentence, it's not ready to build.
 
-Create a simple, focused launch plan for my project that includes:
-- A single clear call-to-action
-- Where and how to announce it
-- The first 3 metrics to track post-launch
+**Next Layer Planning**: Always end this phase with a clear sense of what layer 3 should tackle.`,
 
-Project Vision: ${userVision}
+      P4: `Real user feedback is the only validation that matters. Here's how to gather it without wasting time:
 
-Help me release the project publicly with maximum impact.`,
+**Project Context:** ${userVision}
 
-      P7: `You are a senior project retrospective facilitator.
+**The 3-5 Person Rule**: More feedback isn't better feedback. Find 3-5 people who represent your target audience and go deep.
 
-Help me analyze what worked, what didn't, and why.
+**Testing Structure:**
 
-Create a simple reflection document and suggest a roadmap for my next version or next project.
+1. **What to Show**: Present your actual working project, not a mockup. Let them interact with the real thing.
 
-Project Vision: ${userVision}
+2. **Questions That Matter**:
+   - "What problem does this solve for you?"
+   - "What would make this significantly more valuable?"
+   - "Would you actually use/buy/recommend this?"
 
-Focus on capturing lessons learned and building a personal toolkit for future projects.`,
+3. **Metrics to Track**:
+   - Time to understand the value proposition
+   - Willingness to take next action (sign up, pay, refer)
+   - Specific improvement suggestions
+
+**The Pivot vs. Proceed Decision Matrix:**
+- **Proceed**: Clear value understanding + positive engagement + actionable feedback
+- **Pivot**: Confusion about purpose + low engagement + fundamental objections
+
+**Pro Insight**: If users can't explain your project's value in their own words, you haven't built the right thing yet.`,
+
+      P5: `Launch-ready means good enough to put your reputation behind. Here's the quality threshold:
+
+**Project Context:** ${userVision}
+
+**The Essential Fixes Framework:**
+
+1. **Critical Path Issues**: Anything that breaks the core user journey must be fixed. No exceptions.
+
+2. **Professional Polish**: Your project should feel intentional, not amateur. Focus on the details users actually notice.
+
+3. **Scope Lock**: No new features. This phase is about fixing, not building.
+
+**Priority Order:**
+- **P0**: Core functionality broken or unreliable
+- **P1**: User experience feels unprofessional or confusing
+- **P2**: Edge cases that affect real usage
+- **P3**: Nice-to-haves that don't impact launch success
+
+**Quality Checklist:**
+- [ ] Core user journey works 100% of the time
+- [ ] Error states are handled gracefully
+- [ ] User interface feels intentional and clean
+- [ ] Performance is acceptable for intended use
+- [ ] Content is proofread and accurate
+
+**The Launch Litmus Test**: Would you confidently demo this to someone whose opinion you respect?`,
+
+      P6: `A focused launch beats a scattered announcement every time. Here's the proven formula:
+
+**Project Context:** ${userVision}
+
+**The Single CTA Strategy:**
+
+1. **One Clear Action**: What's the ONE thing you want people to do? Sign up, buy, download, follow? Pick one.
+
+2. **Launch Platform Selection**: Where does your audience actually spend time? Start there, expand later.
+
+3. **Message Clarity**: Your launch message should answer "What is this?" and "Why should I care?" in under 10 seconds.
+
+**Launch Sequence:**
+- **Pre-Launch**: Build anticipation with 2-3 people who care about your success
+- **Launch Day**: Share in 2-3 places maximum, with consistent messaging
+- **Post-Launch**: Follow up with initial users for testimonials and improvements
+
+**Critical Metrics (First 72 Hours):**
+1. **Awareness**: How many people saw your launch?
+2. **Engagement**: How many took your desired action?
+3. **Quality**: How positive was the initial feedback?
+
+**Launch Success Formula**: Consistent message + Right audience + Clear next step = Sustainable momentum
+
+**Pro Tip**: A small launch that gets real users beats a big launch that gets only views.`,
+
+      P7: `The best builders learn systematically from every project. Here's how to capture what matters:
+
+**Project Context:** ${userVision}
+
+**The Three-Lens Analysis:**
+
+1. **What Worked**: Document the decisions, processes, and strategies that delivered results. These become your repeatable playbook.
+
+2. **What Didn't**: Identify the bottlenecks, mistakes, and dead ends. Understanding failure prevents repetition.
+
+3. **What You'd Do Differently**: With perfect hindsight, what would you change about your approach?
+
+**Personal Toolkit Development:**
+- **Process Wins**: Which workflows made you most productive?
+- **Tool Discoveries**: What software, resources, or methods proved invaluable?
+- **Mental Models**: What frameworks helped you make better decisions?
+
+**Next Project Planning:**
+- **Skill Gaps**: What abilities would make your next project easier?
+- **Resource Needs**: What tools or knowledge should you acquire first?
+- **Project Selection**: Based on this experience, what type of project should you tackle next?
+
+**Documentation Format**: Keep it simple - bullet points, not essays. Focus on actionable insights you'll actually reference later.
+
+**The Growth Mindset**: Every project is training for the next one. The goal isn't perfection, it's systematic improvement.`,
     };
 
     return (
@@ -559,7 +645,7 @@ Focus on capturing lessons learned and building a personal toolkit for future pr
       (s) => s.step_number === project.current_substep,
     );
 
-    const systemMessage = `You are an expert AI assistant helping with project execution. You have access to these tools:
+    const systemMessage = `You are helping with project execution. You have access to these tools:
 - \`web_search\`: Search the web for current information using DuckDuckGo
 - \`http_fetch\`: Fetch and read content from specific URLs
 - \`calculator\`: Perform mathematical calculations
