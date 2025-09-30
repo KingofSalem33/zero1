@@ -1,6 +1,10 @@
 {
   "permissions": {
-    "allow": ["Bash(npx ts-node:*)"],
+    "allow": [
+      "Bash(npx ts-node:*)",
+      "WebSearch",
+      "WebFetch(domain:www.anthropic.com)"
+    ],
     "deny": [],
     "ask": []
   }
