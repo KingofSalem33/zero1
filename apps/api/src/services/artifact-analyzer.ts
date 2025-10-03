@@ -36,7 +36,7 @@ export interface ArtifactSignals {
  * Recursively analyze a directory and extract signals
  */
 export async function analyzeDirectory(
-  dirPath: string
+  dirPath: string,
 ): Promise<ArtifactSignals> {
   const signals: ArtifactSignals = {
     has_tests: false,
@@ -146,7 +146,7 @@ export async function analyzeDirectory(
       const packageJson = JSON.parse(fs.readFileSync(pkgFile, "utf-8"));
       const techs = detectTechStack(packageJson);
       techs.forEach((tech) => techStack.add(tech));
-    } catch (err) {
+    } catch {
       // Ignore parsing errors
     }
   }
@@ -191,7 +191,7 @@ async function getAllFiles(dirPath: string): Promise<string[]> {
           files.push(fullPath);
         }
       }
-    } catch (err) {
+    } catch {
       // Ignore permission errors
     }
   }
@@ -283,7 +283,7 @@ function detectTechStack(packageJson: any): string[] {
  * Analyze git history for commit stats
  */
 async function analyzeGitHistory(
-  dirPath: string
+  dirPath: string,
 ): Promise<{ lastCommit: Date | null; commitCount: number }> {
   const { execSync } = await import("child_process");
 
@@ -303,11 +303,11 @@ async function analyzeGitHistory(
       execSync("git rev-list --count HEAD", {
         cwd: dirPath,
         encoding: "utf-8",
-      }).trim()
+      }).trim(),
     );
 
     return { lastCommit, commitCount };
-  } catch (err) {
+  } catch {
     // Git not initialized or no commits
     return { lastCommit: null, commitCount: 0 };
   }
@@ -317,7 +317,7 @@ async function analyzeGitHistory(
  * Analyze a single uploaded file
  */
 export async function analyzeSingleFile(
-  filePath: string
+  filePath: string,
 ): Promise<ArtifactSignals> {
   const filename = path.basename(filePath).toLowerCase();
   const ext = path.extname(filePath).toLowerCase();
@@ -356,7 +356,7 @@ export async function analyzeSingleFile(
       const content = fs.readFileSync(filePath, "utf-8");
       signals.readme_length = content.length;
       signals.has_documentation = content.length > 100;
-    } catch (err) {
+    } catch {
       // Ignore read errors
     }
   }

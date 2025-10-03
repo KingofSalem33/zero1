@@ -5,6 +5,9 @@ import prettier from "eslint-config-prettier";
 import importPlugin from "eslint-plugin-import";
 
 export default [
+  {
+    ignores: ["**/dist/**", "**/node_modules/**", "**/.next/**", "**/build/**"],
+  },
   js.configs.recommended,
   {
     files: ["apps/api/**/*.{js,ts}"],
@@ -67,6 +70,7 @@ export default [
         setTimeout: "readonly",
         clearTimeout: "readonly",
         navigator: "readonly",
+        HTMLInputElement: "readonly",
       },
     },
     plugins: {

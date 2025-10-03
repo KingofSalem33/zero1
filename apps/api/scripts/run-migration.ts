@@ -18,11 +18,16 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 // Create admin client with service key
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-async function runMigration() {
+// Unused function - kept for reference
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _runDatabaseMigration() {
   console.log("🔄 Starting database migration...\n");
 
   // Read migration file
-  const migrationPath = path.join(__dirname, "../../../database_migration_artifacts.sql");
+  const migrationPath = path.join(
+    __dirname,
+    "../../../database_migration_artifacts.sql",
+  );
   if (!fs.existsSync(migrationPath)) {
     console.error(`❌ Migration file not found: ${migrationPath}`);
     process.exit(1);
@@ -76,8 +81,10 @@ async function runMigration() {
         console.log("  ✅ Success");
         successCount++;
       }
-    } catch (err: any) {
-      console.error(`  ❌ Exception: ${err.message}`);
+    } catch (err) {
+      console.error(
+        `  ❌ Exception: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
     }
   }
 
@@ -89,15 +96,18 @@ async function runMigration() {
   console.log("=".repeat(60) + "\n");
 }
 
-// Note: Supabase doesn't have exec_sql by default
-// Let's use direct SQL execution via REST API instead
-async function runMigrationDirect() {
+// Run migration
+async function runMigration() {
   console.log("🔄 Starting database migration...\n");
-  console.log("⚠️  NOTE: You need to run this migration manually in Supabase Dashboard");
+  console.log(
+    "⚠️  NOTE: You need to run this migration manually in Supabase Dashboard",
+  );
   console.log("📍 Location: database_migration_artifacts.sql\n");
 
   console.log("Steps:");
-  console.log("1. Go to https://ciuxquemfnbruvvzbfth.supabase.co/project/_/sql");
+  console.log(
+    "1. Go to https://ciuxquemfnbruvvzbfth.supabase.co/project/_/sql",
+  );
   console.log("2. Click 'New query'");
   console.log("3. Copy contents of database_migration_artifacts.sql");
   console.log("4. Paste and click 'Run'\n");
@@ -106,4 +116,4 @@ async function runMigrationDirect() {
 }
 
 // Run
-runMigrationDirect();
+runMigration();
