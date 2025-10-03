@@ -24,17 +24,17 @@ if (!fs.existsSync(UPLOAD_DIR)) {
  * Upload a file or zip for analysis
  */
 router.post("/upload", (req, res) => {
-  try {
-    console.log("📤 [Artifacts] Upload request received");
+  console.log("📤 [Artifacts] Upload request received");
 
-    // Parse multipart form data
-    const form = new IncomingForm({
-      uploadDir: UPLOAD_DIR,
-      keepExtensions: true,
-      maxFileSize: 50 * 1024 * 1024, // 50MB limit
-    });
+  // Parse multipart form data
+  const form = new IncomingForm({
+    uploadDir: UPLOAD_DIR,
+    keepExtensions: true,
+    maxFileSize: 50 * 1024 * 1024, // 50MB limit
+  });
 
-    form.parse(req, async (err, fields, files) => {
+  form.parse(req, async (err, fields, files) => {
+    try {
       if (err) {
         console.error("❌ [Artifacts] Upload parse error:", err);
         return res.status(400).json({ error: "Failed to parse upload" });
@@ -62,7 +62,9 @@ router.post("/upload", (req, res) => {
       const filePath = file.filepath;
       const fileSize = file.size;
 
-      console.log(`📁 [Artifacts] Processing file: ${filename} (${fileSize} bytes)`);
+      console.log(
+        `📁 [Artifacts] Processing file: ${filename} (${fileSize} bytes)`,
+      );
 
       try {
         // Determine artifact type
@@ -157,7 +159,7 @@ router.post("/upload", (req, res) => {
                     current_phase: project.current_phase,
                     roadmap: project.roadmap,
                   }
-                : undefined
+                : undefined,
             );
 
             // Save LLM analysis results
@@ -210,11 +212,11 @@ router.post("/upload", (req, res) => {
 
         return res.status(500).json({ error: "Failed to analyze artifact" });
       }
-    });
-  } catch (error) {
-    console.error("❌ [Artifacts] Upload error:", error);
-    return res.status(500).json({ error: "Failed to upload artifact" });
-  }
+    } catch (error) {
+      console.error("❌ [Artifacts] Upload error:", error);
+      return res.status(500).json({ error: "Failed to upload artifact" });
+    }
+  });
 });
 
 /**
@@ -239,9 +241,12 @@ router.post("/repo", async (req, res) => {
 
     // Clone the repository
     try {
-      execSync(`git clone --depth 1 --branch ${branch} ${repo_url} "${clonePath}"`, {
-        stdio: "inherit",
-      });
+      execSync(
+        `git clone --depth 1 --branch ${branch} ${repo_url} "${clonePath}"`,
+        {
+          stdio: "inherit",
+        },
+      );
     } catch (cloneError) {
       console.error("❌ [Artifacts] Clone failed:", cloneError);
       return res.status(400).json({ error: "Failed to clone repository" });
@@ -330,7 +335,7 @@ router.get("/:artifactId", async (req, res) => {
         `
         *,
         artifact_signals (*)
-      `
+      `,
       )
       .eq("id", artifactId)
       .single();
@@ -363,7 +368,7 @@ router.get("/project/:projectId", async (req, res) => {
         `
         *,
         artifact_signals (*)
-      `
+      `,
       )
       .eq("project_id", projectId)
       .order("uploaded_at", { ascending: false });
