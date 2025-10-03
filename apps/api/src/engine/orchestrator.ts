@@ -88,6 +88,68 @@ export class StepOrchestrator {
     return this.createProjectWithPhase1(goal);
   }
 
+  // Create project with a specific ID (for Supabase UUID)
+  async createProjectWithId(id: string, goal: string): Promise<Project> {
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("AI not configured");
+    }
+
+    console.log("🎯 [CREATE] Creating project with ID:", id);
+
+    // First generate high-level phases
+    const phaseResponse = await this.generatePhases({
+      goal,
+      clarification_context:
+        "Initial project creation - no clarification needed.",
+    });
+
+    // Now expand only Phase 1 with substeps
+    const phase1 = phaseResponse.phases[0];
+    if (phase1) {
+      const expandedPhase1 = await this.expandPhaseWithSubsteps(phase1, goal);
+
+      const now = new Date().toISOString();
+      const project: Project = {
+        id, // Use the provided ID instead of generating one
+        goal,
+        status: "active",
+        current_phase: 1,
+        current_substep: 1,
+        phases: [
+          // Phase 1: Fully expanded with substeps
+          {
+            ...expandedPhase1,
+            phase_number: 1,
+            expanded: true,
+            locked: false,
+            completed: false,
+            created_at: now,
+          },
+          // Phase 2+: High-level only, locked
+          ...phaseResponse.phases.slice(1).map((phase, index) => ({
+            ...phase,
+            phase_number: index + 2,
+            substeps: [], // No substeps until unlocked
+            expanded: false,
+            locked: true,
+            completed: false,
+            created_at: now,
+          })),
+        ],
+        history: [],
+        created_at: now,
+        updated_at: now,
+      };
+
+      projects.set(project.id, project);
+      console.log("✅ [CREATE] Project created with ID:", id);
+      return project;
+    }
+
+    throw new Error("Failed to generate initial phases");
+  }
+
   async generatePhases(
     request: PhaseGenerationRequest,
   ): Promise<PhaseGenerationResponse> {

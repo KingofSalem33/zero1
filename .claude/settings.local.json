@@ -3,7 +3,19 @@
     "allow": [
       "Bash(npx ts-node:*)",
       "WebSearch",
-      "WebFetch(domain:www.anthropic.com)"
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(npm install:*)",
+      "Bash(npm run db:test:*)",
+      "Bash(npm run:*)",
+      "Bash(npx supabase:*)",
+      "Bash(clip)",
+      "Bash(cat:*)",
+      "Bash(clip.exe)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 10 npm run dev)",
+      "Bash(npx eslint:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

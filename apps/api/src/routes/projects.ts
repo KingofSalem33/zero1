@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { StepOrchestrator } from "../engine/orchestrator";
+import { supabase } from "../db";
 
 const router = Router();
 export const orchestrator = new StepOrchestrator();
@@ -21,7 +22,41 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const project = await orchestrator.createProject(goal.trim());
+    // First create in Supabase to get a UUID
+    const { data: supabaseProject, error: supabaseError } = await supabase
+      .from("projects")
+      .insert({
+        goal: goal.trim(),
+        status: "active",
+        current_phase: "P0",
+        roadmap: {},
+      })
+      .select()
+      .single();
+
+    if (supabaseError) {
+      console.error("[Projects] Supabase save error:", supabaseError);
+      return res.status(500).json({
+        error: "Failed to create project in database",
+      });
+    }
+
+    // Create project in orchestrator with the Supabase UUID
+    const project = await orchestrator.createProjectWithId(
+      supabaseProject.id,
+      goal.trim()
+    );
+
+    // Update Supabase with the full roadmap
+    await supabase
+      .from("projects")
+      .update({
+        current_phase: project.current_phase || "P0",
+        roadmap: project.phases || {},
+      })
+      .eq("id", supabaseProject.id);
+
+    console.log("[Projects] Created with UUID:", supabaseProject.id);
 
     return res.status(201).json({
       ok: true,

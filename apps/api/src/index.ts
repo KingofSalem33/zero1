@@ -5,6 +5,9 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { ENV } from "./env";
 import projectsRouter from "./routes/projects";
+import artifactsRouter from "./routes/artifacts";
+import artifactActionsRouter from "./routes/artifact-actions";
+import checkpointsRouter from "./routes/checkpoints";
 import { runModel } from "./ai/runModel";
 import { toolSpecs, toolMap } from "./ai/tools";
 import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
@@ -53,6 +56,13 @@ app.use(express.json());
 
 // Mount project routes
 app.use("/api/projects", projectsRouter);
+
+// Mount artifact routes
+app.use("/api/artifacts", artifactsRouter);
+app.use("/api/artifact-actions", artifactActionsRouter);
+
+// Mount checkpoint routes
+app.use("/api/checkpoints", checkpointsRouter);
 
 // File upload endpoint
 app.post("/api/files", handleFileUpload);

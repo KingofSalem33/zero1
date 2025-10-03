@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./App.css";
+import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -1414,7 +1415,8 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 
         {/* Input Area */}
         <div className="p-6 border-t border-gray-700/50">
-          <div className="flex gap-2">
+          <div className="flex gap-2 relative">
+            <ArtifactUploadButton projectId={project?.id || null} />
             <input
               type="text"
               value={currentInput}
