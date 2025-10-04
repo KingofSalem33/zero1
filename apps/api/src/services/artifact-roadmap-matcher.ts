@@ -46,13 +46,82 @@ export interface Substep {
  * Main matcher function: analyzes artifact signals and determines
  * which substeps are complete based on evidence
  */
+export interface LLMAnalysis {
+  decision?: string;
+  actual_phase?: string;
+  quality_score?: number;
+  detailed_analysis?: string;
+}
+
 export function matchArtifactToRoadmap(
   signals: ArtifactSignals,
   _currentRoadmap?: Phase[],
   _projectType?: string,
+  llmAnalysis?: LLMAnalysis,
 ): RoadmapDiff {
   const results: SubstepCompletionResult[] = [];
   const timestamp = new Date().toISOString();
+
+  // ========================================
+  // CONTENT-BASED DETECTION (Non-Code Projects)
+  // ========================================
+
+  // Use LLM analysis if available for content-heavy projects
+  if (llmAnalysis) {
+    // LLM detected actual phase - use that as baseline
+    if (llmAnalysis.actual_phase) {
+      const phaseMatch = llmAnalysis.actual_phase.match(/P(\d+)/);
+      if (phaseMatch) {
+        const detectedPhase = parseInt(phaseMatch[1]);
+
+        // If LLM detected work beyond P0, mark earlier phases as complete
+        if (detectedPhase >= 1) {
+          results.push({
+            phase_number: 0,
+            substep_number: 1,
+            status: "complete",
+            evidence: `Vision defined (LLM detected ${llmAnalysis.actual_phase} work)`,
+            confidence: 80,
+            timestamp,
+          });
+        }
+
+        if (detectedPhase >= 2) {
+          results.push({
+            phase_number: 1,
+            substep_number: 1,
+            status: "complete",
+            evidence: `Environment setup detected in content`,
+            confidence: 70,
+            timestamp,
+          });
+        }
+
+        if (detectedPhase >= 3) {
+          results.push({
+            phase_number: 2,
+            substep_number: 1,
+            status: "complete",
+            evidence: `Core work detected (${llmAnalysis.actual_phase})`,
+            confidence: 75,
+            timestamp,
+          });
+        }
+      }
+    }
+
+    // Quality score indicates substantial work
+    if (llmAnalysis.quality_score && llmAnalysis.quality_score >= 5) {
+      results.push({
+        phase_number: 2,
+        substep_number: 2,
+        status: llmAnalysis.quality_score >= 7 ? "complete" : "partial",
+        evidence: `Content quality: ${llmAnalysis.quality_score}/10`,
+        confidence: llmAnalysis.quality_score * 10,
+        timestamp,
+      });
+    }
+  }
 
   // ========================================
   // PHASE 1: BUILD ENVIRONMENT

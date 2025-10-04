@@ -176,6 +176,8 @@ router.post("/upload", (req, res) => {
                 roadmapDiff = matchArtifactToRoadmap(
                   signals,
                   project.roadmap.phases || [],
+                  undefined,
+                  llmAnalysis, // Pass LLM analysis for content detection
                 );
 
                 console.log(
