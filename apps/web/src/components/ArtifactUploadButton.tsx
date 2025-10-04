@@ -1,10 +1,31 @@
 import React, { useRef, useState } from "react";
+import { ArtifactDiffModal } from "./ArtifactDiffModal";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
+interface SubstepCompletion {
+  phase_number: number;
+  substep_number: number;
+  status: "complete" | "partial" | "incomplete";
+  evidence: string;
+  confidence: number;
+  timestamp: string;
+}
+
+interface ArtifactData {
+  id: string;
+  status: string;
+  roadmap_diff?: string;
+  completed_substeps?: SubstepCompletion[];
+  progress_percentage?: number;
+  analysis?: {
+    recommended_phase?: number;
+  };
+}
+
 interface ArtifactUploadButtonProps {
   projectId: string | null;
-  onUploadComplete?: (artifact: unknown) => void;
+  onUploadComplete?: (artifact: ArtifactData) => void;
 }
 
 export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
@@ -14,6 +35,44 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [showDiffModal, setShowDiffModal] = useState(false);
+  const [analyzedArtifact, setAnalyzedArtifact] = useState<ArtifactData | null>(
+    null,
+  );
+
+  // Poll artifact status until analysis completes
+  const pollArtifactStatus = async (
+    artifactId: string,
+  ): Promise<ArtifactData | null> => {
+    const maxAttempts = 30; // 30 seconds max
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`${API_URL}/api/artifacts/${artifactId}`);
+        const data = await response.json();
+
+        if (response.ok && data.artifact) {
+          const artifact = data.artifact;
+
+          // Check if analysis is complete
+          if (artifact.status === "analyzed") {
+            return artifact;
+          } else if (artifact.status === "failed") {
+            throw new Error("Analysis failed");
+          }
+        }
+      } catch (error) {
+        console.error("[Poll] Error:", error);
+      }
+
+      // Wait 1 second before next poll
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      attempts++;
+    }
+
+    return null; // Timeout
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -36,18 +95,36 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && data.artifact) {
         console.log("[Upload] Success:", data);
         setUploadProgress("Analyzing...");
-        setTimeout(() => {
-          setUploadProgress("✓ Complete!");
-          setTimeout(() => {
-            setUploadProgress("");
-            if (onUploadComplete) {
-              onUploadComplete(data.artifact);
-            }
-          }, 1500);
-        }, 1000);
+
+        // Poll for analysis completion
+        const analyzedData = await pollArtifactStatus(data.artifact.id);
+
+        if (analyzedData) {
+          setUploadProgress("✓ Analysis Complete!");
+
+          // Show diff modal if we have results
+          if (
+            analyzedData.completed_substeps &&
+            analyzedData.completed_substeps.length > 0
+          ) {
+            setAnalyzedArtifact(analyzedData);
+            setShowDiffModal(true);
+          }
+
+          // Notify parent
+          if (onUploadComplete) {
+            onUploadComplete(analyzedData);
+          }
+
+          // Clear progress after modal is shown
+          setTimeout(() => setUploadProgress(""), 1500);
+        } else {
+          setUploadProgress("⚠️ Analysis timeout");
+          setTimeout(() => setUploadProgress(""), 3000);
+        }
       } else {
         console.error("[Upload] Failed:", data);
         setUploadProgress(`❌ ${data.error || "Failed"}`);
@@ -106,6 +183,16 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           {uploadProgress}
         </div>
       )}
+
+      {/* Diff Modal */}
+      <ArtifactDiffModal
+        isOpen={showDiffModal}
+        onClose={() => setShowDiffModal(false)}
+        roadmapDiff={analyzedArtifact?.roadmap_diff || null}
+        completedSubsteps={analyzedArtifact?.completed_substeps || []}
+        recommendedPhase={analyzedArtifact?.analysis?.recommended_phase}
+        progressPercentage={analyzedArtifact?.progress_percentage}
+      />
     </>
   );
 };
