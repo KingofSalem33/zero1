@@ -44,7 +44,7 @@ router.post("/", async (req, res) => {
     // Create project in orchestrator with the Supabase UUID
     const project = await orchestrator.createProjectWithId(
       supabaseProject.id,
-      goal.trim()
+      goal.trim(),
     );
 
     // Update Supabase with the full roadmap
@@ -129,6 +129,7 @@ router.get("/:projectId", async (req, res) => {
       });
     }
 
+    // Get project from orchestrator (in-memory)
     const project = orchestrator.getProject(projectId);
 
     if (!project) {
@@ -137,9 +138,28 @@ router.get("/:projectId", async (req, res) => {
       });
     }
 
+    // Fetch completed_substeps from Supabase
+    const { data: supabaseProject, error: supabaseError } = await supabase
+      .from("projects")
+      .select("completed_substeps, current_substep")
+      .eq("id", projectId)
+      .single();
+
+    if (supabaseError) {
+      console.error("[Projects] Error fetching from Supabase:", supabaseError);
+    }
+
+    // Merge Supabase data with orchestrator project
+    const mergedProject = {
+      ...project,
+      completed_substeps: supabaseProject?.completed_substeps || [],
+      current_substep:
+        supabaseProject?.current_substep || project.current_substep,
+    };
+
     return res.json({
       ok: true,
-      project,
+      project: mergedProject,
     });
   } catch (error) {
     console.error("Error fetching project:", error);

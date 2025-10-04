@@ -428,6 +428,15 @@ interface ProjectPhase {
   created_at: string;
 }
 
+interface SubstepCompletion {
+  phase_number: number;
+  substep_number: number;
+  status: "complete" | "partial" | "incomplete";
+  evidence: string;
+  confidence: number;
+  timestamp: string;
+}
+
 interface Project {
   id: string;
   goal: string;
@@ -439,6 +448,7 @@ interface Project {
   clarification_context?: string;
   created_at: string;
   updated_at: string;
+  completed_substeps?: SubstepCompletion[];
 }
 
 interface ChatMessage {
@@ -482,6 +492,32 @@ const MasterControl: React.FC<MasterControlProps> = ({
     if (phase.locked)
       return { icon: "🔒", label: "Locked", color: "text-gray-500" };
     return { icon: "⏳", label: "Ready", color: "text-yellow-400" };
+  };
+
+  // Helper function to check if substep is complete
+  const isSubstepComplete = (
+    phaseNumber: number,
+    substepNumber: number,
+  ): boolean => {
+    if (!project.completed_substeps) return false;
+    return project.completed_substeps.some(
+      (c) =>
+        c.phase_number === phaseNumber &&
+        c.substep_number === substepNumber &&
+        c.status === "complete",
+    );
+  };
+
+  // Calculate phase progress based on completed substeps
+  const getPhaseProgress = (phase: ProjectPhase): number => {
+    if (phase.completed) return 100;
+    if (!phase.substeps || phase.substeps.length === 0) return 0;
+
+    const completedCount = phase.substeps.filter((_, index) =>
+      isSubstepComplete(phase.phase_number, index + 1),
+    ).length;
+
+    return Math.round((completedCount / phase.substeps.length) * 100);
   };
 
   const progress =
@@ -611,6 +647,30 @@ const MasterControl: React.FC<MasterControlProps> = ({
                       <p className="text-gray-400 leading-relaxed">
                         {phase.why_it_matters}
                       </p>
+
+                      {/* Phase Progress Bar */}
+                      {phase.substeps && phase.substeps.length > 0 && (
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs text-gray-500 font-medium">
+                              {getPhaseProgress(phase)}% Complete
+                            </span>
+                          </div>
+                          <div className="bg-gray-800/60 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={cls(
+                                "h-full transition-all duration-500",
+                                phase.completed
+                                  ? "bg-green-500"
+                                  : phase.phase_number === project.current_phase
+                                    ? "bg-gradient-to-r from-blue-500 to-purple-500"
+                                    : "bg-gray-600",
+                              )}
+                              style={{ width: `${getPhaseProgress(phase)}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -623,38 +683,42 @@ const MasterControl: React.FC<MasterControlProps> = ({
                         Substeps
                       </h4>
                       <div className="space-y-2">
-                        {phase.substeps.map((substep, index) => (
-                          <div
-                            key={substep.substep_id}
-                            className={cls(
-                              "flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
-                              substep.completed
-                                ? "bg-green-950/30 border border-green-500/20"
-                                : "bg-gray-800/40 border border-gray-600/20",
-                            )}
-                          >
+                        {phase.substeps.map((substep, index) => {
+                          const isComplete = isSubstepComplete(
+                            phase.phase_number,
+                            index + 1,
+                          );
+                          return (
                             <div
+                              key={substep.substep_id}
                               className={cls(
-                                "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
-                                substep.completed
-                                  ? "bg-green-500 text-white"
-                                  : "bg-gray-600 text-gray-300",
+                                "flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
+                                isComplete
+                                  ? "bg-green-950/30 border border-green-500/20"
+                                  : "bg-gray-800/40 border border-gray-600/20",
                               )}
                             >
-                              {substep.completed ? "✓" : index + 1}
+                              <div
+                                className={cls(
+                                  "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
+                                  isComplete
+                                    ? "bg-green-500 text-white"
+                                    : "bg-gray-600 text-gray-300",
+                                )}
+                              >
+                                {isComplete ? "✓" : index + 1}
+                              </div>
+                              <span
+                                className={cls(
+                                  "font-medium",
+                                  isComplete ? "text-green-400" : "text-white",
+                                )}
+                              >
+                                {substep.label}
+                              </span>
                             </div>
-                            <span
-                              className={cls(
-                                "font-medium",
-                                substep.completed
-                                  ? "text-green-400"
-                                  : "text-white",
-                              )}
-                            >
-                              {substep.label}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
