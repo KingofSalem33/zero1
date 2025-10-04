@@ -10,6 +10,11 @@ import {
   type ArtifactSignals,
 } from "../services/artifact-analyzer";
 import { analyzeArtifactWithLLM } from "../services/llm-artifact-analyzer";
+import {
+  matchArtifactToRoadmap,
+  mergeCompletionResults,
+  type RoadmapDiff,
+} from "../services/artifact-roadmap-matcher";
 
 const router = Router();
 
@@ -162,13 +167,60 @@ router.post("/upload", (req, res) => {
                 : undefined,
             );
 
-            // Save LLM analysis results
+            // NEW: Match artifact to roadmap to detect completed substeps
+            console.log("🎯 [Artifacts] Matching artifact to roadmap...");
+            let roadmapDiff: RoadmapDiff | null = null;
+
+            if (project && project.roadmap) {
+              try {
+                roadmapDiff = matchArtifactToRoadmap(
+                  signals,
+                  project.roadmap.phases || [],
+                );
+
+                console.log(
+                  `✅ [Artifacts] Roadmap match complete: ${roadmapDiff.completed_substeps.length} substeps detected`,
+                );
+
+                // Merge new completions with existing
+                const existingCompletions = project.completed_substeps || [];
+                const mergedCompletions = mergeCompletionResults(
+                  existingCompletions,
+                  roadmapDiff.completed_substeps,
+                );
+
+                // Update project with new progress
+                await supabase
+                  .from("projects")
+                  .update({
+                    current_phase: `P${roadmapDiff.recommended_phase}`,
+                    current_substep: roadmapDiff.recommended_substep,
+                    completed_substeps: mergedCompletions,
+                  })
+                  .eq("id", projectId);
+
+                console.log(
+                  `📊 [Artifacts] Project updated: Phase P${roadmapDiff.recommended_phase}, Substep ${roadmapDiff.recommended_substep}`,
+                );
+              } catch (matchError) {
+                console.error(
+                  "⚠️ [Artifacts] Roadmap matching failed:",
+                  matchError,
+                );
+                // Non-fatal - continue with LLM analysis
+              }
+            }
+
+            // Save LLM analysis results + roadmap diff
             await supabase
               .from("artifacts")
               .update({
                 status: "analyzed",
                 analyzed_at: new Date().toISOString(),
                 analysis: llmAnalysis,
+                completed_substeps: roadmapDiff?.completed_substeps || [],
+                roadmap_diff: roadmapDiff?.changes_summary || null,
+                progress_percentage: roadmapDiff?.progress_percentage || 0,
               })
               .eq("id", artifact.id);
 
