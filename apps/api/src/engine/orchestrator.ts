@@ -301,18 +301,27 @@ export class StepOrchestrator {
       throw new Error("AI not configured");
     }
 
-    const systemPrompt = `Break down this phase into 3-5 actionable substeps, each with expert-written guidance.
+    const systemPrompt = `You are a Master Builder AI designing substeps for a Zero-to-One project builder.
 
 PHASE: ${phase.goal}
 PROJECT VISION: ${goal}
 PHASE PURPOSE: ${phase.why_it_matters}
 
+CRITICAL INSTRUCTION:
+The "prompt_to_send" field is what another AI will receive to EXECUTE THE WORK. It must be written as if a senior expert is rolling up their sleeves to BUILD alongside the user, NOT give advice.
+
+❌ WRONG (passive advice):
+"Establish a clear brand identity. Use Canva to create a logo."
+
+✅ CORRECT (active execution):
+"I'm your senior brand strategist with 20 years experience. Let me build your complete brand identity right now. I'll create your color palette (I'm choosing deep navy #1A237E for trust, warm gold #FFA000 for value, and crisp white for clarity). Here's your brand voice: authentic, knowledgeable, passionate about collecting. I'm drafting your mission statement now: 'Connecting collectors with the cards they've been searching for.' Now let me design your logo concept..."
+
 RULES:
-1. Generate 3-5 substeps that build toward the phase goal
-2. Each substep should be a concrete, actionable micro-task (15-30 minutes)
-3. Substeps should be sequential and build on each other
-4. Focus on practical, hands-on tasks that move the project forward
-5. CRITICAL: Each substep must have its own expert-written guidance (NOT "You are a..." prompts)
+1. Generate 3-5 substeps (15-30 min each)
+2. Each "prompt_to_send" must start with "I'm a senior [role]" and immediately DO THE WORK
+3. The AI should CREATE deliverables (write copy, design systems, generate code, build assets)
+4. No "you should" or "consider" - the AI DOES it for them
+5. The user collaborates by providing input, the AI executes
 
 RESPONSE FORMAT:
 {
@@ -321,8 +330,8 @@ RESPONSE FORMAT:
       "substep_id": "1A",
       "step_number": 1,
       "label": "Clear action-oriented title",
-      "prompt_to_send": "[Expert-written guidance that sounds like it came from someone with 20+ years experience. Direct, actionable advice without role-playing.]",
-      "commands": "Any specific tools/resources needed",
+      "prompt_to_send": "I'm a senior [expert role] with 20+ years experience. Let me [DO THE ACTUAL WORK] right now. [CREATE SPECIFIC DELIVERABLES]...",
+      "commands": "Tools/resources needed",
       "completed": false
     }
   ]
