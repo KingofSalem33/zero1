@@ -1284,6 +1284,7 @@ interface IdeationHubProps {
   project: Project | null;
   onCreateProject: (goal: string) => void;
   onInspireMe: (goal: string, setThinking: (text: string) => void) => void;
+  onRefreshProject: () => void;
   creating: boolean;
   inspiring: boolean;
 }
@@ -1292,6 +1293,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
   project,
   onCreateProject,
   onInspireMe,
+  onRefreshProject,
   creating,
   inspiring,
 }) => {
@@ -1480,7 +1482,10 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         {/* Input Area */}
         <div className="p-6 border-t border-gray-700/50">
           <div className="flex gap-2 relative">
-            <ArtifactUploadButton projectId={project?.id || null} />
+            <ArtifactUploadButton
+              projectId={project?.id || null}
+              onUploadComplete={onRefreshProject}
+            />
             <input
               type="text"
               value={currentInput}
@@ -1694,6 +1699,27 @@ function App() {
     setPopupWorkspaces((prev) =>
       prev.map((w) => (w.id === workspaceId ? { ...w, messages } : w)),
     );
+  };
+
+  // Refresh project from API (fetches completed_substeps from Supabase)
+  const refreshProject = async () => {
+    if (!project?.id) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/projects/${project.id}`);
+      const data = await response.json();
+
+      if (response.ok && data.project) {
+        setProject((prev) => ({
+          ...prev!,
+          completed_substeps: data.project.completed_substeps || [],
+          current_substep:
+            data.project.current_substep || prev!.current_substep,
+        }));
+      }
+    } catch (error) {
+      console.error("[App] Failed to refresh project:", error);
+    }
   };
 
   const handleCreateProject = async (goal: string) => {
@@ -1911,6 +1937,7 @@ Return only the refined vision statement using the format "I want to build _____
                 project={project}
                 onCreateProject={handleCreateProject}
                 onInspireMe={handleInspireMe}
+                onRefreshProject={refreshProject}
                 creating={creatingProject}
                 inspiring={inspiring}
               />

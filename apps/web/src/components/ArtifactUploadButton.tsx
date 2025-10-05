@@ -12,15 +12,24 @@ interface SubstepCompletion {
   timestamp: string;
 }
 
+interface LLMAnalysis {
+  decision?: string;
+  actual_phase?: string;
+  quality_score?: number;
+  detailed_analysis?: string;
+  missing_elements?: string[];
+  bugs_or_errors?: string[];
+  next_steps?: string[];
+  implementation_state?: string;
+}
+
 interface ArtifactData {
   id: string;
   status: string;
   roadmap_diff?: string;
   completed_substeps?: SubstepCompletion[];
   progress_percentage?: number;
-  analysis?: {
-    recommended_phase?: number;
-  };
+  analysis?: LLMAnalysis;
 }
 
 interface ArtifactUploadButtonProps {
@@ -188,9 +197,8 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
       <ArtifactDiffModal
         isOpen={showDiffModal}
         onClose={() => setShowDiffModal(false)}
-        roadmapDiff={analyzedArtifact?.roadmap_diff || null}
         completedSubsteps={analyzedArtifact?.completed_substeps || []}
-        recommendedPhase={analyzedArtifact?.analysis?.recommended_phase}
+        llmAnalysis={analyzedArtifact?.analysis || null}
         progressPercentage={analyzedArtifact?.progress_percentage}
       />
     </>
