@@ -365,21 +365,16 @@ RESPONSE FORMAT:
       };
     } catch (error) {
       console.error("❌ [EXPAND] Failed to expand phase:", error);
-      // Fallback with basic substeps
+      // Fallback with pre-defined expert substeps
+      const fallbackSubsteps = this.getFallbackSubsteps(
+        phase.phase_id,
+        phase.goal,
+        goal,
+      );
       return {
         ...phase,
         master_prompt: masterPrompt,
-        substeps: [
-          {
-            substep_id: "1A",
-            step_number: 1,
-            label: `Start ${phase.goal}`,
-            prompt_to_send: masterPrompt,
-            commands: "Basic setup and planning",
-            completed: false,
-            created_at: new Date().toISOString(),
-          },
-        ],
+        substeps: fallbackSubsteps,
       };
     }
   }
@@ -559,6 +554,296 @@ RESPONSE FORMAT:
       masterPrompts[phaseId] ||
       `Help me work on ${phaseId} for the project: ${userVision}`
     );
+  }
+
+  // Get fallback substeps when AI generation fails
+  private getFallbackSubsteps(
+    phaseId: string,
+    phaseGoal: string,
+    userVision: string,
+  ): any[] {
+    const fallbacksByPhase: Record<string, any[]> = {
+      P1: [
+        {
+          substep_id: "1A",
+          step_number: 1,
+          label: "Identify Essential Tools",
+          prompt_to_send: `I'm a senior setup strategist with 20 years of experience. Let me identify the essential tools you need for "${userVision}". I'm analyzing your project type and creating a curated list of the 3-5 core tools professionals use in this domain. For each tool, I'll explain why it's critical and how to get started with it quickly.`,
+          commands: "Research tools, create checklist",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "1B",
+          step_number: 2,
+          label: "Set Up Workspace",
+          prompt_to_send: `I'm a senior workflow architect with 15 years of experience. Let me design your professional workspace right now for "${userVision}". I'm creating your folder structure, organizing your resources, and establishing clear boundaries for focused work. I'll show you exactly how professionals in this domain organize their workspace for maximum productivity.`,
+          commands: "Create folders, organize resources",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "1C",
+          step_number: 3,
+          label: "Secure Credentials & Accounts",
+          prompt_to_send: `I'm a senior operations specialist with 12 years of experience. Let me set up all the accounts and credentials you need for "${userVision}". I'm creating a checklist of required licenses, permits, accounts, and credentials. For each one, I'll provide the exact steps to obtain it and why it's necessary for operating legitimately.`,
+          commands: "Create accounts, document credentials",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "1D",
+          step_number: 4,
+          label: "Create Hello World Milestone",
+          prompt_to_send: `I'm a senior implementation expert with 18 years of experience. Let me create your "Hello World" moment for "${userVision}". I'm designing the smallest possible demonstration that proves your setup works. This will be your confidence booster - concrete proof that you're ready to start building.`,
+          commands: "Create simple proof of concept",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      P2: [
+        {
+          substep_id: "2A",
+          step_number: 1,
+          label: "Define Core Input",
+          prompt_to_send: `I'm a senior systems architect with 20 years of experience. Let me define the core input for "${userVision}". I'm identifying the simplest form of raw material your project consumes - whether that's a customer request, data, raw material, or something else. I'll show you exactly what the minimum viable input looks like.`,
+          commands: "Define input requirements",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "2B",
+          step_number: 2,
+          label: "Build Core Process",
+          prompt_to_send: `I'm a senior process engineer with 15 years of experience. Let me build the core transformation process for "${userVision}". I'm creating the ONE transformation that creates value - the heart of your project. This is where the magic happens, and I'm going to make it as simple and effective as possible.`,
+          commands: "Implement core logic",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "2C",
+          step_number: 3,
+          label: "Create Minimal Output",
+          prompt_to_send: `I'm a senior product designer with 12 years of experience. Let me create the minimal output for "${userVision}". I'm designing the simplest result that proves your concept works. This output will demonstrate your project's value in 30 seconds or less.`,
+          commands: "Design output format",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "2D",
+          step_number: 4,
+          label: "Test Core Loop",
+          prompt_to_send: `I'm a senior quality engineer with 18 years of experience. Let me test your core loop for "${userVision}". I'm running the complete input→process→output cycle to ensure everything works. I'll identify any issues and help you fix them so you have a solid foundation to build on.`,
+          commands: "Test end-to-end flow",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      P3: [
+        {
+          substep_id: "3A",
+          step_number: 1,
+          label: "Identify Next Feature",
+          prompt_to_send: `I'm a senior product strategist with 20 years of experience. Let me identify the most valuable feature to add next to "${userVision}". I'm analyzing your current core loop and determining which single addition will create the biggest impact. I'll explain exactly why this feature matters and how it fits into your vision.`,
+          commands: "Prioritize features",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "3B",
+          step_number: 2,
+          label: "Design Feature Integration",
+          prompt_to_send: `I'm a senior systems designer with 15 years of experience. Let me design how this new feature integrates with "${userVision}". I'm creating a step-by-step plan that adds complexity without breaking what already works. You'll see exactly how this new layer connects to your existing foundation.`,
+          commands: "Plan integration approach",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "3C",
+          step_number: 3,
+          label: "Implement Feature",
+          prompt_to_send: `I'm a senior implementation specialist with 18 years of experience. Let me implement this feature for "${userVision}". I'm building it step-by-step, testing as we go, ensuring your working version stays stable. You'll see tangible progress with each step.`,
+          commands: "Build new feature",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "3D",
+          step_number: 4,
+          label: "Validate Enhancement",
+          prompt_to_send: `I'm a senior validation expert with 12 years of experience. Let me validate this enhancement to "${userVision}". I'm testing that the new feature delivers the expected value and doesn't break existing functionality. You'll see concrete evidence of the noticeable upgrade this addition provides.`,
+          commands: "Test and validate",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      P4: [
+        {
+          substep_id: "4A",
+          step_number: 1,
+          label: "Design Test Plan",
+          prompt_to_send: `I'm a senior research strategist with 20 years of experience. Let me design a lightweight test plan for "${userVision}". I'm creating a simple framework to validate your assumptions with 3-5 real users. I'll show you exactly what to show them, what questions to ask, and what metrics to measure.`,
+          commands: "Create test framework",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "4B",
+          step_number: 2,
+          label: "Recruit Test Users",
+          prompt_to_send: `I'm a senior user research coordinator with 15 years of experience. Let me help you recruit the right test users for "${userVision}". I'm identifying where your target users are and creating outreach messages that will get responses. You'll have 3-5 committed testers who match your audience.`,
+          commands: "Find and recruit users",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "4C",
+          step_number: 3,
+          label: "Conduct Testing Sessions",
+          prompt_to_send: `I'm a senior UX researcher with 18 years of experience. Let me guide your testing sessions for "${userVision}". I'm creating a script for you to follow, questions to ask, and observation techniques to use. You'll gather authentic feedback that reveals the gaps between your vision and reality.`,
+          commands: "Run user tests",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "4D",
+          step_number: 4,
+          label: "Analyze & Decide",
+          prompt_to_send: `I'm a senior product analyst with 12 years of experience. Let me analyze your test results for "${userVision}". I'm synthesizing the feedback, identifying patterns, and creating a clear recommendation: pivot or proceed. You'll have a data-backed decision with specific next steps.`,
+          commands: "Synthesize feedback, make decision",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      P5: [
+        {
+          substep_id: "5A",
+          step_number: 1,
+          label: "Audit Critical Issues",
+          prompt_to_send: `I'm a senior quality auditor with 20 years of experience. Let me audit "${userVision}" for critical issues. I'm systematically reviewing your project to identify essential bugs, gaps, and rough edges that must be fixed before launch. I'll prioritize them by impact so you focus on what truly matters.`,
+          commands: "Review and document issues",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "5B",
+          step_number: 2,
+          label: "Fix Priority Issues",
+          prompt_to_send: `I'm a senior troubleshooting specialist with 15 years of experience. Let me fix the priority issues in "${userVision}". I'm working through the critical bugs and gaps systematically, ensuring each fix is stable and doesn't create new problems. You'll see your project transform into launch-ready quality.`,
+          commands: "Resolve critical bugs",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "5C",
+          step_number: 3,
+          label: "Freeze Scope",
+          prompt_to_send: `I'm a senior project manager with 18 years of experience. Let me freeze the scope for "${userVision}". I'm drawing a clear line - no new features, only essential fixes. I'll help you resist the temptation to add "just one more thing" and commit to launching what you have.`,
+          commands: "Document scope boundary",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "5D",
+          step_number: 4,
+          label: "Final Stability Check",
+          prompt_to_send: `I'm a senior QA engineer with 12 years of experience. Let me perform a final stability check on "${userVision}". I'm testing all core functionality end-to-end, verifying that everything works reliably. You'll have confidence that your project is truly ready for the world.`,
+          commands: "Final testing and validation",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      P6: [
+        {
+          substep_id: "6A",
+          step_number: 1,
+          label: "Prepare Launch Assets",
+          prompt_to_send: `I'm a senior launch coordinator with 20 years of experience. Let me prepare your launch assets for "${userVision}". I'm creating your announcement copy, screenshots, demo materials, and any other collateral you need. Each asset will clearly communicate your project's value.`,
+          commands: "Create launch materials",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "6B",
+          step_number: 2,
+          label: "Set Up Analytics",
+          prompt_to_send: `I'm a senior analytics specialist with 15 years of experience. Let me set up tracking for "${userVision}". I'm implementing the 3 key metrics you should watch post-launch: user acquisition, engagement, and conversion. You'll have clear visibility into how your launch is performing.`,
+          commands: "Configure tracking and metrics",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "6C",
+          step_number: 3,
+          label: "Execute Launch",
+          prompt_to_send: `I'm a senior launch strategist with 18 years of experience. Let me execute the launch for "${userVision}". I'm publishing to your chosen platforms, posting announcements, and activating your distribution channels. Your project is going live with a clear call-to-action that drives the response you want.`,
+          commands: "Publish and announce",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "6D",
+          step_number: 4,
+          label: "Monitor Initial Response",
+          prompt_to_send: `I'm a senior growth analyst with 12 years of experience. Let me monitor the initial response to "${userVision}". I'm watching your metrics, gathering early feedback, and identifying quick wins or issues. You'll know within 24-48 hours how your launch is performing and what to adjust.`,
+          commands: "Track metrics and feedback",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      P7: [
+        {
+          substep_id: "7A",
+          step_number: 1,
+          label: "Document What Worked",
+          prompt_to_send: `I'm a senior retrospective facilitator with 20 years of experience. Let me help you document what worked in "${userVision}". I'm guiding you through a systematic analysis of the decisions, processes, and strategies that delivered results. These insights become your repeatable playbook for future projects.`,
+          commands: "Capture successful patterns",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "7B",
+          step_number: 2,
+          label: "Analyze What Didn't",
+          prompt_to_send: `I'm a senior failure analyst with 15 years of experience. Let me help you analyze what didn't work in "${userVision}". I'm identifying the bottlenecks, mistakes, and dead ends without judgment. Understanding these failures prevents repetition and accelerates your growth.`,
+          commands: "Document lessons learned",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "7C",
+          step_number: 3,
+          label: "Build Personal Toolkit",
+          prompt_to_send: `I'm a senior knowledge management specialist with 18 years of experience. Let me help you build your personal toolkit from "${userVision}". I'm extracting the workflows, tools, and mental models that proved valuable. You'll have a curated collection of assets for your next project.`,
+          commands: "Create reusable resources",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+        {
+          substep_id: "7D",
+          step_number: 4,
+          label: "Plan Next Project",
+          prompt_to_send: `I'm a senior career strategist with 12 years of experience. Let me help you plan your next project after "${userVision}". Based on what you've learned, I'm identifying skill gaps to fill, resources to acquire, and the type of project that will maximize your growth. You're moving from 1 to many.`,
+          commands: "Design growth roadmap",
+          completed: false,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+
+    const defaultFallback = [
+      {
+        substep_id: `${phaseId.replace("P", "")}A`,
+        step_number: 1,
+        label: `Start ${phaseGoal}`,
+        prompt_to_send: `I'm a senior expert with 20 years of experience. Let me help you with ${phaseGoal} for "${userVision}". I'm creating a comprehensive plan and executing the first steps to get you moving forward immediately.`,
+        commands: "Begin phase work",
+        completed: false,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    return fallbacksByPhase[phaseId] || defaultFallback;
   }
 
   // Manual substep completion with phase unlocking logic
