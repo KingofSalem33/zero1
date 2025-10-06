@@ -7,6 +7,7 @@ import { makeOpenAI } from "../ai";
 import { toolMap, type ToolName } from "./tools";
 import { ZodError } from "zod";
 import pino from "pino";
+import { ENV } from "../env";
 
 const logger = pino({ name: "runModel" });
 
@@ -15,6 +16,8 @@ export interface RunModelOptions {
   toolMap?: typeof toolMap;
   maxIterations?: number;
   model?: string;
+  reasoningEffort?: "low" | "medium" | "high";
+  verbosity?: "low" | "medium" | "high";
 }
 
 export interface RunModelResult {
@@ -30,7 +33,9 @@ export async function runModel(
     toolSpecs = [],
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
-    model = "gpt-4o", // Using gpt-4o instead of gpt-5 as it's more widely available
+    model = ENV.OPENAI_MODEL_NAME, // Use configured model (gpt-5-mini)
+    reasoningEffort = "high", // Leverage GPT-5's reasoning capabilities
+    verbosity = "medium",
   } = options;
 
   const client = makeOpenAI();
@@ -57,7 +62,12 @@ export async function runModel(
         tools: toolSpecs.length > 0 ? toolSpecs : undefined,
         tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
         temperature: 0.3,
-        max_tokens: 2000,
+        max_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
+        // GPT-5 specific parameters (will be ignored by older models)
+        ...(model.startsWith("gpt-5") && {
+          reasoning_effort: reasoningEffort,
+          verbosity: verbosity,
+        }),
       });
 
       const choice = response.choices[0];
