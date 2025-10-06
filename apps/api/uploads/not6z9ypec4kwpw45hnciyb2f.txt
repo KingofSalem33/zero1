@@ -1,0 +1,144 @@
+﻿User Personas
+
+
+Persona 1: The Casual Collector
+- Name: Sarah Johnson
+- Age: 28
+- Gender: Female
+- Location: Austin, TX
+- Occupation: Graphic Designer
+- Demographics:
+  - Education: Bachelor's Degree
+  - Income: $50,000/year
+- Motivations:
+  - Enjoys collecting cards as a hobby.
+  - Seeks to trade cards to complete her collection.
+  - Values community and social interaction with other collectors.
+- Pain Points:
+  - Finds it difficult to connect with local collectors.
+  - Unsure about the value of her cards and how to trade fairly.
+  - Concerned about scams and lack of trust in online trading.
+- Trading Behaviors:
+  - Prefers trading online but is hesitant due to trust issues.
+  - Participates in local card shows occasionally.
+  - Uses social media to follow trends and connect with other collectors.
+
+
+---
+
+
+Persona 2: The Competitive Trader
+- Name: Mike Johnson
+- Age: 35
+- Gender: Male
+- Location: New York, NY
+- Occupation: Financial Analyst
+- Demographics:
+  - Education: Master's Degree
+  - Income: $90,000/year
+- Motivations:
+  - Aims to build a valuable collection for investment purposes.
+  - Enjoys the thrill of trading and competing with others.
+  - Seeks to stay updated on market trends and card values.
+- Pain Points:
+  - Frustrated with the lack of reliable valuation tools.
+  - Difficulty in finding trustworthy trading partners.
+  - Limited time to engage in trading due to work commitments.
+- Trading Behaviors:
+  - Frequently trades online and uses apps to track card values.
+  - Participates in online forums and trading groups.
+  - Attends major trading conventions and events.
+
+
+---
+
+
+Persona 3: The Nostalgic Collector
+- Name: Emily Rodriguez
+- Age: 45
+- Gender: Female
+- Location: San Diego, CA
+- Occupation: Teacher
+- Demographics:
+  - Education: Bachelor's Degree
+  - Income: $65,000/year
+- Motivations:
+  - Collects cards from her childhood to relive memories.
+  - Enjoys sharing her collection with her children.
+  - Values the history and stories behind each card.
+- Pain Points:
+  - Difficulty in finding cards from her childhood.
+  - Concerned about the authenticity of vintage cards.
+  - Limited knowledge of current trading platforms.
+- Trading Behaviors:
+  - Prefers in-person trading at local shops and events.
+  - Uses online marketplaces occasionally but is cautious.
+  - Engages with online communities focused on nostalgia and vintage cards.
+
+
+---
+
+
+Persona 4: The Newbie Trader
+- Name: Alex Kim
+- Age: 22
+- Gender: Male
+- Location: Seattle, WA
+- Occupation: College Student
+- Demographics:
+  - Education: Pursuing Bachelor's Degree
+  - Income: Part-time job, $20,000/year
+- Motivations:
+  - Interested in card trading as a new hobby.
+  - Wants to learn more about card values and trading strategies.
+  - Seeks to connect with peers who share similar interests.
+- Pain Points:
+  - Overwhelmed by the amount of information available.
+  - Unsure where to start and how to trade safely.
+  - Limited budget for purchasing cards.
+- Trading Behaviors:
+  - Engages in online forums and social media groups for beginners.
+  - Attends local card shows to learn and network.
+  - Uses apps to track card values and trends.
+
+
+---
+
+
+Persona 5: The Tech-Savvy Trader
+- Name: Jason Lee
+- Age: 30
+- Gender: Male
+- Location: San Francisco, CA
+- Occupation: Software Developer
+- Demographics:
+  - Education: Bachelor's Degree in Computer Science
+  - Income: $100,000/year
+- Motivations:
+  - Enjoys using technology to enhance his trading experience.
+  - Seeks innovative platforms that offer unique trading features.
+  - Values data analytics to inform trading decisions.
+- Pain Points:
+  - Frustrated with outdated trading platforms.
+  - Concerned about data privacy and security.
+  - Wants more advanced features like real-time analytics.
+- Trading Behaviors:
+  - Primarily trades online using various apps and platforms.
+  - Participates in tech-focused trading communities.
+  - Regularly analyzes market data to make informed trades.
+
+
+---
+
+
+Feature Matrix
+
+
+| User Persona          | Pain Points                                   | Platform Solutions                                      |
+|-----------------------|-----------------------------------------------|--------------------------------------------------------|
+| Casual Collector       | Difficulty finding trustworthy partners       | User ratings and reviews, verified user profiles      |
+|                       | Overwhelmed by platforms                      | User-friendly interface, curated trading suggestions   |
+| Serious Trader        | Concerns about authenticity                   | Authentication services, expert appraisals            |
+|                       | Needs valuation tools                         | Integrated pricing guides, market analysis tools       |
+| International Enthusiast | Language barriers                           | Multilingual support, localized content                 |
+|                       | High shipping costs                           | Integrated shipping solutions, cost calculators        |
