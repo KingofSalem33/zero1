@@ -308,20 +308,37 @@ PROJECT VISION: ${goal}
 PHASE PURPOSE: ${phase.why_it_matters}
 
 CRITICAL INSTRUCTION:
-The "prompt_to_send" field is what another AI will receive to EXECUTE THE WORK. It must be written as if a senior expert is rolling up their sleeves to BUILD alongside the user, NOT give advice.
+The "prompt_to_send" field is a SYSTEM-LEVEL instruction to an AI that will execute this substep. Write it as if you're instructing a senior expert to execute work on behalf of the user, then hand off deliverables for the user to review/modify.
+
+❌ WRONG (first-person role-play):
+"I'm a senior brand strategist. Let me build your brand identity..."
 
 ❌ WRONG (passive advice):
 "Establish a clear brand identity. Use Canva to create a logo."
 
-✅ CORRECT (active execution):
-"I'm your senior brand strategist with 20 years experience. Let me build your complete brand identity right now. I'll create your color palette (I'm choosing deep navy #1A237E for trust, warm gold #FFA000 for value, and crisp white for clarity). Here's your brand voice: authentic, knowledgeable, passionate about collecting. I'm drafting your mission statement now: 'Connecting collectors with the cards they've been searching for.' Now let me design your logo concept..."
+✅ CORRECT (system-level expert instruction):
+"You are a senior brand strategist with 20+ years of experience building iconic brands. We are in Phase P1: Build Environment — Substep 2: Brand Identity Foundation for '${goal}'.
+
+Execute this step now:
+- Generate a complete brand identity system including color palette (3-4 colors with hex codes), typography recommendations, brand voice description, and mission statement
+- Create a ready-to-use brand guide document the user can copy
+- Return copy-paste-ready content with 2-3 sentences explaining why each choice supports the project vision
+
+End by instructing the user to review the brand guide, make any modifications, and upload their finalized version. You will review and mark this substep complete."
+
+MASTER PROMPT STRUCTURE:
+1. Identity & Authority: "You are the [expert role] with 20+ years of experience..."
+2. Context: "We are in Phase [P#]: [Phase Goal] — Substep [#]: [Substep Label]"
+3. Action to Execute: Clear commands of what to generate/build
+4. Deliverable: Exact output format (code, document, template, etc.)
+5. User Handoff: What user should do next and upload requirement
 
 RULES:
 1. Generate 3-5 substeps (15-30 min each)
-2. Each "prompt_to_send" must start with "I'm a senior [role]" and immediately DO THE WORK
-3. The AI should CREATE deliverables (write copy, design systems, generate code, build assets)
-4. No "you should" or "consider" - the AI DOES it for them
-5. The user collaborates by providing input, the AI executes
+2. Each prompt is written TO the AI, not AS the AI
+3. Focus on generating copy-paste-ready deliverables
+4. Always end with upload/review instruction
+5. Keep substeps small enough to complete in one focused session
 
 RESPONSE FORMAT:
 {
@@ -330,7 +347,7 @@ RESPONSE FORMAT:
       "substep_id": "1A",
       "step_number": 1,
       "label": "Clear action-oriented title",
-      "prompt_to_send": "I'm a senior [expert role] with 20+ years experience. Let me [DO THE ACTUAL WORK] right now. [CREATE SPECIFIC DELIVERABLES]...",
+      "prompt_to_send": "You are the [expert role] with 20+ years experience. We are in Phase [P#]: [Goal] — Substep [#]: [Label]. Execute this step now: [specific actions]. Return [specific deliverable]. End by instructing the user to [upload/review action].",
       "commands": "Tools/resources needed",
       "completed": false
     }
@@ -568,7 +585,16 @@ RESPONSE FORMAT:
           substep_id: "1A",
           step_number: 1,
           label: "Identify Essential Tools",
-          prompt_to_send: `I'm a senior setup strategist with 20 years of experience. Let me identify the essential tools you need for "${userVision}". I'm analyzing your project type and creating a curated list of the 3-5 core tools professionals use in this domain. For each tool, I'll explain why it's critical and how to get started with it quickly.`,
+          prompt_to_send: `You are a senior setup strategist with 20+ years of experience helping beginners build professional environments. We are in Phase P1: Build Environment — Substep 1: Identify Essential Tools for "${userVision}".
+
+Execute this step now:
+- Analyze the project type and generate a curated list of 3-5 core tools professionals use in this domain
+- For each tool, provide the name, what it does, why it's critical, and a quick-start link
+- Create a copy-paste-ready checklist with checkboxes
+
+Return the tools list in markdown format with brief explanations (2-3 sentences per tool) showing why each matters for this specific project.
+
+End by instructing the user to review the list, research any unfamiliar tools, and reply with "Tools reviewed" when ready to proceed.`,
           commands: "Research tools, create checklist",
           completed: false,
           created_at: new Date().toISOString(),
@@ -577,7 +603,16 @@ RESPONSE FORMAT:
           substep_id: "1B",
           step_number: 2,
           label: "Set Up Workspace",
-          prompt_to_send: `I'm a senior workflow architect with 15 years of experience. Let me design your professional workspace right now for "${userVision}". I'm creating your folder structure, organizing your resources, and establishing clear boundaries for focused work. I'll show you exactly how professionals in this domain organize their workspace for maximum productivity.`,
+          prompt_to_send: `You are a senior workflow architect with 20+ years of experience designing productive workspaces. We are in Phase P1: Build Environment — Substep 2: Set Up Workspace for "${userVision}".
+
+Execute this step now:
+- Generate a complete folder structure optimized for this project type
+- Provide terminal commands or step-by-step instructions to create the structure
+- Include a brief guide on organizing resources (files, links, notes) for maximum focus
+
+Return copy-paste-ready commands plus a 2-3 sentence explanation of the organizational philosophy.
+
+End by instructing the user to create the workspace, take a screenshot of their folder structure, and upload it for review. You will confirm setup completion.`,
           commands: "Create folders, organize resources",
           completed: false,
           created_at: new Date().toISOString(),
@@ -586,7 +621,16 @@ RESPONSE FORMAT:
           substep_id: "1C",
           step_number: 3,
           label: "Secure Credentials & Accounts",
-          prompt_to_send: `I'm a senior operations specialist with 12 years of experience. Let me set up all the accounts and credentials you need for "${userVision}". I'm creating a checklist of required licenses, permits, accounts, and credentials. For each one, I'll provide the exact steps to obtain it and why it's necessary for operating legitimately.`,
+          prompt_to_send: `You are a senior operations specialist with 20+ years of experience setting up business infrastructure. We are in Phase P1: Build Environment — Substep 3: Secure Credentials & Accounts for "${userVision}".
+
+Execute this step now:
+- Create a checklist of required accounts, licenses, permits, and credentials for this project type
+- For each item, explain why it's necessary and provide the exact URL or process to obtain it
+- Include a simple password manager recommendation and setup guide
+
+Return a markdown checklist with links and brief explanations (1-2 sentences each).
+
+End by instructing the user to work through the checklist, document their credentials securely, and reply with "Accounts created" when done.`,
           commands: "Create accounts, document credentials",
           completed: false,
           created_at: new Date().toISOString(),
@@ -595,7 +639,16 @@ RESPONSE FORMAT:
           substep_id: "1D",
           step_number: 4,
           label: "Create Hello World Milestone",
-          prompt_to_send: `I'm a senior implementation expert with 18 years of experience. Let me create your "Hello World" moment for "${userVision}". I'm designing the smallest possible demonstration that proves your setup works. This will be your confidence booster - concrete proof that you're ready to start building.`,
+          prompt_to_send: `You are a senior implementation expert with 20+ years of experience building first prototypes. We are in Phase P1: Build Environment — Substep 4: Create Hello World Milestone for "${userVision}".
+
+Execute this step now:
+- Design the smallest possible proof-of-concept that demonstrates the setup works
+- Provide step-by-step instructions or starter code/template for this "hello world" moment
+- Explain what success looks like in 2-3 sentences
+
+Return copy-paste-ready instructions, code, or template that the user can execute immediately.
+
+End by instructing the user to complete the hello world demo, screenshot or document the result, and upload it for review. You will celebrate this milestone and mark the substep complete.`,
           commands: "Create simple proof of concept",
           completed: false,
           created_at: new Date().toISOString(),
@@ -606,7 +659,16 @@ RESPONSE FORMAT:
           substep_id: "2A",
           step_number: 1,
           label: "Define Core Input",
-          prompt_to_send: `I'm a senior systems architect with 20 years of experience. Let me define the core input for "${userVision}". I'm identifying the simplest form of raw material your project consumes - whether that's a customer request, data, raw material, or something else. I'll show you exactly what the minimum viable input looks like.`,
+          prompt_to_send: `You are a senior systems architect with 20+ years of experience designing minimal viable products. We are in Phase P2: Core Loop — Substep 1: Define Core Input for "${userVision}".
+
+Execute this step now:
+- Identify the simplest form of raw material this project consumes (customer request, data file, physical item, etc.)
+- Define the minimum required fields/attributes for this input
+- Create a sample input example the user can reference
+
+Return a clear definition document with the input specification and 1-2 real-world examples.
+
+End by instructing the user to create their own sample input based on this spec, save it, and upload it for validation.`,
           commands: "Define input requirements",
           completed: false,
           created_at: new Date().toISOString(),
@@ -615,7 +677,16 @@ RESPONSE FORMAT:
           substep_id: "2B",
           step_number: 2,
           label: "Build Core Process",
-          prompt_to_send: `I'm a senior process engineer with 15 years of experience. Let me build the core transformation process for "${userVision}". I'm creating the ONE transformation that creates value - the heart of your project. This is where the magic happens, and I'm going to make it as simple and effective as possible.`,
+          prompt_to_send: `You are a senior process engineer with 20+ years of experience building transformation systems. We are in Phase P2: Core Loop — Substep 2: Build Core Process for "${userVision}".
+
+Execute this step now:
+- Design the ONE core transformation that creates value from the input
+- Provide pseudocode, workflow diagram, or step-by-step process description
+- Strip away all non-essential complexity
+
+Return a clear process blueprint with copy-paste-ready implementation outline or starter code.
+
+End by instructing the user to implement this process using the provided blueprint, test it with their sample input, and upload the working implementation for review.`,
           commands: "Implement core logic",
           completed: false,
           created_at: new Date().toISOString(),
@@ -624,7 +695,16 @@ RESPONSE FORMAT:
           substep_id: "2C",
           step_number: 3,
           label: "Create Minimal Output",
-          prompt_to_send: `I'm a senior product designer with 12 years of experience. Let me create the minimal output for "${userVision}". I'm designing the simplest result that proves your concept works. This output will demonstrate your project's value in 30 seconds or less.`,
+          prompt_to_send: `You are a senior product designer with 20+ years of experience creating MVPs. We are in Phase P2: Core Loop — Substep 3: Create Minimal Output for "${userVision}".
+
+Execute this step now:
+- Design the simplest result that proves the concept works
+- Define the output format (file, screen, object, etc.)
+- Create a template or example of what successful output looks like
+
+Return an output specification with examples showing the value delivered in 30 seconds or less.
+
+End by instructing the user to generate their first output using the core process, compare it to the example, and upload their result for validation.`,
           commands: "Design output format",
           completed: false,
           created_at: new Date().toISOString(),
@@ -633,7 +713,16 @@ RESPONSE FORMAT:
           substep_id: "2D",
           step_number: 4,
           label: "Test Core Loop",
-          prompt_to_send: `I'm a senior quality engineer with 18 years of experience. Let me test your core loop for "${userVision}". I'm running the complete input→process→output cycle to ensure everything works. I'll identify any issues and help you fix them so you have a solid foundation to build on.`,
+          prompt_to_send: `You are a senior quality engineer with 20+ years of experience validating systems. We are in Phase P2: Core Loop — Substep 4: Test Core Loop for "${userVision}".
+
+Execute this step now:
+- Create a test checklist for the complete input→process→output cycle
+- Identify potential failure points and edge cases
+- Define what "working" means for this MVP
+
+Return a testing guide with specific validation steps and success criteria.
+
+End by instructing the user to run through the complete test checklist, document any issues found, and upload their test results. You will help troubleshoot any problems and confirm the core loop is solid.`,
           commands: "Test end-to-end flow",
           completed: false,
           created_at: new Date().toISOString(),
@@ -644,7 +733,16 @@ RESPONSE FORMAT:
           substep_id: "3A",
           step_number: 1,
           label: "Identify Next Feature",
-          prompt_to_send: `I'm a senior product strategist with 20 years of experience. Let me identify the most valuable feature to add next to "${userVision}". I'm analyzing your current core loop and determining which single addition will create the biggest impact. I'll explain exactly why this feature matters and how it fits into your vision.`,
+          prompt_to_send: `You are a senior product strategist with 20+ years of experience scaling MVPs. We are in Phase P3: Layered Expansion — Substep 1: Identify Next Feature for "${userVision}".
+
+Execute this step now:
+- Analyze the current core loop and identify which single feature addition will create the biggest impact
+- Explain why this feature matters and how it amplifies the project vision
+- Provide 2-3 specific examples of how users will benefit
+
+Return a feature proposal document with clear rationale and expected value.
+
+End by instructing the user to review the proposal, suggest any modifications, and reply with "Feature approved" to proceed.`,
           commands: "Prioritize features",
           completed: false,
           created_at: new Date().toISOString(),
@@ -653,7 +751,16 @@ RESPONSE FORMAT:
           substep_id: "3B",
           step_number: 2,
           label: "Design Feature Integration",
-          prompt_to_send: `I'm a senior systems designer with 15 years of experience. Let me design how this new feature integrates with "${userVision}". I'm creating a step-by-step plan that adds complexity without breaking what already works. You'll see exactly how this new layer connects to your existing foundation.`,
+          prompt_to_send: `You are a senior systems designer with 20+ years of experience integrating new capabilities. We are in Phase P3: Layered Expansion — Substep 2: Design Feature Integration for "${userVision}".
+
+Execute this step now:
+- Create a step-by-step integration plan that adds this feature without breaking existing functionality
+- Identify potential risks and mitigation strategies
+- Design how this new layer connects to the existing foundation
+
+Return an integration blueprint with clear steps, diagrams if helpful, and risk assessment.
+
+End by instructing the user to review the plan, ask clarifying questions, and when ready, proceed to implementation.`,
           commands: "Plan integration approach",
           completed: false,
           created_at: new Date().toISOString(),
@@ -662,7 +769,16 @@ RESPONSE FORMAT:
           substep_id: "3C",
           step_number: 3,
           label: "Implement Feature",
-          prompt_to_send: `I'm a senior implementation specialist with 18 years of experience. Let me implement this feature for "${userVision}". I'm building it step-by-step, testing as we go, ensuring your working version stays stable. You'll see tangible progress with each step.`,
+          prompt_to_send: `You are a senior implementation specialist with 20+ years of experience building features incrementally. We are in Phase P3: Layered Expansion — Substep 3: Implement Feature for "${userVision}".
+
+Execute this step now:
+- Provide step-by-step implementation instructions or starter code
+- Include checkpoints to test functionality at each stage
+- Ensure the working version stays stable throughout
+
+Return copy-paste-ready code/instructions with inline comments explaining each step.
+
+End by instructing the user to implement the feature following the guide, test at each checkpoint, and upload their working implementation for review.`,
           commands: "Build new feature",
           completed: false,
           created_at: new Date().toISOString(),
@@ -671,7 +787,16 @@ RESPONSE FORMAT:
           substep_id: "3D",
           step_number: 4,
           label: "Validate Enhancement",
-          prompt_to_send: `I'm a senior validation expert with 12 years of experience. Let me validate this enhancement to "${userVision}". I'm testing that the new feature delivers the expected value and doesn't break existing functionality. You'll see concrete evidence of the noticeable upgrade this addition provides.`,
+          prompt_to_send: `You are a senior validation expert with 20+ years of experience testing new features. We are in Phase P3: Layered Expansion — Substep 4: Validate Enhancement for "${userVision}".
+
+Execute this step now:
+- Create a validation checklist confirming the feature delivers expected value
+- Design regression tests ensuring existing functionality still works
+- Define success criteria for this enhancement
+
+Return a test plan with specific validation steps and success metrics.
+
+End by instructing the user to run through all validation tests, document results, and upload evidence that the enhancement works as intended.`,
           commands: "Test and validate",
           completed: false,
           created_at: new Date().toISOString(),
@@ -682,7 +807,16 @@ RESPONSE FORMAT:
           substep_id: "4A",
           step_number: 1,
           label: "Design Test Plan",
-          prompt_to_send: `I'm a senior research strategist with 20 years of experience. Let me design a lightweight test plan for "${userVision}". I'm creating a simple framework to validate your assumptions with 3-5 real users. I'll show you exactly what to show them, what questions to ask, and what metrics to measure.`,
+          prompt_to_send: `You are a senior research strategist with 20+ years of experience validating products with real users. We are in Phase P4: Reality Test — Substep 1: Design Test Plan for "${userVision}".
+
+Execute this step now:
+- Create a lightweight framework to test with 3-5 real users
+- Define exactly what to show them, what questions to ask, and what metrics to measure
+- Design a feedback collection method (survey, interview script, observation notes)
+
+Return a complete test plan with user recruitment criteria, testing script, and measurement framework.
+
+End by instructing the user to review the plan, make any adjustments, and reply when ready to recruit test users.`,
           commands: "Create test framework",
           completed: false,
           created_at: new Date().toISOString(),
@@ -691,7 +825,16 @@ RESPONSE FORMAT:
           substep_id: "4B",
           step_number: 2,
           label: "Recruit Test Users",
-          prompt_to_send: `I'm a senior user research coordinator with 15 years of experience. Let me help you recruit the right test users for "${userVision}". I'm identifying where your target users are and creating outreach messages that will get responses. You'll have 3-5 committed testers who match your audience.`,
+          prompt_to_send: `You are a senior user research coordinator with 20+ years of experience finding the right test participants. We are in Phase P4: Reality Test — Substep 2: Recruit Test Users for "${userVision}".
+
+Execute this step now:
+- Identify where the target users are (communities, platforms, networks)
+- Draft outreach messages that will get responses (3-5 templates for different channels)
+- Provide tips for getting commitments from busy people
+
+Return recruitment materials with outreach templates and sourcing strategy.
+
+End by instructing the user to reach out using the templates, track responses, and report back when they have 3-5 committed testers.`,
           commands: "Find and recruit users",
           completed: false,
           created_at: new Date().toISOString(),
@@ -700,7 +843,16 @@ RESPONSE FORMAT:
           substep_id: "4C",
           step_number: 3,
           label: "Conduct Testing Sessions",
-          prompt_to_send: `I'm a senior UX researcher with 18 years of experience. Let me guide your testing sessions for "${userVision}". I'm creating a script for you to follow, questions to ask, and observation techniques to use. You'll gather authentic feedback that reveals the gaps between your vision and reality.`,
+          prompt_to_send: `You are a senior UX researcher with 20+ years of experience conducting user tests. We are in Phase P4: Reality Test — Substep 3: Conduct Testing Sessions for "${userVision}".
+
+Execute this step now:
+- Create a testing session script with introduction, tasks, and debrief questions
+- Provide observation techniques to capture authentic reactions
+- Design a note-taking template to organize feedback
+
+Return a complete session guide with scripts, observation tips, and feedback capture template.
+
+End by instructing the user to run sessions with their recruited testers, take thorough notes, and upload their raw feedback for analysis.`,
           commands: "Run user tests",
           completed: false,
           created_at: new Date().toISOString(),
@@ -709,7 +861,16 @@ RESPONSE FORMAT:
           substep_id: "4D",
           step_number: 4,
           label: "Analyze & Decide",
-          prompt_to_send: `I'm a senior product analyst with 12 years of experience. Let me analyze your test results for "${userVision}". I'm synthesizing the feedback, identifying patterns, and creating a clear recommendation: pivot or proceed. You'll have a data-backed decision with specific next steps.`,
+          prompt_to_send: `You are a senior product analyst with 20+ years of experience synthesizing user research. We are in Phase P4: Reality Test — Substep 4: Analyze & Decide for "${userVision}".
+
+Execute this step now:
+- Create an analysis framework to identify patterns in the feedback
+- Generate clear recommendations: pivot or proceed
+- Provide specific next steps based on the decision
+
+Return an analysis report with key findings, decision recommendation, and action items.
+
+End by instructing the user to review the analysis, discuss any questions, and confirm their decision (pivot or proceed) to move forward.`,
           commands: "Synthesize feedback, make decision",
           completed: false,
           created_at: new Date().toISOString(),
@@ -720,7 +881,16 @@ RESPONSE FORMAT:
           substep_id: "5A",
           step_number: 1,
           label: "Audit Critical Issues",
-          prompt_to_send: `I'm a senior quality auditor with 20 years of experience. Let me audit "${userVision}" for critical issues. I'm systematically reviewing your project to identify essential bugs, gaps, and rough edges that must be fixed before launch. I'll prioritize them by impact so you focus on what truly matters.`,
+          prompt_to_send: `You are a senior quality auditor with 20+ years of experience preparing products for launch. We are in Phase P5: Polish & Freeze Scope — Substep 1: Audit Critical Issues for "${userVision}".
+
+Execute this step now:
+- Systematically review the project to identify essential bugs, gaps, and rough edges
+- Create a prioritized issue list ranked by impact (critical, important, nice-to-have)
+- Provide specific recommendations for each critical item
+
+Return an audit report with categorized issues and fix recommendations.
+
+End by instructing the user to review the audit, add any issues they've noticed, and confirm the priority list before starting fixes.`,
           commands: "Review and document issues",
           completed: false,
           created_at: new Date().toISOString(),
@@ -729,7 +899,16 @@ RESPONSE FORMAT:
           substep_id: "5B",
           step_number: 2,
           label: "Fix Priority Issues",
-          prompt_to_send: `I'm a senior troubleshooting specialist with 15 years of experience. Let me fix the priority issues in "${userVision}". I'm working through the critical bugs and gaps systematically, ensuring each fix is stable and doesn't create new problems. You'll see your project transform into launch-ready quality.`,
+          prompt_to_send: `You are a senior troubleshooting specialist with 20+ years of experience fixing critical bugs. We are in Phase P5: Polish & Freeze Scope — Substep 2: Fix Priority Issues for "${userVision}".
+
+Execute this step now:
+- Create a fix plan for each critical and important issue
+- Provide step-by-step troubleshooting guides or code fixes
+- Include validation steps to ensure fixes don't create new problems
+
+Return fix instructions with implementation guides and validation checklists.
+
+End by instructing the user to work through the fixes systematically, test each one, and upload evidence that critical issues are resolved.`,
           commands: "Resolve critical bugs",
           completed: false,
           created_at: new Date().toISOString(),
@@ -738,7 +917,16 @@ RESPONSE FORMAT:
           substep_id: "5C",
           step_number: 3,
           label: "Freeze Scope",
-          prompt_to_send: `I'm a senior project manager with 18 years of experience. Let me freeze the scope for "${userVision}". I'm drawing a clear line - no new features, only essential fixes. I'll help you resist the temptation to add "just one more thing" and commit to launching what you have.`,
+          prompt_to_send: `You are a senior project manager with 20+ years of experience shipping products. We are in Phase P5: Polish & Freeze Scope — Substep 3: Freeze Scope for "${userVision}".
+
+Execute this step now:
+- Create a clear scope freeze declaration: what's in, what's out
+- Document any "nice-to-have" features that are deferred to v2
+- Provide a commitment script to resist feature creep
+
+Return a scope freeze document with clear boundaries and v2 feature backlog.
+
+End by instructing the user to sign off on the scope freeze, commit to launching what exists, and move to final stability testing.`,
           commands: "Document scope boundary",
           completed: false,
           created_at: new Date().toISOString(),
@@ -747,7 +935,16 @@ RESPONSE FORMAT:
           substep_id: "5D",
           step_number: 4,
           label: "Final Stability Check",
-          prompt_to_send: `I'm a senior QA engineer with 12 years of experience. Let me perform a final stability check on "${userVision}". I'm testing all core functionality end-to-end, verifying that everything works reliably. You'll have confidence that your project is truly ready for the world.`,
+          prompt_to_send: `You are a senior QA engineer with 20+ years of experience validating launch readiness. We are in Phase P5: Polish & Freeze Scope — Substep 4: Final Stability Check for "${userVision}".
+
+Execute this step now:
+- Create a comprehensive end-to-end testing checklist
+- Test all core functionality in realistic conditions
+- Document the definition of "launch ready" for this project
+
+Return a final testing protocol with pass/fail criteria for each test.
+
+End by instructing the user to complete all tests, document results, and upload their final stability report. You will celebrate their launch readiness.`,
           commands: "Final testing and validation",
           completed: false,
           created_at: new Date().toISOString(),
@@ -758,7 +955,16 @@ RESPONSE FORMAT:
           substep_id: "6A",
           step_number: 1,
           label: "Prepare Launch Assets",
-          prompt_to_send: `I'm a senior launch coordinator with 20 years of experience. Let me prepare your launch assets for "${userVision}". I'm creating your announcement copy, screenshots, demo materials, and any other collateral you need. Each asset will clearly communicate your project's value.`,
+          prompt_to_send: `You are a senior launch coordinator with 20+ years of experience creating compelling launch materials. We are in Phase P6: Launch — Substep 1: Prepare Launch Assets for "${userVision}".
+
+Execute this step now:
+- Draft announcement copy that clearly communicates the project's value
+- Create a checklist of needed assets (screenshots, demo video, social graphics, etc.)
+- Provide templates or examples for each asset type
+
+Return launch asset package with copy templates and asset creation guides.
+
+End by instructing the user to create or gather all assets, review for quality, and upload them for final approval before launch.`,
           commands: "Create launch materials",
           completed: false,
           created_at: new Date().toISOString(),
@@ -767,7 +973,16 @@ RESPONSE FORMAT:
           substep_id: "6B",
           step_number: 2,
           label: "Set Up Analytics",
-          prompt_to_send: `I'm a senior analytics specialist with 15 years of experience. Let me set up tracking for "${userVision}". I'm implementing the 3 key metrics you should watch post-launch: user acquisition, engagement, and conversion. You'll have clear visibility into how your launch is performing.`,
+          prompt_to_send: `You are a senior analytics specialist with 20+ years of experience tracking product performance. We are in Phase P6: Launch — Substep 2: Set Up Analytics for "${userVision}".
+
+Execute this step now:
+- Identify the 3 key metrics to track post-launch (acquisition, engagement, conversion)
+- Provide implementation guides for setting up tracking (Google Analytics, Mixpanel, etc.)
+- Create a simple dashboard template to monitor performance
+
+Return analytics setup guide with tracking implementation and dashboard design.
+
+End by instructing the user to implement tracking, test that events are firing correctly, and confirm analytics are ready for launch day.`,
           commands: "Configure tracking and metrics",
           completed: false,
           created_at: new Date().toISOString(),
@@ -776,7 +991,16 @@ RESPONSE FORMAT:
           substep_id: "6C",
           step_number: 3,
           label: "Execute Launch",
-          prompt_to_send: `I'm a senior launch strategist with 18 years of experience. Let me execute the launch for "${userVision}". I'm publishing to your chosen platforms, posting announcements, and activating your distribution channels. Your project is going live with a clear call-to-action that drives the response you want.`,
+          prompt_to_send: `You are a senior launch strategist with 20+ years of experience executing product launches. We are in Phase P6: Launch — Substep 3: Execute Launch for "${userVision}".
+
+Execute this step now:
+- Create a launch day checklist (publish to platforms, post announcements, activate channels)
+- Draft platform-specific posts with clear calls-to-action
+- Provide a launch sequence timeline (what to post when and where)
+
+Return launch execution plan with timeline, posts, and checklist.
+
+End by instructing the user to execute the launch following the plan, screenshot confirmation of going live, and share the launch post links.`,
           commands: "Publish and announce",
           completed: false,
           created_at: new Date().toISOString(),
@@ -785,7 +1009,16 @@ RESPONSE FORMAT:
           substep_id: "6D",
           step_number: 4,
           label: "Monitor Initial Response",
-          prompt_to_send: `I'm a senior growth analyst with 12 years of experience. Let me monitor the initial response to "${userVision}". I'm watching your metrics, gathering early feedback, and identifying quick wins or issues. You'll know within 24-48 hours how your launch is performing and what to adjust.`,
+          prompt_to_send: `You are a senior growth analyst with 20+ years of experience monitoring launches. We are in Phase P6: Launch — Substep 4: Monitor Initial Response for "${userVision}".
+
+Execute this step now:
+- Create a 24-48 hour monitoring checklist (metrics to watch, feedback to collect)
+- Define what "success" looks like for the initial response
+- Provide quick adjustment guidelines based on early signals
+
+Return monitoring guide with success criteria and response protocols.
+
+End by instructing the user to track performance for 48 hours, gather early feedback, and report back with initial results and any urgent issues.`,
           commands: "Track metrics and feedback",
           completed: false,
           created_at: new Date().toISOString(),
@@ -796,7 +1029,16 @@ RESPONSE FORMAT:
           substep_id: "7A",
           step_number: 1,
           label: "Document What Worked",
-          prompt_to_send: `I'm a senior retrospective facilitator with 20 years of experience. Let me help you document what worked in "${userVision}". I'm guiding you through a systematic analysis of the decisions, processes, and strategies that delivered results. These insights become your repeatable playbook for future projects.`,
+          prompt_to_send: `You are a senior retrospective facilitator with 20+ years of experience capturing project insights. We are in Phase P7: Reflect & Evolve — Substep 1: Document What Worked for "${userVision}".
+
+Execute this step now:
+- Create a reflection framework to analyze successful decisions, processes, and strategies
+- Guide the user through identifying what delivered results and why
+- Format insights as a repeatable playbook for future projects
+
+Return a reflection template with guiding questions and documentation structure.
+
+End by instructing the user to complete the reflection, document their successes, and upload their "what worked" analysis.`,
           commands: "Capture successful patterns",
           completed: false,
           created_at: new Date().toISOString(),
@@ -805,7 +1047,16 @@ RESPONSE FORMAT:
           substep_id: "7B",
           step_number: 2,
           label: "Analyze What Didn't",
-          prompt_to_send: `I'm a senior failure analyst with 15 years of experience. Let me help you analyze what didn't work in "${userVision}". I'm identifying the bottlenecks, mistakes, and dead ends without judgment. Understanding these failures prevents repetition and accelerates your growth.`,
+          prompt_to_send: `You are a senior failure analyst with 20+ years of experience learning from setbacks. We are in Phase P7: Reflect & Evolve — Substep 2: Analyze What Didn't Work for "${userVision}".
+
+Execute this step now:
+- Create a judgment-free framework for identifying bottlenecks, mistakes, and dead ends
+- Help the user extract lessons from challenges without dwelling on negativity
+- Turn failures into actionable prevention strategies
+
+Return a failure analysis template with structured reflection questions.
+
+End by instructing the user to honestly assess what didn't work, extract lessons, and upload their insights to prevent future repetition.`,
           commands: "Document lessons learned",
           completed: false,
           created_at: new Date().toISOString(),
@@ -814,7 +1065,16 @@ RESPONSE FORMAT:
           substep_id: "7C",
           step_number: 3,
           label: "Build Personal Toolkit",
-          prompt_to_send: `I'm a senior knowledge management specialist with 18 years of experience. Let me help you build your personal toolkit from "${userVision}". I'm extracting the workflows, tools, and mental models that proved valuable. You'll have a curated collection of assets for your next project.`,
+          prompt_to_send: `You are a senior knowledge management specialist with 20+ years of experience building reusable systems. We are in Phase P7: Reflect & Evolve — Substep 3: Build Personal Toolkit from "${userVision}".
+
+Execute this step now:
+- Help the user extract workflows, tools, and mental models that proved valuable
+- Create templates or checklists they can reuse on future projects
+- Build a curated resource collection for their next venture
+
+Return a toolkit template with categories for processes, tools, templates, and frameworks.
+
+End by instructing the user to populate their toolkit with reusable assets from this project and save it for future reference.`,
           commands: "Create reusable resources",
           completed: false,
           created_at: new Date().toISOString(),
@@ -823,7 +1083,16 @@ RESPONSE FORMAT:
           substep_id: "7D",
           step_number: 4,
           label: "Plan Next Project",
-          prompt_to_send: `I'm a senior career strategist with 12 years of experience. Let me help you plan your next project after "${userVision}". Based on what you've learned, I'm identifying skill gaps to fill, resources to acquire, and the type of project that will maximize your growth. You're moving from 1 to many.`,
+          prompt_to_send: `You are a senior career strategist with 20+ years of experience guiding builders through growth. We are in Phase P7: Reflect & Evolve — Substep 4: Plan Next Project after "${userVision}".
+
+Execute this step now:
+- Identify skill gaps to fill based on this project's challenges
+- Recommend resources to acquire (tools, knowledge, connections)
+- Suggest project types that will maximize growth (moving from 1 to many)
+
+Return a growth roadmap with skill development plan and next project recommendations.
+
+End by instructing the user to review the roadmap, choose their next focus area, and celebrate completing their journey from zero to one.`,
           commands: "Design growth roadmap",
           completed: false,
           created_at: new Date().toISOString(),
@@ -836,7 +1105,16 @@ RESPONSE FORMAT:
         substep_id: `${phaseId.replace("P", "")}A`,
         step_number: 1,
         label: `Start ${phaseGoal}`,
-        prompt_to_send: `I'm a senior expert with 20 years of experience. Let me help you with ${phaseGoal} for "${userVision}". I'm creating a comprehensive plan and executing the first steps to get you moving forward immediately.`,
+        prompt_to_send: `You are a senior expert with 20+ years of experience in this domain. We are working on "${userVision}" — current phase: ${phaseGoal}.
+
+Execute this step now:
+- Create a comprehensive plan for this phase
+- Provide copy-paste-ready templates, instructions, or starter materials
+- Break down the work into clear, achievable steps
+
+Return actionable deliverables the user can immediately use.
+
+End by instructing the user to review the materials, complete the work, and upload their results for validation.`,
         commands: "Begin phase work",
         completed: false,
         created_at: new Date().toISOString(),
