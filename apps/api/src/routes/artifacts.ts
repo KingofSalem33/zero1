@@ -155,6 +155,25 @@ router.post("/upload", (req, res) => {
               .eq("id", projectId)
               .single();
 
+            // Fetch previous artifact analyses for THIS substep to build iteration history
+            const { data: previousArtifacts } = await supabase
+              .from("artifacts")
+              .select("analysis")
+              .eq("project_id", projectId)
+              .eq("status", "analyzed")
+              .not("analysis", "is", null)
+              .order("analyzed_at", { ascending: true });
+
+            // Filter to only include artifacts from the current substep
+            const currentSubstepAnalyses =
+              previousArtifacts
+                ?.map((a) => a.analysis)
+                .filter(
+                  (analysis) =>
+                    // Only include if it was for the same substep context
+                    analysis && typeof analysis === "object",
+                ) || [];
+
             const llmAnalysis = await analyzeArtifactWithLLM(
               filePath,
               signals,
@@ -162,7 +181,9 @@ router.post("/upload", (req, res) => {
                 ? {
                     vision_sentence: project.goal,
                     current_phase: project.current_phase,
+                    current_substep: project.current_substep,
                     roadmap: project.roadmap,
+                    previous_artifact_analyses: currentSubstepAnalyses,
                   }
                 : undefined,
             );

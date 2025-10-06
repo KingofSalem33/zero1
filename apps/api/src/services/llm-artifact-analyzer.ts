@@ -121,7 +121,9 @@ export async function analyzeArtifactWithLLM(
   currentProject?: {
     vision_sentence?: string;
     current_phase?: string;
-    roadmap?: unknown;
+    current_substep?: number;
+    roadmap?: any;
+    previous_artifact_analyses?: ArtifactAnalysis[];
   },
 ): Promise<ArtifactAnalysis> {
   console.log("🤖 [LLM Analyzer] Starting AI-powered artifact analysis...");
@@ -129,18 +131,50 @@ export async function analyzeArtifactWithLLM(
   // Read file contents
   const fileContents = await readFileContents(filePath);
 
+  // Get current substep details from roadmap
+  const currentPhaseData = currentProject?.roadmap?.phases?.find(
+    (p: any) => p.phase_id === currentProject.current_phase,
+  );
+  const currentSubstep = currentPhaseData?.substeps?.find(
+    (s: any) => s.step_number === currentProject.current_substep,
+  );
+
+  const substepContext = currentSubstep
+    ? `
+**Current Substep:**
+- Phase: ${currentPhaseData.goal}
+- Substep ${currentSubstep.step_number}: ${currentSubstep.label}
+- What you're working on: ${currentSubstep.prompt_to_send?.substring(0, 200)}...
+`
+    : "";
+
+  // Build iteration history if there are previous analyses for this substep
+  const iterationHistory = currentProject?.previous_artifact_analyses?.length
+    ? `
+**Previous Iterations on This Substep:**
+${currentProject.previous_artifact_analyses
+  .map(
+    (prev, idx) => `
+Iteration ${idx + 1}:
+- Quality: ${prev.quality_score}/10
+- Feedback: ${prev.detailed_analysis}
+- Issues addressed: ${prev.bugs_or_errors?.join(", ") || "None"}
+`,
+  )
+  .join("\n")}
+
+**This is Iteration ${(currentProject.previous_artifact_analyses.length || 0) + 1}** - build on the previous feedback, don't repeat it.
+`
+    : "\n**This is Iteration 1** - first upload for this substep.\n";
+
   // Build the artifact analyzer prompt
   const prompt = `You are a Master Builder reviewing an apprentice's work. You have 20+ years of experience and you don't just grade—you CORRECT, IMPROVE, and CARRY THE PROJECT FORWARD.
 
 **Project Context:**
 - Vision: ${currentProject?.vision_sentence || "Not provided"}
 - Current phase: ${currentProject?.current_phase || "P0"}
-- Current roadmap: ${JSON.stringify(currentProject?.roadmap || {}, null, 2)}
-
-**Technical Signals:**
-- Tests: ${signals.has_tests} | Linter: ${signals.has_linter} | TypeScript: ${signals.has_typescript}
-- Git commits: ${signals.commit_count} | Files: ${signals.file_count}
-- Stack: ${signals.tech_stack.join(", ") || "None detected"}
+${substepContext}
+${iterationHistory}
 
 **Uploaded Work:**
 ${fileContents}
@@ -148,61 +182,58 @@ ${fileContents}
 **Your Role as Master Builder:**
 
 You are NOT a grader. You are a senior expert who:
-1. **Reviews** what they built
-2. **Identifies** what's working and what's broken
-3. **Corrects** mistakes and improves the code
-4. **Provides** the corrected version for them to use
-5. **Moves forward** with clear next actions
-
-Think like this:
-- "Good start on the auth system, but you're missing token validation. Here's the corrected version with secure JWT validation..."
-- "I see you're building the database schema. You forgot the foreign key constraints—here's the fixed version..."
-- "Your API works but has 3 security holes. I'm patching them now. Here's what I fixed..."
+1. **Reviews** what they built FOR THIS SPECIFIC SUBSTEP
+2. **Identifies** what's working and what needs correction
+3. **Corrects** mistakes and provides improved versions
+4. **Moves forward** with clear next actions
+5. **Adapts** to the type of work (code, business plan, content, design, etc.)
 
 **Your Task:**
-1. Review their work with an expert eye
+1. Review their work with an expert eye SPECIFIC TO THE SUBSTEP
 2. Identify what's solid vs what needs correction
-3. Generate specific improvements or fixes
+3. Generate specific improvements (text, structure, code, design—whatever matches the work type)
 4. Provide clear "here's your improved version" feedback
-5. Define the immediate next step to maintain momentum
+5. Define the immediate next action to maintain momentum
 
 **Critical Rules:**
-- Be encouraging but CORRECTIVE ("Good progress, but let me fix these 3 issues...")
-- Provide SPECIFIC corrections ("Change line 47 to..." or "Add this validation...")
-- Generate IMPROVED code/content when bugs are found
-- Focus on FORWARD MOMENTUM—what's the next concrete action?
+- **CONTEXT MATTERS**: If this is a business plan, don't talk about tests. If it's a landing page, focus on copy and design, not databases.
+- Be encouraging but CORRECTIVE: "Good progress, but let me fix these 3 issues..."
+- Provide SPECIFIC corrections tailored to the work type
+- Generate IMPROVED versions when issues are found
+- Focus on FORWARD MOMENTUM—what's the next concrete action for THIS substep?
 - Quality score reflects current state (be honest but constructive)
+- If this is iteration 2+, acknowledge previous feedback and show what improved
 
 **Return ONLY valid JSON in this exact format:**
 {
   "vision": "What this project is building",
-  "tech_stack": ["react", "node", "postgres"],
-  "implementation_state": "What's currently working",
+  "tech_stack": ["Only if this is a technical substep, otherwise empty array"],
+  "implementation_state": "What's currently complete for THIS substep",
   "quality_score": 6.5,
-  "detailed_analysis": "You've built a solid foundation for [feature]. I see [specific achievements]. However, I'm correcting 3 issues: [list]. Here's what I improved: [specifics]. This brings your implementation to production-ready quality.",
-  "missing_elements": ["Specific items needed"],
-  "bugs_or_errors": ["Specific bugs I found and HOW to fix them"],
+  "detailed_analysis": "Iteration-aware feedback. If iteration 2+: 'Great improvement from last time—you addressed [previous issues]. Now I'm refining [new issues].' Context-specific corrections for the work type.",
+  "missing_elements": ["Specific to THIS substep's requirements"],
+  "bugs_or_errors": ["Issues WITH fixes, specific to the work type"],
   "actual_phase": "P2",
   "decision": "CONTINUE",
   "roadmap_adjustments": [
     {
       "phase_id": "P1",
       "action": "complete",
-      "details": "Strong environment setup with [specifics]"
+      "details": "Context-specific achievement description"
     }
   ],
   "next_steps": [
-    "Take the corrected authentication code I provided and replace your current version",
-    "Add the 3 error handlers I specified to your API routes",
-    "Test the updated flow with the validation checklist below"
+    "Concrete action 1 for THIS substep",
+    "Concrete action 2 for THIS substep",
+    "When complete, upload your revised version for final review"
   ]
 }
 
 **Tone Guide:**
-- Detailed_analysis: This is your master builder voice. "Excellent work on X. I've corrected Y by doing Z. Here's your improved version..."
-- Next_steps: Concrete, copy-paste-ready actions. "Replace lines 23-45 with..." or "Add this test file..."
-- Missing_elements: Not vague—be specific about what to add
-- Bugs_or_errors: Include the FIX, not just the problem`;
+- Detailed_analysis: Master builder voice adapted to work type. For business plan: "Strong market analysis, but your pricing model needs adjustment..." For code: "Solid API structure, but missing error handling..." For content: "Compelling narrative, but the call-to-action is weak..."
+- Next_steps: Concrete actions specific to THIS substep. Not generic advice.
+- Missing_elements: Only what's needed to complete THIS substep
+- Bugs_or_errors: Include the FIX specific to the work type`;
 
   try {
     const result = await runModel([
