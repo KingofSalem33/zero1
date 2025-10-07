@@ -15,6 +15,10 @@ import {
   mergeCompletionResults,
   type RoadmapDiff,
 } from "../services/artifact-roadmap-matcher";
+import {
+  detectRollbackNeed,
+  shouldAutoRollback,
+} from "../services/rollback-detector";
 
 const router = Router();
 
@@ -268,6 +272,156 @@ router.post("/upload", (req, res) => {
               .eq("id", artifact.id);
 
             console.log("✅ [Artifacts] LLM analysis complete");
+
+            // ROLLBACK DETECTION: Check if user is stuck and needs to rollback
+            const rollbackRecommendation = detectRollbackNeed(
+              llmAnalysis,
+              currentSubstepAnalyses,
+              project.current_phase,
+              project.current_substep,
+              project.roadmap,
+            );
+
+            if (rollbackRecommendation.should_rollback) {
+              console.log(
+                `⚠️ [Rollback] Detected need for rollback: ${rollbackRecommendation.reason}`,
+              );
+              console.log(
+                `   Evidence: ${rollbackRecommendation.evidence.join(", ")}`,
+              );
+
+              // Auto-rollback if conditions are met
+              if (
+                shouldAutoRollback(
+                  rollbackRecommendation,
+                  currentSubstepAnalyses.length,
+                )
+              ) {
+                console.log(
+                  `🔄 [Rollback] Auto-rollback triggered to ${rollbackRecommendation.rollback_to_phase}`,
+                );
+
+                // Create checkpoint before rollback
+                const { data: checkpoint } = await supabase
+                  .from("checkpoints")
+                  .insert({
+                    project_id: projectId,
+                    name: `Before rollback from ${project.current_phase}`,
+                    reason: `Auto-rollback: ${rollbackRecommendation.reason}`,
+                    created_by: "system",
+                    current_phase: project.current_phase,
+                    completed_substeps: project.completed_substeps,
+                    roadmap_snapshot: project.roadmap,
+                    project_state_hash: null,
+                    artifact_ids: [artifact.id],
+                  })
+                  .select()
+                  .single();
+
+                if (checkpoint) {
+                  console.log(
+                    `💾 [Rollback] Checkpoint created: ${checkpoint.id}`,
+                  );
+                }
+
+                // Execute rollback: revert to target phase/substep
+                const updatedRoadmap = { ...project.roadmap };
+
+                // Mark target phase and substep in roadmap
+                const targetPhase = updatedRoadmap.phases?.find(
+                  (p: any) =>
+                    p.phase_id === rollbackRecommendation.rollback_to_phase,
+                );
+
+                if (targetPhase) {
+                  // Mark all phases after target as incomplete
+                  const targetPhaseNum = parseInt(
+                    rollbackRecommendation.rollback_to_phase!.replace("P", ""),
+                  );
+                  updatedRoadmap.phases?.forEach((phase: any) => {
+                    const phaseNum = parseInt(phase.phase_id.replace("P", ""));
+                    if (phaseNum > targetPhaseNum) {
+                      phase.completed = false;
+                      phase.locked = true;
+                      // Reset all substeps in future phases
+                      phase.substeps?.forEach((substep: any) => {
+                        substep.completed = false;
+                      });
+                    }
+                  });
+
+                  // Reset current phase substeps after rollback point
+                  if (rollbackRecommendation.rollback_to_substep) {
+                    targetPhase.substeps?.forEach((substep: any) => {
+                      if (
+                        substep.step_number >=
+                        rollbackRecommendation.rollback_to_substep!
+                      ) {
+                        substep.completed = false;
+                      }
+                    });
+                  }
+                }
+
+                // Update project with rollback state
+                await supabase
+                  .from("projects")
+                  .update({
+                    current_phase: rollbackRecommendation.rollback_to_phase,
+                    current_substep:
+                      rollbackRecommendation.rollback_to_substep || 1,
+                    roadmap: updatedRoadmap,
+                  })
+                  .eq("id", projectId);
+
+                // Add rollback guidance to artifact analysis
+                (llmAnalysis as any).rollback_executed = true;
+                (llmAnalysis as any).rollback_guidance =
+                  rollbackRecommendation.guidance;
+
+                console.log(
+                  `✅ [Rollback] Project rolled back to ${rollbackRecommendation.rollback_to_phase}, substep ${rollbackRecommendation.rollback_to_substep}`,
+                );
+
+                // Update artifact with rollback info
+                await supabase
+                  .from("artifacts")
+                  .update({
+                    status: "analyzed",
+                    analyzed_at: new Date().toISOString(),
+                    analysis: llmAnalysis,
+                    completed_substeps: [],
+                    roadmap_diff: `ROLLBACK: ${rollbackRecommendation.reason}`,
+                    progress_percentage: 0,
+                  })
+                  .eq("id", artifact.id);
+
+                // Skip auto-completion since we're rolling back
+                return res.json({
+                  ok: true,
+                  artifact_id: artifact.id,
+                  status: "analyzed",
+                  rollback_executed: true,
+                  rollback_to_phase: rollbackRecommendation.rollback_to_phase,
+                  rollback_to_substep:
+                    rollbackRecommendation.rollback_to_substep,
+                  rollback_reason: rollbackRecommendation.reason,
+                  rollback_guidance: rollbackRecommendation.guidance,
+                  checkpoint_created: checkpoint?.id || null,
+                });
+              } else {
+                // Warning only - add to analysis but don't rollback yet
+                console.log(
+                  `⚠️ [Rollback] Warning issued but auto-rollback not triggered`,
+                );
+                (llmAnalysis as any).rollback_warning = {
+                  severity: rollbackRecommendation.severity,
+                  reason: rollbackRecommendation.reason,
+                  evidence: rollbackRecommendation.evidence,
+                  guidance: rollbackRecommendation.guidance,
+                };
+              }
+            }
 
             // AUTO-COMPLETION: Check if substep requirements are 100% complete
             if (
