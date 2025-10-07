@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import "./App.css";
 import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
 import { CheckpointsModal } from "./components/CheckpointsModal";
+import { ExportRoadmapModal } from "./components/ExportRoadmapModal";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -475,6 +476,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
 }) => {
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   const [showCheckpoints, setShowCheckpoints] = useState(false);
+  const [showExport, setShowExport] = useState(false);
 
   if (!isOpen) return null;
 
@@ -548,6 +550,13 @@ const MasterControl: React.FC<MasterControlProps> = ({
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowExport(true)}
+                className="px-4 py-2 rounded-xl bg-green-600/60 hover:bg-green-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
+              >
+                <span>📤</span>
+                <span>Export</span>
+              </button>
               <button
                 onClick={() => setShowCheckpoints(true)}
                 className="px-4 py-2 rounded-xl bg-purple-600/60 hover:bg-purple-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
@@ -751,6 +760,13 @@ const MasterControl: React.FC<MasterControlProps> = ({
           setShowCheckpoints(false);
           onProjectUpdate();
         }}
+      />
+
+      {/* Export Roadmap Modal */}
+      <ExportRoadmapModal
+        project={project}
+        isOpen={showExport}
+        onClose={() => setShowExport(false)}
       />
     </div>
   );
