@@ -248,6 +248,99 @@ router.post("/upload", (req, res) => {
               .eq("id", artifact.id);
 
             console.log("✅ [Artifacts] LLM analysis complete");
+
+            // AUTO-COMPLETION: Check if substep requirements are 100% complete
+            if (
+              llmAnalysis.substep_completion_percentage === 100 &&
+              project?.roadmap
+            ) {
+              console.log(
+                "🎉 [Artifacts] Substep 100% complete - auto-advancing",
+              );
+
+              const updatedRoadmap = { ...project.roadmap };
+              const currentPhase = updatedRoadmap.phases?.find(
+                (p: any) => p.phase_id === project.current_phase,
+              );
+
+              if (currentPhase) {
+                // Mark current substep as completed
+                const currentSubstep = currentPhase.substeps?.find(
+                  (s: any) => s.step_number === project.current_substep,
+                );
+
+                if (currentSubstep) {
+                  currentSubstep.completed = true;
+                  console.log(
+                    `✅ [Artifacts] Marked substep ${project.current_substep} as complete`,
+                  );
+                }
+
+                // Find next uncompleted substep in current phase
+                const nextSubstep = currentPhase.substeps?.find(
+                  (s: any) =>
+                    s.step_number > project.current_substep && !s.completed,
+                );
+
+                if (nextSubstep) {
+                  // Advance to next substep in same phase
+                  await supabase
+                    .from("projects")
+                    .update({
+                      current_substep: nextSubstep.step_number,
+                      roadmap: updatedRoadmap,
+                    })
+                    .eq("id", projectId);
+
+                  console.log(
+                    `📈 [Artifacts] Advanced to substep ${nextSubstep.step_number}: ${nextSubstep.label}`,
+                  );
+                } else {
+                  // All substeps in phase complete - mark phase complete
+                  currentPhase.completed = true;
+                  console.log(
+                    `🎊 [Artifacts] Phase ${project.current_phase} complete!`,
+                  );
+
+                  // Find next unlocked phase
+                  const currentPhaseNum = parseInt(
+                    project.current_phase.replace("P", ""),
+                  );
+                  const nextPhase = updatedRoadmap.phases?.find(
+                    (p: any) =>
+                      parseInt(p.phase_id.replace("P", "")) ===
+                        currentPhaseNum + 1 && !p.locked,
+                  );
+
+                  if (nextPhase) {
+                    // Advance to first substep of next phase
+                    const firstSubstep = nextPhase.substeps?.[0];
+                    if (firstSubstep) {
+                      await supabase
+                        .from("projects")
+                        .update({
+                          current_phase: nextPhase.phase_id,
+                          current_substep: firstSubstep.step_number,
+                          roadmap: updatedRoadmap,
+                        })
+                        .eq("id", projectId);
+
+                      console.log(
+                        `🚀 [Artifacts] Advanced to ${nextPhase.phase_id}: ${nextPhase.goal}`,
+                      );
+                    }
+                  } else {
+                    console.log(
+                      "🏁 [Artifacts] All phases complete - project finished!",
+                    );
+                  }
+                }
+              }
+            } else if (llmAnalysis.substep_completion_percentage) {
+              console.log(
+                `📊 [Artifacts] Substep ${llmAnalysis.substep_completion_percentage}% complete - iteration continues`,
+              );
+            }
           } catch (llmError) {
             console.error("❌ [Artifacts] LLM analysis failed:", llmError);
             await supabase
