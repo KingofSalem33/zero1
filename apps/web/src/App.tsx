@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./App.css";
 import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
+import { CheckpointsModal } from "./components/CheckpointsModal";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -463,14 +464,17 @@ interface MasterControlProps {
   project: Project;
   isOpen: boolean;
   onClose: () => void;
+  onProjectUpdate: () => void;
 }
 
 const MasterControl: React.FC<MasterControlProps> = ({
   project,
   isOpen,
   onClose,
+  onProjectUpdate,
 }) => {
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
 
   if (!isOpen) return null;
 
@@ -543,24 +547,33 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 {progress}% Complete • {project.phases.length} Phases
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="w-10 h-10 rounded-xl bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors backdrop-blur-sm"
-            >
-              <svg
-                className="w-5 h-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCheckpoints(true)}
+                className="px-4 py-2 rounded-xl bg-purple-600/60 hover:bg-purple-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+                <span>💾</span>
+                <span>Checkpoints</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="w-10 h-10 rounded-xl bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors backdrop-blur-sm"
+              >
+                <svg
+                  className="w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Progress bar */}
@@ -728,6 +741,17 @@ const MasterControl: React.FC<MasterControlProps> = ({
           })}
         </div>
       </div>
+
+      {/* Checkpoints Modal */}
+      <CheckpointsModal
+        projectId={project.id}
+        isOpen={showCheckpoints}
+        onClose={() => setShowCheckpoints(false)}
+        onRestoreSuccess={() => {
+          setShowCheckpoints(false);
+          onProjectUpdate();
+        }}
+      />
     </div>
   );
 };
@@ -1983,6 +2007,7 @@ Return only the refined vision statement using the format "I want to build _____
           project={project}
           isOpen={showMasterControl}
           onClose={() => setShowMasterControl(false)}
+          onProjectUpdate={refreshProject}
         />
       )}
     </div>
