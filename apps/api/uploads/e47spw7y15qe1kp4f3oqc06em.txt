@@ -1,0 +1,54 @@
+﻿Overview
+The online trading card marketplace is a competitive landscape with various established players and emerging startups. The market is characterized by a mix of strengths and weaknesses that can inform your brand positioning.
+
+
+Key Competitors
+1. eBay
+   - Strengths: 
+     - Large user base and brand recognition.
+     - Established infrastructure for auctions and direct sales.
+     - Diverse range of products beyond trading cards.
+   - Weaknesses: 
+     - High fees for sellers.
+     - Less focus on trading card enthusiasts specifically, leading to a less tailored experience.
+
+
+2. TCGPlayer
+   - Strengths: 
+     - Specializes in trading cards, particularly for collectible card games.
+     - Strong community engagement and resources for collectors.
+     - Competitive pricing and seller tools.
+   - Weaknesses: 
+     - Limited to specific card games, which may alienate broader audiences.
+     - User interface can be overwhelming for new users.
+
+
+3. Cardmarket
+   - Strengths: 
+     - Focus on European markets, catering to a niche audience.
+     - Strong emphasis on user security and transaction safety.
+   - Weaknesses: 
+     - Less visibility in North American markets.
+     - Limited marketing reach compared to larger competitors.
+
+
+4. Facebook Marketplace
+   - Strengths: 
+     - No fees for transactions, making it attractive for buyers and sellers.
+     - Large community and easy access to local buyers.
+   - Weaknesses: 
+     - Lack of dedicated trading card features and protections.
+     - Risk of scams and less oversight.
+
+
+5. Whatnot
+   - Strengths: 
+     - Live auction format creates an engaging buying experience.
+     - Strong community of collectors and sellers.
+   - Weaknesses: 
+     - Limited to specific categories, which may restrict growth.
+     - Newer platform with less established trust among users.
+
+
+Positioning Statement
+"Our online trading card marketplace is dedicated to creating a vibrant community for collectors and enthusiasts, offering a user-friendly platform that prioritizes security, transparency, and tailored experiences. Unlike larger, generalized marketplaces, we focus exclusively on trading cards, providing specialized tools and resources that empower users to connect, trade, and grow their collections with confidence."
