@@ -144,6 +144,7 @@ export interface ArtifactAnalysis {
     details: string;
   }[];
   next_steps: string[];
+  detailed_analysis?: string;
 }
 
 /**
@@ -275,26 +276,29 @@ export async function analyzeArtifactWithLLM(
 
   // Get current substep details from roadmap
   const currentPhaseData = currentProject?.roadmap?.phases?.find(
-    (p: any) => p.phase_id === currentProject.current_phase,
+    (p: any) => p.phase_id === currentProject?.current_phase,
   );
   const currentSubstep = currentPhaseData?.substeps?.find(
-    (s: any) => s.step_number === currentProject.current_substep,
+    (s: any) => s.step_number === currentProject?.current_substep,
   );
 
-  const substepContext = currentSubstep
-    ? `
+  const substepContext =
+    currentSubstep && currentPhaseData
+      ? `
 **Current Substep:**
 - Phase: ${currentPhaseData.goal}
 - Substep ${currentSubstep.step_number}: ${currentSubstep.label}
 - What you're working on: ${currentSubstep.prompt_to_send?.substring(0, 200)}...
 `
-    : "";
+      : "";
 
   // Build iteration history with diff awareness
-  const iterationHistory = currentProject?.previous_artifact_analyses?.length
-    ? `
+  const previousAnalyses = currentProject?.previous_artifact_analyses || [];
+  const iterationHistory =
+    previousAnalyses.length > 0
+      ? `
 **Previous Iterations on This Substep:**
-${currentProject.previous_artifact_analyses
+${previousAnalyses
   .map(
     (prev, idx) => `
 Iteration ${idx + 1}:
@@ -302,7 +306,7 @@ Iteration ${idx + 1}:
 - What was working: ${prev.implementation_state || "N/A"}
 - Issues found: ${prev.bugs_or_errors?.join(", ") || "None"}
 - Missing: ${prev.missing_elements?.join(", ") || "None"}
-${idx === currentProject.previous_artifact_analyses.length - 1 ? "\n**MOST RECENT FEEDBACK (what they need to fix):**\n" + prev.detailed_analysis : ""}
+${idx === previousAnalyses.length - 1 && prev.detailed_analysis ? "\n**MOST RECENT FEEDBACK (what they need to fix):**\n" + prev.detailed_analysis : ""}
 `,
   )
   .join("\n")}
@@ -323,15 +327,15 @@ Make sure you uploaded the CORRECTED version, not the same file.
 `
 }
 
-CRITICAL: Compare the NEW uploaded work against iteration ${currentProject.previous_artifact_analyses.length}'s feedback.
+CRITICAL: Compare the NEW uploaded work against iteration ${previousAnalyses.length}'s feedback.
 - What did they ACTUALLY FIX from last time? (verify fixes are real, not just claimed)
 - What issues STILL remain?
 - Did they add NEW problems?
 - If no content changed, point this out immediately
 
-Start your detailed_analysis with: "Since iteration ${currentProject.previous_artifact_analyses.length}, you've [what actually changed based on content hash]..."
+Start your detailed_analysis with: "Since iteration ${previousAnalyses.length}, you've [what actually changed based on content hash]..."
 `
-    : "\n**This is Iteration 1** - first upload for this substep. Give comprehensive initial feedback.\n";
+      : "\n**This is Iteration 1** - first upload for this substep. Give comprehensive initial feedback.\n";
 
   // Determine artifact type context
   const artifactTypeContext =

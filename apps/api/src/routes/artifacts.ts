@@ -145,7 +145,7 @@ router.post("/upload", (req, res) => {
         console.log("✅ [Artifacts] Artifact saved:", artifact.id);
 
         // Run LLM analysis in background (non-blocking)
-        (async () => {
+        (async (): Promise<void> => {
           try {
             console.log("🤖 [Artifacts] Starting LLM analysis...");
 
@@ -396,19 +396,11 @@ router.post("/upload", (req, res) => {
                   })
                   .eq("id", artifact.id);
 
-                // Skip auto-completion since we're rolling back
-                return res.json({
-                  ok: true,
-                  artifact_id: artifact.id,
-                  status: "analyzed",
-                  rollback_executed: true,
-                  rollback_to_phase: rollbackRecommendation.rollback_to_phase,
-                  rollback_to_substep:
-                    rollbackRecommendation.rollback_to_substep,
-                  rollback_reason: rollbackRecommendation.reason,
-                  rollback_guidance: rollbackRecommendation.guidance,
-                  checkpoint_created: checkpoint?.id || null,
-                });
+                console.log(
+                  `✅ [Rollback] Successfully executed rollback to ${rollbackRecommendation.rollback_to_phase}`,
+                );
+                // Note: Response already sent before IIFE started
+                return; // Exit early since we rolled back
               } else {
                 // Warning only - add to analysis but don't rollback yet
                 console.log(

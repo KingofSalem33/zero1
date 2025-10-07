@@ -22,7 +22,7 @@ export function detectRollbackNeed(
   currentAnalysis: ArtifactAnalysis,
   previousAnalyses: ArtifactAnalysis[],
   currentPhase: string,
-  currentSubstep: number,
+  _currentSubstep: number,
   roadmap: any,
 ): RollbackRecommendation {
   const recommendation: RollbackRecommendation = {
