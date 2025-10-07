@@ -21,6 +21,20 @@ interface LLMAnalysis {
   bugs_or_errors?: string[];
   next_steps?: string[];
   implementation_state?: string;
+  substep_requirements?: Array<{
+    requirement: string;
+    status: "DONE" | "PARTIAL" | "NOT_STARTED";
+    evidence: string;
+  }>;
+  substep_completion_percentage?: number;
+  rollback_warning?: {
+    severity: "warning" | "critical";
+    reason: string;
+    evidence: string[];
+    guidance: string[];
+  };
+  rollback_executed?: boolean;
+  rollback_guidance?: string[];
 }
 
 interface ArtifactData {
@@ -114,11 +128,8 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         if (analyzedData) {
           setUploadProgress("✓ Analysis Complete!");
 
-          // Show diff modal if we have results
-          if (
-            analyzedData.completed_substeps &&
-            analyzedData.completed_substeps.length > 0
-          ) {
+          // Show diff modal if we have analysis results
+          if (analyzedData.analysis) {
             setAnalyzedArtifact(analyzedData);
             setShowDiffModal(true);
           }
