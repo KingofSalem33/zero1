@@ -202,6 +202,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
         return res.json({
           answer: validatedResponse.answer,
           sources: validatedResponse.sources || enhancedCitations,
+          tools_used: result.tools_used,
         });
       } catch {
         console.log(
@@ -240,6 +241,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
           return res.json({
             answer: validatedResponse.answer,
             sources: validatedResponse.sources || retryEnhancedCitations,
+            tools_used: retryResult.tools_used || result.tools_used,
           });
         } catch (retryError) {
           console.error("JSON retry failed:", retryError);
@@ -247,6 +249,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
           return res.json({
             answer: result.text,
             sources: enhancedCitations,
+            tools_used: result.tools_used,
           });
         }
       }
@@ -256,6 +259,7 @@ app.post("/api/chat", express.json(), async (req, res) => {
     return res.json({
       text: result.text,
       citations: enhancedCitations,
+      tools_used: result.tools_used,
     });
   } catch (error) {
     console.error("Chat error:", error);

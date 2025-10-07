@@ -3,6 +3,7 @@ import "./App.css";
 import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
 import { CheckpointsModal } from "./components/CheckpointsModal";
 import { ExportRoadmapModal } from "./components/ExportRoadmapModal";
+import { ToolBadges } from "./components/ToolBadges";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -1320,6 +1321,15 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
 };
 
 // ---- Ideation Hub (Left Panel) ----
+interface ToolActivity {
+  type: "tool_start" | "tool_end" | "tool_error";
+  tool: string;
+  args?: unknown;
+  result?: unknown;
+  error?: string;
+  timestamp: string;
+}
+
 interface IdeationHubProps {
   project: Project | null;
   onCreateProject: (goal: string) => void;
@@ -1327,6 +1337,7 @@ interface IdeationHubProps {
   onRefreshProject: () => void;
   creating: boolean;
   inspiring: boolean;
+  toolsUsed: ToolActivity[];
 }
 
 const IdeationHub: React.FC<IdeationHubProps> = ({
@@ -1336,6 +1347,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
   onRefreshProject,
   creating,
   inspiring,
+  toolsUsed,
 }) => {
   const [thinking, setThinking] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1600,6 +1612,13 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
       {/* Input Area */}
       <div className="flex-1 p-6 flex flex-col">
         <div className="flex-1 mb-6">
+          {/* Tool Badges */}
+          {toolsUsed.length > 0 && (
+            <div className="mb-3">
+              <ToolBadges tools={toolsUsed} />
+            </div>
+          )}
+
           <textarea
             value={thinking}
             onChange={(e) => setThinking(e.target.value)}
@@ -1701,6 +1720,7 @@ const NavBar = () => (
 function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [guidance, setGuidance] = useState("");
+  const [toolsUsed, setToolsUsed] = useState<ToolActivity[]>([]);
   const [creatingProject, setCreatingProject] = useState(false);
   const [inspiring, setInspiring] = useState(false);
   const [showMasterControl, setShowMasterControl] = useState(false);
@@ -1864,6 +1884,10 @@ Return only the refined vision statement using the format "I want to build _____
       if (response.ok && data.text) {
         // Replace the text in the input box with the inspired statement
         setThinking(data.text.trim());
+        // Store tools used for display
+        if (data.tools_used) {
+          setToolsUsed(data.tools_used);
+        }
       } else {
         setGuidance("❌ Unable to generate inspiration. Please try again.");
         setTimeout(() => setGuidance(""), 3000);
@@ -1980,6 +2004,7 @@ Return only the refined vision statement using the format "I want to build _____
                 onRefreshProject={refreshProject}
                 creating={creatingProject}
                 inspiring={inspiring}
+                toolsUsed={toolsUsed}
               />
             </AnimatedCard>
 
