@@ -1,0 +1,49 @@
+﻿Persona 1: The Casual Collector
+- Name: Alex Johnson
+- Age: 28
+- Demographics: Male, college-educated, lives in an urban area.
+- Interests: Enjoys sports, particularly basketball and baseball, and has a mild interest in collecting sports memorabilia.
+- Motivations:
+  - Social Interaction: Wants to connect with other collectors to share experiences and tips.
+  - Ease of Use: Prefers a straightforward platform that is easy to navigate.
+  - Trust and Security: Seeks a safe environment for transactions.
+
+
+Potential Platform Features:
+- User-friendly interface with easy navigation.
+- Community forums or chat features to encourage social interaction.
+- Secure payment options and user verification processes to ensure trust.
+
+
+Persona 2: The Serious Trader
+- Name: Jamie Lee
+- Age: 35
+- Demographics: Female, professional, lives in a suburban area.
+- Interests: Deeply invested in sports card trading, follows market trends, and attends card shows.
+- Motivations:
+  - Market Insights: Wants access to market data and trends to make informed trading decisions.
+  - Advanced Trading Tools: Interested in features that allow for tracking card values and trade history.
+  - Networking: Desires to connect with other serious traders for potential deals.
+
+
+Potential Platform Features:
+- Analytics dashboard displaying market trends and card values.
+- Advanced search filters for card listings.
+- Networking features like user profiles and trade history visibility.
+
+
+Persona 3: The Newbie Enthusiast
+- Name: Chris Patel
+- Age: 22
+- Demographics: Male, recent college graduate, lives in a college town.
+- Interests: Recently discovered sports card collecting and is eager to learn more.
+- Motivations:
+  - Education: Seeks resources to learn about card values and collecting strategies.
+  - Community Support: Wants guidance from experienced collectors.
+  - Affordability: Looks for budget-friendly options to start collecting.
+
+
+Potential Platform Features:
+- Educational resources, such as articles and videos on card collecting.
+- Mentorship programs connecting newbies with experienced collectors.
+- Budget-friendly listings or a “starter pack” feature for new collectors.

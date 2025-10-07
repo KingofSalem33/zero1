@@ -114,6 +114,9 @@ router.post("/upload", (req, res) => {
           .from("artifact_signals")
           .insert({
             artifact_id: artifact.id,
+            artifact_type: signals.artifact_type,
+            primary_file_types: signals.primary_file_types,
+            content_hash: signals.content_hash,
             has_tests: signals.has_tests,
             has_linter: signals.has_linter,
             has_typescript: signals.has_typescript,
@@ -155,10 +158,15 @@ router.post("/upload", (req, res) => {
               .eq("id", projectId)
               .single();
 
-            // Fetch previous artifact analyses for THIS substep to build iteration history
+            // Fetch previous artifact analyses AND signals for THIS substep
             const { data: previousArtifacts } = await supabase
               .from("artifacts")
-              .select("analysis")
+              .select(
+                `
+                analysis,
+                artifact_signals (*)
+              `,
+              )
               .eq("project_id", projectId)
               .eq("status", "analyzed")
               .not("analysis", "is", null)
@@ -174,6 +182,17 @@ router.post("/upload", (req, res) => {
                     analysis && typeof analysis === "object",
                 ) || [];
 
+            // Extract previous signals for diff detection
+            const previousSignals =
+              previousArtifacts
+                ?.map((a) => {
+                  const signalArray = a.artifact_signals;
+                  return Array.isArray(signalArray)
+                    ? signalArray[0]
+                    : signalArray;
+                })
+                .filter((s) => s) || [];
+
             const llmAnalysis = await analyzeArtifactWithLLM(
               filePath,
               signals,
@@ -184,6 +203,7 @@ router.post("/upload", (req, res) => {
                     current_substep: project.current_substep,
                     roadmap: project.roadmap,
                     previous_artifact_analyses: currentSubstepAnalyses,
+                    previous_signals: previousSignals,
                   }
                 : undefined,
             );
@@ -456,6 +476,9 @@ router.post("/repo", async (req, res) => {
     // Save artifact signals
     await supabase.from("artifact_signals").insert({
       artifact_id: artifact.id,
+      artifact_type: signals.artifact_type,
+      primary_file_types: signals.primary_file_types,
+      content_hash: signals.content_hash,
       has_tests: signals.has_tests,
       has_linter: signals.has_linter,
       has_typescript: signals.has_typescript,

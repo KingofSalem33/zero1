@@ -1,0 +1,50 @@
+﻿User Persona 1: The Nostalgic Collector
+- Name: Mike Thompson
+- Age: 45
+- Gender: Male
+- Location: Suburban Chicago, IL
+- Occupation: Marketing Manager
+- Interests: Vintage sports memorabilia, attending sports events, family activities
+- Motivations:
+  - Collects cards from his childhood to relive memories.
+  - Enjoys connecting with other collectors who share similar interests.
+  - Values the historical significance of cards and seeks to preserve them.
+
+
+User Persona 2: The Young Enthusiast
+- Name: Emily Chen
+- Age: 22
+- Gender: Female
+- Location: San Francisco, CA
+- Occupation: College Student
+- Interests: Social media, gaming, pop culture
+- Motivations:
+  - Engages in card trading as a fun hobby and social activity.
+  - Follows trends in sports and pop culture to inform her collection.
+  - Seeks community engagement through online platforms and events.
+
+
+User Persona 3: The Investor
+- Name: David Johnson
+- Age: 35
+- Gender: Male
+- Location: New York City, NY
+- Occupation: Financial Analyst
+- Interests: Stock market, financial trends, sports analytics
+- Motivations:
+  - Views sports cards as an investment opportunity.
+  - Researches market trends and values to make informed purchases.
+  - Interested in networking with other investors and collectors.
+
+
+User Persona 4: The Family Trader
+- Name: Sarah Martinez
+- Age: 38
+- Gender: Female
+- Location: Austin, TX
+- Occupation: Teacher
+- Interests: Family activities, sports, education
+- Motivations:
+  - Introduces her children to the world of sports cards as a bonding activity.
+  - Values the educational aspect of collecting (history, math).
+  - Participates in local trading events and online forums to share experiences.

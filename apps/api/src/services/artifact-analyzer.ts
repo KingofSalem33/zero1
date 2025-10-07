@@ -5,8 +5,21 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
+
+export type ArtifactType =
+  | "code"
+  | "document"
+  | "design"
+  | "plan"
+  | "content"
+  | "unknown";
 
 export interface ArtifactSignals {
+  // Artifact type
+  artifact_type: ArtifactType;
+  primary_file_types: string[];
+
   // Code quality indicators
   has_tests: boolean;
   has_linter: boolean;
@@ -30,6 +43,138 @@ export interface ArtifactSignals {
 
   // Tech stack
   tech_stack: string[];
+
+  // Content hash for diff detection
+  content_hash?: string;
+}
+
+/**
+ * Detect artifact type based on file extensions and content
+ */
+export function detectArtifactType(
+  filePath: string,
+  fileTypes: string[],
+): ArtifactType {
+  const extension = path.extname(filePath).toLowerCase();
+
+  // Single file detection
+  if (fs.statSync(filePath).isFile()) {
+    if ([".pdf", ".doc", ".docx"].includes(extension)) return "document";
+    if (
+      [".png", ".jpg", ".jpeg", ".svg", ".gif", ".psd", ".ai"].includes(
+        extension,
+      )
+    )
+      return "design";
+    if ([".md", ".txt"].includes(extension)) {
+      // Check if it's a business plan or content
+      const content = fs.readFileSync(filePath, "utf-8").toLowerCase();
+      if (
+        content.includes("business model") ||
+        content.includes("revenue") ||
+        content.includes("market analysis")
+      ) {
+        return "plan";
+      }
+      return "content";
+    }
+  }
+
+  // Directory detection - analyze file type distribution
+  const codeExtensions = [
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".py",
+    ".java",
+    ".go",
+    ".rs",
+    ".cpp",
+    ".c",
+  ];
+  const documentExtensions = [".pdf", ".doc", ".docx"];
+  const designExtensions = [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".svg",
+    ".psd",
+    ".ai",
+    ".fig",
+  ];
+  const contentExtensions = [".md", ".txt", ".html"];
+
+  const codeCount = fileTypes.filter((ext) =>
+    codeExtensions.includes(ext),
+  ).length;
+  const docCount = fileTypes.filter((ext) =>
+    documentExtensions.includes(ext),
+  ).length;
+  const designCount = fileTypes.filter((ext) =>
+    designExtensions.includes(ext),
+  ).length;
+  const contentCount = fileTypes.filter((ext) =>
+    contentExtensions.includes(ext),
+  ).length;
+
+  const total = codeCount + docCount + designCount + contentCount;
+  if (total === 0) return "unknown";
+
+  // Return majority type
+  if (codeCount / total > 0.5) return "code";
+  if (docCount / total > 0.3) return "document";
+  if (designCount / total > 0.3) return "design";
+  if (contentCount / total > 0.3) return "content";
+
+  return "unknown";
+}
+
+/**
+ * Generate content hash for diff detection
+ */
+export function generateContentHash(filePath: string): string {
+  const hash = crypto.createHash("sha256");
+
+  if (fs.statSync(filePath).isDirectory()) {
+    // Hash directory structure and key files
+    const files = getAllFilesSync(filePath).sort();
+    files.forEach((file) => {
+      const relativePath = path.relative(filePath, file);
+      const stats = fs.statSync(file);
+      hash.update(`${relativePath}:${stats.size}:${stats.mtimeMs}`);
+    });
+  } else {
+    // Hash single file content
+    const content = fs.readFileSync(filePath);
+    hash.update(content);
+  }
+
+  return hash.digest("hex");
+}
+
+/**
+ * Synchronous version of getAllFiles for hashing
+ */
+function getAllFilesSync(dirPath: string): string[] {
+  const files: string[] = [];
+
+  function walk(dir: string) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else {
+        files.push(fullPath);
+      }
+    }
+  }
+
+  walk(dirPath);
+  return files;
 }
 
 /**
@@ -38,7 +183,12 @@ export interface ArtifactSignals {
 export async function analyzeDirectory(
   dirPath: string,
 ): Promise<ArtifactSignals> {
+  const files = await getAllFiles(dirPath);
+  const fileExtensions = files.map((f) => path.extname(f).toLowerCase());
+
   const signals: ArtifactSignals = {
+    artifact_type: detectArtifactType(dirPath, fileExtensions),
+    primary_file_types: [...new Set(fileExtensions)].slice(0, 10),
     has_tests: false,
     has_linter: false,
     has_typescript: false,
@@ -48,16 +198,13 @@ export async function analyzeDirectory(
     commit_count: 0,
     has_deploy_config: false,
     deploy_platform: null,
-    file_count: 0,
-    folder_depth: 0,
+    file_count: files.length,
+    folder_depth: calculateMaxDepth(files, dirPath),
     readme_length: 0,
     has_documentation: false,
     tech_stack: [],
+    content_hash: generateContentHash(dirPath),
   };
-
-  const files = await getAllFiles(dirPath);
-  signals.file_count = files.length;
-  signals.folder_depth = calculateMaxDepth(files, dirPath);
 
   // Analyze each file
   for (const file of files) {
@@ -323,6 +470,8 @@ export async function analyzeSingleFile(
   const ext = path.extname(filePath).toLowerCase();
 
   const signals: ArtifactSignals = {
+    artifact_type: detectArtifactType(filePath, [ext]),
+    primary_file_types: [ext],
     has_tests: false,
     has_linter: false,
     has_typescript: ext === ".ts" || ext === ".tsx",
@@ -337,6 +486,7 @@ export async function analyzeSingleFile(
     readme_length: 0,
     has_documentation: filename.startsWith("readme"),
     tech_stack: [],
+    content_hash: generateContentHash(filePath),
   };
 
   // Detect file type from extension
