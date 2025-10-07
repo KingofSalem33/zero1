@@ -78,14 +78,6 @@
     "thread": [
       {
         "role": "user",
-        "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"start a neighbrohood lawn service\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
-      },
-      {
-        "role": "assistant",
-        "content": "I want to build a neighborhood lawn care service so that local homeowners can easily maintain beautiful lawns without the hassle of doing it themselves."
-      },
-      {
-        "role": "user",
         "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"I want to start a youtube channel about consertive poltics\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
       },
       {
@@ -235,6 +227,14 @@
       {
         "role": "assistant",
         "content": "I want to build an online sports card trading platform so that collectors can easily buy, sell, and trade cards while connecting with a community of enthusiasts."
+      },
+      {
+        "role": "user",
+        "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"i want to start a online business that sells sports cards online\n\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
+      },
+      {
+        "role": "assistant",
+        "content": "I want to build an online marketplace for sports cards so that collectors can easily buy, sell, and trade their favorite cards in a secure and user-friendly environment."
       }
     ]
   }

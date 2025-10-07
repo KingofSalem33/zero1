@@ -18,6 +18,20 @@ interface LLMAnalysis {
   bugs_or_errors?: string[];
   next_steps?: string[];
   implementation_state?: string;
+  substep_requirements?: Array<{
+    requirement: string;
+    status: "DONE" | "PARTIAL" | "NOT_STARTED";
+    evidence: string;
+  }>;
+  substep_completion_percentage?: number;
+  rollback_warning?: {
+    severity: "warning" | "critical";
+    reason: string;
+    evidence: string[];
+    guidance: string[];
+  };
+  rollback_executed?: boolean;
+  rollback_guidance?: string[];
 }
 
 interface ArtifactDiffModalProps {
@@ -113,6 +127,89 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Rollback Executed Warning */}
+          {llmAnalysis?.rollback_executed && (
+            <div className="p-4 rounded-lg bg-orange-900/20 border-2 border-orange-500/50 animate-pulse">
+              <h3 className="text-sm font-bold text-orange-400 mb-2 flex items-center gap-2">
+                <span className="text-xl">⚠️</span>
+                Project Rolled Back
+              </h3>
+              <p className="text-sm text-gray-300 mb-3">
+                Multiple attempts showed critical issues. Your project has been
+                restored to an earlier, stable phase to rebuild the foundation
+                correctly.
+              </p>
+              {llmAnalysis.rollback_guidance && (
+                <div className="space-y-1">
+                  {llmAnalysis.rollback_guidance.map((guidance, i) => (
+                    <div
+                      key={i}
+                      className="text-sm text-orange-300 flex items-start gap-2"
+                    >
+                      <span>→</span>
+                      <span>{guidance}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Rollback Warning (not yet executed) */}
+          {!llmAnalysis?.rollback_executed && llmAnalysis?.rollback_warning && (
+            <div
+              className={`p-4 rounded-lg border-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "bg-red-900/20 border-red-500/50" : "bg-yellow-900/20 border-yellow-500/50"}`}
+            >
+              <h3
+                className={`text-sm font-bold mb-2 flex items-center gap-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "text-red-400" : "text-yellow-400"}`}
+              >
+                <span className="text-xl">
+                  {llmAnalysis.rollback_warning.severity === "critical"
+                    ? "🚨"
+                    : "⚠️"}
+                </span>
+                {llmAnalysis.rollback_warning.severity === "critical"
+                  ? "Critical Warning"
+                  : "Warning"}
+              </h3>
+              <p className="text-sm text-gray-300 mb-2">
+                {llmAnalysis.rollback_warning.reason}
+              </p>
+              {llmAnalysis.rollback_warning.evidence.length > 0 && (
+                <div className="mb-3 space-y-1">
+                  <p className="text-xs font-semibold text-gray-400">
+                    Evidence:
+                  </p>
+                  {llmAnalysis.rollback_warning.evidence.map((ev, i) => (
+                    <div
+                      key={i}
+                      className="text-sm text-gray-400 flex items-start gap-2"
+                    >
+                      <span>•</span>
+                      <span>{ev}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {llmAnalysis.rollback_warning.guidance.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-gray-400">
+                    Recommendations:
+                  </p>
+                  {llmAnalysis.rollback_warning.guidance.map((guide, i) => (
+                    <div
+                      key={i}
+                      className="text-sm text-gray-300 flex items-start gap-2"
+                    >
+                      <span>→</span>
+                      <span>{guide}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quality Score - Lead with this */}
           {llmAnalysis?.quality_score !== undefined && (
             <div className="p-4 rounded-lg bg-gradient-to-r from-emerald-900/20 to-blue-900/20 border border-emerald-500/30">
@@ -132,6 +229,61 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Substep Requirements Progress */}
+          {llmAnalysis?.substep_requirements &&
+            llmAnalysis.substep_requirements.length > 0 && (
+              <div className="p-4 rounded-lg bg-purple-900/10 border border-purple-500/30">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-purple-400 flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                      />
+                    </svg>
+                    Substep Requirements
+                  </h3>
+                  <span className="text-sm font-bold text-purple-300">
+                    {llmAnalysis.substep_completion_percentage || 0}%
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {llmAnalysis.substep_requirements.map((req, i) => (
+                    <div key={i} className="text-sm">
+                      <div className="flex items-start gap-2 mb-1">
+                        <span
+                          className={`mt-0.5 ${req.status === "DONE" ? "text-green-400" : req.status === "PARTIAL" ? "text-yellow-400" : "text-gray-500"}`}
+                        >
+                          {req.status === "DONE"
+                            ? "✓"
+                            : req.status === "PARTIAL"
+                              ? "◐"
+                              : "○"}
+                        </span>
+                        <div className="flex-1">
+                          <span
+                            className={`font-medium ${req.status === "DONE" ? "text-green-400" : req.status === "PARTIAL" ? "text-yellow-400" : "text-gray-400"}`}
+                          >
+                            {req.requirement}
+                          </span>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {req.evidence}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
           {/* Expert Feedback */}
           {llmAnalysis?.detailed_analysis && (
