@@ -1885,8 +1885,15 @@ Return only the refined vision statement using the format "I want to build _____
         // Replace the text in the input box with the inspired statement
         setThinking(data.text.trim());
         // Store tools used for display
+        console.log("[Inspire Me] API response:", {
+          tools_used: data.tools_used,
+        });
         if (data.tools_used) {
+          console.log("[Inspire Me] Setting tools:", data.tools_used);
           setToolsUsed(data.tools_used);
+        } else {
+          console.log("[Inspire Me] No tools_used in response");
+          setToolsUsed([]);
         }
       } else {
         setGuidance("❌ Unable to generate inspiration. Please try again.");
