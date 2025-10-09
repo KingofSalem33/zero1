@@ -234,6 +234,7 @@ router.post("/:projectId/execute-step/stream", async (req, res) => {
 
     console.log("✅ [API] Streaming step executed successfully");
     // Response already sent via streaming
+    return;
   } catch (error) {
     console.error("❌ [API] Error executing streaming step:", error);
     res.write(`event: error\n`);
