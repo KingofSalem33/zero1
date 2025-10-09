@@ -4,6 +4,8 @@ import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
 import { CheckpointsModal } from "./components/CheckpointsModal";
 import { ExportRoadmapModal } from "./components/ExportRoadmapModal";
 import { ToolBadges } from "./components/ToolBadges";
+import { StreamingChatDemo } from "./components/StreamingChatDemo";
+import { MarkdownMessage } from "./components/MarkdownMessage";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -1338,6 +1340,7 @@ interface IdeationHubProps {
   creating: boolean;
   inspiring: boolean;
   toolsUsed: ToolActivity[];
+  setToolsUsed: (tools: ToolActivity[]) => void;
 }
 
 const IdeationHub: React.FC<IdeationHubProps> = ({
@@ -1348,11 +1351,14 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
   creating,
   inspiring,
   toolsUsed,
+  setToolsUsed,
 }) => {
   const [thinking, setThinking] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentInput, setCurrentInput] = useState("");
   const [isWorkspace, setIsWorkspace] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Switch to workspace mode when project is created
@@ -1367,6 +1373,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
     if (!currentInput.trim() || !project || isProcessing) return;
 
     setIsProcessing(true);
+    setToolsUsed([]); // Clear previous tools
     const userMessage = currentInput.trim();
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -1395,12 +1402,23 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+      setIsProcessing(false);
       return;
     }
 
+    // Create placeholder for AI message that will be streamed
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      type: "ai",
+      content: "",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, aiMessage]);
+
     try {
       const response = await fetch(
-        `${API_URL}/api/projects/${project.id}/execute-step`,
+        `${API_URL}/api/projects/${project.id}/execute-step/stream`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1411,28 +1429,102 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         },
       );
 
-      const data = await response.json();
-
-      if (response.ok && data.response) {
-        const aiMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          type: "ai",
-          content: markdownToPlainText(data.response),
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, aiMessage]);
-      } else {
-        const errorMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          type: "ai",
-          content: `Sorry, I encountered an error: ${data.error || "Unable to process your request"}`,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
-    } catch {
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new (window as any).TextDecoder();
+      let buffer = "";
+      let accumulatedContent = "";
+      const allTools: ToolActivity[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let currentEvent = "";
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            const data = line.slice(5).trim();
+            if (!data) continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              switch (currentEvent) {
+                case "content":
+                  accumulatedContent += parsed.delta;
+                  // Update the AI message content
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessageId
+                        ? {
+                            ...msg,
+                            content: markdownToPlainText(accumulatedContent),
+                          }
+                        : msg,
+                    ),
+                  );
+                  break;
+
+                case "tool_call":
+                  allTools.push({
+                    type: "tool_start",
+                    tool: parsed.tool,
+                    args: parsed.args,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setToolsUsed([...allTools]);
+                  break;
+
+                case "tool_result":
+                  allTools.push({
+                    type: "tool_end",
+                    tool: parsed.tool,
+                    result: parsed.result,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setToolsUsed([...allTools]);
+                  break;
+
+                case "tool_error":
+                  allTools.push({
+                    type: "tool_error",
+                    tool: parsed.tool,
+                    error: parsed.error,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setToolsUsed([...allTools]);
+                  break;
+
+                case "done":
+                  console.log("[Chat] Stream complete");
+                  break;
+
+                case "error":
+                  throw new Error(parsed.message || "Streaming error");
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE data:", parseError);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[Chat] Error:", error);
       const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: (Date.now() + 2).toString(),
         type: "ai",
         content: "Network error. Please check your connection and try again.",
         timestamp: new Date(),
@@ -1488,13 +1580,28 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 
         {/* Chat Messages */}
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
-          {messages.map((message) => (
+          {messages.map((message, idx) => (
             <div key={message.id}>
               {message.type === "user" ? (
                 // User messages: Bubble style (right-aligned)
-                <div className="flex justify-end">
-                  <div className="max-w-[80%] rounded-2xl p-4 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
-                    <p className="leading-relaxed">{message.content}</p>
+                <div className="flex justify-end group/user">
+                  <div className="relative max-w-[80%]">
+                    {/* Edit button */}
+                    {idx === messages.length - 2 && !isProcessing && (
+                      <button
+                        onClick={() => {
+                          setEditingMessageId(message.id);
+                          setEditingContent(message.content);
+                        }}
+                        className="absolute -left-10 top-2 opacity-0 group-hover/user:opacity-100 p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-400 hover:text-white transition-all text-xs"
+                        title="Edit message"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                    <div className="rounded-2xl p-4 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
+                      <p className="leading-relaxed">{message.content}</p>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1521,15 +1628,83 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                     </span>
                   </div>
                   <div className="pl-8 pr-4">
-                    <div className="text-gray-200 leading-relaxed whitespace-pre-wrap font-normal text-base">
-                      {message.content}
-                    </div>
+                    <MarkdownMessage
+                      content={message.content}
+                      isStreaming={isProcessing && idx === messages.length - 1}
+                      onCopy={() => {}}
+                      onRegenerate={() => {
+                        // Regenerate last message
+                        if (idx === messages.length - 1) {
+                          setMessages((prev) => prev.slice(0, -1));
+                          handleSendMessage();
+                        }
+                      }}
+                      showActions={idx === messages.length - 1}
+                    />
                   </div>
                 </div>
               )}
             </div>
           ))}
         </div>
+
+        {/* Edit Message Modal */}
+        {editingMessageId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-2xl w-full mx-4">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Edit Message
+              </h3>
+              <textarea
+                value={editingContent}
+                onChange={(e) => setEditingContent(e.target.value)}
+                className="w-full h-32 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                autoFocus
+              />
+              <div className="flex gap-2 mt-4 justify-end">
+                <button
+                  onClick={() => {
+                    setEditingMessageId(null);
+                    setEditingContent("");
+                  }}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    // Update message and regenerate
+                    setMessages((prev) => {
+                      const idx = prev.findIndex(
+                        (m) => m.id === editingMessageId,
+                      );
+                      if (idx !== -1) {
+                        const updated = [
+                          ...prev.slice(0, idx),
+                          {
+                            ...prev[idx],
+                            content: editingContent,
+                          },
+                        ];
+                        return updated;
+                      }
+                      return prev;
+                    });
+                    setCurrentInput(editingContent);
+                    setEditingMessageId(null);
+                    setEditingContent("");
+                    // Remove AI response and regenerate
+                    setMessages((prev) => prev.slice(0, -1));
+                    setTimeout(() => handleSendMessage(), 100);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg transition-colors"
+                >
+                  Save & Regenerate
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Input Area */}
         <div className="p-6 border-t border-gray-700/50">
@@ -1718,6 +1893,10 @@ const NavBar = () => (
 
 // ---- Main App Component ----
 function App() {
+  // Check for demo mode via URL parameter
+  const isDemoMode =
+    new URLSearchParams(window.location.search).get("demo") === "streaming";
+
   const [project, setProject] = useState<Project | null>(null);
   const [guidance, setGuidance] = useState("");
   const [toolsUsed, setToolsUsed] = useState<ToolActivity[]>([]);
@@ -1849,9 +2028,10 @@ function App() {
     if (!currentGoal.trim() || inspiring) return;
 
     setInspiring(true);
+    setToolsUsed([]); // Clear previous tools
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
+      const response = await fetch(`${API_URL}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1874,37 +2054,99 @@ function App() {
 **Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**
 
 Return only the refined vision statement using the format "I want to build ______ so that ______."`,
-          format: "text",
           userId: "vision-generator",
         }),
       });
 
-      const data = await response.json();
-
-      if (response.ok && data.text) {
-        // Replace the text in the input box with the inspired statement
-        setThinking(data.text.trim());
-        // Store tools used for display
-        console.log("[Inspire Me] API response:", {
-          tools_used: data.tools_used,
-        });
-        if (data.tools_used) {
-          console.log("[Inspire Me] Setting tools:", data.tools_used);
-          setToolsUsed(data.tools_used);
-        } else {
-          console.log("[Inspire Me] No tools_used in response");
-          setToolsUsed([]);
-        }
-      } else {
-        setGuidance("❌ Unable to generate inspiration. Please try again.");
-        setTimeout(() => setGuidance(""), 3000);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
-    } catch {
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new (window as any).TextDecoder();
+      let buffer = "";
+      let accumulatedContent = "";
+      const allTools: ToolActivity[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let currentEvent = "";
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            const data = line.slice(5).trim();
+            if (!data) continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              switch (currentEvent) {
+                case "content":
+                  accumulatedContent += parsed.delta;
+                  setThinking(accumulatedContent);
+                  break;
+
+                case "tool_call":
+                  allTools.push({
+                    type: "tool_start",
+                    tool: parsed.tool,
+                    args: parsed.args,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setToolsUsed([...allTools]);
+                  break;
+
+                case "tool_result":
+                  allTools.push({
+                    type: "tool_end",
+                    tool: parsed.tool,
+                    result: parsed.result,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setToolsUsed([...allTools]);
+                  break;
+
+                case "tool_error":
+                  allTools.push({
+                    type: "tool_error",
+                    tool: parsed.tool,
+                    error: parsed.error,
+                    timestamp: new Date().toISOString(),
+                  });
+                  setToolsUsed([...allTools]);
+                  break;
+
+                case "done":
+                  console.log("[Inspire Me] Stream complete");
+                  break;
+
+                case "error":
+                  throw new Error(parsed.message || "Streaming error");
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE data:", parseError);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[Inspire Me] Error:", error);
       setGuidance("🔌 Network error. Please try again.");
       setTimeout(() => setGuidance(""), 3000);
+    } finally {
+      setInspiring(false);
     }
-
-    setInspiring(false);
   };
 
   const handleSubstepComplete = async (substepId: string) => {
@@ -1995,6 +2237,16 @@ Return only the refined vision statement using the format "I want to build _____
     }
   };
 
+  // Render demo mode if requested
+  if (isDemoMode) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
+        <NavBar />
+        <StreamingChatDemo />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
       <NavBar />
@@ -2012,6 +2264,7 @@ Return only the refined vision statement using the format "I want to build _____
                 creating={creatingProject}
                 inspiring={inspiring}
                 toolsUsed={toolsUsed}
+                setToolsUsed={setToolsUsed}
               />
             </AnimatedCard>
 

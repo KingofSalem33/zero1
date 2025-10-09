@@ -30,26 +30,41 @@ const TOOL_LABELS: Record<string, string> = {
 export const ToolBadges: React.FC<ToolBadgesProps> = ({ tools }) => {
   if (!tools || tools.length === 0) return null;
 
-  // Get unique tools that were used (only successful completions)
-  const usedTools = tools
-    .filter((t) => t.type === "tool_end")
-    .reduce((acc, tool) => {
-      if (!acc.find((t) => t.tool === tool.tool)) {
-        acc.push(tool);
-      }
-      return acc;
-    }, [] as ToolActivity[]);
+  // Get unique tools by their current status
+  const toolStatuses = new Map<string, ToolActivity>();
 
-  // Check if any tools had errors
-  const toolErrors = tools.filter((t) => t.type === "tool_error");
+  // Process tools in order to get the latest status for each tool
+  tools.forEach((tool) => {
+    toolStatuses.set(tool.tool, tool);
+  });
 
-  if (usedTools.length === 0 && toolErrors.length === 0) return null;
+  const toolList = Array.from(toolStatuses.values());
+
+  // Separate by status
+  const activeTools = toolList.filter((t) => t.type === "tool_start");
+  const completedTools = toolList.filter((t) => t.type === "tool_end");
+  const errorTools = toolList.filter((t) => t.type === "tool_error");
+
+  if (toolList.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2 mb-3">
-      {usedTools.map((tool, idx) => (
+      {/* Active tools (in progress) */}
+      {activeTools.map((tool, idx) => (
         <div
-          key={`${tool.tool}-${idx}`}
+          key={`active-${tool.tool}-${idx}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-500/30 text-xs font-medium text-yellow-300 animate-pulse"
+          title={`Running ${TOOL_LABELS[tool.tool] || tool.tool}...`}
+        >
+          <span className="text-sm">{TOOL_ICONS[tool.tool] || "🔧"}</span>
+          <span>{TOOL_LABELS[tool.tool] || tool.tool}...</span>
+        </div>
+      ))}
+
+      {/* Completed tools */}
+      {completedTools.map((tool, idx) => (
+        <div
+          key={`completed-${tool.tool}-${idx}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 text-xs font-medium text-blue-300"
           title={`Used ${TOOL_LABELS[tool.tool] || tool.tool}`}
         >
@@ -58,7 +73,8 @@ export const ToolBadges: React.FC<ToolBadgesProps> = ({ tools }) => {
         </div>
       ))}
 
-      {toolErrors.map((tool, idx) => (
+      {/* Error tools */}
+      {errorTools.map((tool, idx) => (
         <div
           key={`error-${tool.tool}-${idx}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 text-xs font-medium text-red-300"

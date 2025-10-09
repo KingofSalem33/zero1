@@ -9,6 +9,7 @@ import artifactsRouter from "./routes/artifacts";
 import artifactActionsRouter from "./routes/artifact-actions";
 import checkpointsRouter from "./routes/checkpoints";
 import { runModel } from "./ai/runModel";
+import { runModelStream } from "./ai/runModelStream";
 import { toolSpecs, toolMap } from "./ai/tools";
 import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
 import { handleFileUpload } from "./files";
@@ -128,6 +129,69 @@ app.get("/health", (_req, res) => {
     service: "api",
     version: "0.1.0",
   });
+});
+
+// AI Chat streaming endpoint with SSE
+app.post("/api/chat/stream", express.json(), async (req, res) => {
+  try {
+    // Validate request body
+    const {
+      message,
+      userId = "anonymous",
+      history = [],
+    } = chatRequestSchema.parse(req.body);
+
+    // Set SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    // Build conversation messages
+    let systemMessage =
+      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. When you use the web, include 2-5 source links at the end. Always include source URLs in your final answer.";
+
+    // Add known facts about the user if available
+    if (userId && userId !== "anonymous") {
+      const userFacts = await getFacts(userId);
+      if (userFacts.length > 0) {
+        systemMessage +=
+          "\n\nKnown facts about user:\n- " +
+          userFacts.join("\n- ") +
+          "\nOnly use when relevant.";
+      }
+    }
+
+    const conversationMessages = [
+      {
+        role: "system" as const,
+        content: systemMessage,
+      },
+      ...history,
+      {
+        role: "user" as const,
+        content: message,
+      },
+    ];
+
+    // Run streaming model
+    await runModelStream(res, conversationMessages, {
+      toolSpecs,
+      toolMap,
+    });
+
+    // Store conversation in memory if userId is provided
+    if (userId && userId !== "anonymous") {
+      await pushToThread(userId, { role: "user", content: message });
+      // Note: We don't have the full response here, would need to capture it during streaming
+    }
+  } catch (error) {
+    console.error("Chat streaming error:", error);
+    res.write(`event: error\n`);
+    res.write(
+      `data: ${JSON.stringify({ error: "Chat streaming request failed" })}\n\n`,
+    );
+    res.end();
+  }
 });
 
 // AI Chat endpoint with tools and optional JSON format

@@ -21,7 +21,8 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(git reset:*)",
-      "WebFetch(domain:platform.openai.com)"
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:developers.google.com)"
     ],
     "deny": [],
     "ask": []

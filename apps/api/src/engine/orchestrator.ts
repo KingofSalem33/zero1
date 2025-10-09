@@ -1,7 +1,10 @@
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
+import { runModelStream } from "../ai/runModelStream";
 import { toolSpecs, toolMap } from "../ai/tools";
+import type { Response } from "express";
+import { threadService } from "../services/threadService";
 import {
   Project,
   PhaseGenerationRequest,
@@ -1280,12 +1283,18 @@ End by instructing the user to review the materials, complete the work, and uplo
     );
 
     const systemMessage = `You are helping with project execution. You have access to these tools:
-- \`web_search\`: Search the web for current information using DuckDuckGo
+- \`web_search\`: Search the web for current information using Google
 - \`http_fetch\`: Fetch and read content from specific URLs
 - \`calculator\`: Perform mathematical calculations
 - \`file_search\`: Search through uploaded files for relevant content
 
-Provide comprehensive, helpful responses using the tools when appropriate. Do not include source URLs in your responses.
+When using web_search or http_fetch:
+1. Synthesize information from multiple sources into a comprehensive answer
+2. Provide specific details, examples, and actionable insights
+3. Present information naturally in paragraph form, not as a list of links
+4. The system will automatically display citations at the end - don't mention URLs in your response
+
+Provide comprehensive, helpful responses using the tools when appropriate. Be conversational and thorough like ChatGPT.
 
 After providing your response, ask the immediate next logical question to aid the user in completing the task. Be direct and specific - focus on the exact next action needed.
 
@@ -1335,6 +1344,141 @@ ${request.master_prompt}`;
     } catch (error) {
       console.error("❌ [EXECUTE] AI request failed:", error);
       throw new Error("Failed to process master prompt with AI");
+    }
+  }
+
+  async executeStepStreaming(request: {
+    project_id: string;
+    master_prompt: string;
+    user_message?: string;
+    thread_id?: string;
+    res: Response;
+  }): Promise<void> {
+    console.log(
+      "🚀 [EXECUTE] Processing streaming master prompt for project:",
+      request.project_id,
+    );
+
+    const project = projects.get(request.project_id);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("AI not configured");
+    }
+
+    // Get or create thread (optional - fallback to no thread)
+    let thread = null;
+    let useThreads = true;
+
+    try {
+      thread = request.thread_id
+        ? await threadService.getThread(request.thread_id)
+        : await threadService.getOrCreateThread(request.project_id);
+
+      // Save user message
+      if (request.user_message && thread) {
+        await threadService.saveMessage(
+          thread.id,
+          "user",
+          request.user_message,
+        );
+
+        // Auto-generate title if this is the first message
+        const messages = await threadService.getRecentMessages(thread.id, 1);
+        if (messages.length === 1) {
+          await threadService.generateTitle(thread.id, request.user_message);
+        }
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️ [EXECUTE] Thread service unavailable, proceeding without threads:",
+        error,
+      );
+      useThreads = false;
+    }
+
+    // Get current context
+    const currentPhase = project.phases.find(
+      (p) => p.phase_number === project.current_phase,
+    );
+    const currentSubstep = currentPhase?.substeps?.find(
+      (s) => s.step_number === project.current_substep,
+    );
+
+    const systemMessage = `You are helping with project execution. You have access to these tools:
+- \`web_search\`: Search the web for current information using Google
+- \`http_fetch\`: Fetch and read content from specific URLs
+- \`calculator\`: Perform mathematical calculations
+- \`file_search\`: Search through uploaded files for relevant content
+
+When using web_search or http_fetch:
+1. Synthesize information from multiple sources into a comprehensive answer
+2. Provide specific details, examples, and actionable insights
+3. Present information naturally in paragraph form, not as a list of links
+4. The system will automatically display citations at the end - don't mention URLs in your response
+
+Provide comprehensive, helpful responses using the tools when appropriate. Be conversational and thorough like ChatGPT.
+
+After providing your response, ask the immediate next logical question to aid the user in completing the task. Be direct and specific - focus on the exact next action needed.
+
+PROJECT CONTEXT:
+- Goal: ${project.goal}
+- Current Phase: ${currentPhase?.goal || "Unknown"}
+- Current Step: ${currentSubstep?.label || "Unknown"}
+
+MASTER PROMPT FROM SYSTEM:
+${request.master_prompt}`;
+
+    const userMessage =
+      request.user_message ||
+      "Please help me with this step. Provide detailed, actionable guidance to help me complete this specific step. Be practical and specific to my project context.";
+
+    try {
+      let contextMessages;
+
+      if (useThreads && thread) {
+        // Build context with recent history
+        contextMessages = await threadService.buildContextMessages(
+          thread.id,
+          systemMessage,
+        );
+
+        // Add current user message if not already in history
+        if (request.user_message) {
+          contextMessages.push({
+            role: "user",
+            content: userMessage,
+          });
+        }
+      } else {
+        // Fallback: simple message without history
+        contextMessages = [
+          {
+            role: "system",
+            content: systemMessage,
+          },
+          {
+            role: "user",
+            content: userMessage,
+          },
+        ];
+      }
+
+      await runModelStream(request.res, contextMessages, {
+        toolSpecs,
+        toolMap,
+        model: ENV.OPENAI_MODEL_NAME,
+      });
+
+      console.log("✅ [EXECUTE] Streaming AI response generated successfully");
+
+      // Note: AI response will be saved by the route handler after streaming completes
+    } catch (error) {
+      console.error("❌ [EXECUTE] Streaming AI request failed:", error);
+      throw error;
     }
   }
 
