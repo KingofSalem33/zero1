@@ -187,61 +187,65 @@ router.get("/", async (_req, res) => {
 });
 
 // POST /api/projects/:projectId/execute-step/stream - Execute step with streaming
-router.post("/:projectId/execute-step/stream", async (req, res) => {
-  try {
-    console.log(
-      "🚀 [API] Streaming step execution request for project:",
-      req.params.projectId,
-    );
+router.post(
+  "/:projectId/execute-step/stream",
+  async (req, res): Promise<void> => {
+    try {
+      console.log(
+        "🚀 [API] Streaming step execution request for project:",
+        req.params.projectId,
+      );
 
-    const { projectId } = req.params;
-    const { master_prompt, user_message } = req.body;
+      const { projectId } = req.params;
+      const { master_prompt, user_message } = req.body;
 
-    if (!projectId || typeof projectId !== "string") {
-      console.error("❌ [API] Invalid project ID:", projectId);
-      return res.status(400).json({
-        error: "Valid project ID is required",
+      if (!projectId || typeof projectId !== "string") {
+        console.error("❌ [API] Invalid project ID:", projectId);
+        return res.status(400).json({
+          error: "Valid project ID is required",
+        });
+      }
+
+      if (!master_prompt || typeof master_prompt !== "string") {
+        console.error("❌ [API] Missing master prompt");
+        return res.status(400).json({
+          error: "Master prompt is required",
+        });
+      }
+
+      const project = orchestrator.getProject(projectId);
+      if (!project) {
+        console.error("❌ [API] Project not found:", projectId);
+        return res.status(404).json({
+          error: "Project not found",
+        });
+      }
+
+      // Set SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+
+      // Use streaming execution
+      await orchestrator.executeStepStreaming({
+        project_id: projectId,
+        master_prompt,
+        user_message,
+        res,
       });
+
+      console.log("✅ [API] Streaming step executed successfully");
+      // Response already sent via streaming
+    } catch (error) {
+      console.error("❌ [API] Error executing streaming step:", error);
+      res.write(`event: error\n`);
+      res.write(
+        `data: ${JSON.stringify({ error: "Failed to execute step" })}\n\n`,
+      );
+      res.end();
     }
-
-    if (!master_prompt || typeof master_prompt !== "string") {
-      console.error("❌ [API] Missing master prompt");
-      return res.status(400).json({
-        error: "Master prompt is required",
-      });
-    }
-
-    const project = orchestrator.getProject(projectId);
-    if (!project) {
-      console.error("❌ [API] Project not found:", projectId);
-      return res.status(404).json({
-        error: "Project not found",
-      });
-    }
-
-    // Set SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    // Use streaming execution
-    await orchestrator.executeStepStreaming({
-      project_id: projectId,
-      master_prompt,
-      user_message,
-      res,
-    });
-
-    console.log("✅ [API] Streaming step executed successfully");
-  } catch (error) {
-    console.error("❌ [API] Error executing streaming step:", error);
-    res.write(`event: error\n`);
-    res.write(
-      `data: ${JSON.stringify({ error: "Failed to execute step" })}\n\n`,
-    );
-    res.end();
-  }
-});
+  },
+);
 
 // POST /api/projects/:projectId/execute-step - Execute step with AI guidance
 router.post("/:projectId/execute-step", async (req, res) => {

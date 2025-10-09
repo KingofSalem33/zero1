@@ -142,7 +142,6 @@ export async function webSearch(
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate",
       },
-      maxRedirections: 5,
     });
 
     const html = await body.text();

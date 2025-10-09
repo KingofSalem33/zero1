@@ -5,6 +5,7 @@ import { runModelStream } from "../ai/runModelStream";
 import { toolSpecs, toolMap } from "../ai/tools";
 import type { Response } from "express";
 import { threadService } from "../services/threadService";
+import type { ChatCompletionMessageParam } from "openai/resources";
 import {
   Project,
   PhaseGenerationRequest,
@@ -1437,7 +1438,7 @@ ${request.master_prompt}`;
       "Please help me with this step. Provide detailed, actionable guidance to help me complete this specific step. Be practical and specific to my project context.";
 
     try {
-      let contextMessages;
+      let contextMessages: ChatCompletionMessageParam[];
 
       if (useThreads && thread) {
         // Build context with recent history
@@ -1449,7 +1450,7 @@ ${request.master_prompt}`;
         // Add current user message if not already in history
         if (request.user_message) {
           contextMessages.push({
-            role: "user",
+            role: "user" as const,
             content: userMessage,
           });
         }
@@ -1457,11 +1458,11 @@ ${request.master_prompt}`;
         // Fallback: simple message without history
         contextMessages = [
           {
-            role: "system",
+            role: "system" as const,
             content: systemMessage,
           },
           {
-            role: "user",
+            role: "user" as const,
             content: userMessage,
           },
         ];
