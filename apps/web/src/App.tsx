@@ -138,6 +138,16 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
       return;
     }
 
+    // Create AI message placeholder
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      type: "ai",
+      content: "",
+      timestamp: new Date(),
+    };
+    onUpdateMessages(workspace.id, [...updatedMessages, aiMessage]);
+
     try {
       const contextPrompt = `
 Context: Deep dive workspace for ${workspace.title}
@@ -148,39 +158,76 @@ User question: ${userMessage}
 `;
 
       const response = await fetch(
-        `${API_URL}/api/projects/${project.id}/execute-step`,
+        `${API_URL}/api/projects/${project.id}/execute-step/stream`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             master_prompt: contextPrompt,
             user_message: userMessage,
+            thread_id: workspace.threadId, // Include thread ID for persistence
           }),
         },
       );
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-      if (response.ok && data.response) {
-        const aiMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          type: "ai",
-          content: markdownToPlainText(data.response),
-          timestamp: new Date(),
-        };
-        onUpdateMessages(workspace.id, [...updatedMessages, aiMessage]);
-      } else {
-        const errorMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          type: "ai",
-          content: `Sorry, I encountered an error: ${data.error || "Unable to process your request"}`,
-          timestamp: new Date(),
-        };
-        onUpdateMessages(workspace.id, [...updatedMessages, errorMessage]);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new (window as any).TextDecoder();
+      let buffer = "";
+      let accumulatedContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let currentEvent = "";
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            const data = line.slice(5).trim();
+            if (!data) continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (currentEvent === "content") {
+                accumulatedContent += parsed.delta;
+                // Update AI message in real-time
+                onUpdateMessages(
+                  workspace.id,
+                  updatedMessages
+                    .map((msg) =>
+                      msg.id === aiMessageId
+                        ? { ...msg, content: accumulatedContent }
+                        : msg,
+                    )
+                    .concat(
+                      aiMessage.id === aiMessageId
+                        ? []
+                        : [{ ...aiMessage, content: accumulatedContent }],
+                    ),
+                );
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE data:", parseError);
+            }
+          }
+        }
       }
     } catch {
       const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: (Date.now() + 2).toString(),
         type: "ai",
         content: "Network error. Please check your connection and try again.",
         timestamp: new Date(),
@@ -416,6 +463,7 @@ interface PopupWorkspace {
   position: { x: number; y: number };
   messages: ChatMessage[];
   isVisible: boolean;
+  threadId?: string; // Track thread for persistence
 }
 
 interface ProjectPhase {
@@ -1908,23 +1956,58 @@ function App() {
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
 
   // Popup workspace management
-  const createPopupWorkspace = () => {
+  const createPopupWorkspace = async () => {
+    if (!project) return;
+
     const currentPhase = project?.phases?.find(
       (p) => p.phase_number === project.current_phase,
     );
 
+    const workspaceId = Date.now().toString();
+    const title = `${currentPhase?.goal || "Current Phase"}`;
+
+    // Create a thread for this workspace
+    let threadId: string | undefined;
+    try {
+      const response = await fetch(`${API_URL}/api/threads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: project.id,
+          title,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        threadId = data.thread?.id;
+      }
+    } catch (error) {
+      console.error("Failed to create thread for workspace:", error);
+    }
+
     const newWorkspace: PopupWorkspace = {
-      id: Date.now().toString(),
-      title: `${currentPhase?.goal || "Current Phase"}`,
+      id: workspaceId,
+      title,
       position: {
         x: Math.random() * 200 + 100, // Random positioning
         y: Math.random() * 200 + 100,
       },
       messages: [],
       isVisible: true,
+      threadId, // Store thread ID for persistence
     };
 
-    setPopupWorkspaces((prev) => [...prev, newWorkspace]);
+    setPopupWorkspaces((prev) => {
+      const updated = [...prev, newWorkspace];
+      // Save to localStorage
+      if (project?.id) {
+        localStorage.setItem(
+          `workspaces_${project.id}`,
+          JSON.stringify(updated),
+        );
+      }
+      return updated;
+    });
   };
 
   const closePopupWorkspace = (workspaceId: string) => {

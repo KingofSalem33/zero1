@@ -5,6 +5,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { ENV } from "./env";
 import projectsRouter from "./routes/projects";
+import threadsRouter from "./routes/threads";
 import artifactsRouter from "./routes/artifacts";
 import artifactActionsRouter from "./routes/artifact-actions";
 import checkpointsRouter from "./routes/checkpoints";
@@ -57,6 +58,9 @@ app.use(express.json());
 
 // Mount project routes
 app.use("/api/projects", projectsRouter);
+
+// Mount thread routes
+app.use("/api/threads", threadsRouter);
 
 // Mount artifact routes
 app.use("/api/artifacts", artifactsRouter);

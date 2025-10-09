@@ -129,8 +129,8 @@ router.get("/:projectId", async (req, res) => {
       });
     }
 
-    // Get project from orchestrator (in-memory)
-    const project = orchestrator.getProject(projectId);
+    // Get project from orchestrator (checks cache, then Supabase)
+    const project = await orchestrator.getProjectAsync(projectId);
 
     if (!project) {
       return res.status(404).json({
@@ -172,7 +172,7 @@ router.get("/:projectId", async (req, res) => {
 // GET /api/projects - Get all projects
 router.get("/", async (_req, res) => {
   try {
-    const projects = orchestrator.getAllProjects();
+    const projects = await orchestrator.getAllProjects();
 
     return res.json({
       ok: true,
@@ -211,7 +211,7 @@ router.post("/:projectId/execute-step/stream", async (req, res) => {
       });
     }
 
-    const project = orchestrator.getProject(projectId);
+    const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
       console.error("❌ [API] Project not found:", projectId);
       return res.status(404).json({
@@ -271,7 +271,7 @@ router.post("/:projectId/execute-step", async (req, res) => {
       });
     }
 
-    const project = orchestrator.getProject(projectId);
+    const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
       console.error("❌ [API] Project not found:", projectId);
       return res.status(404).json({
@@ -334,7 +334,7 @@ router.post("/:projectId/expand", async (req, res) => {
       });
     }
 
-    const project = orchestrator.getProject(projectId);
+    const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
       console.error("❌ [API] Project not found:", projectId);
       return res.status(404).json({

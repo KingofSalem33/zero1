@@ -6,6 +6,7 @@ import { toolSpecs, toolMap } from "../ai/tools";
 import type { Response } from "express";
 import { threadService } from "../services/threadService";
 import type { ChatCompletionMessageParam } from "openai/resources";
+import { supabase } from "../db";
 import {
   Project,
   PhaseGenerationRequest,
@@ -1139,7 +1140,7 @@ End by instructing the user to review the materials, complete the work, and uplo
       request.project_id,
     );
 
-    const project = projects.get(request.project_id);
+    const project = await this.getProjectAsync(request.project_id);
     if (!project) {
       throw new Error("Project not found");
     }
@@ -1215,6 +1216,25 @@ End by instructing the user to review the materials, complete the work, and uplo
     project.updated_at = new Date().toISOString();
     projects.set(request.project_id, project);
 
+    // Persist to Supabase (write-through cache)
+    try {
+      await supabase
+        .from("projects")
+        .update({
+          current_phase: project.current_phase,
+          roadmap: project.phases,
+          status: project.status,
+          updated_at: project.updated_at,
+        })
+        .eq("id", request.project_id);
+    } catch (err) {
+      console.error(
+        "[ORCHESTRATOR] Error persisting substep completion to Supabase:",
+        err,
+      );
+      // Don't fail the operation if Supabase write fails
+    }
+
     return {
       project,
       phase_unlocked: unlockedPhase,
@@ -1226,12 +1246,103 @@ End by instructing the user to review the materials, complete the work, and uplo
     };
   }
 
-  getProject(projectId: string): Project | undefined {
-    return projects.get(projectId);
+  // Load project from Supabase and cache in memory
+  private async loadProjectFromSupabase(
+    projectId: string,
+  ): Promise<Project | null> {
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", projectId)
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+
+      // Transform Supabase row to Project type
+      const project: Project = {
+        id: data.id,
+        goal: data.goal,
+        status: data.status,
+        current_phase: data.current_phase || 1,
+        current_substep: data.current_substep || 1,
+        phases: data.roadmap || [],
+        history: [],
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      };
+
+      // Cache in memory
+      projects.set(projectId, project);
+      return project;
+    } catch (err) {
+      console.error("[ORCHESTRATOR] Error loading project from Supabase:", err);
+      return null;
+    }
   }
 
-  getAllProjects(): Project[] {
-    return Array.from(projects.values());
+  // Get project with Supabase fallback
+  getProject(projectId: string): Project | undefined {
+    // First check in-memory cache
+    const cached = projects.get(projectId);
+    if (cached) {
+      return cached;
+    }
+
+    // Note: This is synchronous but loadProjectFromSupabase is async
+    // For now, return undefined and let caller use async version
+    return undefined;
+  }
+
+  // Async version for proper Supabase loading
+  async getProjectAsync(projectId: string): Promise<Project | undefined> {
+    // First check in-memory cache
+    const cached = projects.get(projectId);
+    if (cached) {
+      return cached;
+    }
+
+    // Load from Supabase
+    const loaded = await this.loadProjectFromSupabase(projectId);
+    return loaded || undefined;
+  }
+
+  async getAllProjects(): Promise<Project[]> {
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error || !data) {
+        console.error("[ORCHESTRATOR] Error fetching projects:", error);
+        return Array.from(projects.values());
+      }
+
+      // Transform and cache all projects
+      const allProjects = data.map((row) => {
+        const project: Project = {
+          id: row.id,
+          goal: row.goal,
+          status: row.status,
+          current_phase: row.current_phase || 1,
+          current_substep: row.current_substep || 1,
+          phases: row.roadmap || [],
+          history: [],
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+        projects.set(project.id, project);
+        return project;
+      });
+
+      return allProjects;
+    } catch (err) {
+      console.error("[ORCHESTRATOR] Error fetching all projects:", err);
+      return Array.from(projects.values());
+    }
   }
 
   detectMasterPrompt(input: string, phases: any[]): string | null {
@@ -1265,7 +1376,7 @@ End by instructing the user to review the materials, complete the work, and uplo
       request.project_id,
     );
 
-    const project = projects.get(request.project_id);
+    const project = await this.getProjectAsync(request.project_id);
     if (!project) {
       throw new Error("Project not found");
     }
@@ -1360,7 +1471,7 @@ ${request.master_prompt}`;
       request.project_id,
     );
 
-    const project = projects.get(request.project_id);
+    const project = await this.getProjectAsync(request.project_id);
     if (!project) {
       throw new Error("Project not found");
     }
@@ -1373,6 +1484,7 @@ ${request.master_prompt}`;
     // Get or create thread (optional - fallback to no thread)
     let thread = null;
     let useThreads = true;
+    let accumulatedResponse = ""; // Accumulate AI response to save later
 
     try {
       thread = request.thread_id
@@ -1468,7 +1580,7 @@ ${request.master_prompt}`;
         ];
       }
 
-      await runModelStream(request.res, contextMessages, {
+      accumulatedResponse = await runModelStream(request.res, contextMessages, {
         toolSpecs,
         toolMap,
         model: ENV.OPENAI_MODEL_NAME,
@@ -1476,7 +1588,22 @@ ${request.master_prompt}`;
 
       console.log("✅ [EXECUTE] Streaming AI response generated successfully");
 
-      // Note: AI response will be saved by the route handler after streaming completes
+      // Save AI response to thread
+      if (useThreads && thread && accumulatedResponse) {
+        try {
+          await threadService.saveMessage(
+            thread.id,
+            "assistant",
+            accumulatedResponse,
+          );
+          console.log("✅ [EXECUTE] AI response saved to thread");
+        } catch (saveError) {
+          console.error(
+            "⚠️ [EXECUTE] Failed to save AI response to thread:",
+            saveError,
+          );
+        }
+      }
     } catch (error) {
       console.error("❌ [EXECUTE] Streaming AI request failed:", error);
       throw error;
@@ -1488,7 +1615,7 @@ ${request.master_prompt}`;
     phase_id: string;
     master_prompt_input: string;
   }): Promise<any> {
-    const project = projects.get(request.project_id);
+    const project = await this.getProjectAsync(request.project_id);
     if (!project) {
       throw new Error("Project not found");
     }
@@ -1531,6 +1658,24 @@ ${request.master_prompt}`;
 
     project.updated_at = new Date().toISOString();
     projects.set(request.project_id, project);
+
+    // Persist to Supabase (write-through cache)
+    try {
+      await supabase
+        .from("projects")
+        .update({
+          current_phase: project.current_phase,
+          roadmap: project.phases,
+          updated_at: project.updated_at,
+        })
+        .eq("id", request.project_id);
+    } catch (err) {
+      console.error(
+        "[ORCHESTRATOR] Error persisting phase expansion to Supabase:",
+        err,
+      );
+      // Don't fail the operation if Supabase write fails
+    }
 
     return {
       project,

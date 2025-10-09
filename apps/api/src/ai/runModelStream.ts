@@ -37,12 +37,13 @@ export interface RunModelStreamOptions {
  * - tool_error: { tool: string, error: string }
  * - content: { delta: string }
  * - done: { citations: string[] }
+ * Returns the full accumulated AI response
  */
 export async function runModelStream(
   res: Response,
   messages: ChatCompletionMessageParam[],
   options: RunModelStreamOptions = {},
-): Promise<void> {
+): Promise<string> {
   const {
     toolSpecs = [],
     toolMap: providedToolMap = toolMap,
@@ -66,6 +67,7 @@ export async function runModelStream(
   const conversationMessages: ChatCompletionMessageParam[] = [...messages];
   const allCitations: string[] = [];
   let iterations = 0;
+  let finalResponse = ""; // Track the final AI response to return
 
   logger.info(
     { messageCount: messages.length, toolCount: toolSpecs.length },
@@ -150,9 +152,10 @@ export async function runModelStream(
 
       // If no tool calls, we're done
       if (!currentToolCalls.length) {
+        finalResponse = currentContent; // Save the final response
         sendEvent("done", { citations: [...new Set(allCitations)] });
         res.end();
-        return;
+        return finalResponse;
       }
 
       // Process tool calls
@@ -242,6 +245,7 @@ export async function runModelStream(
     logger.warn({ maxIterations }, "Maximum iterations reached");
     sendEvent("done", { citations: [...new Set(allCitations)] });
     res.end();
+    return finalResponse;
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : error },
@@ -252,5 +256,6 @@ export async function runModelStream(
         error instanceof Error ? error.message : "Unknown streaming error",
     });
     res.end();
+    return finalResponse;
   }
 }
