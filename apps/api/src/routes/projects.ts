@@ -242,6 +242,7 @@ router.post("/:projectId/execute-step/stream", async (req, res) => {
       `data: ${JSON.stringify({ error: "Failed to execute step" })}\n\n`,
     );
     res.end();
+    return;
   }
 });
 
