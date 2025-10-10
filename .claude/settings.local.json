@@ -25,7 +25,8 @@
       "WebFetch(domain:developers.google.com)",
       "WebFetch(domain:community.openai.com)",
       "WebFetch(domain:openai.com)",
-      "WebFetch(domain:cookbook.openai.com)"
+      "WebFetch(domain:cookbook.openai.com)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

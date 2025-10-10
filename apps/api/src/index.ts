@@ -19,6 +19,7 @@ import {
 } from "./ai/schemas";
 import { handleFileUpload } from "./files";
 import { getFacts, addFact, pushToThread, clearFacts } from "./memory";
+import { requireAuth, optionalAuth } from "./middleware/auth.js";
 
 // Extract URLs from text using regex
 function extractUrls(text: string): string[] {
@@ -60,23 +61,23 @@ app.use(
 app.use(morgan("combined"));
 app.use(express.json());
 
-// Mount project routes
-app.use("/api/projects", projectsRouter);
+// Mount project routes (protected)
+app.use("/api/projects", requireAuth, projectsRouter);
 
-// Mount thread routes
-app.use("/api/threads", threadsRouter);
+// Mount thread routes (protected)
+app.use("/api/threads", requireAuth, threadsRouter);
 
-// Mount artifact routes
-app.use("/api/artifacts", artifactsRouter);
-app.use("/api/artifact-actions", artifactActionsRouter);
+// Mount artifact routes (protected)
+app.use("/api/artifacts", requireAuth, artifactsRouter);
+app.use("/api/artifact-actions", requireAuth, artifactActionsRouter);
 
-// Mount checkpoint routes
-app.use("/api/checkpoints", checkpointsRouter);
+// Mount checkpoint routes (protected)
+app.use("/api/checkpoints", requireAuth, checkpointsRouter);
 
-// File endpoints
-app.post("/api/files", handleFileUpload);
+// File endpoints (protected)
+app.post("/api/files", requireAuth, handleFileUpload);
 
-app.get("/api/files", async (_req, res) => {
+app.get("/api/files", requireAuth, async (_req, res) => {
   try {
     const { listFiles } = await import("./files.js");
     const files = await listFiles();
@@ -87,7 +88,7 @@ app.get("/api/files", async (_req, res) => {
   }
 });
 
-app.delete("/api/files/:id", async (req, res) => {
+app.delete("/api/files/:id", requireAuth, async (req, res) => {
   try {
     const { deleteFile } = await import("./files.js");
     const success = await deleteFile(req.params.id);
@@ -103,8 +104,8 @@ app.delete("/api/files/:id", async (req, res) => {
   }
 });
 
-// Memory endpoints
-app.get("/api/memory", async (req, res) => {
+// Memory endpoints (protected)
+app.get("/api/memory", requireAuth, async (req, res) => {
   try {
     const userId = req.query.userId as string;
     if (!userId) {
@@ -121,7 +122,7 @@ app.get("/api/memory", async (req, res) => {
   }
 });
 
-app.post("/api/memory", async (req, res) => {
+app.post("/api/memory", requireAuth, async (req, res) => {
   try {
     const { userId, fact } = req.body;
 
@@ -141,7 +142,7 @@ app.post("/api/memory", async (req, res) => {
   }
 });
 
-app.delete("/api/memory", async (req, res) => {
+app.delete("/api/memory", requireAuth, async (req, res) => {
   try {
     const userId = req.query.userId as string;
     if (!userId) {
@@ -159,35 +160,39 @@ app.delete("/api/memory", async (req, res) => {
 });
 
 // Extract facts from recent conversations
-app.post("/api/memory/extract", express.json(), async (req, res) => {
-  try {
-    const { userId } = req.body;
+app.post(
+  "/api/memory/extract",
+  requireAuth,
+  express.json(),
+  async (req, res) => {
+    try {
+      const { userId } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
 
-    const { getThread } = await import("./memory.js");
+      const { getThread } = await import("./memory.js");
 
-    // Get recent conversation thread
-    const thread = await getThread(userId);
+      // Get recent conversation thread
+      const thread = await getThread(userId);
 
-    if (thread.length === 0) {
-      return res.json({
-        message: "No conversation history found",
-        facts: await getFacts(userId),
-        extractedCount: 0,
-      });
-    }
+      if (thread.length === 0) {
+        return res.json({
+          message: "No conversation history found",
+          facts: await getFacts(userId),
+          extractedCount: 0,
+        });
+      }
 
-    // Build conversation context for fact extraction
-    const conversationText = thread
-      .filter((msg: { role: string }) => msg.role === "user")
-      .map((msg: { content: string }) => msg.content)
-      .join("\n\n");
+      // Build conversation context for fact extraction
+      const conversationText = thread
+        .filter((msg: { role: string }) => msg.role === "user")
+        .map((msg: { content: string }) => msg.content)
+        .join("\n\n");
 
-    // Use AI to extract facts from conversation
-    const extractionPrompt = `Analyze this user's conversation history and extract key facts about them.
+      // Use AI to extract facts from conversation
+      const extractionPrompt = `Analyze this user's conversation history and extract key facts about them.
 Focus on: preferences, skills, goals, constraints, past experiences, tools they use, languages they prefer, etc.
 Return ONLY a JSON array of short, specific facts (one sentence each). Be concise and factual.
 
@@ -196,59 +201,60 @@ ${conversationText}
 
 Return format: ["fact 1", "fact 2", "fact 3"]`;
 
-    const result = await runModel(
-      [
-        {
-          role: "system",
-          content:
-            "You extract key user facts from conversations. Return only a JSON array of strings.",
-        },
-        {
-          role: "user",
-          content: extractionPrompt,
-        },
-      ],
-      { toolSpecs: [], toolMap: {} },
-    );
-
-    // Parse extracted facts
-    let extractedFacts: string[] = [];
-    try {
-      const parsed = JSON.parse(result.text);
-      extractedFacts = Array.isArray(parsed)
-        ? parsed.filter((f) => typeof f === "string" && f.trim())
-        : [];
-    } catch {
-      console.error("Failed to parse extracted facts JSON");
-    }
-
-    // Add extracted facts to memory
-    let addedCount = 0;
-    for (const fact of extractedFacts) {
-      const existingFacts = await getFacts(userId);
-      const isDuplicate = existingFacts.some(
-        (existing) =>
-          existing.toLowerCase().trim() === fact.toLowerCase().trim(),
+      const result = await runModel(
+        [
+          {
+            role: "system",
+            content:
+              "You extract key user facts from conversations. Return only a JSON array of strings.",
+          },
+          {
+            role: "user",
+            content: extractionPrompt,
+          },
+        ],
+        { toolSpecs: [], toolMap: {} },
       );
 
-      if (!isDuplicate) {
-        await addFact(userId, fact);
-        addedCount++;
+      // Parse extracted facts
+      let extractedFacts: string[] = [];
+      try {
+        const parsed = JSON.parse(result.text);
+        extractedFacts = Array.isArray(parsed)
+          ? parsed.filter((f) => typeof f === "string" && f.trim())
+          : [];
+      } catch {
+        console.error("Failed to parse extracted facts JSON");
       }
+
+      // Add extracted facts to memory
+      let addedCount = 0;
+      for (const fact of extractedFacts) {
+        const existingFacts = await getFacts(userId);
+        const isDuplicate = existingFacts.some(
+          (existing) =>
+            existing.toLowerCase().trim() === fact.toLowerCase().trim(),
+        );
+
+        if (!isDuplicate) {
+          await addFact(userId, fact);
+          addedCount++;
+        }
+      }
+
+      const allFacts = await getFacts(userId);
+
+      return res.json({
+        message: `Extracted ${addedCount} new facts`,
+        facts: allFacts,
+        extractedCount: addedCount,
+      });
+    } catch (error) {
+      console.error("Extract facts error:", error);
+      return res.status(500).json({ error: "Failed to extract facts" });
     }
-
-    const allFacts = await getFacts(userId);
-
-    return res.json({
-      message: `Extracted ${addedCount} new facts`,
-      facts: allFacts,
-      extractedCount: addedCount,
-    });
-  } catch (error) {
-    console.error("Extract facts error:", error);
-    return res.status(500).json({ error: "Failed to extract facts" });
-  }
-});
+  },
+);
 
 app.get("/health", (_req, res) => {
   res.json({
@@ -258,8 +264,8 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// AI Chat streaming endpoint with SSE
-app.post("/api/chat/stream", express.json(), async (req, res) => {
+// AI Chat streaming endpoint with SSE (optional auth)
+app.post("/api/chat/stream", optionalAuth, express.json(), async (req, res) => {
   try {
     // Validate request body
     const {
@@ -325,8 +331,8 @@ app.post("/api/chat/stream", express.json(), async (req, res) => {
   }
 });
 
-// AI Chat endpoint with tools and optional JSON format
-app.post("/api/chat", express.json(), async (req, res) => {
+// AI Chat endpoint with tools and optional JSON format (optional auth)
+app.post("/api/chat", optionalAuth, express.json(), async (req, res) => {
   try {
     // Validate request body
     const {
