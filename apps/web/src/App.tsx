@@ -6,6 +6,8 @@ import { ExportRoadmapModal } from "./components/ExportRoadmapModal";
 import { ToolBadges } from "./components/ToolBadges";
 import { StreamingChatDemo } from "./components/StreamingChatDemo";
 import { MarkdownMessage } from "./components/MarkdownMessage";
+import { FileManager } from "./components/FileManager";
+import { UserMemoryManager } from "./components/UserMemoryManager";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -829,6 +831,8 @@ interface ExecutionEngineProps {
   onViewRoadmap: () => void;
   onOpenNewWorkspace: () => void;
   onSubstepComplete: (substepId: string) => void;
+  onOpenFileManager: () => void;
+  onOpenMemoryManager: () => void;
 }
 
 const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
@@ -836,6 +840,8 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   onViewRoadmap,
   onOpenNewWorkspace,
   onSubstepComplete,
+  onOpenFileManager,
+  onOpenMemoryManager,
 }) => {
   const [copiedText, setCopiedText] = useState("");
   const [isFlipped, setIsFlipped] = useState(false);
@@ -998,6 +1004,18 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium"
               >
                 View Roadmap
+              </button>
+              <button
+                onClick={onOpenFileManager}
+                className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium"
+              >
+                📁 Manage Files
+              </button>
+              <button
+                onClick={onOpenMemoryManager}
+                className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
+              >
+                🧠 My Memory
               </button>
             </div>
           )}
@@ -1951,6 +1969,17 @@ function App() {
   const [creatingProject, setCreatingProject] = useState(false);
   const [inspiring, setInspiring] = useState(false);
   const [showMasterControl, setShowMasterControl] = useState(false);
+  const [showFileManager, setShowFileManager] = useState(false);
+  const [showMemoryManager, setShowMemoryManager] = useState(false);
+
+  // User ID for memory system (could be from auth later)
+  const [userId] = useState(() => {
+    const stored = localStorage.getItem("zero1_userId");
+    if (stored) return stored;
+    const newId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    localStorage.setItem("zero1_userId", newId);
+    return newId;
+  });
 
   // Popup workspace state
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
@@ -2361,6 +2390,8 @@ Return only the refined vision statement using the format "I want to build _____
                 onViewRoadmap={() => setShowMasterControl(true)}
                 onOpenNewWorkspace={createPopupWorkspace}
                 onSubstepComplete={handleSubstepComplete}
+                onOpenFileManager={() => setShowFileManager(true)}
+                onOpenMemoryManager={() => setShowMemoryManager(true)}
               />
             </AnimatedCard>
           </div>
@@ -2392,6 +2423,19 @@ Return only the refined vision statement using the format "I want to build _____
           isOpen={showMasterControl}
           onClose={() => setShowMasterControl(false)}
           onProjectUpdate={refreshProject}
+        />
+      )}
+
+      {/* File Manager Modal */}
+      {showFileManager && (
+        <FileManager onClose={() => setShowFileManager(false)} />
+      )}
+
+      {/* User Memory Manager Modal */}
+      {showMemoryManager && (
+        <UserMemoryManager
+          userId={userId}
+          onClose={() => setShowMemoryManager(false)}
         />
       )}
     </div>

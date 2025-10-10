@@ -134,3 +134,32 @@ export async function readFileContent(file: FileMetadata): Promise<string> {
     return "";
   }
 }
+
+// Delete file
+export async function deleteFile(id: string): Promise<boolean> {
+  try {
+    const index = await loadFileIndex();
+    const file = index[id];
+
+    if (!file) {
+      return false;
+    }
+
+    // Delete physical file
+    try {
+      await fs.unlink(file.path);
+    } catch (error) {
+      console.error(`Failed to delete file ${id}:`, error);
+    }
+
+    // Remove from index
+    delete index[id];
+    await saveFileIndex(index);
+
+    console.log(`File deleted: ${file.name} (${id})`);
+    return true;
+  } catch (error) {
+    console.error(`Error deleting file ${id}:`, error);
+    return false;
+  }
+}

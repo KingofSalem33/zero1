@@ -69,8 +69,35 @@ app.use("/api/artifact-actions", artifactActionsRouter);
 // Mount checkpoint routes
 app.use("/api/checkpoints", checkpointsRouter);
 
-// File upload endpoint
+// File endpoints
 app.post("/api/files", handleFileUpload);
+
+app.get("/api/files", async (req, res) => {
+  try {
+    const { listFiles } = await import("./files");
+    const files = await listFiles();
+    res.json({ files });
+  } catch (error) {
+    console.error("Error listing files:", error);
+    res.status(500).json({ error: "Failed to list files" });
+  }
+});
+
+app.delete("/api/files/:id", async (req, res) => {
+  try {
+    const { deleteFile } = await import("./files");
+    const success = await deleteFile(req.params.id);
+
+    if (!success) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    res.json({ ok: true, message: "File deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting file:", error);
+    res.status(500).json({ error: "Failed to delete file" });
+  }
+});
 
 // Memory endpoints
 app.get("/api/memory", async (req, res) => {
@@ -124,6 +151,98 @@ app.delete("/api/memory", async (req, res) => {
   } catch (error) {
     console.error("Clear memory error:", error);
     return res.status(500).json({ error: "Failed to clear memory" });
+  }
+});
+
+// Extract facts from recent conversations
+app.post("/api/memory/extract", express.json(), async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const { getThread } = await import("./memory");
+
+    // Get recent conversation thread
+    const thread = await getThread(userId);
+
+    if (thread.length === 0) {
+      return res.json({
+        message: "No conversation history found",
+        facts: await getFacts(userId),
+        extractedCount: 0,
+      });
+    }
+
+    // Build conversation context for fact extraction
+    const conversationText = thread
+      .filter((msg) => msg.role === "user")
+      .map((msg) => msg.content)
+      .join("\n\n");
+
+    // Use AI to extract facts from conversation
+    const extractionPrompt = `Analyze this user's conversation history and extract key facts about them.
+Focus on: preferences, skills, goals, constraints, past experiences, tools they use, languages they prefer, etc.
+Return ONLY a JSON array of short, specific facts (one sentence each). Be concise and factual.
+
+Conversation history:
+${conversationText}
+
+Return format: ["fact 1", "fact 2", "fact 3"]`;
+
+    const result = await runModel(
+      [
+        {
+          role: "system",
+          content:
+            "You extract key user facts from conversations. Return only a JSON array of strings.",
+        },
+        {
+          role: "user",
+          content: extractionPrompt,
+        },
+      ],
+      { toolSpecs: [], toolMap: {} },
+    );
+
+    // Parse extracted facts
+    let extractedFacts: string[] = [];
+    try {
+      const parsed = JSON.parse(result.text);
+      extractedFacts = Array.isArray(parsed)
+        ? parsed.filter((f) => typeof f === "string" && f.trim())
+        : [];
+    } catch {
+      console.error("Failed to parse extracted facts JSON");
+    }
+
+    // Add extracted facts to memory
+    let addedCount = 0;
+    for (const fact of extractedFacts) {
+      const existingFacts = await getFacts(userId);
+      const isDuplicate = existingFacts.some(
+        (existing) =>
+          existing.toLowerCase().trim() === fact.toLowerCase().trim(),
+      );
+
+      if (!isDuplicate) {
+        await addFact(userId, fact);
+        addedCount++;
+      }
+    }
+
+    const allFacts = await getFacts(userId);
+
+    return res.json({
+      message: `Extracted ${addedCount} new facts`,
+      facts: allFacts,
+      extractedCount: addedCount,
+    });
+  } catch (error) {
+    console.error("Extract facts error:", error);
+    return res.status(500).json({ error: "Failed to extract facts" });
   }
 });
 

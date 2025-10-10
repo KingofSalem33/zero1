@@ -58,10 +58,15 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [progressPercentage, setProgressPercentage] = useState(0);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [analyzedArtifact, setAnalyzedArtifact] = useState<ArtifactData | null>(
     null,
   );
+  const [canCancel, setCanCancel] = useState(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const [lastArtifactId, setLastArtifactId] = useState<string | null>(null);
+  const [showRetry, setShowRetry] = useState(false);
 
   // Poll artifact status until analysis completes
   const pollArtifactStatus = async (
@@ -70,7 +75,17 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
     const maxAttempts = 30; // 30 seconds max
     let attempts = 0;
 
+    setCanCancel(true);
+    setProgressPercentage(10); // Start at 10% after upload
+
     while (attempts < maxAttempts) {
+      // Check if cancel was requested
+      if (cancelRequested) {
+        setUploadProgress("❌ Cancelled");
+        setCanCancel(false);
+        return null;
+      }
+
       try {
         const response = await fetch(`${API_URL}/api/artifacts/${artifactId}`);
         const data = await response.json();
@@ -78,10 +93,28 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         if (response.ok && data.artifact) {
           const artifact = data.artifact;
 
+          // Update progress based on attempts (simulate progress)
+          const progress = Math.min(10 + (attempts / maxAttempts) * 85, 95);
+          setProgressPercentage(Math.round(progress));
+
+          // Update status message based on progress
+          if (progress < 30) {
+            setUploadProgress("🔍 Starting analysis...");
+          } else if (progress < 60) {
+            setUploadProgress("🧠 Analyzing code structure...");
+          } else if (progress < 90) {
+            setUploadProgress("📊 Matching to roadmap...");
+          } else {
+            setUploadProgress("✨ Finalizing...");
+          }
+
           // Check if analysis is complete
           if (artifact.status === "analyzed") {
+            setProgressPercentage(100);
+            setCanCancel(false);
             return artifact;
           } else if (artifact.status === "failed") {
+            setCanCancel(false);
             throw new Error("Analysis failed");
           }
         }
@@ -94,6 +127,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
       attempts++;
     }
 
+    setCanCancel(false);
     return null; // Timeout
   };
 
@@ -103,8 +137,12 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
     console.log("[Upload] Starting upload with project_id:", projectId);
 
+    // Reset state
     setIsUploading(true);
-    setUploadProgress("Uploading...");
+    setUploadProgress("📤 Uploading file...");
+    setProgressPercentage(5);
+    setCancelRequested(false);
+    setShowRetry(false);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -120,13 +158,14 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
       if (response.ok && data.artifact) {
         console.log("[Upload] Success:", data);
-        setUploadProgress("Analyzing...");
+        setLastArtifactId(data.artifact.id);
 
         // Poll for analysis completion
         const analyzedData = await pollArtifactStatus(data.artifact.id);
 
         if (analyzedData) {
-          setUploadProgress("✓ Analysis Complete!");
+          setUploadProgress("✅ Analysis Complete!");
+          setProgressPercentage(100);
 
           // Show diff modal if we have analysis results
           if (analyzedData.analysis) {
@@ -140,22 +179,31 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           }
 
           // Clear progress after modal is shown
-          setTimeout(() => setUploadProgress(""), 1500);
+          setTimeout(() => {
+            setUploadProgress("");
+            setProgressPercentage(0);
+          }, 1500);
         } else {
-          setUploadProgress("⚠️ Analysis timeout");
-          setTimeout(() => setUploadProgress(""), 3000);
+          setUploadProgress(
+            "⚠️ Analysis timeout - artifact saved but analysis incomplete",
+          );
+          setShowRetry(true);
+          setTimeout(() => setUploadProgress(""), 5000);
         }
       } else {
         console.error("[Upload] Failed:", data);
-        setUploadProgress(`❌ ${data.error || "Failed"}`);
-        setTimeout(() => setUploadProgress(""), 3000);
+        setUploadProgress(`❌ Upload failed: ${data.error || "Unknown error"}`);
+        setShowRetry(true);
+        setTimeout(() => setUploadProgress(""), 5000);
       }
     } catch (error) {
       console.error("Upload error:", error);
-      setUploadProgress("❌ Error");
-      setTimeout(() => setUploadProgress(""), 2000);
+      setUploadProgress("❌ Network error - check your connection");
+      setShowRetry(true);
+      setTimeout(() => setUploadProgress(""), 5000);
     } finally {
       setIsUploading(false);
+      setCanCancel(false);
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -163,32 +211,107 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
     }
   };
 
+  // Retry analysis for last uploaded artifact
+  const handleRetry = async () => {
+    if (!lastArtifactId) return;
+
+    setIsUploading(true);
+    setShowRetry(false);
+    setUploadProgress("🔄 Retrying analysis...");
+    setProgressPercentage(10);
+    setCancelRequested(false);
+
+    try {
+      const analyzedData = await pollArtifactStatus(lastArtifactId);
+
+      if (analyzedData) {
+        setUploadProgress("✅ Analysis Complete!");
+        setProgressPercentage(100);
+
+        if (analyzedData.analysis) {
+          setAnalyzedArtifact(analyzedData);
+          setShowDiffModal(true);
+        }
+
+        if (onUploadComplete) {
+          onUploadComplete(analyzedData);
+        }
+
+        setTimeout(() => {
+          setUploadProgress("");
+          setProgressPercentage(0);
+        }, 1500);
+      } else {
+        setUploadProgress("⚠️ Analysis timeout again");
+        setShowRetry(true);
+        setTimeout(() => setUploadProgress(""), 3000);
+      }
+    } catch (error) {
+      console.error("Retry error:", error);
+      setUploadProgress("❌ Retry failed");
+      setShowRetry(true);
+      setTimeout(() => setUploadProgress(""), 3000);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Cancel analysis
+  const handleCancel = () => {
+    setCancelRequested(true);
+    setCanCancel(false);
+  };
+
   return (
     <>
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        disabled={!projectId || isUploading}
-        className="w-8 h-8 rounded-lg bg-gray-700/60 hover:bg-gray-600/80 disabled:bg-gray-800/40 flex items-center justify-center transition-colors relative group"
-        title="Upload artifact"
-      >
-        {isUploading ? (
-          <div className="w-3 h-3 border-2 border-gray-400/30 border-t-gray-300 rounded-full animate-spin" />
-        ) : (
-          <svg
-            className="w-4 h-4 text-gray-300 group-hover:text-white transition-colors"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      <div className="relative">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!projectId || isUploading}
+          className="w-8 h-8 rounded-lg bg-gray-700/60 hover:bg-gray-600/80 disabled:bg-gray-800/40 flex items-center justify-center transition-colors relative group"
+          title="Upload artifact"
+        >
+          {isUploading ? (
+            <div className="w-3 h-3 border-2 border-gray-400/30 border-t-gray-300 rounded-full animate-spin" />
+          ) : (
+            <svg
+              className="w-4 h-4 text-gray-300 group-hover:text-white transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+          )}
+        </button>
+
+        {showRetry && !isUploading && (
+          <button
+            onClick={handleRetry}
+            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-600 hover:bg-yellow-500 flex items-center justify-center transition-colors shadow-lg"
+            title="Retry analysis"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-            />
-          </svg>
+            <svg
+              className="w-3 h-3 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
         )}
-      </button>
+      </div>
 
       <input
         ref={fileInputRef}
@@ -198,9 +321,58 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         accept=".zip,.js,.jsx,.ts,.tsx,.py,.java,.go,.txt,.md,.json"
       />
 
+      {/* Enhanced Progress Indicator */}
       {uploadProgress && (
-        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-3 py-1.5 rounded-lg text-xs whitespace-nowrap shadow-lg">
-          {uploadProgress}
+        <div className="absolute -top-24 left-1/2 transform -translate-x-1/2 bg-gray-800/95 backdrop-blur-sm text-white px-4 py-3 rounded-xl text-xs shadow-2xl border border-gray-700 min-w-[240px]">
+          {/* Status Message */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-medium">{uploadProgress}</span>
+            {canCancel && (
+              <button
+                onClick={handleCancel}
+                className="ml-2 text-red-400 hover:text-red-300 transition-colors"
+                title="Cancel"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* Progress Bar */}
+          {progressPercentage > 0 && (
+            <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 transition-all duration-300 ease-out"
+                style={{ width: `${progressPercentage}%` }}
+              />
+            </div>
+          )}
+
+          {/* Percentage */}
+          {progressPercentage > 0 && (
+            <div className="text-right text-gray-400 mt-1 text-[10px]">
+              {progressPercentage}%
+            </div>
+          )}
+
+          {/* Guidance for timeout/errors */}
+          {showRetry && (
+            <div className="mt-2 pt-2 border-t border-gray-700 text-[10px] text-gray-400">
+              💡 Click the retry button to try again
+            </div>
+          )}
         </div>
       )}
 
