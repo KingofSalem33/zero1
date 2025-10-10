@@ -5,6 +5,11 @@
 
 import { runModel } from "../ai/runModel";
 import type { ArtifactSignals } from "./artifact-analyzer";
+import {
+  buildIterationContext,
+  generateIterationSummary,
+  detectStuckState,
+} from "./iteration-context-builder";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -292,50 +297,30 @@ export async function analyzeArtifactWithLLM(
 `
       : "";
 
-  // Build iteration history with diff awareness
-  const previousAnalyses = currentProject?.previous_artifact_analyses || [];
-  const iterationHistory =
-    previousAnalyses.length > 0
-      ? `
-**Previous Iterations on This Substep:**
-${previousAnalyses
-  .map(
-    (prev, idx) => `
-Iteration ${idx + 1}:
-- Quality: ${prev.quality_score}/10
-- What was working: ${prev.implementation_state || "N/A"}
-- Issues found: ${prev.bugs_or_errors?.join(", ") || "None"}
-- Missing: ${prev.missing_elements?.join(", ") || "None"}
-${idx === previousAnalyses.length - 1 && prev.detailed_analysis ? "\n**MOST RECENT FEEDBACK (what they need to fix):**\n" + prev.detailed_analysis : ""}
-`,
-  )
-  .join("\n")}
+  // Build CUMULATIVE iteration context with full memory
+  const previousArtifactsWithData =
+    currentProject?.previous_artifact_analyses?.map((analysis, idx) => ({
+      analysis,
+      content_hash: currentProject?.previous_signals?.[idx]?.content_hash || "",
+      uploaded_at: new Date().toISOString(),
+    })) || [];
 
-**This is Iteration ${iterationDiff.iteration_number}**
+  const iterationContext = currentSubstep
+    ? buildIterationContext(previousArtifactsWithData, currentSubstep)
+    : null;
 
-**DETECTED CHANGES IN THIS UPLOAD:**
-${
-  iterationDiff.content_hash_changed
-    ? `
-✅ Content Changed: ${iterationDiff.changes_detected.join(", ")}
-${iterationDiff.improvements_made.length > 0 ? `✨ Improvements: ${iterationDiff.improvements_made.join(", ")}` : ""}
-${iterationDiff.issues_fixed.length > 0 ? `🔧 Attempted Fixes: ${iterationDiff.issues_fixed.join(", ")}` : ""}
-`
-    : `
-⚠️ WARNING: Content hash identical to previous upload - no changes detected!
-Make sure you uploaded the CORRECTED version, not the same file.
-`
-}
+  const iterationHistory = iterationContext
+    ? generateIterationSummary(iterationContext)
+    : "\n**This is Iteration 1** - first upload for this substep. Give comprehensive initial feedback.\n";
 
-CRITICAL: Compare the NEW uploaded work against iteration ${previousAnalyses.length}'s feedback.
-- What did they ACTUALLY FIX from last time? (verify fixes are real, not just claimed)
-- What issues STILL remain?
-- Did they add NEW problems?
-- If no content changed, point this out immediately
+  // Check if user is stuck
+  const stuckState = iterationContext
+    ? detectStuckState(iterationContext)
+    : { is_stuck: false, reason: "", guidance: [] };
 
-Start your detailed_analysis with: "Since iteration ${previousAnalyses.length}, you've [what actually changed based on content hash]..."
-`
-      : "\n**This is Iteration 1** - first upload for this substep. Give comprehensive initial feedback.\n";
+  if (stuckState.is_stuck) {
+    console.log(`⚠️ [LLM Analyzer] User appears stuck: ${stuckState.reason}`);
+  }
 
   // Determine artifact type context
   const artifactTypeContext =
@@ -382,12 +367,14 @@ You are NOT a grader. You are a senior expert who:
 
 **Critical Rules:**
 - **CONTEXT MATTERS**: If this is a business plan, don't talk about tests. If it's a landing page, focus on copy and design, not databases.
+- **CUMULATIVE MEMORY**: Never repeat feedback for things already fixed! Review the "Previously Addressed" list.
+- **ACKNOWLEDGE PROGRESS**: If iteration 2+, start with "Since iteration X, you've fixed Y..."
 - Be encouraging but CORRECTIVE: "Good progress, but let me fix these 3 issues..."
 - Provide SPECIFIC corrections tailored to the work type
 - Generate IMPROVED versions when issues are found
 - Focus on FORWARD MOMENTUM—what's the next concrete action for THIS substep?
 - Quality score reflects current state (be honest but constructive)
-- If this is iteration 2+, acknowledge previous feedback and show what improved
+${stuckState.is_stuck ? `\n⚠️ **USER APPEARS STUCK**: ${stuckState.reason}\nProvide extra guidance: ${stuckState.guidance.join(", ")}` : ""}
 
 **SUBSTEP COMPLETION TRACKING:**
 Extract the requirements from the current substep description and mark each:

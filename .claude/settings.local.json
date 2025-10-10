@@ -22,7 +22,10 @@
       "Bash(findstr:*)",
       "Bash(git reset:*)",
       "WebFetch(domain:platform.openai.com)",
-      "WebFetch(domain:developers.google.com)"
+      "WebFetch(domain:developers.google.com)",
+      "WebFetch(domain:community.openai.com)",
+      "WebFetch(domain:openai.com)",
+      "WebFetch(domain:cookbook.openai.com)"
     ],
     "deny": [],
     "ask": []

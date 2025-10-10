@@ -30,6 +30,14 @@ export interface RunModelOptions {
   onToolCall?: (toolName: string, args: unknown) => void;
   onToolResult?: (toolName: string, result: unknown) => void;
   onToolError?: (toolName: string, error: string) => void;
+  responseFormat?: {
+    type: "json_schema";
+    json_schema: {
+      name: string;
+      strict: boolean;
+      schema: Record<string, unknown>;
+    };
+  };
 }
 
 export interface RunModelResult {
@@ -52,6 +60,7 @@ export async function runModel(
     onToolCall,
     onToolResult,
     onToolError,
+    responseFormat,
   } = options;
 
   const client = makeOpenAI();
@@ -80,6 +89,8 @@ export async function runModel(
         tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
         temperature: 0.3,
         max_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
+        // Structured outputs (strict JSON schema)
+        ...(responseFormat && { response_format: responseFormat }),
         // GPT-5 specific parameters (will be ignored by older models)
         ...(model.startsWith("gpt-5") && {
           reasoning_effort: reasoningEffort,

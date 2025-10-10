@@ -48,6 +48,95 @@ export const chatJsonResponseSchema = z.object({
   sources: z.array(z.string()).optional().describe("Source URLs referenced"),
 });
 
+// OpenAI JSON Schema for structured outputs (strict mode)
+export const chatResponseJsonSchema = {
+  name: "chat_response",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      answer: {
+        type: "string",
+        description: "The response to the user's question",
+      },
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description: "Source URLs referenced (if applicable)",
+      },
+    },
+    required: ["answer"],
+    additionalProperties: false,
+  },
+} as const;
+
+// Phase generation response schema
+export const phaseGenerationJsonSchema = {
+  name: "phase_generation",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      phases: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            phase_id: { type: "string" },
+            goal: { type: "string" },
+            why_it_matters: { type: "string" },
+            acceptance_criteria: {
+              type: "array",
+              items: { type: "string" },
+            },
+            rollback_plan: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+          required: [
+            "phase_id",
+            "goal",
+            "why_it_matters",
+            "acceptance_criteria",
+            "rollback_plan",
+          ],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["phases"],
+    additionalProperties: false,
+  },
+} as const;
+
+// Substep generation response schema
+export const substepGenerationJsonSchema = {
+  name: "substep_generation",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      substeps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            substep_id: { type: "string" },
+            step_number: { type: "number" },
+            label: { type: "string" },
+            prompt_to_send: { type: "string" },
+          },
+          required: ["substep_id", "step_number", "label", "prompt_to_send"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["substeps"],
+    additionalProperties: false,
+  },
+} as const;
+
 export type WebSearchParams = z.infer<typeof webSearchSchema>;
 export type HttpFetchParams = z.infer<typeof httpFetchSchema>;
 export type CalculatorParams = z.infer<typeof calculatorSchema>;

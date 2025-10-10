@@ -2,7 +2,8 @@ import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import { runModelStream } from "../ai/runModelStream";
-import { toolSpecs, toolMap } from "../ai/tools";
+import { selectRelevantTools } from "../ai/tools/selectTools";
+import { substepGenerationJsonSchema } from "../ai/schemas";
 import type { Response } from "express";
 import { threadService } from "../services/threadService";
 import type { ChatCompletionMessageParam } from "openai/resources";
@@ -368,6 +369,11 @@ RESPONSE FORMAT:
         ],
         temperature: 0.3,
         max_tokens: 2000,
+        // Use structured outputs for guaranteed JSON
+        response_format: {
+          type: "json_schema",
+          json_schema: substepGenerationJsonSchema,
+        },
       });
 
       const responseText = result.choices?.[0]?.message?.content ?? "";
@@ -1423,6 +1429,10 @@ ${request.master_prompt}`;
       "Please help me with this step. Provide detailed, actionable guidance to help me complete this specific step. Be practical and specific to my project context.";
 
     try {
+      // Dynamically select relevant tools based on user message
+      const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+        selectRelevantTools(userMessage);
+
       const result = await runModel(
         [
           {
@@ -1435,8 +1445,8 @@ ${request.master_prompt}`;
           },
         ],
         {
-          toolSpecs,
-          toolMap,
+          toolSpecs: selectedSpecs,
+          toolMap: selectedMap,
           model: ENV.OPENAI_MODEL_NAME,
         },
       );
@@ -1580,9 +1590,13 @@ ${request.master_prompt}`;
         ];
       }
 
+      // Dynamically select relevant tools based on user message
+      const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+        selectRelevantTools(userMessage);
+
       accumulatedResponse = await runModelStream(request.res, contextMessages, {
-        toolSpecs,
-        toolMap,
+        toolSpecs: selectedSpecs,
+        toolMap: selectedMap,
         model: ENV.OPENAI_MODEL_NAME,
       });
 

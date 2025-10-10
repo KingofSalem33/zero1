@@ -11,8 +11,12 @@ import artifactActionsRouter from "./routes/artifact-actions";
 import checkpointsRouter from "./routes/checkpoints";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream";
-import { toolSpecs, toolMap } from "./ai/tools";
-import { chatRequestSchema, chatJsonResponseSchema } from "./ai/schemas";
+import { selectRelevantTools } from "./ai/tools/selectTools";
+import {
+  chatRequestSchema,
+  chatJsonResponseSchema,
+  chatResponseJsonSchema,
+} from "./ai/schemas";
 import { handleFileUpload } from "./files";
 import { getFacts, addFact, pushToThread, clearFacts } from "./memory";
 
@@ -296,10 +300,14 @@ app.post("/api/chat/stream", express.json(), async (req, res) => {
       },
     ];
 
-    // Run streaming model
+    // Dynamically select relevant tools
+    const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+      selectRelevantTools(message, history);
+
+    // Run streaming model with selected tools
     await runModelStream(res, conversationMessages, {
-      toolSpecs,
-      toolMap,
+      toolSpecs: selectedSpecs,
+      toolMap: selectedMap,
     });
 
     // Store conversation in memory if userId is provided
@@ -361,9 +369,20 @@ app.post("/api/chat", express.json(), async (req, res) => {
       },
     ];
 
+    // Dynamically select relevant tools
+    const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+      selectRelevantTools(message, history);
+
+    // Use structured outputs for JSON format
     const result = await runModel(conversationMessages, {
-      toolSpecs,
-      toolMap,
+      toolSpecs: selectedSpecs,
+      toolMap: selectedMap,
+      ...(format === "json" && {
+        responseFormat: {
+          type: "json_schema" as const,
+          json_schema: chatResponseJsonSchema,
+        },
+      }),
     });
 
     // Extract URLs from assistant response and combine with tool citations
@@ -381,65 +400,15 @@ app.post("/api/chat", express.json(), async (req, res) => {
 
     // Handle JSON format response
     if (format === "json") {
-      try {
-        // Try to parse the response as JSON
-        const jsonResponse = JSON.parse(result.text);
-        const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
+      // Structured outputs guarantee valid JSON
+      const jsonResponse = JSON.parse(result.text);
+      const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
 
-        return res.json({
-          answer: validatedResponse.answer,
-          sources: validatedResponse.sources || enhancedCitations,
-          tools_used: result.tools_used,
-        });
-      } catch {
-        console.log(
-          "Initial JSON parsing failed, asking model to return valid JSON",
-        );
-
-        // If parsing fails, ask the model to return valid JSON only
-        const retryMessages = [
-          ...conversationMessages,
-          {
-            role: "assistant" as const,
-            content: result.text,
-          },
-          {
-            role: "user" as const,
-            content: "Return valid JSON only.",
-          },
-        ];
-
-        const retryResult = await runModel(retryMessages, {
-          toolSpecs,
-          toolMap,
-        });
-
-        try {
-          const jsonResponse = JSON.parse(retryResult.text);
-          const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
-
-          // For retry, extract URLs from retry result and combine
-          const retryExtractedUrls = extractUrls(retryResult.text);
-          const retryEnhancedCitations = combineAndDedupeUrls(
-            retryResult.citations || [],
-            retryExtractedUrls,
-          );
-
-          return res.json({
-            answer: validatedResponse.answer,
-            sources: validatedResponse.sources || retryEnhancedCitations,
-            tools_used: retryResult.tools_used || result.tools_used,
-          });
-        } catch (retryError) {
-          console.error("JSON retry failed:", retryError);
-          // Fallback to structured response
-          return res.json({
-            answer: result.text,
-            sources: enhancedCitations,
-            tools_used: result.tools_used,
-          });
-        }
-      }
+      return res.json({
+        answer: validatedResponse.answer,
+        sources: validatedResponse.sources || enhancedCitations,
+        tools_used: result.tools_used,
+      });
     }
 
     // Return text format response
