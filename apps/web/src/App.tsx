@@ -1984,6 +1984,37 @@ function App() {
   // Popup workspace state
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
 
+  // Load project from URL parameter on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const projectId = urlParams.get("project");
+
+    if (projectId && !project) {
+      // Load the shared project
+      const loadSharedProject = async () => {
+        try {
+          const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+          const data = await response.json();
+
+          if (response.ok && data.project) {
+            setProject(data.project);
+            setGuidance("✅ Shared project loaded successfully!");
+            setTimeout(() => setGuidance(""), 3000);
+          } else {
+            setGuidance(
+              "❌ Failed to load shared project. It may not exist or be accessible.",
+            );
+          }
+        } catch (error) {
+          console.error("Failed to load shared project:", error);
+          setGuidance("🔌 Network error loading shared project.");
+        }
+      };
+
+      loadSharedProject();
+    }
+  }, []); // Run only once on mount
+
   // Popup workspace management
   const createPopupWorkspace = async () => {
     if (!project) return;

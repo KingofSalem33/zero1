@@ -267,7 +267,8 @@ export const ExportRoadmapModal: React.FC<ExportRoadmapModalProps> = ({
               <div className="flex-1 min-w-0">
                 <h3 className="text-white font-semibold mb-2">Share Link</h3>
                 <p className="text-gray-400 text-sm mb-4">
-                  Copy a direct link to this project (requires project access)
+                  Share a direct link to view this project. Anyone with the link
+                  can access it.
                 </p>
                 <button
                   onClick={handleCopyShareLink}
