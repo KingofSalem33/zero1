@@ -76,9 +76,9 @@ app.use("/api/checkpoints", checkpointsRouter);
 // File endpoints
 app.post("/api/files", handleFileUpload);
 
-app.get("/api/files", async (req, res) => {
+app.get("/api/files", async (_req, res) => {
   try {
-    const { listFiles } = await import("./files");
+    const { listFiles } = await import("./files.js");
     const files = await listFiles();
     res.json({ files });
   } catch (error) {
@@ -89,17 +89,17 @@ app.get("/api/files", async (req, res) => {
 
 app.delete("/api/files/:id", async (req, res) => {
   try {
-    const { deleteFile } = await import("./files");
+    const { deleteFile } = await import("./files.js");
     const success = await deleteFile(req.params.id);
 
     if (!success) {
       return res.status(404).json({ error: "File not found" });
     }
 
-    res.json({ ok: true, message: "File deleted successfully" });
+    return res.json({ ok: true, message: "File deleted successfully" });
   } catch (error) {
     console.error("Error deleting file:", error);
-    res.status(500).json({ error: "Failed to delete file" });
+    return res.status(500).json({ error: "Failed to delete file" });
   }
 });
 
@@ -167,7 +167,7 @@ app.post("/api/memory/extract", express.json(), async (req, res) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    const { getThread } = await import("./memory");
+    const { getThread } = await import("./memory.js");
 
     // Get recent conversation thread
     const thread = await getThread(userId);
@@ -182,8 +182,8 @@ app.post("/api/memory/extract", express.json(), async (req, res) => {
 
     // Build conversation context for fact extraction
     const conversationText = thread
-      .filter((msg) => msg.role === "user")
-      .map((msg) => msg.content)
+      .filter((msg: { role: string }) => msg.role === "user")
+      .map((msg: { content: string }) => msg.content)
       .join("\n\n");
 
     // Use AI to extract facts from conversation

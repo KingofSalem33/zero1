@@ -1,5 +1,6 @@
 import type { ChatCompletionTool } from "openai/resources";
 import { toolSpecs, toolMap } from "./index";
+import type { ToolMap } from "./index";
 
 /**
  * Dynamically select relevant tools based on user query intent.
@@ -14,7 +15,7 @@ export function selectRelevantTools(
   conversationHistory?: Array<{ role: string; content: string }>,
 ): {
   toolSpecs: ChatCompletionTool[];
-  toolMap: Record<string, (args: unknown) => Promise<unknown>>;
+  toolMap: Partial<ToolMap>;
 } {
   const query = userQuery.toLowerCase();
   const selectedTools: string[] = [];
@@ -57,14 +58,16 @@ export function selectRelevantTools(
   }
 
   // Build filtered toolSpecs and toolMap
-  const filteredSpecs = toolSpecs.filter((spec) =>
-    selectedTools.includes(spec.function.name),
+  const filteredSpecs = toolSpecs.filter(
+    (spec) =>
+      spec.type === "function" && selectedTools.includes(spec.function.name),
   );
 
-  const filteredMap: Record<string, (args: unknown) => Promise<unknown>> = {};
+  const filteredMap: Partial<ToolMap> = {};
   for (const toolName of selectedTools) {
     if (toolName in toolMap) {
-      filteredMap[toolName] = toolMap[toolName as keyof typeof toolMap];
+      (filteredMap as any)[toolName] =
+        toolMap[toolName as keyof typeof toolMap];
     }
   }
 

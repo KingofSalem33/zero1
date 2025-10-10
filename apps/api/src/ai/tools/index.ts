@@ -120,3 +120,4 @@ export const toolMap = {
 } as const;
 
 export type ToolName = keyof typeof toolMap;
+export type ToolMap = typeof toolMap;

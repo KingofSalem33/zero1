@@ -3,7 +3,7 @@ import type {
   ChatCompletionMessageParam,
 } from "openai/resources";
 import { makeOpenAI } from "../ai";
-import { toolMap, type ToolName } from "./tools";
+import { toolMap, type ToolName, type ToolMap } from "./tools";
 import { ZodError } from "zod";
 import pino from "pino";
 import { ENV } from "../env";
@@ -22,7 +22,7 @@ export interface ToolActivity {
 
 export interface RunModelStreamOptions {
   toolSpecs?: ChatCompletionTool[];
-  toolMap?: typeof toolMap;
+  toolMap?: Partial<ToolMap>;
   maxIterations?: number;
   model?: string;
   reasoningEffort?: "low" | "medium" | "high";
