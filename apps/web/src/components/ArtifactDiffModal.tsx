@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 interface SubstepCompletion {
   phase_number: number;
@@ -49,11 +49,29 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   llmAnalysis,
   progressPercentage,
 }) => {
+  const [warningDismissed, setWarningDismissed] = useState(false);
+  const [acceptingRollback, setAcceptingRollback] = useState(false);
+
   if (!isOpen) return null;
 
   const completeCount = completedSubsteps.filter(
     (s) => s.status === "complete",
   ).length;
+
+  const handleIgnoreWarning = () => {
+    setWarningDismissed(true);
+  };
+
+  const handleAcceptRollback = async () => {
+    setAcceptingRollback(true);
+    // TODO: Call backend API to execute rollback
+    // For now, just show a message
+    window.alert(
+      "Rollback functionality requires a dedicated API endpoint. The system will auto-rollback on the next artifact upload if issues persist.",
+    );
+    setAcceptingRollback(false);
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -156,59 +174,82 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
           )}
 
           {/* Rollback Warning (not yet executed) */}
-          {!llmAnalysis?.rollback_executed && llmAnalysis?.rollback_warning && (
-            <div
-              className={`p-4 rounded-lg border-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "bg-red-900/20 border-red-500/50" : "bg-yellow-900/20 border-yellow-500/50"}`}
-            >
-              <h3
-                className={`text-sm font-bold mb-2 flex items-center gap-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "text-red-400" : "text-yellow-400"}`}
+          {!llmAnalysis?.rollback_executed &&
+            llmAnalysis?.rollback_warning &&
+            !warningDismissed && (
+              <div
+                className={`p-4 rounded-lg border-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "bg-red-900/20 border-red-500/50" : "bg-yellow-900/20 border-yellow-500/50"}`}
               >
-                <span className="text-xl">
+                <h3
+                  className={`text-sm font-bold mb-2 flex items-center gap-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "text-red-400" : "text-yellow-400"}`}
+                >
+                  <span className="text-xl">
+                    {llmAnalysis.rollback_warning.severity === "critical"
+                      ? "🚨"
+                      : "⚠️"}
+                  </span>
                   {llmAnalysis.rollback_warning.severity === "critical"
-                    ? "🚨"
-                    : "⚠️"}
-                </span>
-                {llmAnalysis.rollback_warning.severity === "critical"
-                  ? "Critical Warning"
-                  : "Warning"}
-              </h3>
-              <p className="text-sm text-gray-300 mb-2">
-                {llmAnalysis.rollback_warning.reason}
-              </p>
-              {llmAnalysis.rollback_warning.evidence.length > 0 && (
-                <div className="mb-3 space-y-1">
-                  <p className="text-xs font-semibold text-gray-400">
-                    Evidence:
-                  </p>
-                  {llmAnalysis.rollback_warning.evidence.map((ev, i) => (
-                    <div
-                      key={i}
-                      className="text-sm text-gray-400 flex items-start gap-2"
-                    >
-                      <span>•</span>
-                      <span>{ev}</span>
-                    </div>
-                  ))}
+                    ? "Critical Warning"
+                    : "Warning"}
+                </h3>
+                <p className="text-sm text-gray-300 mb-2">
+                  {llmAnalysis.rollback_warning.reason}
+                </p>
+                {llmAnalysis.rollback_warning.evidence.length > 0 && (
+                  <div className="mb-3 space-y-1">
+                    <p className="text-xs font-semibold text-gray-400">
+                      Evidence:
+                    </p>
+                    {llmAnalysis.rollback_warning.evidence.map((ev, i) => (
+                      <div
+                        key={i}
+                        className="text-sm text-gray-400 flex items-start gap-2"
+                      >
+                        <span>•</span>
+                        <span>{ev}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {llmAnalysis.rollback_warning.guidance.length > 0 && (
+                  <div className="mb-4 space-y-1">
+                    <p className="text-xs font-semibold text-gray-400">
+                      Recommendations:
+                    </p>
+                    {llmAnalysis.rollback_warning.guidance.map((guide, i) => (
+                      <div
+                        key={i}
+                        className="text-sm text-gray-300 flex items-start gap-2"
+                      >
+                        <span>→</span>
+                        <span>{guide}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3 pt-3 border-t border-gray-700">
+                  <button
+                    onClick={handleAcceptRollback}
+                    disabled={acceptingRollback}
+                    className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                      llmAnalysis.rollback_warning.severity === "critical"
+                        ? "bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 disabled:from-gray-600 disabled:to-gray-600"
+                        : "bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 disabled:from-gray-600 disabled:to-gray-600"
+                    } text-white disabled:cursor-not-allowed`}
+                  >
+                    {acceptingRollback ? "Processing..." : "🔄 Accept Rollback"}
+                  </button>
+                  <button
+                    onClick={handleIgnoreWarning}
+                    className="flex-1 px-4 py-2 rounded-lg font-medium text-sm bg-gray-700/60 hover:bg-gray-600/60 text-white transition-all"
+                  >
+                    Continue Anyway
+                  </button>
                 </div>
-              )}
-              {llmAnalysis.rollback_warning.guidance.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-gray-400">
-                    Recommendations:
-                  </p>
-                  {llmAnalysis.rollback_warning.guidance.map((guide, i) => (
-                    <div
-                      key={i}
-                      className="text-sm text-gray-300 flex items-start gap-2"
-                    >
-                      <span>→</span>
-                      <span>{guide}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
           {/* Quality Score - Lead with this */}
           {llmAnalysis?.quality_score !== undefined && (
