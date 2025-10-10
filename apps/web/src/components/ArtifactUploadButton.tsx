@@ -68,6 +68,35 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   const [lastArtifactId, setLastArtifactId] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
 
+  // Apply analysis to update roadmap
+  const applyAnalysis = async (artifactId: string): Promise<boolean> => {
+    try {
+      console.log(
+        "[Apply Analysis] Applying analysis for artifact:",
+        artifactId,
+      );
+      const response = await fetch(
+        `${API_URL}/api/artifact-actions/apply-analysis/${artifactId}`,
+        {
+          method: "POST",
+        },
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        console.log("[Apply Analysis] Successfully applied:", data);
+        return true;
+      } else {
+        console.error("[Apply Analysis] Failed:", data);
+        return false;
+      }
+    } catch (error) {
+      console.error("[Apply Analysis] Error:", error);
+      return false;
+    }
+  };
+
   // Poll artifact status until analysis completes
   const pollArtifactStatus = async (
     artifactId: string,
@@ -167,13 +196,19 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           setUploadProgress("✅ Analysis Complete!");
           setProgressPercentage(100);
 
+          // Apply analysis to update roadmap
+          if (analyzedData.analysis) {
+            setUploadProgress("🔄 Applying changes...");
+            await applyAnalysis(data.artifact.id);
+          }
+
           // Show diff modal if we have analysis results
           if (analyzedData.analysis) {
             setAnalyzedArtifact(analyzedData);
             setShowDiffModal(true);
           }
 
-          // Notify parent
+          // Notify parent to refresh project state
           if (onUploadComplete) {
             onUploadComplete(analyzedData);
           }
@@ -227,6 +262,12 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
       if (analyzedData) {
         setUploadProgress("✅ Analysis Complete!");
         setProgressPercentage(100);
+
+        // Apply analysis to update roadmap
+        if (analyzedData.analysis) {
+          setUploadProgress("🔄 Applying changes...");
+          await applyAnalysis(lastArtifactId);
+        }
 
         if (analyzedData.analysis) {
           setAnalyzedArtifact(analyzedData);
