@@ -2120,46 +2120,89 @@ function App() {
       const data = await response.json();
 
       if (response.ok && data.project) {
-        // Process the project phases immediately for progressive revelation
-        const processedProject = {
-          ...data.project,
-          current_phase: 1,
-          current_substep: 1,
-          phases: (data.project.phases || []).map(
-            (phase: ProjectPhase, index: number) => ({
-              ...phase,
-              phase_number: index + 1,
-              expanded: index === 0, // Only first phase expanded
-              locked: index > 0, // Lock future phases
-              substeps:
-                index === 0
-                  ? (phase.substeps || []).map(
-                      (substep: ProjectSubstep, subIndex: number) => ({
-                        ...substep,
-                        step_number: subIndex + 1,
-                        completed: false,
-                      }),
-                    )
-                  : [],
-            }),
-          ),
-        };
+        // Set initial project state
+        setProject(data.project);
+        setGuidance("⏳ Generating your roadmap with AI...");
 
-        setProject(processedProject);
-        setGuidance(
-          "🎯 Perfect! Your action plan is ready. Start with the first master prompt in your execution workspace!",
-        );
+        // Poll for roadmap completion
+        const projectId = data.project.id;
+        let pollAttempts = 0;
+        const maxAttempts = 30; // Poll for up to 60 seconds (30 * 2s)
 
-        // Clear guidance message after 4 seconds
-        setTimeout(() => setGuidance(""), 4000);
+        const pollInterval = setInterval(async () => {
+          try {
+            pollAttempts++;
+
+            const pollResponse = await fetch(
+              `${API_URL}/api/projects/${projectId}`,
+            );
+            const pollData = await pollResponse.json();
+
+            if (
+              pollResponse.ok &&
+              pollData.project &&
+              pollData.project.phases &&
+              pollData.project.phases.length > 0
+            ) {
+              // Roadmap is ready!
+              clearInterval(pollInterval);
+
+              // Process the project phases for progressive revelation
+              const processedProject = {
+                ...pollData.project,
+                current_phase: 1,
+                current_substep: 1,
+                phases: pollData.project.phases.map(
+                  (phase: ProjectPhase, index: number) => ({
+                    ...phase,
+                    phase_number: index + 1,
+                    expanded: index === 0, // Only first phase expanded
+                    locked: index > 0, // Lock future phases
+                    substeps:
+                      index === 0
+                        ? (phase.substeps || []).map(
+                            (substep: ProjectSubstep, subIndex: number) => ({
+                              ...substep,
+                              step_number: subIndex + 1,
+                              completed: false,
+                            }),
+                          )
+                        : [],
+                  }),
+                ),
+              };
+
+              setProject(processedProject);
+              setGuidance(
+                "🎯 Perfect! Your action plan is ready. Start with the first master prompt in your execution workspace!",
+              );
+              setCreatingProject(false);
+
+              // Clear guidance message after 4 seconds
+              setTimeout(() => setGuidance(""), 4000);
+            } else if (pollAttempts >= maxAttempts) {
+              // Timeout
+              clearInterval(pollInterval);
+              setGuidance(
+                "⏱️ Roadmap generation is taking longer than expected. Please refresh the page.",
+              );
+              setCreatingProject(false);
+            }
+            // Continue polling if roadmap isn't ready yet
+          } catch (pollError) {
+            console.error("[App] Poll error:", pollError);
+            // Continue polling on individual poll errors
+          }
+        }, 2000); // Poll every 2 seconds
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to create project"}`);
+        setCreatingProject(false);
       }
-    } catch {
+    } catch (error) {
+      console.error("[App] Create project error:", error);
       setGuidance(
         "🔌 Network error. Please check your connection and try again.",
       );
-    } finally {
       setCreatingProject(false);
     }
   };

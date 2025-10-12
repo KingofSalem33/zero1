@@ -71,6 +71,7 @@ export async function runModel(
   const conversationMessages: ChatCompletionMessageParam[] = [...messages];
   const allCitations: string[] = [];
   const toolActivity: ToolActivity[] = [];
+  const MAX_TOOL_ACTIVITY = 100; // ✅ Fix #10: Limit tool activity tracking to prevent unbounded growth
   let iterations = 0;
 
   logger.info(
@@ -164,24 +165,30 @@ export async function runModel(
 
           // Track tool call start
           const timestamp = new Date().toISOString();
-          toolActivity.push({
-            type: "tool_start",
-            tool: toolName,
-            args,
-            timestamp,
-          });
+          // ✅ Fix #10: Only track if under limit
+          if (toolActivity.length < MAX_TOOL_ACTIVITY) {
+            toolActivity.push({
+              type: "tool_start",
+              tool: toolName,
+              args,
+              timestamp,
+            });
+          }
           onToolCall?.(toolName, args);
 
           // Execute tool function with validation
           const result = await providedToolMap[toolName](args);
 
           // Track tool call success
-          toolActivity.push({
-            type: "tool_end",
-            tool: toolName,
-            result,
-            timestamp: new Date().toISOString(),
-          });
+          // ✅ Fix #10: Only track if under limit
+          if (toolActivity.length < MAX_TOOL_ACTIVITY) {
+            toolActivity.push({
+              type: "tool_end",
+              tool: toolName,
+              result,
+              timestamp: new Date().toISOString(),
+            });
+          }
           onToolResult?.(toolName, result);
 
           // Collect citations if available
@@ -217,12 +224,15 @@ export async function runModel(
           }
 
           // Track tool call error
-          toolActivity.push({
-            type: "tool_error",
-            tool: toolName,
-            error: errorMessage,
-            timestamp: new Date().toISOString(),
-          });
+          // ✅ Fix #10: Only track if under limit
+          if (toolActivity.length < MAX_TOOL_ACTIVITY) {
+            toolActivity.push({
+              type: "tool_error",
+              tool: toolName,
+              error: errorMessage,
+              timestamp: new Date().toISOString(),
+            });
+          }
           onToolError?.(toolName, errorMessage);
 
           conversationMessages.push({

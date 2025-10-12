@@ -7,7 +7,7 @@ import { substepGenerationJsonSchema } from "../ai/schemas";
 import type { Response } from "express";
 import { threadService } from "../services/threadService";
 import type { ChatCompletionMessageParam } from "openai/resources";
-import { supabase } from "../db";
+import { supabase, withRetry, DatabaseError } from "../db";
 import {
   Project,
   PhaseGenerationRequest,
@@ -309,9 +309,26 @@ export class StepOrchestrator {
 
     const systemPrompt = `You are a Master Builder AI designing substeps for a Zero-to-One project builder.
 
-PHASE: ${phase.goal}
+PHASE: ${phase.phase_id} - ${phase.goal}
 PROJECT VISION: ${goal}
 PHASE PURPOSE: ${phase.why_it_matters}
+
+🚨 PHASE DISCIPLINE ENFORCEMENT:
+You MUST respect the phase boundaries. Each phase has a specific purpose in the Zero-to-One journey:
+
+${this.getPhaseConstraints(phase.phase_id)}
+
+Your substeps MUST ONLY address activities within this phase's scope. Do NOT include:
+- Activities from earlier phases (those are already complete)
+- Activities from later phases (those are locked until this phase completes)
+- Generic strategy work that belongs in a different phase
+
+📋 MASTER PROMPT PRINCIPLES FOR THIS PHASE:
+The expert master prompt for ${phase.phase_id} provides the strategic framework. Your substeps must align with these principles:
+
+${masterPrompt}
+
+Your substeps should break down these master prompt principles into concrete, executable tasks. Each substep must directly support one of the principles above.
 
 CRITICAL INSTRUCTION:
 The "prompt_to_send" field is a SYSTEM-LEVEL instruction to an AI that will execute this substep. Write it as if you're instructing a senior expert to execute work on behalf of the user, then hand off deliverables for the user to review/modify.
@@ -405,6 +422,58 @@ RESPONSE FORMAT:
         substeps: fallbackSubsteps,
       };
     }
+  }
+
+  // Get phase-specific constraints to enforce phase discipline
+  private getPhaseConstraints(phaseId: string): string {
+    const constraints: Record<string, string> = {
+      P1: `P1 (Build Environment) = Setting up TOOLS, WORKSPACE, and INFRASTRUCTURE
+✅ ALLOWED: Installing software, creating folder structures, obtaining licenses/permits/accounts, configuring workspace, running "hello world" proof points
+❌ FORBIDDEN: Market research, brand strategy, target audience analysis, product features, user testing, content creation
+Example for cookie business: Business registration, commercial kitchen licensing, equipment setup, food safety permits, test batch
+Example for tech app: Dev environment (Node/React), database setup, code editor config, Git repo, deploy account, "hello world" running`,
+
+      P2: `P2 (Core Loop) = Building the simplest INPUT → PROCESS → OUTPUT cycle
+✅ ALLOWED: Defining minimal input, designing ONE core transformation, creating minimal output, testing the basic flow
+❌ FORBIDDEN: Multiple features, complex workflows, user research, branding, deployment, analytics
+Example for cookie business: Recipe (input) → Bake one batch (process) → Test cookies (output)
+Example for tech app: Single form field (input) → Save to database (process) → Confirmation message (output)`,
+
+      P3: `P3 (Layered Expansion) = Adding ONE new feature at a time to working prototype
+✅ ALLOWED: Identifying next highest-value feature, integrating new capability, testing combined system
+❌ FORBIDDEN: Multiple simultaneous features, complete redesigns, user recruitment, launch prep
+Example for cookie business: Add packaging system, add second flavor, add order tracking
+Example for tech app: Add authentication, add search feature, add export functionality`,
+
+      P4: `P4 (Reality Test) = Validating with 3-5 real users
+✅ ALLOWED: Creating test plan, recruiting testers, conducting sessions, analyzing feedback, making pivot/proceed decision
+❌ FORBIDDEN: Building new features, setting up infrastructure, fixing code bugs, launch activities
+Example for cookie business: Give samples to 5 potential customers, collect feedback on taste/packaging/price
+Example for tech app: Demo to 5 target users, observe usage, gather feedback on value/usability`,
+
+      P5: `P5 (Polish & Freeze Scope) = Fixing critical bugs and locking features for launch
+✅ ALLOWED: Auditing quality issues, fixing critical bugs, declaring scope freeze, final stability testing
+❌ FORBIDDEN: Adding new features, user research, deployment, marketing prep
+Example for cookie business: Fix recipe consistency issues, finalize packaging, lock menu to 3 flavors
+Example for tech app: Fix login bugs, improve error messages, freeze features for v1.0`,
+
+      P6: `P6 (Launch) = Making project publicly accessible and tracking metrics
+✅ ALLOWED: Deploying to production, creating launch messaging, posting announcements, setting up analytics, monitoring initial response
+❌ FORBIDDEN: Building features, fixing non-critical bugs, user research, long-term planning
+Example for cookie business: Launch online ordering, post on social media, track first orders
+Example for tech app: Deploy to production URL, post on Product Hunt, track signups/usage`,
+
+      P7: `P7 (Reflect & Evolve) = Documenting lessons and planning next steps
+✅ ALLOWED: Analyzing what worked/failed, extracting lessons, building personal toolkit, planning v2.0 or new project
+❌ FORBIDDEN: Building features, user research, launching, setting up infrastructure
+Example for cookie business: Document successful recipes, analyze customer feedback patterns, plan catering expansion
+Example for tech app: Review code patterns that worked, identify tech stack lessons, plan feature roadmap for v2.0`,
+    };
+
+    return (
+      constraints[phaseId] ||
+      `This phase requires activities specific to its goal. Do not mix activities from other phases.`
+    );
   }
 
   // Get the expert master prompt for each phase based on claude.md
@@ -1179,6 +1248,17 @@ End by instructing the user to review the materials, complete the work, and uplo
     let unlockedPhase: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     if (allSubstepsComplete) {
+      // Validate acceptance criteria before completing phase
+      const acceptanceCriteria = currentPhase.acceptance_criteria || [];
+      if (acceptanceCriteria.length > 0) {
+        console.log(
+          `✅ [VALIDATION] Acceptance criteria for Phase ${currentPhase.phase_number}:`,
+          acceptanceCriteria
+        );
+        // Note: In a future enhancement, could require explicit validation of each criterion
+        // For now, we log the criteria and trust that substeps completion implies criteria met
+      }
+
       // Complete current phase
       currentPhase.completed = true;
       console.log(
@@ -1222,23 +1302,25 @@ End by instructing the user to review the materials, complete the work, and uplo
     project.updated_at = new Date().toISOString();
     projects.set(request.project_id, project);
 
-    // Persist to Supabase (write-through cache)
+    // Persist to Supabase (write-through cache) with retry logic
     try {
-      await supabase
-        .from("projects")
-        .update({
-          current_phase: project.current_phase,
-          roadmap: project.phases,
-          status: project.status,
-          updated_at: project.updated_at,
-        })
-        .eq("id", request.project_id);
+      await withRetry(() =>
+        supabase
+          .from("projects")
+          .update({
+            current_phase: project.current_phase,
+            roadmap: project.phases,
+            status: project.status,
+            updated_at: project.updated_at,
+          })
+          .eq("id", request.project_id),
+      );
     } catch (err) {
       console.error(
         "[ORCHESTRATOR] Error persisting substep completion to Supabase:",
         err,
       );
-      // Don't fail the operation if Supabase write fails
+      // Don't fail the operation if Supabase write fails (already cached in memory)
     }
 
     return {
@@ -1257,13 +1339,11 @@ End by instructing the user to review the materials, complete the work, and uplo
     projectId: string,
   ): Promise<Project | null> {
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("id", projectId)
-        .single();
+      const data = await withRetry(() =>
+        supabase.from("projects").select("*").eq("id", projectId).single(),
+      );
 
-      if (error || !data) {
+      if (!data) {
         return null;
       }
 
@@ -1284,7 +1364,14 @@ End by instructing the user to review the materials, complete the work, and uplo
       projects.set(projectId, project);
       return project;
     } catch (err) {
-      console.error("[ORCHESTRATOR] Error loading project from Supabase:", err);
+      if (err instanceof DatabaseError) {
+        console.error(
+          "[ORCHESTRATOR] Database error loading project:",
+          err.message,
+        );
+      } else {
+        console.error("[ORCHESTRATOR] Error loading project from Supabase:", err);
+      }
       return null;
     }
   }
@@ -1317,13 +1404,15 @@ End by instructing the user to review the materials, complete the work, and uplo
 
   async getAllProjects(): Promise<Project[]> {
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const data = await withRetry(() =>
+        supabase
+          .from("projects")
+          .select("*")
+          .order("created_at", { ascending: false }),
+      );
 
-      if (error || !data) {
-        console.error("[ORCHESTRATOR] Error fetching projects:", error);
+      if (!data) {
+        console.warn("[ORCHESTRATOR] No projects found in database");
         return Array.from(projects.values());
       }
 
@@ -1346,7 +1435,14 @@ End by instructing the user to review the materials, complete the work, and uplo
 
       return allProjects;
     } catch (err) {
-      console.error("[ORCHESTRATOR] Error fetching all projects:", err);
+      if (err instanceof DatabaseError) {
+        console.error(
+          "[ORCHESTRATOR] Database error fetching projects:",
+          err.message,
+        );
+      } else {
+        console.error("[ORCHESTRATOR] Error fetching all projects:", err);
+      }
       return Array.from(projects.values());
     }
   }
@@ -1400,6 +1496,12 @@ End by instructing the user to review the materials, complete the work, and uplo
       (s) => s.step_number === project.current_substep,
     );
 
+    // Get completed substeps from current phase for context continuity
+    const completedSubsteps = currentPhase?.substeps
+      ?.filter((s: any) => s.completed && s.step_number < (currentSubstep?.step_number || 0))
+      .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
+      .join('\n') || "None yet - this is the first substep";
+
     const systemMessage = `You are helping with project execution. You have access to these tools:
 - \`web_search\`: Search the web for current information using Google
 - \`http_fetch\`: Fetch and read content from specific URLs
@@ -1420,6 +1522,11 @@ PROJECT CONTEXT:
 - Goal: ${project.goal}
 - Current Phase: ${currentPhase?.goal || "Unknown"}
 - Current Step: ${currentSubstep?.label || "Unknown"}
+
+COMPLETED SUBSTEPS IN THIS PHASE:
+${completedSubsteps}
+
+IMPORTANT: Build upon the work completed in previous substeps. Reference their outputs when relevant. Ensure continuity and avoid asking for information that was already provided in earlier substeps.
 
 MASTER PROMPT FROM SYSTEM:
 ${request.master_prompt}`;
@@ -1531,6 +1638,12 @@ ${request.master_prompt}`;
       (s) => s.step_number === project.current_substep,
     );
 
+    // Get completed substeps from current phase for context continuity
+    const completedSubsteps = currentPhase?.substeps
+      ?.filter((s: any) => s.completed && s.step_number < (currentSubstep?.step_number || 0))
+      .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
+      .join('\n') || "None yet - this is the first substep";
+
     const systemMessage = `You are helping with project execution. You have access to these tools:
 - \`web_search\`: Search the web for current information using Google
 - \`http_fetch\`: Fetch and read content from specific URLs
@@ -1551,6 +1664,11 @@ PROJECT CONTEXT:
 - Goal: ${project.goal}
 - Current Phase: ${currentPhase?.goal || "Unknown"}
 - Current Step: ${currentSubstep?.label || "Unknown"}
+
+COMPLETED SUBSTEPS IN THIS PHASE:
+${completedSubsteps}
+
+IMPORTANT: Build upon the work completed in previous substeps. Reference their outputs when relevant. Ensure continuity and avoid asking for information that was already provided in earlier substeps.
 
 MASTER PROMPT FROM SYSTEM:
 ${request.master_prompt}`;
@@ -1673,22 +1791,24 @@ ${request.master_prompt}`;
     project.updated_at = new Date().toISOString();
     projects.set(request.project_id, project);
 
-    // Persist to Supabase (write-through cache)
+    // Persist to Supabase (write-through cache) with retry logic
     try {
-      await supabase
-        .from("projects")
-        .update({
-          current_phase: project.current_phase,
-          roadmap: project.phases,
-          updated_at: project.updated_at,
-        })
-        .eq("id", request.project_id);
+      await withRetry(() =>
+        supabase
+          .from("projects")
+          .update({
+            current_phase: project.current_phase,
+            roadmap: project.phases,
+            updated_at: project.updated_at,
+          })
+          .eq("id", request.project_id),
+      );
     } catch (err) {
       console.error(
         "[ORCHESTRATOR] Error persisting phase expansion to Supabase:",
         err,
       );
-      // Don't fail the operation if Supabase write fails
+      // Don't fail the operation if Supabase write fails (already cached in memory)
     }
 
     return {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { StepOrchestrator } from "../engine/orchestrator";
-import { supabase } from "../db";
+import { supabase, withRetry, DatabaseError } from "../db";
+import { aiLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 export const orchestrator = new StepOrchestrator();
@@ -22,48 +23,82 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // First create in Supabase to get a UUID
-    const { data: supabaseProject, error: supabaseError } = await supabase
-      .from("projects")
-      .insert({
-        goal: goal.trim(),
-        status: "active",
-        current_phase: "P0",
-        roadmap: {},
-      })
-      .select()
-      .single();
+    console.log("[Projects] Creating project with goal:", goal.trim());
 
-    if (supabaseError) {
-      console.error("[Projects] Supabase save error:", supabaseError);
-      return res.status(500).json({
-        error: "Failed to create project in database",
-      });
-    }
+    // First create in Supabase to get a UUID (with retry logic)
+    console.log("[Projects] Step 1: Inserting into Supabase...");
+    const supabaseProject = await withRetry<any>(() =>
+      supabase
+        .from("projects")
+        .insert({
+          goal: goal.trim(),
+          status: "active",
+          current_phase: "P0",
+          roadmap: {},
+        })
+        .select()
+        .single(),
+    );
+    console.log("[Projects] Step 1 complete. Project ID:", supabaseProject.id);
 
-    // Create project in orchestrator with the Supabase UUID
-    const project = await orchestrator.createProjectWithId(
-      supabaseProject.id,
-      goal.trim(),
+    // Return immediately with project ID - roadmap will be generated asynchronously
+    console.log(
+      "[Projects] Step 2: Starting async roadmap generation (non-blocking)...",
     );
 
-    // Update Supabase with the full roadmap
-    await supabase
-      .from("projects")
-      .update({
-        current_phase: project.current_phase || "P0",
-        roadmap: project.phases || {},
+    // Start roadmap generation in background (don't await)
+    orchestrator
+      .createProjectWithId(supabaseProject.id, goal.trim())
+      .then(async (project) => {
+        console.log("[Projects] Step 2 complete. Roadmap generated.");
+
+        // Update Supabase with the full roadmap (with retry logic)
+        await withRetry(() =>
+          supabase
+            .from("projects")
+            .update({
+              current_phase: project.current_phase || "P0",
+              roadmap: project.phases || {},
+            })
+            .eq("id", supabaseProject.id)
+            .select()
+            .single(),
+        );
+
+        console.log("[Projects] Roadmap persisted to Supabase");
       })
-      .eq("id", supabaseProject.id);
+      .catch((err) => {
+        console.error("[Projects] Error generating roadmap:", err);
+      });
 
     console.log("[Projects] Created with UUID:", supabaseProject.id);
 
+    // Return immediately with basic project info
     return res.status(201).json({
       ok: true,
-      project,
+      project: {
+        id: supabaseProject.id,
+        goal: goal.trim(),
+        status: "active",
+        current_phase: 1,
+        current_substep: 1,
+        phases: [], // Will be populated async
+        history: [],
+        created_at: supabaseProject.created_at,
+        updated_at: supabaseProject.created_at,
+      },
+      message: "Project created. Roadmap generating...",
     });
   } catch (error) {
     console.error("Error creating project:", error);
+
+    if (error instanceof DatabaseError) {
+      return res.status(503).json({
+        error: "Database connection error. Please try again.",
+        details: error.message,
+      });
+    }
+
     return res.status(500).json({
       error: "Failed to create project",
     });
@@ -112,6 +147,13 @@ router.post("/:projectId/complete-substep", async (req, res) => {
       });
     }
 
+    if (error instanceof DatabaseError) {
+      return res.status(503).json({
+        error: "Database connection error. Please try again.",
+        details: error.message,
+      });
+    }
+
     return res.status(500).json({
       error: "Failed to complete substep",
     });
@@ -138,15 +180,19 @@ router.get("/:projectId", async (req, res) => {
       });
     }
 
-    // Fetch completed_substeps from Supabase
-    const { data: supabaseProject, error: supabaseError } = await supabase
-      .from("projects")
-      .select("completed_substeps, current_substep")
-      .eq("id", projectId)
-      .single();
-
-    if (supabaseError) {
-      console.error("[Projects] Error fetching from Supabase:", supabaseError);
+    // Fetch completed_substeps from Supabase (with retry logic)
+    let supabaseProject = null;
+    try {
+      supabaseProject = await withRetry(() =>
+        supabase
+          .from("projects")
+          .select("completed_substeps, current_substep")
+          .eq("id", projectId)
+          .single(),
+      );
+    } catch (err) {
+      console.error("[Projects] Error fetching from Supabase:", err);
+      // Continue without Supabase data if fetch fails
     }
 
     // Merge Supabase data with orchestrator project
@@ -163,6 +209,14 @@ router.get("/:projectId", async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching project:", error);
+
+    if (error instanceof DatabaseError) {
+      return res.status(503).json({
+        error: "Database connection error. Please try again.",
+        details: error.message,
+      });
+    }
+
     return res.status(500).json({
       error: "Failed to fetch project",
     });
@@ -180,14 +234,22 @@ router.get("/", async (_req, res) => {
     });
   } catch (error) {
     console.error("Error fetching projects:", error);
+
+    if (error instanceof DatabaseError) {
+      return res.status(503).json({
+        error: "Database connection error. Please try again.",
+        details: error.message,
+      });
+    }
+
     return res.status(500).json({
       error: "Failed to fetch projects",
     });
   }
 });
 
-// POST /api/projects/:projectId/execute-step/stream - Execute step with streaming
-router.post("/:projectId/execute-step/stream", async (req, res) => {
+// POST /api/projects/:projectId/execute-step/stream - Execute step with streaming (AI rate limited)
+router.post("/:projectId/execute-step/stream", aiLimiter, async (req, res) => {
   try {
     console.log(
       "🚀 [API] Streaming step execution request for project:",
@@ -246,8 +308,8 @@ router.post("/:projectId/execute-step/stream", async (req, res) => {
   }
 });
 
-// POST /api/projects/:projectId/execute-step - Execute step with AI guidance
-router.post("/:projectId/execute-step", async (req, res) => {
+// POST /api/projects/:projectId/execute-step - Execute step with AI guidance (AI rate limited)
+router.post("/:projectId/execute-step", aiLimiter, async (req, res) => {
   try {
     console.log(
       "🚀 [API] Step execution request for project:",
@@ -308,8 +370,8 @@ router.post("/:projectId/execute-step", async (req, res) => {
   }
 });
 
-// POST /api/projects/:projectId/expand - Expand phase with master prompt
-router.post("/:projectId/expand", async (req, res) => {
+// POST /api/projects/:projectId/expand - Expand phase with master prompt (AI rate limited)
+router.post("/:projectId/expand", aiLimiter, async (req, res) => {
   try {
     console.log(
       "🎯 [API] Phase expansion request for project:",

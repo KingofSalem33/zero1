@@ -4,7 +4,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { supabase } from "../db.js";
+import { supabase } from "../db";
 
 // Extend Express Request to include userId
  
@@ -71,6 +71,7 @@ export async function requireAuth(
       error: "Internal Server Error",
       message: "Authentication verification failed",
     });
+    return; // ✅ Explicit return to prevent fall-through
   }
 }
 

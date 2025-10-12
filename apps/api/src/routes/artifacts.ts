@@ -2,8 +2,12 @@ import { Router } from "express";
 import { IncomingForm, File } from "formidable";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { supabase } from "../db";
+
+const execAsync = promisify(exec);
+import { uploadLimiter, aiLimiter } from "../middleware/rateLimit";
 import {
   analyzeDirectory,
   analyzeSingleFile,
@@ -29,10 +33,63 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 
 /**
- * POST /api/artifacts/upload
- * Upload a file or zip for analysis
+ * Sanitize Git repository URL to prevent command injection
  */
-router.post("/upload", (req, res) => {
+function sanitizeGitUrl(url: string): string {
+  // Only allow https:// and git:// protocols
+  if (!url.startsWith("https://") && !url.startsWith("git://")) {
+    throw new Error("Invalid repository URL protocol. Only https:// and git:// are allowed.");
+  }
+
+  // Remove any shell metacharacters
+  if (/[;&|`$(){}[\]<>]/.test(url)) {
+    throw new Error("Invalid characters in repository URL");
+  }
+
+  // Validate URL format
+  try {
+    new URL(url);
+  } catch {
+    throw new Error("Malformed repository URL");
+  }
+
+  return url;
+}
+
+/**
+ * Sanitize Git branch name to prevent command injection
+ */
+function sanitizeBranch(branch: string): string {
+  // Only allow alphanumeric, dash, underscore, and slash (for branch paths)
+  if (!/^[a-zA-Z0-9/_-]+$/.test(branch)) {
+    throw new Error("Invalid branch name. Only alphanumeric characters, dash, underscore, and slash are allowed.");
+  }
+
+  // Limit branch name length
+  if (branch.length > 100) {
+    throw new Error("Branch name too long");
+  }
+
+  return branch;
+}
+
+/**
+ * Sanitize filename to prevent path traversal
+ */
+function sanitizeFilename(filename: string): string {
+  // Remove path separators and dangerous characters
+  return filename
+    .replace(/[/\\]/g, "") // Remove slashes
+    .replace(/\.\./g, "") // Remove parent directory references
+    .replace(/[^a-zA-Z0-9._-]/g, "_") // Replace special chars with underscore
+    .substring(0, 255); // Limit length
+}
+
+/**
+ * POST /api/artifacts/upload
+ * Upload a file or zip for analysis (rate limited)
+ */
+router.post("/upload", uploadLimiter, (req, res) => {
   console.log("📤 [Artifacts] Upload request received");
 
   // Parse multipart form data
@@ -67,7 +124,8 @@ router.post("/upload", (req, res) => {
       }
 
       const file = uploadedFile as File;
-      const filename = file.originalFilename || "unknown";
+      const originalFilename = file.originalFilename || "unknown";
+      const filename = sanitizeFilename(originalFilename);
       const filePath = file.filepath;
       const fileSize = file.size;
 
@@ -532,17 +590,19 @@ router.post("/upload", (req, res) => {
       } catch (analysisError) {
         console.error("❌ [Artifacts] Analysis error:", analysisError);
 
-        // Update artifact status to failed
-        await supabase
-          .from("artifacts")
-          .update({
-            status: "failed",
-            error_message:
-              analysisError instanceof Error
-                ? analysisError.message
-                : "Unknown error",
-          })
-          .eq("id", projectId);
+        // Update artifact status to failed (if artifact was created)
+        if (artifact?.id) {
+          await supabase
+            .from("artifacts")
+            .update({
+              status: "failed",
+              error_message:
+                analysisError instanceof Error
+                  ? analysisError.message
+                  : "Unknown error",
+            })
+            .eq("id", artifact.id); // ✅ Fixed: use artifact.id instead of projectId
+        }
 
         return res.status(500).json({ error: "Failed to analyze artifact" });
       }
@@ -557,7 +617,7 @@ router.post("/upload", (req, res) => {
  * POST /api/artifacts/repo
  * Clone and analyze a GitHub repository
  */
-router.post("/repo", async (req, res) => {
+router.post("/repo", uploadLimiter, async (req, res) => {
   try {
     const { project_id, repo_url, branch = "main" } = req.body;
 
@@ -567,19 +627,38 @@ router.post("/repo", async (req, res) => {
       });
     }
 
-    console.log(`📦 [Artifacts] Cloning repo: ${repo_url} (branch: ${branch})`);
+    // Sanitize inputs to prevent command injection
+    let sanitizedUrl: string;
+    let sanitizedBranch: string;
+
+    try {
+      sanitizedUrl = sanitizeGitUrl(repo_url);
+      sanitizedBranch = sanitizeBranch(branch);
+    } catch (sanitizeError) {
+      console.error("❌ [Artifacts] Input sanitization failed:", sanitizeError);
+      return res.status(400).json({
+        error: sanitizeError instanceof Error ? sanitizeError.message : "Invalid input",
+      });
+    }
+
+    console.log(`📦 [Artifacts] Cloning repo: ${sanitizedUrl} (branch: ${sanitizedBranch})`);
 
     // Create temp directory for clone
-    const repoName = repo_url.split("/").pop()?.replace(".git", "") || "repo";
-    const clonePath = path.join(UPLOAD_DIR, `repo-${Date.now()}-${repoName}`);
+    const repoName = sanitizedUrl.split("/").pop()?.replace(".git", "") || "repo";
+    const sanitizedRepoName = sanitizeFilename(repoName);
+    const clonePath = path.join(UPLOAD_DIR, `repo-${Date.now()}-${sanitizedRepoName}`);
 
-    // Clone the repository
+    // Ensure clonePath is within UPLOAD_DIR (additional safety)
+    if (!clonePath.startsWith(UPLOAD_DIR)) {
+      console.error("❌ [Artifacts] Path traversal attempt detected");
+      return res.status(400).json({ error: "Invalid path" });
+    }
+
+    // Clone the repository using async exec (non-blocking)
     try {
-      execSync(
-        `git clone --depth 1 --branch ${branch} ${repo_url} "${clonePath}"`,
-        {
-          stdio: "inherit",
-        },
+      await execAsync(
+        `git clone --depth 1 --branch "${sanitizedBranch}" -- "${sanitizedUrl}" "${clonePath}"`,
+        { cwd: UPLOAD_DIR, timeout: 120000 }, // 2 minute timeout
       );
     } catch (cloneError) {
       console.error("❌ [Artifacts] Clone failed:", cloneError);
@@ -593,11 +672,16 @@ router.post("/repo", async (req, res) => {
 
     console.log("✅ [Artifacts] Repository analysis complete");
 
-    // Calculate total size
-    const sizeOutput = execSync(`du -sb "${clonePath}"`, {
-      encoding: "utf-8",
-    });
-    const sizeBytes = parseInt(sizeOutput.split("\t")[0]);
+    // Calculate total size (async)
+    let sizeBytes = 0;
+    try {
+      const { stdout: sizeOutput } = await execAsync(`du -sb "${clonePath}"`, {
+        encoding: "utf-8",
+      });
+      sizeBytes = parseInt(sizeOutput.split("\t")[0]);
+    } catch (sizeError) {
+      console.warn("❌ [Artifacts] Failed to calculate size, using 0:", sizeError);
+    }
 
     // Save artifact to database
     const { data: artifact, error: artifactError } = await supabase

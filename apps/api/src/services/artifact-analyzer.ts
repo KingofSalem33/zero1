@@ -427,31 +427,38 @@ function detectTechStack(packageJson: any): string[] {
 }
 
 /**
- * Analyze git history for commit stats
+ * Analyze git history for commit stats (non-blocking)
  */
 async function analyzeGitHistory(
   dirPath: string,
 ): Promise<{ lastCommit: Date | null; commitCount: number }> {
-  const { execSync } = await import("child_process");
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
 
   try {
-    // Get last commit timestamp
-    const lastCommitTimestamp = execSync("git log -1 --format=%ct", {
-      cwd: dirPath,
-      encoding: "utf-8",
-    }).trim();
-
-    const lastCommit = lastCommitTimestamp
-      ? new Date(parseInt(lastCommitTimestamp) * 1000)
-      : null;
-
-    // Get total commit count
-    const commitCount = parseInt(
-      execSync("git rev-list --count HEAD", {
+    // ✅ Get last commit timestamp (async)
+    const { stdout: lastCommitTimestamp } = await execAsync(
+      "git log -1 --format=%ct",
+      {
         cwd: dirPath,
         encoding: "utf-8",
-      }).trim(),
+      }
     );
+
+    const lastCommit = lastCommitTimestamp.trim()
+      ? new Date(parseInt(lastCommitTimestamp.trim()) * 1000)
+      : null;
+
+    // ✅ Get total commit count (async)
+    const { stdout: commitCountStr } = await execAsync(
+      "git rev-list --count HEAD",
+      {
+        cwd: dirPath,
+        encoding: "utf-8",
+      }
+    );
+    const commitCount = parseInt(commitCountStr.trim());
 
     return { lastCommit, commitCount };
   } catch {

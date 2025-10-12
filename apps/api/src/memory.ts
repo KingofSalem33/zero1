@@ -20,6 +20,12 @@ const MEMORY_FILE = path.join(process.cwd(), "data", "memory.json");
 // In-memory cache
 let memoryStore: MemoryStore = {};
 let isLoaded = false;
+let loadPromise: Promise<void> | null = null; // ✅ Fix race condition
+
+// ✅ Fix #6: Debounced saves to reduce disk I/O
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+const SAVE_DEBOUNCE_MS = 5000; // Save after 5 seconds of inactivity
+let hasPendingChanges = false;
 
 // Ensure data directory exists
 async function ensureDataDir(): Promise<void> {
@@ -31,30 +37,72 @@ async function ensureDataDir(): Promise<void> {
   }
 }
 
-// Load memory store from disk
+// Load memory store from disk (race-condition safe)
 async function loadMemoryStore(): Promise<void> {
-  if (isLoaded) return;
-
-  try {
-    await ensureDataDir();
-    const data = await fs.readFile(MEMORY_FILE, "utf-8");
-    memoryStore = JSON.parse(data);
-    console.log("Memory store loaded from disk");
-  } catch {
-    // File doesn't exist or is corrupted, start with empty store
-    memoryStore = {};
-    console.log("Starting with empty memory store");
+  // ✅ If loading is in progress, wait for it
+  if (loadPromise) {
+    return loadPromise;
   }
-  isLoaded = true;
+
+  // ✅ If already loaded, return immediately
+  if (isLoaded) {
+    return;
+  }
+
+  // ✅ Cache the loading promise to prevent concurrent loads
+  loadPromise = (async () => {
+    try {
+      await ensureDataDir();
+      const data = await fs.readFile(MEMORY_FILE, "utf-8");
+      memoryStore = JSON.parse(data);
+      console.log("Memory store loaded from disk");
+    } catch {
+      // File doesn't exist or is corrupted, start with empty store
+      memoryStore = {};
+      console.log("Starting with empty memory store");
+    }
+    isLoaded = true;
+  })();
+
+  await loadPromise;
+  loadPromise = null; // Clear after completion
 }
 
-// Save memory store to disk
+// Save memory store to disk (immediate)
 async function saveMemoryStore(): Promise<void> {
   try {
     await ensureDataDir();
     await fs.writeFile(MEMORY_FILE, JSON.stringify(memoryStore, null, 2));
+    hasPendingChanges = false;
   } catch (error) {
     console.error("Failed to save memory store:", error);
+  }
+}
+
+// ✅ Fix #6: Debounced save - reduces disk I/O by batching writes
+async function saveMemoryStoreDebounced(): Promise<void> {
+  hasPendingChanges = true;
+
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+
+  saveTimeout = setTimeout(async () => {
+    if (hasPendingChanges) {
+      await saveMemoryStore();
+    }
+    saveTimeout = null;
+  }, SAVE_DEBOUNCE_MS);
+}
+
+// Force immediate save of pending changes (for critical operations)
+export async function flushMemoryStore(): Promise<void> {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  if (hasPendingChanges) {
+    await saveMemoryStore();
   }
 }
 
@@ -90,7 +138,7 @@ export async function addFact(userId: string, fact: string): Promise<void> {
 
   if (!isDuplicate && fact.trim()) {
     userMemory.facts.push(fact.trim());
-    await saveMemoryStore();
+    await saveMemoryStoreDebounced(); // ✅ Use debounced save
     console.log(`Added fact for user ${userId}: ${fact}`);
   }
 }
@@ -117,7 +165,7 @@ export async function pushToThread(
     userMemory.thread = userMemory.thread.slice(-40);
   }
 
-  await saveMemoryStore();
+  await saveMemoryStoreDebounced(); // ✅ Use debounced save
 }
 
 // Clear all facts for a user

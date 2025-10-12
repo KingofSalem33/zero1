@@ -13,22 +13,19 @@ export interface FileSearchResponse {
   results: FileSearchResult[];
 }
 
-// Create text chunks from content
-function createChunks(
+// Create text chunks from content (lazy generator to save memory)
+function* createChunksLazy(
   content: string,
   chunkSize = 2000,
   overlap = 200,
-): string[] {
-  const chunks: string[] = [];
+): Generator<string> {
   let start = 0;
 
   while (start < content.length) {
     const end = Math.min(start + chunkSize, content.length);
-    chunks.push(content.slice(start, end));
+    yield content.slice(start, end);
     start = end - overlap;
   }
-
-  return chunks;
 }
 
 // Simple TF-IDF-like scoring
@@ -94,6 +91,12 @@ export async function file_search(
 ): Promise<FileSearchResponse> {
   const { query, topK = 5 } = params;
 
+  // Memory safety: limit max file size and chunk processing
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file
+  const MAX_CHUNK_COUNT = 100; // Max chunks to process per file
+  const CHUNK_SIZE = 2000;
+  const CHUNK_OVERLAP = 200;
+
   try {
     // Get all uploaded files
     const files = await listFiles();
@@ -105,25 +108,51 @@ export async function file_search(
         continue;
       }
 
+      // Memory safety: skip files that are too large
+      if (file.bytes > MAX_FILE_SIZE) {
+        console.warn(
+          `Skipping large file ${file.name} (${file.bytes} bytes > ${MAX_FILE_SIZE} limit)`,
+        );
+        continue;
+      }
+
       try {
         // Read file content
         const content = await readFileContent(file);
         if (!content.trim()) continue;
 
-        // Create chunks
-        const chunks = createChunks(content);
+        // Memory safety: limit content size after reading
+        const truncatedContent =
+          content.length > MAX_FILE_SIZE
+            ? content.substring(0, MAX_FILE_SIZE)
+            : content;
 
-        // Find best matching chunk
+        // ✅ Use lazy generator to process chunks one at a time (memory efficient)
         let bestScore = 0;
         let bestExcerpt = "";
+        let chunkCount = 0;
 
-        for (const chunk of chunks) {
+        for (const chunk of createChunksLazy(
+          truncatedContent,
+          CHUNK_SIZE,
+          CHUNK_OVERLAP,
+        )) {
+          if (chunkCount >= MAX_CHUNK_COUNT) {
+            console.warn(
+              `File ${file.name} exceeded ${MAX_CHUNK_COUNT} chunks, stopping early`,
+            );
+            break;
+          }
+
           const score = calculateRelevanceScore(query, chunk);
           if (score > bestScore) {
             bestScore = score;
             bestExcerpt =
               chunk.length > 200 ? chunk.substring(0, 200) + "..." : chunk;
           }
+
+          chunkCount++;
+          // Chunk is immediately GC'd after each iteration - no memory buildup
         }
 
         // Only include results with some relevance
@@ -135,8 +164,15 @@ export async function file_search(
             score: bestScore,
           });
         }
+
+        // Memory safety: keep only top results to avoid unbounded growth
+        if (results.length > topK * 10) {
+          results.sort((a, b) => b.score - a.score);
+          results.splice(topK * 5); // Keep 5x the needed results as buffer
+        }
       } catch (error) {
         console.error(`Failed to process file ${file.id}:`, error);
+        // Continue processing other files instead of crashing
       }
     }
 
@@ -145,7 +181,7 @@ export async function file_search(
     const topResults = results.slice(0, topK);
 
     console.log(
-      `File search for "${query}" returned ${topResults.length} results`,
+      `File search for "${query}" returned ${topResults.length} results from ${files.length} files`,
     );
 
     return {
