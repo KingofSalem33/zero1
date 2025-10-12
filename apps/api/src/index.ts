@@ -19,7 +19,7 @@ import {
 } from "./ai/schemas";
 import { handleFileUpload } from "./files";
 import { getFacts, addFact, pushToThread, clearFacts } from "./memory";
-import { requireAuth, optionalAuth } from "./middleware/auth";
+import { optionalAuth } from "./middleware/auth";
 import { checkConnectionHealth } from "./db";
 import {
   apiLimiter,
@@ -298,61 +298,61 @@ app.post(
   aiLimiter,
   express.json(),
   async (req, res) => {
-  try {
-    // Validate request body
-    const {
-      message,
-      userId = "anonymous",
-      history = [],
-    } = chatRequestSchema.parse(req.body);
+    try {
+      // Validate request body
+      const {
+        message,
+        userId = "anonymous",
+        history = [],
+      } = chatRequestSchema.parse(req.body);
 
-    // Set SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
+      // Set SSE headers
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
 
-    // Build conversation messages
-    let systemMessage =
-      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. When you use the web, include 2-5 source links at the end. Always include source URLs in your final answer.";
+      // Build conversation messages
+      let systemMessage =
+        "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. When you use the web, include 2-5 source links at the end. Always include source URLs in your final answer.";
 
-    // Add known facts about the user if available
-    if (userId && userId !== "anonymous") {
-      const userFacts = await getFacts(userId);
-      if (userFacts.length > 0) {
-        systemMessage +=
-          "\n\nKnown facts about user:\n- " +
-          userFacts.join("\n- ") +
-          "\nOnly use when relevant.";
+      // Add known facts about the user if available
+      if (userId && userId !== "anonymous") {
+        const userFacts = await getFacts(userId);
+        if (userFacts.length > 0) {
+          systemMessage +=
+            "\n\nKnown facts about user:\n- " +
+            userFacts.join("\n- ") +
+            "\nOnly use when relevant.";
+        }
       }
-    }
 
-    const conversationMessages = [
-      {
-        role: "system" as const,
-        content: systemMessage,
-      },
-      ...history,
-      {
-        role: "user" as const,
-        content: message,
-      },
-    ];
+      const conversationMessages = [
+        {
+          role: "system" as const,
+          content: systemMessage,
+        },
+        ...history,
+        {
+          role: "user" as const,
+          content: message,
+        },
+      ];
 
-    // Dynamically select relevant tools
-    const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
-      selectRelevantTools(message, history);
+      // Dynamically select relevant tools
+      const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+        selectRelevantTools(message, history);
 
-    // Run streaming model with selected tools
-    await runModelStream(res, conversationMessages, {
-      toolSpecs: selectedSpecs,
-      toolMap: selectedMap,
-    });
+      // Run streaming model with selected tools
+      await runModelStream(res, conversationMessages, {
+        toolSpecs: selectedSpecs,
+        toolMap: selectedMap,
+      });
 
-    // Store conversation in memory if userId is provided
-    if (userId && userId !== "anonymous") {
-      await pushToThread(userId, { role: "user", content: message });
-      // Note: We don't have the full response here, would need to capture it during streaming
-    }
+      // Store conversation in memory if userId is provided
+      if (userId && userId !== "anonymous") {
+        await pushToThread(userId, { role: "user", content: message });
+        // Note: We don't have the full response here, would need to capture it during streaming
+      }
     } catch (error) {
       console.error("Chat streaming error:", error);
       res.write(`event: error\n`);
@@ -372,96 +372,96 @@ app.post(
   aiLimiter,
   express.json(),
   async (req, res) => {
-  try {
-    // Validate request body
-    const {
-      message,
-      format = "text",
-      userId = "anonymous",
-      history = [],
-    } = chatRequestSchema.parse(req.body);
+    try {
+      // Validate request body
+      const {
+        message,
+        format = "text",
+        userId = "anonymous",
+        history = [],
+      } = chatRequestSchema.parse(req.body);
 
-    // Build conversation messages
-    let systemMessage =
-      "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. When you use the web, include 2-5 source links at the end. Always include source URLs in your final answer.";
+      // Build conversation messages
+      let systemMessage =
+        "You are a helpful AI assistant. You can call the `web_search` tool to find current information, fetch content from URLs, perform calculations, and search through uploaded files. Use `file_search` when the user references 'the doc', 'uploaded files', or asks questions about previously uploaded content. When you use the web, include 2-5 source links at the end. Always include source URLs in your final answer.";
 
-    // Add known facts about the user if available
-    if (userId && userId !== "anonymous") {
-      const userFacts = await getFacts(userId);
-      if (userFacts.length > 0) {
-        systemMessage +=
-          "\n\nKnown facts about user:\n- " +
-          userFacts.join("\n- ") +
-          "\nOnly use when relevant.";
+      // Add known facts about the user if available
+      if (userId && userId !== "anonymous") {
+        const userFacts = await getFacts(userId);
+        if (userFacts.length > 0) {
+          systemMessage +=
+            "\n\nKnown facts about user:\n- " +
+            userFacts.join("\n- ") +
+            "\nOnly use when relevant.";
+        }
       }
-    }
 
-    // Add JSON formatting instruction if needed
-    if (format === "json") {
-      systemMessage +=
-        "\n\nIf the user asks for structured output, respond as JSON that matches this schema: {answer:string, sources?:string[]}";
-    }
+      // Add JSON formatting instruction if needed
+      if (format === "json") {
+        systemMessage +=
+          "\n\nIf the user asks for structured output, respond as JSON that matches this schema: {answer:string, sources?:string[]}";
+      }
 
-    const conversationMessages = [
-      {
-        role: "system" as const,
-        content: systemMessage,
-      },
-      ...history,
-      {
-        role: "user" as const,
-        content: message,
-      },
-    ];
-
-    // Dynamically select relevant tools
-    const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
-      selectRelevantTools(message, history);
-
-    // Use structured outputs for JSON format
-    const result = await runModel(conversationMessages, {
-      toolSpecs: selectedSpecs,
-      toolMap: selectedMap,
-      ...(format === "json" && {
-        responseFormat: {
-          type: "json_schema" as const,
-          json_schema: chatResponseJsonSchema,
+      const conversationMessages = [
+        {
+          role: "system" as const,
+          content: systemMessage,
         },
-      }),
-    });
+        ...history,
+        {
+          role: "user" as const,
+          content: message,
+        },
+      ];
 
-    // Extract URLs from assistant response and combine with tool citations
-    const extractedUrls = extractUrls(result.text);
-    const enhancedCitations = combineAndDedupeUrls(
-      result.citations || [],
-      extractedUrls,
-    );
+      // Dynamically select relevant tools
+      const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+        selectRelevantTools(message, history);
 
-    // Store conversation in memory if userId is provided
-    if (userId && userId !== "anonymous") {
-      await pushToThread(userId, { role: "user", content: message });
-      await pushToThread(userId, { role: "assistant", content: result.text });
-    }
+      // Use structured outputs for JSON format
+      const result = await runModel(conversationMessages, {
+        toolSpecs: selectedSpecs,
+        toolMap: selectedMap,
+        ...(format === "json" && {
+          responseFormat: {
+            type: "json_schema" as const,
+            json_schema: chatResponseJsonSchema,
+          },
+        }),
+      });
 
-    // Handle JSON format response
-    if (format === "json") {
-      // Structured outputs guarantee valid JSON
-      const jsonResponse = JSON.parse(result.text);
-      const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
+      // Extract URLs from assistant response and combine with tool citations
+      const extractedUrls = extractUrls(result.text);
+      const enhancedCitations = combineAndDedupeUrls(
+        result.citations || [],
+        extractedUrls,
+      );
 
+      // Store conversation in memory if userId is provided
+      if (userId && userId !== "anonymous") {
+        await pushToThread(userId, { role: "user", content: message });
+        await pushToThread(userId, { role: "assistant", content: result.text });
+      }
+
+      // Handle JSON format response
+      if (format === "json") {
+        // Structured outputs guarantee valid JSON
+        const jsonResponse = JSON.parse(result.text);
+        const validatedResponse = chatJsonResponseSchema.parse(jsonResponse);
+
+        return res.json({
+          answer: validatedResponse.answer,
+          sources: validatedResponse.sources || enhancedCitations,
+          tools_used: result.tools_used,
+        });
+      }
+
+      // Return text format response
       return res.json({
-        answer: validatedResponse.answer,
-        sources: validatedResponse.sources || enhancedCitations,
+        text: result.text,
+        citations: enhancedCitations,
         tools_used: result.tools_used,
       });
-    }
-
-    // Return text format response
-    return res.json({
-      text: result.text,
-      citations: enhancedCitations,
-      tools_used: result.tools_used,
-    });
     } catch (error) {
       console.error("Chat error:", error);
       return res.status(500).json({

@@ -7,7 +7,7 @@ import { promisify } from "util";
 import { supabase } from "../db";
 
 const execAsync = promisify(exec);
-import { uploadLimiter, aiLimiter } from "../middleware/rateLimit";
+import { uploadLimiter } from "../middleware/rateLimit";
 import {
   analyzeDirectory,
   analyzeSingleFile,
@@ -38,7 +38,9 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 function sanitizeGitUrl(url: string): string {
   // Only allow https:// and git:// protocols
   if (!url.startsWith("https://") && !url.startsWith("git://")) {
-    throw new Error("Invalid repository URL protocol. Only https:// and git:// are allowed.");
+    throw new Error(
+      "Invalid repository URL protocol. Only https:// and git:// are allowed.",
+    );
   }
 
   // Remove any shell metacharacters
@@ -62,7 +64,9 @@ function sanitizeGitUrl(url: string): string {
 function sanitizeBranch(branch: string): string {
   // Only allow alphanumeric, dash, underscore, and slash (for branch paths)
   if (!/^[a-zA-Z0-9/_-]+$/.test(branch)) {
-    throw new Error("Invalid branch name. Only alphanumeric characters, dash, underscore, and slash are allowed.");
+    throw new Error(
+      "Invalid branch name. Only alphanumeric characters, dash, underscore, and slash are allowed.",
+    );
   }
 
   // Limit branch name length
@@ -133,6 +137,8 @@ router.post("/upload", uploadLimiter, (req, res) => {
         `📁 [Artifacts] Processing file: ${filename} (${fileSize} bytes)`,
       );
 
+      let artifact: any = null; // Declare in outer scope for error handling
+
       try {
         // Determine artifact type
         const isZip = filename.endsWith(".zip");
@@ -153,7 +159,7 @@ router.post("/upload", uploadLimiter, (req, res) => {
         console.log("✅ [Artifacts] Analysis complete:", signals);
 
         // Save artifact to database
-        const { data: artifact, error: artifactError } = await supabase
+        const { data: artifactData, error: artifactError } = await supabase
           .from("artifacts")
           .insert({
             project_id: projectId,
@@ -166,10 +172,12 @@ router.post("/upload", uploadLimiter, (req, res) => {
           .select()
           .single();
 
-        if (artifactError) {
+        if (artifactError || !artifactData) {
           console.error("❌ [Artifacts] Database error:", artifactError);
           return res.status(500).json({ error: "Failed to save artifact" });
         }
+
+        artifact = artifactData; // Assign to outer scope variable
 
         // Save artifact signals
         const { error: signalsError } = await supabase
@@ -637,16 +645,25 @@ router.post("/repo", uploadLimiter, async (req, res) => {
     } catch (sanitizeError) {
       console.error("❌ [Artifacts] Input sanitization failed:", sanitizeError);
       return res.status(400).json({
-        error: sanitizeError instanceof Error ? sanitizeError.message : "Invalid input",
+        error:
+          sanitizeError instanceof Error
+            ? sanitizeError.message
+            : "Invalid input",
       });
     }
 
-    console.log(`📦 [Artifacts] Cloning repo: ${sanitizedUrl} (branch: ${sanitizedBranch})`);
+    console.log(
+      `📦 [Artifacts] Cloning repo: ${sanitizedUrl} (branch: ${sanitizedBranch})`,
+    );
 
     // Create temp directory for clone
-    const repoName = sanitizedUrl.split("/").pop()?.replace(".git", "") || "repo";
+    const repoName =
+      sanitizedUrl.split("/").pop()?.replace(".git", "") || "repo";
     const sanitizedRepoName = sanitizeFilename(repoName);
-    const clonePath = path.join(UPLOAD_DIR, `repo-${Date.now()}-${sanitizedRepoName}`);
+    const clonePath = path.join(
+      UPLOAD_DIR,
+      `repo-${Date.now()}-${sanitizedRepoName}`,
+    );
 
     // Ensure clonePath is within UPLOAD_DIR (additional safety)
     if (!clonePath.startsWith(UPLOAD_DIR)) {
@@ -680,7 +697,10 @@ router.post("/repo", uploadLimiter, async (req, res) => {
       });
       sizeBytes = parseInt(sizeOutput.split("\t")[0]);
     } catch (sizeError) {
-      console.warn("❌ [Artifacts] Failed to calculate size, using 0:", sizeError);
+      console.warn(
+        "❌ [Artifacts] Failed to calculate size, using 0:",
+        sizeError,
+      );
     }
 
     // Save artifact to database

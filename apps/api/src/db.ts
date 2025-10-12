@@ -150,7 +150,10 @@ function isRetryableError(
   }
 
   // Network errors are retryable
-  if (error.message.includes("fetch failed") || error.message.includes("ECONNREFUSED")) {
+  if (
+    error.message.includes("fetch failed") ||
+    error.message.includes("ECONNREFUSED")
+  ) {
     return true;
   }
 
@@ -229,7 +232,7 @@ export async function withRetry<T>(
             config.backoffMultiplier,
           );
           logger.debug(`[DB Retry] Waiting ${delay}ms before retry`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await new Promise<void>((resolve) => setTimeout(resolve, delay));
           continue;
         }
       } else if (data !== null) {
@@ -247,10 +250,7 @@ export async function withRetry<T>(
       }
     } catch (error) {
       // Handle unexpected errors (network issues, etc.)
-      if (
-        error instanceof QueryError ||
-        error instanceof DatabaseError
-      ) {
+      if (error instanceof QueryError || error instanceof DatabaseError) {
         throw error;
       }
 
@@ -269,7 +269,7 @@ export async function withRetry<T>(
             config.maxDelayMs,
             config.backoffMultiplier,
           );
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await new Promise<void>((resolve) => setTimeout(resolve, delay));
           continue;
         }
       } else {
