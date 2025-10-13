@@ -106,6 +106,7 @@ export async function webSearch(
 
         for (const item of data.items) {
           // Validate URL before including
+          if (!item.link) continue;
           const validatedUrl = validateSearchResultUrl(item.link);
           if (!validatedUrl) continue;
 
