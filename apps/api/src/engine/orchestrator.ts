@@ -1253,7 +1253,7 @@ End by instructing the user to review the materials, complete the work, and uplo
       if (acceptanceCriteria.length > 0) {
         console.log(
           `✅ [VALIDATION] Acceptance criteria for Phase ${currentPhase.phase_number}:`,
-          acceptanceCriteria
+          acceptanceCriteria,
         );
         // Note: In a future enhancement, could require explicit validation of each criterion
         // For now, we log the criteria and trust that substeps completion implies criteria met
@@ -1304,8 +1304,8 @@ End by instructing the user to review the materials, complete the work, and uplo
 
     // Persist to Supabase (write-through cache) with retry logic
     try {
-      await withRetry(() =>
-        supabase
+      await withRetry(async () => {
+        const result = await supabase
           .from("projects")
           .update({
             current_phase: project.current_phase,
@@ -1313,8 +1313,11 @@ End by instructing the user to review the materials, complete the work, and uplo
             status: project.status,
             updated_at: project.updated_at,
           })
-          .eq("id", request.project_id),
-      );
+          .eq("id", request.project_id)
+          .select()
+          .single();
+        return result;
+      });
     } catch (err) {
       console.error(
         "[ORCHESTRATOR] Error persisting substep completion to Supabase:",
@@ -1339,9 +1342,14 @@ End by instructing the user to review the materials, complete the work, and uplo
     projectId: string,
   ): Promise<Project | null> {
     try {
-      const data = await withRetry(() =>
-        supabase.from("projects").select("*").eq("id", projectId).single(),
-      );
+      const data = await withRetry(async () => {
+        const result = await supabase
+          .from("projects")
+          .select("*")
+          .eq("id", projectId)
+          .single();
+        return result;
+      });
 
       if (!data) {
         return null;
@@ -1370,7 +1378,10 @@ End by instructing the user to review the materials, complete the work, and uplo
           err.message,
         );
       } else {
-        console.error("[ORCHESTRATOR] Error loading project from Supabase:", err);
+        console.error(
+          "[ORCHESTRATOR] Error loading project from Supabase:",
+          err,
+        );
       }
       return null;
     }
@@ -1404,12 +1415,13 @@ End by instructing the user to review the materials, complete the work, and uplo
 
   async getAllProjects(): Promise<Project[]> {
     try {
-      const data = await withRetry(() =>
-        supabase
+      const data = await withRetry(async () => {
+        const result = await supabase
           .from("projects")
           .select("*")
-          .order("created_at", { ascending: false }),
-      );
+          .order("created_at", { ascending: false });
+        return result;
+      });
 
       if (!data) {
         console.warn("[ORCHESTRATOR] No projects found in database");
@@ -1497,10 +1509,14 @@ End by instructing the user to review the materials, complete the work, and uplo
     );
 
     // Get completed substeps from current phase for context continuity
-    const completedSubsteps = currentPhase?.substeps
-      ?.filter((s: any) => s.completed && s.step_number < (currentSubstep?.step_number || 0))
-      .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
-      .join('\n') || "None yet - this is the first substep";
+    const completedSubsteps =
+      currentPhase?.substeps
+        ?.filter(
+          (s: any) =>
+            s.completed && s.step_number < (currentSubstep?.step_number || 0),
+        )
+        .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
+        .join("\n") || "None yet - this is the first substep";
 
     const systemMessage = `You are helping with project execution. You have access to these tools:
 - \`web_search\`: Search the web for current information using Google
@@ -1639,10 +1655,14 @@ ${request.master_prompt}`;
     );
 
     // Get completed substeps from current phase for context continuity
-    const completedSubsteps = currentPhase?.substeps
-      ?.filter((s: any) => s.completed && s.step_number < (currentSubstep?.step_number || 0))
-      .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
-      .join('\n') || "None yet - this is the first substep";
+    const completedSubsteps =
+      currentPhase?.substeps
+        ?.filter(
+          (s: any) =>
+            s.completed && s.step_number < (currentSubstep?.step_number || 0),
+        )
+        .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
+        .join("\n") || "None yet - this is the first substep";
 
     const systemMessage = `You are helping with project execution. You have access to these tools:
 - \`web_search\`: Search the web for current information using Google
@@ -1793,16 +1813,19 @@ ${request.master_prompt}`;
 
     // Persist to Supabase (write-through cache) with retry logic
     try {
-      await withRetry(() =>
-        supabase
+      await withRetry(async () => {
+        const result = await supabase
           .from("projects")
           .update({
             current_phase: project.current_phase,
             roadmap: project.phases,
             updated_at: project.updated_at,
           })
-          .eq("id", request.project_id),
-      );
+          .eq("id", request.project_id)
+          .select()
+          .single();
+        return result;
+      });
     } catch (err) {
       console.error(
         "[ORCHESTRATOR] Error persisting phase expansion to Supabase:",

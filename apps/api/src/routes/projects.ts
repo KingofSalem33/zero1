@@ -27,8 +27,8 @@ router.post("/", async (req, res) => {
 
     // First create in Supabase to get a UUID (with retry logic)
     console.log("[Projects] Step 1: Inserting into Supabase...");
-    const supabaseProject = await withRetry<any>(() =>
-      supabase
+    const supabaseProject = await withRetry(async () => {
+      const result = await supabase
         .from("projects")
         .insert({
           goal: goal.trim(),
@@ -37,8 +37,9 @@ router.post("/", async (req, res) => {
           roadmap: {},
         })
         .select()
-        .single(),
-    );
+        .single();
+      return result;
+    });
     console.log("[Projects] Step 1 complete. Project ID:", supabaseProject.id);
 
     // Return immediately with project ID - roadmap will be generated asynchronously
@@ -53,19 +54,23 @@ router.post("/", async (req, res) => {
         console.log("[Projects] Step 2 complete. Roadmap generated.");
 
         // Update Supabase with the full roadmap (with retry logic)
-        await withRetry(() =>
-          supabase
-            .from("projects")
-            .update({
-              current_phase: project.current_phase || "P0",
-              roadmap: project.phases || {},
-            })
-            .eq("id", supabaseProject.id)
-            .select()
-            .single(),
-        );
-
-        console.log("[Projects] Roadmap persisted to Supabase");
+        try {
+          await withRetry(async () => {
+            const result = await supabase
+              .from("projects")
+              .update({
+                current_phase: project.current_phase || "P0",
+                roadmap: project.phases || {},
+              })
+              .eq("id", supabaseProject.id)
+              .select()
+              .single();
+            return result;
+          });
+          console.log("[Projects] Roadmap persisted to Supabase");
+        } catch (err) {
+          console.error("[Projects] Error persisting roadmap:", err);
+        }
       })
       .catch((err) => {
         console.error("[Projects] Error generating roadmap:", err);
@@ -181,15 +186,16 @@ router.get("/:projectId", async (req, res) => {
     }
 
     // Fetch completed_substeps from Supabase (with retry logic)
-    let supabaseProject = null;
+    let supabaseProject: any = null;
     try {
-      supabaseProject = await withRetry(() =>
-        supabase
+      supabaseProject = await withRetry(async () => {
+        const result = await supabase
           .from("projects")
           .select("completed_substeps, current_substep")
           .eq("id", projectId)
-          .single(),
-      );
+          .single();
+        return result;
+      });
     } catch (err) {
       console.error("[Projects] Error fetching from Supabase:", err);
       // Continue without Supabase data if fetch fails

@@ -3,7 +3,7 @@
  * Protects API endpoints from abuse and DDoS attacks
  */
 
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 
 // ✅ Fix #11: Named constants for rate limit configuration
 const RATE_LIMIT_WINDOWS = {
@@ -57,7 +57,8 @@ export const aiLimiter = rateLimit({
   legacyHeaders: false,
   // Use a different store key to track AI requests separately
   keyGenerator: (req) => {
-    return `ai:${ipKeyGenerator(req)}`;
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    return `ai:${ip}`;
   },
 });
 
@@ -77,7 +78,8 @@ export const strictLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return `strict:${ipKeyGenerator(req)}`;
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    return `strict:${ip}`;
   },
 });
 
@@ -97,6 +99,7 @@ export const uploadLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    return `upload:${ipKeyGenerator(req)}`;
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    return `upload:${ip}`;
   },
 });
