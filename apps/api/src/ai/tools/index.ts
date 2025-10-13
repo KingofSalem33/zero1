@@ -1,4 +1,3 @@
-import type { ChatCompletionTool } from "openai/resources";
 import { webSearch } from "./webSearch";
 import { http_fetch } from "./httpFetch";
 import { calculator } from "./calculator";
@@ -10,91 +9,84 @@ import {
   fileSearchSchema,
 } from "../schemas";
 
-// OpenAI function tool definitions
-export const toolSpecs: ChatCompletionTool[] = [
+// Responses API function tool definitions (flat structure)
+// See: https://platform.openai.com/docs/api-reference/responses/create
+export const toolSpecs = [
   {
-    type: "function",
-    function: {
-      name: "web_search",
-      description:
-        "Search the web for current information using DuckDuckGo HTML scraping (no API key required)",
-      parameters: {
-        type: "object",
-        properties: {
-          q: {
-            type: "string",
-            description: "Search query",
-          },
-          count: {
-            type: "number",
-            description: "Number of results (1-10, default 5)",
-            minimum: 1,
-            maximum: 10,
-          },
+    type: "function" as const,
+    name: "web_search",
+    description:
+      "Search the web for current information using DuckDuckGo HTML scraping (no API key required)",
+    parameters: {
+      type: "object",
+      properties: {
+        q: {
+          type: "string",
+          description: "Search query",
         },
-        required: ["q"],
+        count: {
+          type: "number",
+          description: "Number of results (1-10, default 5)",
+          minimum: 1,
+          maximum: 10,
+        },
       },
+      required: ["q"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "http_fetch",
-      description: "Fetch and read content from a specific URL",
-      parameters: {
-        type: "object",
-        properties: {
-          url: {
-            type: "string",
-            format: "uri",
-            description: "URL to fetch content from",
-          },
+    type: "function" as const,
+    name: "http_fetch",
+    description: "Fetch and read content from a specific URL",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          format: "uri",
+          description: "URL to fetch content from",
         },
-        required: ["url"],
       },
+      required: ["url"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "calculator",
-      description:
-        "Perform mathematical calculations with support for basic arithmetic operations",
-      parameters: {
-        type: "object",
-        properties: {
-          expression: {
-            type: "string",
-            description:
-              'Mathematical expression to evaluate (e.g., "2 + 2", "10 * 3 / 2")',
-          },
+    type: "function" as const,
+    name: "calculator",
+    description:
+      "Perform mathematical calculations with support for basic arithmetic operations",
+    parameters: {
+      type: "object",
+      properties: {
+        expression: {
+          type: "string",
+          description:
+            'Mathematical expression to evaluate (e.g., "2 + 2", "10 * 3 / 2")',
         },
-        required: ["expression"],
       },
+      required: ["expression"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "file_search",
-      description:
-        "Search through uploaded files to find relevant content based on a query",
-      parameters: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query to find relevant files and content",
-          },
-          topK: {
-            type: "number",
-            description: "Number of top results to return (1-10, default 5)",
-            minimum: 1,
-            maximum: 10,
-          },
+    type: "function" as const,
+    name: "file_search",
+    description:
+      "Search through uploaded files to find relevant content based on a query",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query to find relevant files and content",
         },
-        required: ["query"],
+        topK: {
+          type: "number",
+          description: "Number of top results to return (1-10, default 5)",
+          minimum: 1,
+          maximum: 10,
+        },
       },
+      required: ["query"],
     },
   },
 ];

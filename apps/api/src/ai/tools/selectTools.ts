@@ -1,4 +1,3 @@
-import type { ChatCompletionTool } from "openai/resources";
 import { toolSpecs, toolMap } from "./index";
 import type { ToolMap } from "./index";
 
@@ -14,7 +13,7 @@ export function selectRelevantTools(
   userQuery: string,
   conversationHistory?: Array<{ role: string; content: string }>,
 ): {
-  toolSpecs: ChatCompletionTool[];
+  toolSpecs: typeof toolSpecs;
   toolMap: Partial<ToolMap>;
 } {
   const query = userQuery.toLowerCase();
@@ -59,8 +58,7 @@ export function selectRelevantTools(
 
   // Build filtered toolSpecs and toolMap
   const filteredSpecs = toolSpecs.filter(
-    (spec) =>
-      spec.type === "function" && selectedTools.includes(spec.function.name),
+    (spec) => spec.type === "function" && selectedTools.includes(spec.name),
   );
 
   const filteredMap: Partial<ToolMap> = {};

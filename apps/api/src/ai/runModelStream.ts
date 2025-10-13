@@ -1,4 +1,3 @@
-import type { ChatCompletionTool } from "openai/resources";
 import { makeOpenAI } from "../ai";
 import { toolMap, type ToolName, type ToolMap } from "./tools";
 import { ZodError } from "zod";
@@ -7,6 +6,14 @@ import { ENV } from "../env";
 import type { Response } from "express";
 
 const logger = pino({ name: "runModelStream" });
+
+// Responses API tool format
+export interface ResponsesAPITool {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
 
 export interface ToolActivity {
   type: "tool_start" | "tool_end" | "tool_error";
@@ -18,7 +25,7 @@ export interface ToolActivity {
 }
 
 export interface RunModelStreamOptions {
-  toolSpecs?: ChatCompletionTool[];
+  toolSpecs?: ResponsesAPITool[];
   toolMap?: Partial<ToolMap>;
   maxIterations?: number;
   model?: string;
