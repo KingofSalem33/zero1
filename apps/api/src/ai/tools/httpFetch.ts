@@ -1,8 +1,20 @@
 import { request } from "undici";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
-import { URL } from "url";
 import type { HttpFetchParams } from "../schemas";
+import {
+  validateUrl,
+  validateContentType,
+  validateResponseSize,
+  sanitizeText,
+  sanitizeJson,
+  createSafeRequestOptions,
+  extractSafeMetadata,
+  SECURITY_CONFIG,
+} from "./security";
+import pino from "pino";
+
+const logger = pino({ name: "http_fetch" });
 
 export interface FetchResult {
   url: string;
@@ -15,116 +27,213 @@ export interface FetchResult {
 export async function http_fetch(
   params: HttpFetchParams,
 ): Promise<FetchResult> {
-  const { url } = params;
+  const { url: urlString } = params;
 
   try {
-    const { body, statusCode, headers } = await request(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; AI-Assistant/1.0)",
-      },
-    });
+    // Step 1: Validate URL (SSRF protection)
+    const parsedUrl = validateUrl(urlString);
+    const site = parsedUrl.hostname;
 
+    logger.info({ url: urlString, site }, "Fetching URL");
+
+    // Step 2: Make request with security options
+    const requestOptions = createSafeRequestOptions();
+    const { body, statusCode, headers } = await request(
+      urlString,
+      requestOptions,
+    );
+
+    // Step 3: Validate status code
     if (statusCode >= 400) {
+      logger.warn({ url: urlString, statusCode }, "HTTP error");
       throw new Error(`HTTP ${statusCode}`);
     }
 
-    const contentType = (headers["content-type"] as string) || "";
+    // Step 4: Extract and validate metadata
+    const metadata = extractSafeMetadata(
+      headers as Record<string, string | string[]>,
+    );
+    const { contentType, contentLength } = metadata;
 
-    // Reject binary content types
-    const binaryTypes = [
-      "image/",
-      "video/",
-      "audio/",
-      "application/pdf",
-      "application/zip",
-      "application/octet-stream",
-    ];
+    logger.info(
+      { url: urlString, contentType, contentLength },
+      "Response received",
+    );
 
-    if (binaryTypes.some((type) => contentType.includes(type))) {
-      throw new Error(`Binary content type not supported: ${contentType}`);
+    // Step 5: Validate content length if provided
+    if (contentLength !== null) {
+      validateResponseSize(contentLength);
     }
 
-    const content = await body.text();
-    const parsedUrl = new URL(url);
-    const site = parsedUrl.hostname;
+    // Step 6: Validate Content-Type
+    validateContentType(contentType);
+
+    // Step 7: Read response body with size limit
+    let content = "";
+    let bytesRead = 0;
+
+    for await (const chunk of body) {
+      bytesRead += chunk.length;
+
+      // Enforce size limit during streaming
+      if (bytesRead > SECURITY_CONFIG.MAX_RESPONSE_SIZE) {
+        logger.warn(
+          { url: urlString, bytesRead },
+          "Response size limit exceeded during read",
+        );
+        throw new Error(
+          `Response exceeds maximum size of ${SECURITY_CONFIG.MAX_RESPONSE_SIZE} bytes`,
+        );
+      }
+
+      content += chunk.toString("utf-8");
+    }
+
+    logger.info({ url: urlString, size: bytesRead }, "Response body read");
+
+    // Step 8: Process content based on type
+    const normalizedContentType = contentType.toLowerCase();
 
     // Handle HTML content with Readability
-    if (contentType.includes("text/html")) {
-      const dom = new JSDOM(content, { url });
-      const document = dom.window.document;
-
-      // Use Readability to extract main article content
-      const reader = new Readability(document);
-      const article = reader.parse();
-
-      // Extract title
-      const title =
-        article?.title ||
-        document.querySelector("title")?.textContent?.trim() ||
-        "Untitled";
-
-      // Extract meta description for excerpt
-      const metaDescription =
-        document
-          .querySelector('meta[name="description"]')
-          ?.getAttribute("content") ||
-        document
-          .querySelector('meta[property="og:description"]')
-          ?.getAttribute("content") ||
-        "";
-
-      // Get main text content
-      const textContent =
-        article?.textContent ||
-        document.body?.textContent ||
-        content.replace(/<[^>]*>/g, "").trim();
-
-      // Trim text to 100k characters
-      const trimmedText = textContent.slice(0, 100000);
-
-      return {
-        url,
-        site,
-        title,
-        excerpt: metaDescription.slice(0, 500), // Limit excerpt length
-        text: trimmedText,
-      };
-    }
-
-    // Handle JSON content
-    if (contentType.includes("application/json")) {
+    if (
+      normalizedContentType.includes("text/html") ||
+      normalizedContentType.includes("application/xhtml")
+    ) {
       try {
-        const jsonData = JSON.parse(content);
+        const dom = new JSDOM(content, { url: urlString });
+        const document = dom.window.document;
+
+        // Use Readability to extract main article content
+        const reader = new Readability(document);
+        const article = reader.parse();
+
+        // Extract title
+        const title =
+          article?.title ||
+          document.querySelector("title")?.textContent?.trim() ||
+          "Untitled";
+
+        // Extract meta description for excerpt
+        const metaDescription =
+          document
+            .querySelector('meta[name="description"]')
+            ?.getAttribute("content") ||
+          document
+            .querySelector('meta[property="og:description"]')
+            ?.getAttribute("content") ||
+          "";
+
+        // Get main text content
+        const textContent =
+          article?.textContent ||
+          document.body?.textContent ||
+          content.replace(/<[^>]*>/g, "").trim();
+
+        // Sanitize and truncate text
+        const sanitizedText = sanitizeText(textContent);
+        const sanitizedExcerpt = sanitizeText(metaDescription, 500);
+
+        logger.info(
+          {
+            url: urlString,
+            titleLength: title.length,
+            textLength: sanitizedText.length,
+          },
+          "HTML parsed",
+        );
+
         return {
-          url,
+          url: urlString,
           site,
-          title: "JSON Data",
-          excerpt: "JSON data content",
-          text: JSON.stringify(jsonData, null, 2).slice(0, 100000),
+          title: sanitizeText(title, 200),
+          excerpt: sanitizedExcerpt,
+          text: sanitizedText,
         };
-      } catch {
-        // Fall through to plain text handling
+      } catch (parseError) {
+        logger.error(
+          { url: urlString, error: parseError },
+          "HTML parsing failed",
+        );
+        throw new Error(
+          `Failed to parse HTML content: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
+        );
       }
     }
 
-    // Handle plain text content
+    // Handle JSON content
+    if (normalizedContentType.includes("application/json")) {
+      try {
+        // Validate and sanitize JSON
+        const sanitizedJson = sanitizeJson(content);
+
+        logger.info(
+          { url: urlString, jsonLength: sanitizedJson.length },
+          "JSON processed",
+        );
+
+        return {
+          url: urlString,
+          site,
+          title: "JSON Data",
+          excerpt: "Structured JSON data content",
+          text: sanitizedJson,
+        };
+      } catch (jsonError) {
+        logger.error(
+          { url: urlString, error: jsonError },
+          "JSON processing failed",
+        );
+
+        if (
+          jsonError instanceof Error &&
+          jsonError.message.includes("dangerous patterns")
+        ) {
+          throw jsonError; // Re-throw security errors
+        }
+
+        // Fall through to plain text handling for invalid JSON
+        logger.warn({ url: urlString }, "Falling back to plain text handling");
+      }
+    }
+
+    // Handle plain text content (XML, CSV, Markdown, etc.)
+    const sanitizedContent = sanitizeText(content);
+    const excerpt = sanitizeText(
+      content.slice(0, 200).replace(/\s+/g, " ").trim(),
+      200,
+    );
+
+    logger.info(
+      { url: urlString, textLength: sanitizedContent.length },
+      "Plain text processed",
+    );
+
     return {
-      url,
+      url: urlString,
       site,
-      title: "Text Content",
-      excerpt: content.slice(0, 200).replace(/\s+/g, " ").trim(),
-      text: content.slice(0, 100000),
+      title: `${normalizedContentType} Content`,
+      excerpt,
+      text: sanitizedContent,
     };
   } catch (error) {
-    console.error("HTTP fetch error:", error);
+    logger.error(
+      { url: urlString, error: error instanceof Error ? error.message : error },
+      "HTTP fetch failed",
+    );
 
-    const parsedUrl = new URL(url).hostname;
+    // Return error in safe format
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    const safeSite = urlString.includes("://")
+      ? new URL(urlString).hostname
+      : "invalid-url";
+
     return {
-      url,
-      site: parsedUrl,
+      url: urlString,
+      site: safeSite,
       title: "Error",
-      excerpt: `Failed to fetch content: ${error instanceof Error ? error.message : "Unknown error"}`,
-      text: `Failed to fetch content from ${url}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      excerpt: `Failed to fetch content: ${errorMessage}`,
+      text: `Failed to fetch content from ${urlString}:\n\n${errorMessage}\n\nPlease verify the URL is correct and publicly accessible.`,
     };
   }
 }
