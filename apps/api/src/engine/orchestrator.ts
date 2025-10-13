@@ -378,22 +378,40 @@ RESPONSE FORMAT:
 }`;
 
     try {
-      const result = await client.chat.completions.create({
+      const result = await client.responses.create({
         model: ENV.OPENAI_MODEL_NAME,
-        messages: [
+        input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: "Generate the substeps for this phase." },
         ],
         temperature: 0.3,
-        max_tokens: 2000,
+        max_output_tokens: 2000,
         // Use structured outputs for guaranteed JSON
-        response_format: {
-          type: "json_schema",
-          json_schema: substepGenerationJsonSchema,
+        text: {
+          format: {
+            type: "json_schema" as const,
+            name: substepGenerationJsonSchema.name,
+            schema: substepGenerationJsonSchema.schema,
+          },
+          verbosity: "medium",
         },
       });
 
-      const responseText = result.choices?.[0]?.message?.content ?? "";
+      // Extract text from Responses API output
+      const assistantMessage = result.output.find(
+        (item: any) => item.type === "message" && item.role === "assistant",
+      ) as any;
+
+      if (!assistantMessage) {
+        throw new Error("No assistant message in response");
+      }
+
+      const responseText =
+        assistantMessage.content
+          ?.filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("") || "";
+
       const parsed = JSON.parse(responseText);
 
       return {

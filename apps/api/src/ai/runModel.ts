@@ -1,8 +1,4 @@
-import type {
-  ChatCompletionTool,
-  ChatCompletionMessage,
-  ChatCompletionMessageParam,
-} from "openai/resources";
+import type { ChatCompletionTool } from "openai/resources";
 import { makeOpenAI } from "../ai";
 import { toolMap, type ToolName, type ToolMap } from "./tools";
 import { ZodError } from "zod";
@@ -47,7 +43,7 @@ export interface RunModelResult {
 }
 
 export async function runModel(
-  messages: ChatCompletionMessageParam[],
+  messages: any[], // Responses API accepts ResponseInput items (array of ResponseInputItem)
   options: RunModelOptions = {},
 ): Promise<RunModelResult> {
   const {
@@ -68,7 +64,7 @@ export async function runModel(
     throw new Error("OpenAI client not configured");
   }
 
-  const conversationMessages: ChatCompletionMessageParam[] = [...messages];
+  const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
   const toolActivity: ToolActivity[] = [];
   const MAX_TOOL_ACTIVITY = 100; // ✅ Fix #10: Limit tool activity tracking to prevent unbounded growth
@@ -83,47 +79,73 @@ export async function runModel(
     iterations++;
 
     try {
-      const response = await client.chat.completions.create({
+      const response = await client.responses.create({
         model,
-        messages: conversationMessages,
-        tools: toolSpecs.length > 0 ? toolSpecs : undefined,
+        input: conversationMessages,
+        tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
         tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
         temperature: 0.3,
-        max_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
-        // Structured outputs (strict JSON schema)
-        ...(responseFormat && { response_format: responseFormat }),
-        // GPT-5 specific parameters (will be ignored by older models)
+        max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
+        parallel_tool_calls: true,
+        // Text configuration with structured outputs and verbosity
+        text: responseFormat
+          ? {
+              format: {
+                type: "json_schema" as const,
+                name: responseFormat.json_schema.name,
+                schema: responseFormat.json_schema.schema,
+              },
+              verbosity: verbosity,
+            }
+          : {
+              verbosity: verbosity,
+            },
+        // GPT-5 specific reasoning parameters
         ...(model.startsWith("gpt-5") && {
-          reasoning_effort: reasoningEffort,
-          verbosity: verbosity,
+          reasoning: {
+            effort: reasoningEffort,
+          },
         }),
       });
 
-      const choice = response.choices[0];
-      if (!choice?.message) {
-        throw new Error("No message in response");
-      }
+      // Extract assistant message from output array
+      const assistantMessage = response.output.find(
+        (item: any) => item.type === "message" && item.role === "assistant",
+      ) as any;
 
-      const assistantMessage = choice.message;
+      if (!assistantMessage) {
+        throw new Error("No assistant message in response");
+      }
+      // Extract tool calls from output array
+      const toolCalls = response.output.filter(
+        (item: any) => item.type === "function_tool_call",
+      ) as any[];
+
       logger.info(
         {
           iteration: iterations,
-          hasToolCalls: !!assistantMessage.tool_calls?.length,
+          hasToolCalls: toolCalls.length > 0,
         },
         "Received model response",
       );
 
-      // Add assistant message to conversation
-      conversationMessages.push(assistantMessage);
+      // Add all output items to conversation for context
+      for (const outputItem of response.output) {
+        conversationMessages.push(outputItem);
+      }
 
       // Check if there are tool calls to process
-      if (
-        !assistantMessage.tool_calls ||
-        assistantMessage.tool_calls.length === 0
-      ) {
+      if (toolCalls.length === 0) {
         // No tool calls, return final response
+        // Get text content from assistant message
+        const textContent =
+          assistantMessage.content
+            ?.filter((c: any) => c.type === "text")
+            .map((c: any) => c.text)
+            .join("") || "";
+
         return {
-          text: assistantMessage.content || "",
+          text: textContent,
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
@@ -131,36 +153,30 @@ export async function runModel(
       }
 
       // Process tool calls
-      logger.info(
-        { toolCallCount: assistantMessage.tool_calls.length },
-        "Processing tool calls",
-      );
+      logger.info({ toolCallCount: toolCalls.length }, "Processing tool calls");
 
-      for (const toolCall of assistantMessage.tool_calls) {
-        const { id } = toolCall;
-
-        // Handle different tool call types
-        if (toolCall.type !== "function") {
-          logger.warn({ toolCall }, "Unsupported tool call type");
-          continue;
-        }
-
-        const func = (toolCall as any).function;
-        const toolName = func.name as ToolName;
+      for (const toolCall of toolCalls) {
+        const { id, name: toolName } = toolCall as {
+          id: string;
+          name: ToolName;
+        };
 
         if (!providedToolMap[toolName]) {
           logger.error({ toolName }, "Unknown tool requested");
           conversationMessages.push({
-            role: "tool",
-            tool_call_id: id,
-            content: JSON.stringify({ error: `Unknown tool: ${toolName}` }),
+            type: "function_call_output",
+            call_id: id,
+            output: JSON.stringify({ error: `Unknown tool: ${toolName}` }),
           });
           continue;
         }
 
         try {
-          // Parse arguments
-          const args = JSON.parse(func.arguments || "{}");
+          // Parse arguments from tool call
+          const args =
+            typeof toolCall.arguments === "string"
+              ? JSON.parse(toolCall.arguments)
+              : toolCall.arguments || {};
           logger.info({ toolName, args }, "Executing tool");
 
           // Track tool call start
@@ -201,9 +217,9 @@ export async function runModel(
 
           // Add tool result to conversation
           conversationMessages.push({
-            role: "tool",
-            tool_call_id: id,
-            content: JSON.stringify(result),
+            type: "function_call_output",
+            call_id: id,
+            output: JSON.stringify(result),
           });
 
           logger.info(
@@ -236,9 +252,9 @@ export async function runModel(
           onToolError?.(toolName, errorMessage);
 
           conversationMessages.push({
-            role: "tool",
-            tool_call_id: id,
-            content: JSON.stringify({ error: errorMessage }),
+            type: "function_call_output",
+            call_id: id,
+            output: JSON.stringify({ error: errorMessage }),
           });
         }
       }
@@ -260,15 +276,20 @@ export async function runModel(
       } else {
         // If later iteration fails, return what we have so far
         const lastAssistantMessage = conversationMessages
+          .slice()
           .reverse()
-          .find((msg) => msg.role === "assistant") as
-          | ChatCompletionMessage
-          | undefined;
+          .find(
+            (msg: any) => msg.type === "message" && msg.role === "assistant",
+          ) as any;
+
+        const textContent =
+          lastAssistantMessage?.content
+            ?.filter((c: any) => c.type === "text")
+            .map((c: any) => c.text)
+            .join("") || "An error occurred during processing";
 
         return {
-          text:
-            lastAssistantMessage?.content ||
-            "An error occurred during processing",
+          text: textContent,
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
@@ -281,15 +302,20 @@ export async function runModel(
 
   // Max iterations reached, return the last assistant message
   const lastAssistantMessage = conversationMessages
+    .slice()
     .reverse()
-    .find((msg) => msg.role === "assistant") as
-    | ChatCompletionMessage
-    | undefined;
+    .find(
+      (msg: any) => msg.type === "message" && msg.role === "assistant",
+    ) as any;
+
+  const textContent =
+    lastAssistantMessage?.content
+      ?.filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("") || "Maximum iterations reached without completion";
 
   return {
-    text:
-      lastAssistantMessage?.content ||
-      "Maximum iterations reached without completion",
+    text: textContent,
     citations: allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
     tools_used: toolActivity.length > 0 ? toolActivity : undefined,
   };

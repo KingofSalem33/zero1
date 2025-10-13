@@ -1,7 +1,4 @@
-import type {
-  ChatCompletionTool,
-  ChatCompletionMessageParam,
-} from "openai/resources";
+import type { ChatCompletionTool } from "openai/resources";
 import { makeOpenAI } from "../ai";
 import { toolMap, type ToolName, type ToolMap } from "./tools";
 import { ZodError } from "zod";
@@ -41,7 +38,7 @@ export interface RunModelStreamOptions {
  */
 export async function runModelStream(
   res: Response,
-  messages: ChatCompletionMessageParam[],
+  messages: any[], // Responses API accepts ResponseInput items
   options: RunModelStreamOptions = {},
 ): Promise<string> {
   const {
@@ -64,7 +61,7 @@ export async function runModelStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  const conversationMessages: ChatCompletionMessageParam[] = [...messages];
+  const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
   let iterations = 0;
   let finalResponse = ""; // Track the final AI response to return
@@ -78,77 +75,90 @@ export async function runModelStream(
     while (iterations < maxIterations) {
       iterations++;
 
-      const stream = await client.chat.completions.create({
+      const stream = await client.responses.create({
         model,
-        messages: conversationMessages,
-        tools: toolSpecs.length > 0 ? toolSpecs : undefined,
+        input: conversationMessages,
+        tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
         tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
         temperature: 0.3,
-        max_tokens: 16000,
+        max_output_tokens: 16000,
+        parallel_tool_calls: true,
         stream: true,
-        ...(model.startsWith("gpt-5") && {
-          reasoning_effort: reasoningEffort,
+        text: {
           verbosity: verbosity,
+        },
+        ...(model.startsWith("gpt-5") && {
+          reasoning: {
+            effort: reasoningEffort,
+          },
         }),
       });
 
       let currentContent = "";
       const currentToolCalls: Array<{
         id: string;
-        type: string;
-        function: { name: string; arguments: string };
+        name: string;
+        arguments: string;
       }> = [];
+      const outputItems: any[] = [];
 
-      // Process stream chunks
-      for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta;
-
-        if (!delta) continue;
-
-        // Stream content deltas
-        if (delta.content) {
-          currentContent += delta.content;
-          sendEvent("content", { delta: delta.content });
+      // Process stream chunks - Responses API has different event structure
+      for await (const event of stream) {
+        // Handle text delta events
+        if (event.type === "response.output_item.added") {
+          outputItems.push(event.item);
         }
 
-        // Accumulate tool calls
-        if (delta.tool_calls) {
-          for (const toolCallDelta of delta.tool_calls) {
-            const index = toolCallDelta.index;
-            if (!currentToolCalls[index]) {
-              currentToolCalls[index] = {
-                id: toolCallDelta.id || "",
-                type: toolCallDelta.type || "function",
-                function: { name: "", arguments: "" },
-              };
-            }
+        if (event.type === "response.output_text.delta") {
+          const delta = (event as any).delta;
+          if (delta) {
+            currentContent += delta;
+            sendEvent("content", { delta });
+          }
+        }
 
-            if (toolCallDelta.function?.name) {
-              currentToolCalls[index].function.name +=
-                toolCallDelta.function.name;
-            }
-            if (toolCallDelta.function?.arguments) {
-              currentToolCalls[index].function.arguments +=
-                toolCallDelta.function.arguments;
-            }
+        // Handle function tool call events
+        if (event.type === "response.function_call_arguments.delta") {
+          const callId = (event as any).call_id;
+          const delta = (event as any).delta;
+
+          let toolCall = currentToolCalls.find((tc) => tc.id === callId);
+          if (!toolCall) {
+            toolCall = {
+              id: callId,
+              name: (event as any).name || "",
+              arguments: "",
+            };
+            currentToolCalls.push(toolCall);
+          }
+          if (delta) {
+            toolCall.arguments += delta;
+          }
+        }
+
+        if (event.type === "response.function_call_arguments.done") {
+          const callId = (event as any).call_id;
+          const name = (event as any).name;
+
+          let toolCall = currentToolCalls.find((tc) => tc.id === callId);
+          if (!toolCall) {
+            toolCall = {
+              id: callId,
+              name: name || "",
+              arguments: (event as any).arguments || "",
+            };
+            currentToolCalls.push(toolCall);
+          } else {
+            toolCall.name = name || toolCall.name;
+            toolCall.arguments = (event as any).arguments || toolCall.arguments;
           }
         }
       }
 
-      // Add assistant message to conversation
-      const assistantMessage: ChatCompletionMessageParam = {
-        role: "assistant",
-        content: currentContent || null,
-        tool_calls:
-          currentToolCalls.length > 0
-            ? currentToolCalls.map((tc) => ({
-                id: tc.id,
-                type: "function" as const,
-                function: tc.function,
-              }))
-            : undefined,
-      };
-      conversationMessages.push(assistantMessage);
+      // Add all output items to conversation for context
+      for (const outputItem of outputItems) {
+        conversationMessages.push(outputItem);
+      }
 
       // If no tool calls, we're done
       if (!currentToolCalls.length) {
@@ -165,32 +175,35 @@ export async function runModelStream(
       );
 
       for (const toolCall of currentToolCalls) {
-        const { id, function: func } = toolCall;
-        const toolName = func.name as ToolName;
+        const { id, name: toolName, arguments: toolArgs } = toolCall;
 
-        if (!providedToolMap[toolName]) {
+        if (!providedToolMap[toolName as ToolName]) {
           logger.error({ toolName }, "Unknown tool requested");
           sendEvent("tool_error", {
             tool: toolName,
             error: `Unknown tool: ${toolName}`,
           });
           conversationMessages.push({
-            role: "tool",
-            tool_call_id: id,
-            content: JSON.stringify({ error: `Unknown tool: ${toolName}` }),
+            type: "function_call_output",
+            call_id: id,
+            output: JSON.stringify({ error: `Unknown tool: ${toolName}` }),
           });
           continue;
         }
 
         try {
-          const args = JSON.parse(func.arguments || "{}");
+          const args = JSON.parse(toolArgs || "{}");
           logger.info({ toolName, args }, "Executing tool");
 
           // Emit tool_call event
           sendEvent("tool_call", { tool: toolName, args });
 
           // Execute tool
-          const result = await providedToolMap[toolName](args);
+          const toolFn = providedToolMap[toolName as ToolName];
+          if (!toolFn) {
+            throw new Error(`Tool function not found: ${toolName}`);
+          }
+          const result = await toolFn(args);
 
           // Emit tool_result event
           sendEvent("tool_result", { tool: toolName, result });
@@ -205,9 +218,9 @@ export async function runModelStream(
 
           // Add tool result to conversation
           conversationMessages.push({
-            role: "tool",
-            tool_call_id: id,
-            content: JSON.stringify(result),
+            type: "function_call_output",
+            call_id: id,
+            output: JSON.stringify(result),
           });
 
           logger.info(
@@ -231,9 +244,9 @@ export async function runModelStream(
           sendEvent("tool_error", { tool: toolName, error: errorMessage });
 
           conversationMessages.push({
-            role: "tool",
-            tool_call_id: id,
-            content: JSON.stringify({ error: errorMessage }),
+            type: "function_call_output",
+            call_id: id,
+            output: JSON.stringify({ error: errorMessage }),
           });
         }
       }
