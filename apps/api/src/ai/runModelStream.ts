@@ -68,6 +68,17 @@ export async function runModelStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
+  // Helper to send heartbeat (keeps connection alive through proxies)
+  const sendHeartbeat = () => {
+    res.write(`:\n\n`);
+  };
+
+  // Send initial heartbeat
+  sendHeartbeat();
+
+  // Set up heartbeat interval (every 15 seconds)
+  const heartbeatInterval = setInterval(sendHeartbeat, 15000);
+
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
   let iterations = 0;
@@ -170,6 +181,7 @@ export async function runModelStream(
       // If no tool calls, we're done
       if (!currentToolCalls.length) {
         finalResponse = currentContent; // Save the final response
+        clearInterval(heartbeatInterval);
         sendEvent("done", { citations: [...new Set(allCitations)] });
         res.end();
         return finalResponse;
@@ -201,6 +213,17 @@ export async function runModelStream(
         try {
           const args = JSON.parse(toolArgs || "{}");
           logger.info({ toolName, args }, "Executing tool");
+
+          // Emit user-friendly status message
+          const statusMessages: Record<string, string> = {
+            web_search: "Searching the web...",
+            http_fetch: "Reading content...",
+            calculator: "Calculating...",
+            file_search: "Searching files...",
+          };
+          const statusMessage =
+            statusMessages[toolName] || `Using ${toolName}...`;
+          sendEvent("status", { message: statusMessage });
 
           // Emit tool_call event
           sendEvent("tool_call", { tool: toolName, args });
@@ -263,6 +286,7 @@ export async function runModelStream(
     }
 
     logger.warn({ maxIterations }, "Maximum iterations reached");
+    clearInterval(heartbeatInterval);
     sendEvent("done", { citations: [...new Set(allCitations)] });
     res.end();
     return finalResponse;
@@ -271,6 +295,7 @@ export async function runModelStream(
       { error: error instanceof Error ? error.message : error },
       "Streaming failed",
     );
+    clearInterval(heartbeatInterval);
     sendEvent("error", {
       message:
         error instanceof Error ? error.message : "Unknown streaming error",
