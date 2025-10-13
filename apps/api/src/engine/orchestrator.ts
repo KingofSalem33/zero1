@@ -1536,13 +1536,9 @@ End by instructing the user to review the materials, complete the work, and uplo
         .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
         .join("\n") || "None yet - this is the first substep";
 
-    const systemMessage = `You are helping with project execution. You have access to these tools:
-- \`web_search\`: Search the web for current information using Google
-- \`http_fetch\`: Fetch and read content from specific URLs
-- \`calculator\`: Perform mathematical calculations
-- \`file_search\`: Search through uploaded files for relevant content
+    const systemMessage = `You are helping with project execution.
 
-When using web_search or http_fetch:
+When using web_search or http_fetch tools:
 1. Synthesize information from multiple sources into a comprehensive answer
 2. Provide specific details, examples, and actionable insights
 3. Present information naturally in paragraph form, not as a list of links
@@ -1682,13 +1678,9 @@ ${request.master_prompt}`;
         .map((s: any) => `- ${s.label} (Substep ${s.step_number})`)
         .join("\n") || "None yet - this is the first substep";
 
-    const systemMessage = `You are helping with project execution. You have access to these tools:
-- \`web_search\`: Search the web for current information using Google
-- \`http_fetch\`: Fetch and read content from specific URLs
-- \`calculator\`: Perform mathematical calculations
-- \`file_search\`: Search through uploaded files for relevant content
+    const systemMessage = `You are helping with project execution.
 
-When using web_search or http_fetch:
+When using web_search or http_fetch tools:
 1. Synthesize information from multiple sources into a comprehensive answer
 2. Provide specific details, examples, and actionable insights
 3. Present information naturally in paragraph form, not as a list of links
