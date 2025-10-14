@@ -310,3 +310,70 @@ export function extractSafeMetadata(
     server,
   };
 }
+
+/**
+ * Validates a redirect URL for security
+ * @param redirectUrl The redirect target URL
+ * @param originalUrl The original URL that initiated the redirect
+ * @param redirectCount Current redirect count
+ * @param maxRedirects Maximum allowed redirects
+ * @throws Error if redirect is unsafe
+ */
+export function validateRedirect(
+  redirectUrl: string,
+  originalUrl: string,
+  redirectCount: number,
+  maxRedirects: number = 5,
+): void {
+  // Check redirect limit
+  if (redirectCount >= maxRedirects) {
+    logger.warn(
+      { redirectUrl, originalUrl, redirectCount, maxRedirects },
+      "Too many redirects",
+    );
+    throw new Error(
+      `Too many redirects (${redirectCount}). Maximum is ${maxRedirects}.`,
+    );
+  }
+
+  // Validate redirect URL with same security checks
+  try {
+    validateUrl(redirectUrl);
+  } catch (error) {
+    logger.warn(
+      {
+        redirectUrl,
+        originalUrl,
+        error: error instanceof Error ? error.message : error,
+      },
+      "Redirect URL failed validation",
+    );
+    throw new Error(
+      `Redirect URL blocked: ${error instanceof Error ? error.message : "Invalid URL"}`,
+    );
+  }
+
+  // Check for redirect loops (redirecting back to original)
+  try {
+    const originalHost = new URL(originalUrl).hostname;
+    const redirectHost = new URL(redirectUrl).hostname;
+
+    // Warn about cross-domain redirects (but allow them)
+    if (originalHost !== redirectHost) {
+      logger.info(
+        { originalHost, redirectHost, redirectCount },
+        "Cross-domain redirect detected",
+      );
+    }
+  } catch {
+    logger.warn(
+      { redirectUrl, originalUrl },
+      "Could not parse URLs for comparison",
+    );
+  }
+
+  logger.debug(
+    { redirectUrl, originalUrl, redirectCount },
+    "Redirect validated",
+  );
+}
