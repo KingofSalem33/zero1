@@ -1711,10 +1711,11 @@ ${request.master_prompt}`;
       let contextMessages: ChatCompletionMessageParam[];
 
       if (useThreads && thread) {
-        // Build context with recent history
+        // Build context with recent history (with automatic token trimming)
         contextMessages = await threadService.buildContextMessages(
           thread.id,
           systemMessage,
+          ENV.OPENAI_MODEL_NAME,
         );
 
         // Add current user message if not already in history

@@ -1,5 +1,9 @@
 import { supabase } from "../db";
 import type { ChatCompletionMessageParam } from "openai/resources";
+import { trimContextIfNeeded } from "../utils/contextTrimmer";
+import pino from "pino";
+
+const logger = pino({ name: "thread-service" });
 
 export interface Thread {
   id: string;
@@ -123,10 +127,12 @@ export class ThreadService {
 
   /**
    * Build context for the AI with recent history + lightweight facts
+   * Automatically trims context if it exceeds token limits
    */
   async buildContextMessages(
     threadId: string,
     systemPrompt: string,
+    model: string = "gpt-4o",
   ): Promise<ChatCompletionMessageParam[]> {
     const thread = await this.getThread(threadId);
     const recentMessages = await this.getRecentMessages(threadId);
@@ -156,7 +162,27 @@ export class ThreadService {
       }
     }
 
-    return messages;
+    // 3. Trim context if needed (summarize old assistant messages, preserve user messages)
+    const trimResult = trimContextIfNeeded(messages, model);
+
+    if (trimResult.trimmed) {
+      logger.info(
+        {
+          threadId,
+          originalTokens: trimResult.originalTokens,
+          finalTokens: trimResult.finalTokens,
+          summarizedCount: trimResult.summarizedCount,
+          reduction: (
+            ((trimResult.originalTokens - trimResult.finalTokens) /
+              trimResult.originalTokens) *
+            100
+          ).toFixed(1),
+        },
+        "Context trimmed to fit token limit",
+      );
+    }
+
+    return trimResult.messages;
   }
 
   /**
