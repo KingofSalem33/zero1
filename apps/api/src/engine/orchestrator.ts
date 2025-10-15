@@ -3,7 +3,10 @@ import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import { runModelStream } from "../ai/runModelStream";
 import { selectRelevantTools } from "../ai/tools/selectTools";
-import { substepGenerationJsonSchema } from "../ai/schemas";
+import {
+  substepGenerationJsonSchema,
+  phaseGenerationJsonSchema,
+} from "../ai/schemas";
 import type { Response } from "express";
 import { threadService } from "../services/threadService";
 import type { ChatCompletionMessageParam } from "openai/resources";
@@ -159,9 +162,125 @@ export class StepOrchestrator {
   async generatePhases(
     request: PhaseGenerationRequest,
   ): Promise<PhaseGenerationResponse> {
-    console.log("🎯 [PHASES] Using P1-P7 roadmap for project:", request.goal);
+    console.log(
+      "🎯 [PHASES] Generating dynamic P1-P7 roadmap for project:",
+      request.goal,
+    );
 
-    // Fixed P1-P7 roadmap structure based on claude.md
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("AI not configured");
+    }
+
+    // Use LLM to generate project-specific P1-P7 phases
+    const systemPrompt = `You are generating a customized Zero-to-One project roadmap.
+
+USER'S PROJECT: "${request.goal}"
+
+TASK: Generate P1-P7 phases that are HYPER-SPECIFIC to this exact project.
+
+UNIVERSAL STRUCTURE (Keep these phase IDs):
+- P1: Build Environment
+- P2: Core Loop
+- P3: Layered Expansion
+- P4: Reality Test
+- P5: Polish & Freeze Scope
+- P6: Launch
+- P7: Reflect & Evolve
+
+YOUR JOB: Customize each phase for THIS specific project type and domain.
+
+EXAMPLES:
+
+For "cookie business":
+- P1 goal: "Set up commercial kitchen and food business infrastructure"
+- P1 why_it_matters: "Commercial kitchen permits, equipment, and food safety certifications are legally required before selling"
+- P1 acceptance_criteria: ["Commercial kitchen licensed or home kitchen permitted", "Equipment installed and tested", "First test batch successfully baked"]
+
+For "SaaS app":
+- P1 goal: "Set up development environment and hosting infrastructure"
+- P1 why_it_matters: "Professional dev tools and deployment pipeline enable rapid iteration"
+- P1 acceptance_criteria: ["Development environment configured", "Database and hosting set up", "Hello World app deployed"]
+
+For "podcast":
+- P1 goal: "Set up recording equipment and podcast hosting"
+- P1 why_it_matters: "Professional audio quality and reliable hosting are essential for audience retention"
+- P1 acceptance_criteria: ["Recording equipment tested", "Podcast hosting configured", "Test episode recorded and uploaded"]
+
+BE SPECIFIC:
+- Don't say "tools" - say what EXACT type of tools for this domain
+- Don't be generic - reference the actual project type
+- Make acceptance_criteria measurable and domain-specific
+- Keep rollback_plan practical for this project type
+
+Return 7 phases (P1-P7) with customized content for this project.`;
+
+    try {
+      const result = await client.responses.create({
+        model: ENV.OPENAI_MODEL_NAME,
+        input: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `Generate customized P1-P7 phases for: "${request.goal}"`,
+          },
+        ],
+        temperature: 0.4, // Some creativity, but stay focused
+        max_output_tokens: 2000,
+        text: {
+          format: {
+            type: "json_schema" as const,
+            name: phaseGenerationJsonSchema.name,
+            schema: phaseGenerationJsonSchema.schema,
+          },
+          verbosity: "medium",
+        },
+      });
+
+      const assistantMessage = result.output.find(
+        (item: any) => item.type === "message" && item.role === "assistant",
+      ) as any;
+
+      if (!assistantMessage) {
+        throw new Error("No assistant message in response");
+      }
+
+      const responseText =
+        assistantMessage.content
+          ?.filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("") || "";
+
+      const parsed = JSON.parse(responseText);
+
+      // Add phase_number and lock status
+      const phases = parsed.phases.map((phase: any, index: number) => ({
+        ...phase,
+        phase_number: index + 1,
+        substeps: [],
+        locked: index > 0, // Only P1 is unlocked
+      }));
+
+      console.log(
+        "✅ [PHASES] Generated dynamic roadmap with",
+        phases.length,
+        "customized phases",
+      );
+
+      return {
+        phases: phases,
+      };
+    } catch (error) {
+      console.error("❌ [PHASES] Failed to generate dynamic phases:", error);
+      console.log("⚠️ [PHASES] Falling back to universal P1-P7 structure");
+
+      // Fallback to universal structure
+      return this.generateFallbackPhases();
+    }
+  }
+
+  // Fallback universal phases when LLM generation fails
+  private generateFallbackPhases(): PhaseGenerationResponse {
     const phases = [
       {
         phase_id: "P1",
@@ -283,23 +402,18 @@ export class StepOrchestrator {
       },
     ];
 
-    console.log(
-      "✅ [PHASES] Using fixed P1-P7 roadmap with",
-      phases.length,
-      "phases",
-    );
-
-    return {
-      phases: phases,
-    };
+    return { phases };
   }
 
   // Expand a single phase with substeps and master prompts
   async expandPhaseWithSubsteps(phase: any, goal: string): Promise<any> {
     console.log("🔍 [EXPAND] Expanding phase with substeps:", phase.goal);
 
-    // Get the predefined master prompt for this specific phase
-    const masterPrompt = this.getMasterPromptForPhase(phase.phase_id, goal);
+    // Generate dynamic master prompt for this specific phase
+    const masterPrompt = await this.getMasterPromptForPhase(
+      phase.phase_id,
+      goal,
+    );
 
     // Generate substeps using AI with the specific master prompt
     const client = makeOpenAI();
@@ -494,180 +608,208 @@ Example for tech app: Review code patterns that worked, identify tech stack less
     );
   }
 
-  // Get the expert master prompt for each phase based on claude.md
-  private getMasterPromptForPhase(phaseId: string, userVision: string): string {
-    const masterPrompts: Record<string, string> = {
-      P1: `A professional environment is the foundation of success. Here's how to set up like a pro:
+  // Generate dynamic master prompt using LLM for each phase
+  private async getMasterPromptForPhase(
+    phaseId: string,
+    userVision: string,
+  ): Promise<string> {
+    console.log(`🎨 [MASTER] Generating dynamic master prompt for ${phaseId}`);
+
+    const client = makeOpenAI();
+    if (!client) {
+      console.warn("⚠️ [MASTER] AI not configured, using fallback");
+      return this.getFallbackMasterPrompt(phaseId, userVision);
+    }
+
+    // Define what each phase is about (universal structure)
+    const phaseDescriptions: Record<string, string> = {
+      P1: "Build Environment - Setting up tools, workspace, and infrastructure to work professionally",
+      P2: "Core Loop - Creating the simplest input→process→output cycle that proves the concept",
+      P3: "Layered Expansion - Adding one feature at a time without breaking existing functionality",
+      P4: "Reality Test - Validating with 3-5 real users to make pivot/proceed decision",
+      P5: "Polish & Freeze Scope - Fixing critical issues and locking features for launch",
+      P6: "Launch - Making project publicly accessible with clear messaging and metrics",
+      P7: "Reflect & Evolve - Capturing lessons learned and planning next steps",
+    };
+
+    const phaseDescription = phaseDescriptions[phaseId] || "Unknown phase";
+
+    const prompt = `You are creating a master prompt for an AI expert who will execute ${phaseId}: ${phaseDescription}.
+
+USER'S PROJECT: "${userVision}"
+
+Your task is to generate a complete master prompt that will guide an AI expert through this phase.
+
+THE MASTER PROMPT SHOULD:
+1. Define the expert role (e.g., "senior DevOps engineer" for P1, "senior product designer" for P2, etc.) - MUST be hyper-specific to the project domain
+2. Explain the phase purpose in context of THIS specific project (not generic advice)
+3. Provide domain-specific principles and strategies
+4. Include concrete examples relevant to this project type
+5. Define what success looks like for THIS project in this phase
+
+EXAMPLES OF GOOD MASTER PROMPTS:
+
+For "cookie business" P1 (Build Environment):
+"You are a senior food business operations manager with 20+ years launching commercial food products. Your task is to set up the complete infrastructure for a cookie business.
+
+Essential Setup Strategy:
+1. Commercial Kitchen: Identify whether home kitchen cottage laws apply or if commercial kitchen rental/licensing is needed. Research local health department requirements.
+2. Equipment & Tools: Source professional baking equipment (commercial oven, mixers, cooling racks, storage containers). Don't start with industrial scale - begin with small batch equipment that can scale.
+3. Business Licensing: Secure food handler certification, business license, and liability insurance. Many cookie businesses fail because they skip proper permitting.
+4. Hello World Proof: Bake one test batch in your planned production space using the exact recipe and equipment you'll launch with. This validates your setup.
+
+Success means: You can legally bake and sell cookies tomorrow if you had an order."
+
+For "SaaS web app" P1 (Build Environment):
+"You are a senior DevOps engineer with 20+ years setting up development environments for web applications. Your task is to build a professional development workflow for this SaaS project.
+
+Essential Setup Strategy:
+1. Development Stack: Set up Node.js + React + PostgreSQL + hosting (Vercel/Netlify/Railway). Choose based on the project's expected scale and your deployment needs.
+2. Workspace Architecture: Initialize Git repo, configure ESLint/Prettier, set up package.json with all dependencies. Create clear folder structure (frontend/, backend/, shared/).
+3. Cloud Accounts: Set up GitHub for version control, hosting platform account, database hosting (Supabase/Railway). Configure environment variables.
+4. Hello World Proof: Deploy a simple "Hello World" full-stack app (API endpoint + frontend) to production URL. This validates your entire pipeline.
+
+Success means: You can push code and see it live on the internet within minutes."
+
+NOW CREATE A HYPER-SPECIFIC MASTER PROMPT FOR: "${userVision}" in phase ${phaseId}
+
+Requirements:
+- Start with the expert role definition (1 sentence)
+- Use terminology and examples from the actual project domain
+- Be specific about tools, processes, and deliverables for THIS project type
+- Keep the structure clear and actionable
+- Length: 200-400 words maximum
+- Tone: Professional but encouraging, like a senior mentor
+
+Return ONLY the master prompt text (no meta-commentary, no JSON, just the prompt itself).`;
+
+    try {
+      const result = await client.responses.create({
+        model: ENV.OPENAI_MODEL_NAME,
+        input: [{ role: "user", content: prompt }],
+        temperature: 0.6, // Balanced creativity for domain-specific expertise
+        max_output_tokens: 800,
+      });
+
+      const assistantMessage = result.output.find(
+        (item: any) => item.type === "message" && item.role === "assistant",
+      ) as any;
 
-**Project Context:** ${userVision}
+      if (!assistantMessage) {
+        throw new Error("No assistant message in response");
+      }
 
-**Essential Setup Strategy:**
+      const masterPromptText =
+        assistantMessage.content
+          ?.filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("") || "";
 
-1. **Tools & Infrastructure**: Identify the core tools professionals in this domain use daily. Don't over-engineer - start with the 3-5 most critical ones.
+      console.log(
+        `✅ [MASTER] Generated ${masterPromptText.length} character master prompt for ${phaseId}`,
+      );
+      return masterPromptText;
+    } catch (error) {
+      console.error(
+        `❌ [MASTER] Failed to generate master prompt for ${phaseId}:`,
+        error,
+      );
+      console.log("⚠️ [MASTER] Falling back to universal master prompt");
+      return this.getFallbackMasterPrompt(phaseId, userVision);
+    }
+  }
 
-2. **Workspace Architecture**: Design your space (physical or digital) for deep work. Remove distractions, organize resources within arm's reach, establish clear boundaries.
+  // Fallback universal master prompts when LLM generation fails
+  private getFallbackMasterPrompt(phaseId: string, userVision: string): string {
+    const fallbackPrompts: Record<string, string> = {
+      P1: `You are a senior setup strategist helping to build a professional environment for this project.
 
-3. **Professional Credibility**: Secure any licenses, permits, accounts, or credentials needed to operate legitimately in this space.
+**Project:** ${userVision}
 
-4. **Proof-of-Concept Milestone**: Create the smallest possible demonstration that your setup works - a "hello world" moment that proves you're ready to build.
+**Your Guidance:**
+1. Identify 3-5 essential tools professionals use in this domain
+2. Design a clean, focused workspace (physical or digital)
+3. Secure necessary licenses, accounts, or credentials
+4. Create a "hello world" proof point that the setup works
 
-**Pro Tip**: The goal isn't perfection, it's professional capability. You should feel confident saying "I'm ready to start" after this phase.
+Focus on professional capability, not perfection. The user should feel ready to start building after this phase.`,
 
-**Domain-Specific Considerations**: Different project types need different setups. A tech project needs development environment, a business needs legal structure, a creative project needs production tools.`,
+      P2: `You are a senior systems architect helping to build the core loop for this project.
 
-      P2: `Every successful project starts with the simplest version that proves the core concept. Here's the input→process→output framework:
+**Project:** ${userVision}
 
-**Project Vision:** ${userVision}
+**Your Guidance:**
+1. Define the simplest possible input the project will process
+2. Design ONE core transformation that creates value
+3. Deliver minimal output that proves the concept works
+4. Ensure the entire loop is completable in one focused session
 
-**Core Loop Essentials:**
+Make it so simple that someone can understand the value in 30 seconds.`,
 
-1. **Define Your Input**: What's the simplest form of raw material your project consumes? (customer request, data, raw material, etc.)
+      P3: `You are a senior product engineer helping to expand this project systematically.
 
-2. **Design Your Process**: What's the ONE core transformation that creates value? Strip away everything else.
+**Project:** ${userVision}
 
-3. **Deliver Your Output**: What's the minimal viable result that proves your concept works?
+**Your Guidance:**
+1. Assess what's currently working well
+2. Identify the single highest-value feature to add next
+3. Layer new functionality on top of existing systems
+4. Test continuously to maintain stability
 
-**The 24-Hour Rule**: Your core loop must be completable in one focused work session. If it takes longer, it's not minimal enough.
+Add one feature at a time. Never break what's already working.`,
 
-**Real-World Examples:**
-- App: Single button → simple function → visible result
-- Business: One customer → core service → payment received
-- Content: One piece → distribution → audience feedback
+      P4: `You are a senior UX researcher helping to validate this project with real users.
 
-**Success Metric**: Someone else should be able to understand your project's value proposition within 30 seconds of seeing your core loop in action.`,
+**Project:** ${userVision}
 
-      P3: `Strategic expansion beats feature creep every time. Here's how to grow systematically:
+**Your Guidance:**
+1. Design a lightweight test plan for 3-5 target users
+2. Create clear questions that reveal true value and pain points
+3. Structure sessions to observe authentic behavior
+4. Synthesize feedback into clear pivot/proceed decision
 
-**Current Foundation:** ${userVision}
+Real user feedback is the only validation that matters. Go deep with a few users rather than shallow with many.`,
 
-**The Single-Addition Principle:**
+      P5: `You are a senior QA engineer helping to prepare this project for launch.
 
-1. **Assess What's Working**: Document exactly what your current version does well. Don't break what's already valuable.
+**Project:** ${userVision}
 
-2. **Identify the One Big Gap**: What's the single most obvious limitation preventing wider adoption or deeper value?
+**Your Guidance:**
+1. Audit all critical issues and prioritize fixes
+2. Fix only what's essential for launch (no new features)
+3. Declare scope freeze to prevent feature creep
+4. Test core functionality thoroughly
 
-3. **Layer, Don't Replace**: Add new functionality as a layer on top of existing systems, not a replacement for them.
+Launch-ready means you'd confidently show this to someone whose opinion you respect.`,
 
-4. **Test Continuously**: Each addition should be validated independently before moving to the next layer.
+      P6: `You are a senior launch strategist helping to make this project public.
 
-**Expansion Priority Framework:**
-- **Must-Have**: Solves a real user pain point
-- **Should-Have**: Enhances existing value significantly
-- **Could-Have**: Nice to have, but doesn't move the needle
+**Project:** ${userVision}
 
-**The Golden Rule**: If you can't explain why this specific addition matters in one sentence, it's not ready to build.
+**Your Guidance:**
+1. Prepare clear launch messaging (what it is, why it matters)
+2. Choose 2-3 distribution channels where the audience actually is
+3. Set up metrics to track awareness, engagement, and quality
+4. Monitor initial 48-hour response and adjust
 
-**Next Layer Planning**: Always end this phase with a clear sense of what layer 3 should tackle.`,
+A focused launch with the right audience beats a scattered announcement every time.`,
 
-      P4: `Real user feedback is the only validation that matters. Here's how to gather it without wasting time:
+      P7: `You are a senior retrospective facilitator helping to capture lessons learned.
 
-**Project Context:** ${userVision}
+**Project:** ${userVision}
 
-**The 3-5 Person Rule**: More feedback isn't better feedback. Find 3-5 people who represent your target audience and go deep.
+**Your Guidance:**
+1. Document what worked and why (repeatable playbook)
+2. Analyze what didn't work and how to avoid it next time
+3. Extract reusable processes, tools, and mental models
+4. Plan next project with systematic improvement
 
-**Testing Structure:**
-
-1. **What to Show**: Present your actual working project, not a mockup. Let them interact with the real thing.
-
-2. **Questions That Matter**:
-   - "What problem does this solve for you?"
-   - "What would make this significantly more valuable?"
-   - "Would you actually use/buy/recommend this?"
-
-3. **Metrics to Track**:
-   - Time to understand the value proposition
-   - Willingness to take next action (sign up, pay, refer)
-   - Specific improvement suggestions
-
-**The Pivot vs. Proceed Decision Matrix:**
-- **Proceed**: Clear value understanding + positive engagement + actionable feedback
-- **Pivot**: Confusion about purpose + low engagement + fundamental objections
-
-**Pro Insight**: If users can't explain your project's value in their own words, you haven't built the right thing yet.`,
-
-      P5: `Launch-ready means good enough to put your reputation behind. Here's the quality threshold:
-
-**Project Context:** ${userVision}
-
-**The Essential Fixes Framework:**
-
-1. **Critical Path Issues**: Anything that breaks the core user journey must be fixed. No exceptions.
-
-2. **Professional Polish**: Your project should feel intentional, not amateur. Focus on the details users actually notice.
-
-3. **Scope Lock**: No new features. This phase is about fixing, not building.
-
-**Priority Order:**
-- **P0**: Core functionality broken or unreliable
-- **P1**: User experience feels unprofessional or confusing
-- **P2**: Edge cases that affect real usage
-- **P3**: Nice-to-haves that don't impact launch success
-
-**Quality Checklist:**
-- [ ] Core user journey works 100% of the time
-- [ ] Error states are handled gracefully
-- [ ] User interface feels intentional and clean
-- [ ] Performance is acceptable for intended use
-- [ ] Content is proofread and accurate
-
-**The Launch Litmus Test**: Would you confidently demo this to someone whose opinion you respect?`,
-
-      P6: `A focused launch beats a scattered announcement every time. Here's the proven formula:
-
-**Project Context:** ${userVision}
-
-**The Single CTA Strategy:**
-
-1. **One Clear Action**: What's the ONE thing you want people to do? Sign up, buy, download, follow? Pick one.
-
-2. **Launch Platform Selection**: Where does your audience actually spend time? Start there, expand later.
-
-3. **Message Clarity**: Your launch message should answer "What is this?" and "Why should I care?" in under 10 seconds.
-
-**Launch Sequence:**
-- **Pre-Launch**: Build anticipation with 2-3 people who care about your success
-- **Launch Day**: Share in 2-3 places maximum, with consistent messaging
-- **Post-Launch**: Follow up with initial users for testimonials and improvements
-
-**Critical Metrics (First 72 Hours):**
-1. **Awareness**: How many people saw your launch?
-2. **Engagement**: How many took your desired action?
-3. **Quality**: How positive was the initial feedback?
-
-**Launch Success Formula**: Consistent message + Right audience + Clear next step = Sustainable momentum
-
-**Pro Tip**: A small launch that gets real users beats a big launch that gets only views.`,
-
-      P7: `The best builders learn systematically from every project. Here's how to capture what matters:
-
-**Project Context:** ${userVision}
-
-**The Three-Lens Analysis:**
-
-1. **What Worked**: Document the decisions, processes, and strategies that delivered results. These become your repeatable playbook.
-
-2. **What Didn't**: Identify the bottlenecks, mistakes, and dead ends. Understanding failure prevents repetition.
-
-3. **What You'd Do Differently**: With perfect hindsight, what would you change about your approach?
-
-**Personal Toolkit Development:**
-- **Process Wins**: Which workflows made you most productive?
-- **Tool Discoveries**: What software, resources, or methods proved invaluable?
-- **Mental Models**: What frameworks helped you make better decisions?
-
-**Next Project Planning:**
-- **Skill Gaps**: What abilities would make your next project easier?
-- **Resource Needs**: What tools or knowledge should you acquire first?
-- **Project Selection**: Based on this experience, what type of project should you tackle next?
-
-**Documentation Format**: Keep it simple - bullet points, not essays. Focus on actionable insights you'll actually reference later.
-
-**The Growth Mindset**: Every project is training for the next one. The goal isn't perfection, it's systematic improvement.`,
+Every project is training for the next one. Focus on actionable insights, not essays.`,
     };
 
     return (
-      masterPrompts[phaseId] ||
-      `Help me work on ${phaseId} for the project: ${userVision}`
+      fallbackPrompts[phaseId] ||
+      `You are a senior expert helping with ${phaseId} for the project: ${userVision}. Provide clear, actionable guidance specific to this domain.`
     );
   }
 
