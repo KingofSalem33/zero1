@@ -539,7 +539,7 @@ router.post("/upload", uploadLimiter, (req, res) => {
 
                   // Store celebration in thread for user to see
                   if (project.thread_id) {
-                    const { supabase } = await import("../db");
+                    const { supabase } = await import("../db.js");
                     await supabase.from("messages").insert({
                       thread_id: project.thread_id,
                       role: "assistant",

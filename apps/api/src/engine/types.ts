@@ -43,7 +43,7 @@ export interface ArtifactAnalysis {
   quality_score: number;
   implementation_state: string;
   tech_stack: string[];
-  substep_completion_percentage: number;
+  substep_completion_percentage?: number;
   [key: string]: any;
 }
 
@@ -51,7 +51,7 @@ export interface Project {
   id: string;
   goal: string;
   status: "active" | "completed" | "paused";
-  current_phase: string;
+  current_phase: number | string;
   current_substep: number;
   phases: ProjectPhase[];
   history: ProjectHistory[];

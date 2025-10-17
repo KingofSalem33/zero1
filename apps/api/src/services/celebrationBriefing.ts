@@ -18,7 +18,7 @@ export interface CelebrationMessage {
   briefing: string;
   fullMessage: string;
   nextSubstep: {
-    phase: string;
+    phase: string | number;
     step: number;
     label: string;
   };
@@ -149,7 +149,7 @@ What would you like to start with?`,
  */
 export async function generateSubstepBriefing(
   project: Project,
-  newState: NormalizedProjectState,
+  _newState: NormalizedProjectState,
   nextSubstep: ProjectSubstep,
   previousSubstep?: ProjectSubstep,
 ): Promise<string> {

@@ -27,7 +27,7 @@ export interface ProjectStateUpdate {
 }
 
 export interface NormalizedProjectState {
-  current_phase: string;
+  current_phase: number | string;
   current_substep: number;
   roadmap: {
     phases: ProjectPhase[];
@@ -38,13 +38,13 @@ export interface NormalizedProjectState {
 export interface StateChangeEvent {
   projectId: string;
   previousState: {
-    current_phase: string;
+    current_phase: number | string;
     current_substep: number;
   };
   newState: NormalizedProjectState;
   changes: {
     substepCompleted?: { phase: string; substep: number };
-    phaseCompleted?: string;
+    phaseCompleted?: string | number;
     phaseUnlocked?: string;
     advanced?: boolean;
   };
@@ -246,7 +246,10 @@ export class ProjectStateManager {
    * Advance to the next phase
    */
   private advanceToNextPhase(state: NormalizedProjectState): void {
-    const currentPhaseNum = parseInt(state.current_phase.replace("P", ""));
+    const currentPhaseNum =
+      typeof state.current_phase === "string"
+        ? parseInt(state.current_phase.replace("P", ""))
+        : state.current_phase;
     const nextPhaseId = `P${currentPhaseNum + 1}`;
 
     const nextPhase = state.roadmap.phases.find(
@@ -308,7 +311,10 @@ export class ProjectStateManager {
     if (!currentPhase || !currentPhase.completed) return;
 
     // Unlock next phase
-    const currentPhaseNum = parseInt(state.current_phase.replace("P", ""));
+    const currentPhaseNum =
+      typeof state.current_phase === "string"
+        ? parseInt(state.current_phase.replace("P", ""))
+        : state.current_phase;
     const nextPhaseId = `P${currentPhaseNum + 1}`;
     const nextPhase = state.roadmap.phases.find(
       (p) => p.phase_id === nextPhaseId,
@@ -415,7 +421,7 @@ export class ProjectStateManager {
    * Detect what changed between states
    */
   private detectChanges(
-    previousState: { current_phase: string; current_substep: number },
+    previousState: { current_phase: number | string; current_substep: number },
     newState: NormalizedProjectState,
     update: ProjectStateUpdate,
   ): StateChangeEvent["changes"] {
@@ -451,7 +457,7 @@ export class ProjectStateManager {
    */
   private async emitStateChange(
     projectId: string,
-    previousState: { current_phase: string; current_substep: number },
+    previousState: { current_phase: number | string; current_substep: number },
     newState: NormalizedProjectState,
     changes: StateChangeEvent["changes"],
   ): Promise<void> {

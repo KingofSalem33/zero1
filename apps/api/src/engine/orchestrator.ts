@@ -1964,7 +1964,11 @@ ${request.master_prompt}`;
     };
 
     // Update project's current phase if needed
-    if (phase.phase_number <= project.current_phase) {
+    const currentPhaseNum =
+      typeof project.current_phase === "string"
+        ? parseInt(project.current_phase.replace("P", ""))
+        : project.current_phase;
+    if (phase.phase_number <= currentPhaseNum) {
       project.current_phase = phase.phase_number;
     }
 
