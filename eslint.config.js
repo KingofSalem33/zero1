@@ -78,6 +78,7 @@ export default [
         clearInterval: "readonly",
         navigator: "readonly",
         HTMLInputElement: "readonly",
+        HTMLDivElement: "readonly",
       },
     },
     plugins: {

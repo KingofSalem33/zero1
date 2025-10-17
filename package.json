@@ -1,6 +1,7 @@
 {
   "name": "zero1",
   "private": true,
+  "type": "module",
   "workspaces": [
     "apps/*"
   ],

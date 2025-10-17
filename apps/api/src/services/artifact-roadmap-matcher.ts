@@ -145,227 +145,75 @@ export function matchArtifactToRoadmap(
   }
 
   // ========================================
-  // FALLBACK: STATIC SIGNAL DETECTION (Code Projects Only)
+  // FALLBACK: DYNAMIC ROADMAP-AWARE DETECTION
   // ========================================
 
-  // Only use static detection if LLM analysis is unavailable or incomplete
-  // This primarily helps with code artifacts where file structure is detectable
+  // Only use fallback detection if LLM analysis is unavailable or incomplete
+  // This helps with code artifacts where file structure is detectable
+  // IMPORTANT: Works with dynamically generated roadmaps - no hardcoded phase assumptions
   const useFallbackDetection = !llmAnalysis?.substep_requirements;
 
-  if (useFallbackDetection) {
-    // ========================================
-    // PHASE 1: BUILD ENVIRONMENT
-    // ========================================
+  if (useFallbackDetection && currentRoadmap && currentRoadmap.length > 0) {
+    // Try to infer completion from artifact signals
+    // This is less accurate than LLM analysis but helps for code-heavy projects
 
-    // P1.1: Identify essential tools
-    if (signals.tech_stack.length > 0) {
-      results.push({
-        phase_number: 1,
-        substep_number: 1,
-        status: "complete",
-        evidence: `Tech stack identified: ${signals.tech_stack.join(", ")}`,
-        confidence: 100,
-        timestamp,
-      });
-    }
+    // Find first incomplete phase (current working phase)
+    const currentPhaseObj =
+      currentRoadmap.find((p) => !p.completed) || currentRoadmap[0];
 
-    // P1.2: Install and configure tools
-    const hasBasicSetup = signals.has_typescript || signals.file_count > 5;
-    const hasQualityTools = signals.has_linter && signals.has_prettier;
-
-    if (hasBasicSetup && hasQualityTools) {
-      results.push({
-        phase_number: 1,
-        substep_number: 2,
-        status: "complete",
-        evidence: `Development environment configured (TypeScript: ${signals.has_typescript}, Linter: ${signals.has_linter}, Prettier: ${signals.has_prettier})`,
-        confidence: 100,
-        timestamp,
-      });
-    } else if (hasBasicSetup) {
-      results.push({
-        phase_number: 1,
-        substep_number: 2,
-        status: "partial",
-        evidence: `Basic setup exists but missing quality tools (Linter: ${signals.has_linter}, Prettier: ${signals.has_prettier})`,
-        confidence: 60,
-        timestamp,
-      });
-    }
-
-    // P1.3: Create workspace structure
-    if (signals.file_count > 3 && signals.folder_depth > 1) {
-      results.push({
-        phase_number: 1,
-        substep_number: 3,
-        status: "complete",
-        evidence: `Project structure created (${signals.file_count} files, ${signals.folder_depth} levels deep)`,
-        confidence: 90,
-        timestamp,
-      });
-    }
-
-    // P1.4: Hello World / Proof Point
-    if (signals.file_count > 10 || signals.has_tests) {
-      results.push({
-        phase_number: 1,
-        substep_number: 4,
-        status: "complete",
-        evidence: `Working project detected (${signals.file_count} files${signals.has_tests ? ", tests present" : ""})`,
-        confidence: 85,
-        timestamp,
-      });
-    }
-
-    // ========================================
-    // PHASE 2: CORE LOOP
-    // ========================================
-
-    // P2.1: Define Input→Process→Output
-    if (signals.file_count > 5) {
-      results.push({
-        phase_number: 2,
-        substep_number: 1,
-        status: "complete",
-        evidence: `Core architecture defined (${signals.file_count} implementation files)`,
-        confidence: 75,
-        timestamp,
-      });
-    }
-
-    // P2.2: Implement core loop
-    const hasSubstantialCode = signals.file_count > 15;
-    const hasTechStack = signals.tech_stack.length > 2;
-
-    if (hasSubstantialCode && hasTechStack) {
-      results.push({
-        phase_number: 2,
-        substep_number: 2,
-        status: "complete",
-        evidence: `Core loop implemented (${signals.file_count} files, tech: ${signals.tech_stack.join(", ")})`,
-        confidence: 85,
-        timestamp,
-      });
-    } else if (signals.file_count > 8) {
-      results.push({
-        phase_number: 2,
-        substep_number: 2,
-        status: "partial",
-        evidence: `Core implementation started (${signals.file_count} files)`,
-        confidence: 50,
-        timestamp,
-      });
-    }
-
-    // P2.3: Test core loop
-    if (signals.has_tests) {
-      results.push({
-        phase_number: 2,
-        substep_number: 3,
-        status: "complete",
-        evidence: `Tests found in project`,
-        confidence: 95,
-        timestamp,
-      });
-    }
-
-    // ========================================
-    // PHASE 3: LAYERED EXPANSION
-    // ========================================
-
-    // P3.1-3: Feature additions (if file count is high, assume expansion)
-    if (signals.file_count > 30) {
-      results.push({
-        phase_number: 3,
-        substep_number: 1,
-        status: "complete",
-        evidence: `Feature expansion detected (${signals.file_count} files indicates layered development)`,
-        confidence: 70,
-        timestamp,
-      });
-    }
-
-    // ========================================
-    // PHASE 4: REALITY TEST (harder to detect)
-    // ========================================
-
-    // Can't reliably detect from static analysis
-    // Would need user feedback data or test results
-
-    // ========================================
-    // PHASE 5: POLISH & FREEZE SCOPE
-    // ========================================
-
-    // P5.1: Documentation
-    if (signals.has_documentation && signals.readme_length > 500) {
-      results.push({
-        phase_number: 5,
-        substep_number: 1,
-        status: "complete",
-        evidence: `Documentation present (README: ${signals.readme_length} chars, docs folder: ${signals.has_documentation})`,
-        confidence: 90,
-        timestamp,
-      });
-    } else if (signals.readme_length > 100) {
-      results.push({
-        phase_number: 5,
-        substep_number: 1,
-        status: "partial",
-        evidence: `README started (${signals.readme_length} chars) but needs expansion`,
-        confidence: 50,
-        timestamp,
-      });
-    }
-
-    // P5.2: Code quality checks
-    if (signals.has_linter && signals.has_prettier && signals.has_tests) {
-      results.push({
-        phase_number: 5,
-        substep_number: 2,
-        status: "complete",
-        evidence: `Code quality tools configured (Linter, Prettier, Tests)`,
-        confidence: 95,
-        timestamp,
-      });
-    }
-
-    // ========================================
-    // PHASE 6: LAUNCH
-    // ========================================
-
-    // P6.1: Deployment configuration
-    if (signals.has_deploy_config && signals.deploy_platform) {
-      results.push({
-        phase_number: 6,
-        substep_number: 1,
-        status: "complete",
-        evidence: `Deployment configured for ${signals.deploy_platform}`,
-        confidence: 100,
-        timestamp,
-      });
-    }
-
-    // ========================================
-    // VERSION CONTROL
-    // ========================================
-
-    // Git usage (applies to multiple phases)
-    if (signals.has_git && signals.commit_count > 0) {
-      const gitEvidence = `Git repository active (${signals.commit_count} commits${signals.last_commit_time ? `, last: ${new Date(signals.last_commit_time).toLocaleDateString()}` : ""})`;
-
-      // Add as evidence for relevant phases
-      if (
-        !results.some((r) => r.phase_number === 1 && r.substep_number === 3)
-      ) {
+    // Basic heuristic: tech stack presence suggests environment setup
+    if (signals.tech_stack.length > 0 && currentPhaseObj) {
+      const firstSubstep = currentPhaseObj.substeps?.[0];
+      if (firstSubstep) {
         results.push({
-          phase_number: 1,
-          substep_number: 3,
-          status: "complete",
-          evidence: gitEvidence,
-          confidence: 85,
+          phase_number: currentPhaseObj.phase_number,
+          substep_number: firstSubstep.substep_number,
+          status: "partial",
+          evidence: `Tech stack identified: ${signals.tech_stack.join(", ")}`,
+          confidence: 60,
           timestamp,
         });
       }
+    }
+
+    // General code quality signals (applies to any code-based project)
+    const codeQualitySignals: string[] = [];
+
+    if (signals.has_tests) codeQualitySignals.push("tests");
+    if (signals.has_linter) codeQualitySignals.push("linter");
+    if (signals.has_prettier) codeQualitySignals.push("code formatting");
+    if (signals.has_typescript) codeQualitySignals.push("TypeScript");
+    if (signals.has_git && signals.commit_count > 0)
+      codeQualitySignals.push(`${signals.commit_count} commits`);
+    if (signals.has_deploy_config)
+      codeQualitySignals.push(`${signals.deploy_platform} deployment`);
+    if (signals.has_documentation) codeQualitySignals.push("documentation");
+
+    // If substantial work is present, mark current substep as partially complete
+    if (codeQualitySignals.length >= 3) {
+      const secondSubstep = currentPhaseObj.substeps?.[1];
+      if (secondSubstep) {
+        results.push({
+          phase_number: currentPhaseObj.phase_number,
+          substep_number: secondSubstep.substep_number,
+          status: "partial",
+          evidence: `Code quality signals detected: ${codeQualitySignals.join(", ")}`,
+          confidence: 70,
+          timestamp,
+        });
+      }
+    }
+
+    // If extensive file structure exists, suggest progress beyond initial setup
+    if (signals.file_count > 20 && signals.folder_depth > 2) {
+      results.push({
+        phase_number: currentPhaseObj.phase_number,
+        substep_number: currentPhaseObj.substeps?.length || 1,
+        status: "partial",
+        evidence: `Substantial codebase detected (${signals.file_count} files, ${signals.folder_depth} levels deep)`,
+        confidence: 65,
+        timestamp,
+      });
     }
   } // End fallback detection block
 

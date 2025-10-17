@@ -12,6 +12,7 @@ import {
 } from "./iteration-context-builder";
 import * as fs from "fs";
 import * as path from "path";
+import { z } from "zod";
 
 /**
  * Detect what changed between artifact iterations
@@ -153,24 +154,211 @@ export interface ArtifactAnalysis {
 }
 
 /**
- * Read file contents for analysis
+ * Zod schema for robust validation of LLM analysis responses
+ */
+const ArtifactAnalysisSchema = z.object({
+  vision: z.string().min(1, "Vision cannot be empty"),
+  tech_stack: z.array(z.string()).default([]),
+  implementation_state: z
+    .string()
+    .min(1, "Implementation state cannot be empty"),
+  quality_score: z.number().min(0).max(10),
+  substep_requirements: z
+    .array(
+      z.object({
+        requirement: z.string().min(1),
+        status: z.enum(["DONE", "PARTIAL", "NOT_STARTED"]),
+        evidence: z.string().min(1),
+      }),
+    )
+    .optional(),
+  substep_completion_percentage: z.number().min(0).max(100).optional(),
+  missing_elements: z.array(z.string()).default([]),
+  bugs_or_errors: z.array(z.string()).default([]),
+  actual_phase: z
+    .string()
+    .regex(/^P\d+$/, "Phase must be in format P1, P2, etc."),
+  decision: z.enum(["CONTINUE", "BACKTRACK", "PIVOT", "RESCUE"]),
+  roadmap_adjustments: z
+    .array(
+      z.object({
+        phase_id: z.string(),
+        action: z.enum(["complete", "unlock", "add_substep", "update_substep"]),
+        details: z.string(),
+      }),
+    )
+    .default([]),
+  next_steps: z
+    .array(z.string().min(1))
+    .min(1, "At least one next step required"),
+  detailed_analysis: z.string().optional(),
+});
+
+/**
+ * Attempt to fix common schema validation issues automatically
+ */
+function attemptSchemaFix(rawAnalysis: any, _error: z.ZodError): any {
+  const fixed = { ...rawAnalysis };
+
+  // Fix 1: Ensure required arrays exist
+  if (!Array.isArray(fixed.tech_stack)) {
+    fixed.tech_stack = [];
+  }
+  if (!Array.isArray(fixed.missing_elements)) {
+    fixed.missing_elements = [];
+  }
+  if (!Array.isArray(fixed.bugs_or_errors)) {
+    fixed.bugs_or_errors = [];
+  }
+  if (!Array.isArray(fixed.roadmap_adjustments)) {
+    fixed.roadmap_adjustments = [];
+  }
+  if (!Array.isArray(fixed.next_steps)) {
+    fixed.next_steps = ["Continue working on current substep"];
+  }
+
+  // Fix 2: Ensure quality_score is a number between 0-10
+  if (typeof fixed.quality_score !== "number" || isNaN(fixed.quality_score)) {
+    fixed.quality_score = 5.0;
+  } else if (fixed.quality_score < 0) {
+    fixed.quality_score = 0;
+  } else if (fixed.quality_score > 10) {
+    fixed.quality_score = 10;
+  }
+
+  // Fix 3: Ensure substep_completion_percentage is valid
+  if (fixed.substep_completion_percentage !== undefined) {
+    if (
+      typeof fixed.substep_completion_percentage !== "number" ||
+      isNaN(fixed.substep_completion_percentage)
+    ) {
+      fixed.substep_completion_percentage = 0;
+    } else if (fixed.substep_completion_percentage < 0) {
+      fixed.substep_completion_percentage = 0;
+    } else if (fixed.substep_completion_percentage > 100) {
+      fixed.substep_completion_percentage = 100;
+    }
+  }
+
+  // Fix 4: Ensure actual_phase follows P# format
+  if (
+    typeof fixed.actual_phase === "string" &&
+    !fixed.actual_phase.match(/^P\d+$/)
+  ) {
+    // Try to extract phase number
+    const match = fixed.actual_phase.match(/\d+/);
+    if (match) {
+      fixed.actual_phase = `P${match[0]}`;
+    } else {
+      fixed.actual_phase = "P1";
+    }
+  } else if (!fixed.actual_phase) {
+    fixed.actual_phase = "P1";
+  }
+
+  // Fix 5: Ensure decision is valid enum value
+  const validDecisions = ["CONTINUE", "BACKTRACK", "PIVOT", "RESCUE"];
+  if (!validDecisions.includes(fixed.decision)) {
+    fixed.decision = "CONTINUE";
+  }
+
+  // Fix 6: Ensure substep_requirements have valid status
+  if (Array.isArray(fixed.substep_requirements)) {
+    fixed.substep_requirements = fixed.substep_requirements.map((req: any) => ({
+      requirement: String(req.requirement || "Unknown requirement"),
+      status: ["DONE", "PARTIAL", "NOT_STARTED"].includes(req.status)
+        ? req.status
+        : "NOT_STARTED",
+      evidence: String(req.evidence || "No evidence provided"),
+    }));
+  }
+
+  // Fix 7: Ensure required string fields exist
+  if (!fixed.vision || typeof fixed.vision !== "string") {
+    fixed.vision = "Unable to determine vision from artifact";
+  }
+  if (
+    !fixed.implementation_state ||
+    typeof fixed.implementation_state !== "string"
+  ) {
+    fixed.implementation_state = "Analysis incomplete";
+  }
+
+  return fixed;
+}
+
+/**
+ * Smart file selection prioritization
+ */
+interface FileCandidate {
+  path: string;
+  size: number;
+  priority: number; // Higher = more important
+  content?: string;
+}
+
+function calculateFilePriority(filePath: string, size: number): number {
+  const filename = path.basename(filePath).toLowerCase();
+  const ext = path.extname(filePath).toLowerCase();
+
+  let priority = 50; // Base priority
+
+  // HIGH PRIORITY: Configuration and entry points
+  if (
+    ["package.json", "tsconfig.json", "readme.md", ".env.example"].includes(
+      filename,
+    )
+  ) {
+    priority += 100;
+  } else if (
+    filename.startsWith("index.") ||
+    filename.startsWith("main.") ||
+    filename.startsWith("app.")
+  ) {
+    priority += 80;
+  } else if (ext === ".md" && size < 10000) {
+    priority += 60; // Documentation is important
+  }
+
+  // MEDIUM PRIORITY: Source code
+  else if ([".ts", ".tsx", ".js", ".jsx"].includes(ext)) {
+    priority += 40;
+  } else if ([".py", ".java", ".go", ".rs", ".cpp", ".c"].includes(ext)) {
+    priority += 40;
+  }
+
+  // LOWER PRIORITY: Tests and configs
+  else if (filename.includes("test") || filename.includes("spec")) {
+    priority += 20;
+  } else if ([".json", ".yaml", ".yml", ".toml"].includes(ext)) {
+    priority += 15;
+  }
+
+  // Penalize very large files (they might be generated)
+  if (size > 50000) {
+    priority -= 30;
+  } else if (size > 100000) {
+    priority -= 60;
+  }
+
+  return priority;
+}
+
+/**
+ * Read file contents for analysis with smart prioritization
  */
 async function readFileContents(
   filePath: string,
-  maxFiles: number = 20,
+  maxFiles: number = 40, // Increased from 20
 ): Promise<string> {
-  const files: string[] = [];
+  const candidates: FileCandidate[] = [];
   let totalSize = 0;
-  const MAX_SIZE = 100000; // 100KB max total content
+  const MAX_SIZE = 250000; // Increased from 100KB to 250KB max total content
 
-  function walkDir(dir: string) {
-    if (files.length >= maxFiles || totalSize >= MAX_SIZE) return;
-
+  function walkDir(dir: string, basePath: string) {
     try {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
-        if (files.length >= maxFiles || totalSize >= MAX_SIZE) break;
-
         const fullPath = path.join(dir, entry.name);
 
         // Skip unimportant directories
@@ -185,7 +373,7 @@ async function readFileContents(
         }
 
         if (entry.isDirectory()) {
-          walkDir(fullPath);
+          walkDir(fullPath, basePath);
         } else if (entry.isFile()) {
           // Only include source files
           const ext = path.extname(entry.name);
@@ -201,16 +389,21 @@ async function readFileContents(
               ".rs",
               ".json",
               ".md",
+              ".yaml",
+              ".yml",
+              ".toml",
             ].includes(ext)
           ) {
             try {
               const stat = fs.statSync(fullPath);
-              if (stat.size < 50000 && totalSize + stat.size < MAX_SIZE) {
-                const content = fs.readFileSync(fullPath, "utf-8");
-                files.push(
-                  `\n--- ${path.relative(dir, fullPath)} ---\n${content}`,
-                );
-                totalSize += stat.size;
+              // Include files up to 200KB (will be filtered by priority later)
+              if (stat.size < 200000) {
+                const priority = calculateFilePriority(fullPath, stat.size);
+                candidates.push({
+                  path: fullPath,
+                  size: stat.size,
+                  priority,
+                });
               }
             } catch {
               // Skip unreadable files
@@ -223,18 +416,57 @@ async function readFileContents(
     }
   }
 
+  // Collect file candidates
   if (fs.statSync(filePath).isDirectory()) {
-    walkDir(filePath);
+    walkDir(filePath, filePath);
   } else {
     try {
-      const content = fs.readFileSync(filePath, "utf-8");
-      files.push(`\n--- ${path.basename(filePath)} ---\n${content}`);
+      const stat = fs.statSync(filePath);
+      candidates.push({
+        path: filePath,
+        size: stat.size,
+        priority: 100, // Single file uploads are always high priority
+      });
     } catch {
       // Skip unreadable files
     }
   }
 
-  return files.join("\n\n");
+  // Sort candidates by priority (highest first)
+  candidates.sort((a, b) => b.priority - a.priority);
+
+  console.log(
+    `📊 [LLM Analyzer] Found ${candidates.length} file candidates, selecting top ${maxFiles} by priority`,
+  );
+
+  // Select top files by priority, respecting size limits
+  const selectedFiles: string[] = [];
+  let selectedCount = 0;
+
+  for (const candidate of candidates) {
+    if (selectedCount >= maxFiles || totalSize >= MAX_SIZE) break;
+
+    try {
+      const content = fs.readFileSync(candidate.path, "utf-8");
+      const relativePath = fs.statSync(filePath).isDirectory()
+        ? path.relative(filePath, candidate.path)
+        : path.basename(candidate.path);
+
+      selectedFiles.push(
+        `\n--- ${relativePath} (priority: ${candidate.priority}) ---\n${content}`,
+      );
+      totalSize += candidate.size;
+      selectedCount++;
+    } catch {
+      // Skip unreadable files
+    }
+  }
+
+  console.log(
+    `✅ [LLM Analyzer] Selected ${selectedCount} files (${(totalSize / 1024).toFixed(1)}KB total)`,
+  );
+
+  return selectedFiles.join("\n\n");
 }
 
 /**
@@ -383,17 +615,39 @@ You are NOT a grader. You are a senior expert who:
 - Quality score reflects current state (be honest but constructive)
 ${stuckState.is_stuck ? `\n⚠️ **USER APPEARS STUCK**: ${stuckState.reason}\nProvide extra guidance: ${stuckState.guidance.join(", ")}` : ""}
 
-**SUBSTEP COMPLETION TRACKING:**
-Extract the requirements from the **dynamically generated** substep prompt above.
-Parse what the expert guidance asks for and mark each requirement:
-- DONE: Fully implemented with evidence
-- PARTIAL: Started but incomplete
+**SUBSTEP COMPLETION TRACKING (CRITICAL):**
+
+You MUST extract ALL requirements from the substep prompt above. Do a DEEP parse:
+
+1. **Read the substep prompt carefully** - It contains expert guidance with specific tasks
+2. **Break down each task** - If it says "set up X, Y, and Z", that's 3 requirements
+3. **Look for implicit requirements** - If it says "professional setup", extract what that means (e.g., linting, testing, documentation)
+4. **Check uploaded work against each requirement** - Don't guess, look for actual evidence in the files
+
+Example of DEEP extraction:
+
+Substep prompt says: "Set up a professional Node.js development environment with TypeScript, ESLint, and a Git repository."
+
+SHALLOW extraction (❌ BAD):
+- "Set up development environment" - PARTIAL
+
+DEEP extraction (✅ GOOD):
+- "Install Node.js and verify version" - DONE (package.json shows node 18)
+- "Configure TypeScript with tsconfig.json" - DONE (tsconfig.json present and configured)
+- "Set up ESLint with rules" - NOT_STARTED (no .eslintrc found)
+- "Initialize Git repository" - DONE (.git folder present with 5 commits)
+
+Mark each requirement:
+- DONE: Fully implemented with specific evidence from uploaded files
+- PARTIAL: Started but incomplete (explain what's missing)
 - NOT_STARTED: Missing entirely
 
-The substep requirements will vary dramatically by project type:
-- Code projects: "Set up database schema", "Implement authentication", etc.
-- Business projects: "Define target market", "Create pricing model", etc.
-- Content projects: "Write mission statement", "Design brand colors", etc.
+The substep requirements will vary by project type:
+- Code projects: Break down tech setup, architecture, tests, deployment
+- Business projects: Break down market analysis, financials, strategy docs
+- Content projects: Break down messaging, design, copy, CTAs
+
+**Completion percentage = (DONE count / total requirements) × 100**
 
 This determines auto-completion: 100% = substep auto-completes, <100% = iteration continues.
 
@@ -459,7 +713,7 @@ This determines auto-completion: 100% = substep auto-completes, <100% = iteratio
       },
     ]);
 
-    // Parse the JSON response
+    // Parse and validate the JSON response
     let jsonText = result.text.trim();
 
     // Remove markdown code blocks if present
@@ -469,7 +723,48 @@ This determines auto-completion: 100% = substep auto-completes, <100% = iteratio
         .replace(/\n?```$/, "");
     }
 
-    const analysis: ArtifactAnalysis = JSON.parse(jsonText);
+    // Parse JSON
+    let rawAnalysis: any;
+    try {
+      rawAnalysis = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error("❌ [LLM Analyzer] JSON parsing failed:", parseError);
+      console.error("Raw response:", jsonText.substring(0, 500));
+      throw new Error(
+        `Invalid JSON response from LLM: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
+      );
+    }
+
+    // Validate against schema
+    const validationResult = ArtifactAnalysisSchema.safeParse(rawAnalysis);
+
+    if (!validationResult.success) {
+      console.error("❌ [LLM Analyzer] Schema validation failed:");
+      console.error(JSON.stringify(validationResult.error.format(), null, 2));
+
+      // Try to fix common issues automatically
+      const fixedAnalysis = attemptSchemaFix(
+        rawAnalysis,
+        validationResult.error,
+      );
+      const retryValidation = ArtifactAnalysisSchema.safeParse(fixedAnalysis);
+
+      if (retryValidation.success) {
+        console.log("✅ [LLM Analyzer] Schema auto-fixed successfully");
+        const analysis = retryValidation.data;
+        console.log("✅ [LLM Analyzer] Analysis complete:");
+        console.log(`   Decision: ${analysis.decision}`);
+        console.log(`   Actual Phase: ${analysis.actual_phase}`);
+        console.log(`   Quality Score: ${analysis.quality_score}/10`);
+        return analysis;
+      }
+
+      throw new Error(
+        `Schema validation failed: ${JSON.stringify(validationResult.error.issues)}`,
+      );
+    }
+
+    const analysis = validationResult.data;
 
     console.log("✅ [LLM Analyzer] Analysis complete:");
     console.log(`   Decision: ${analysis.decision}`);
@@ -479,6 +774,10 @@ This determines auto-completion: 100% = substep auto-completes, <100% = iteratio
     return analysis;
   } catch (error) {
     console.error("❌ [LLM Analyzer] Analysis failed:", error);
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.message : "Unknown error",
+    );
 
     // Return safe default analysis
     return {

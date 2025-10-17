@@ -6,6 +6,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 interface MarkdownMessageProps {
   content: string;
@@ -43,14 +44,22 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex, rehypeHighlight]}
           components={{
-            // Code blocks with syntax highlighting
+            // Code blocks with syntax highlighting and Mermaid support
             code({ inline, className, children, ...props }) {
               const match = /language-(\w+)/.exec(className || "");
+              const language = match ? match[1] : "";
+
+              // Handle Mermaid diagrams
+              if (!inline && language === "mermaid") {
+                const code = String(children).replace(/\n$/, "");
+                return <MermaidDiagram chart={code} />;
+              }
+
               return !inline ? (
                 <div className="relative group/code">
                   {match && (
                     <div className="absolute right-2 top-2 text-xs text-gray-400 font-mono">
-                      {match[1]}
+                      {language}
                     </div>
                   )}
                   <pre className="!bg-gray-900 !p-4 !rounded-lg overflow-x-auto">

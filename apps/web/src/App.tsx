@@ -13,7 +13,8 @@ import { UserMemoryManager } from "./components/UserMemoryManager";
 const cls = (...arr: (string | boolean | undefined)[]) =>
   arr.filter(Boolean).join(" ");
 
-// Convert markdown to plain text
+// Convert markdown to plain text (currently unused but kept for future use)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const markdownToPlainText = (markdown: string): string => {
   return (
     markdown
@@ -915,7 +916,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
         const aiMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           type: "ai",
-          content: markdownToPlainText(data.response),
+          content: data.response, // Keep full markdown for MarkdownMessage component
           timestamp: new Date(),
         };
         setMessages([...updatedMessages, aiMessage]);
@@ -1537,7 +1538,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                       msg.id === aiMessageId
                         ? {
                             ...msg,
-                            content: markdownToPlainText(accumulatedContent),
+                            content: accumulatedContent, // Keep full markdown for MarkdownMessage component
                           }
                         : msg,
                     ),
