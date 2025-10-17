@@ -2,6 +2,7 @@ import { Router } from "express";
 import { StepOrchestrator } from "../engine/orchestrator";
 import { supabase, withRetry, DatabaseError } from "../db";
 import { aiLimiter } from "../middleware/rateLimit";
+import { generateSubstepBriefing } from "../services/celebrationBriefing";
 
 const router = Router();
 export const orchestrator = new StepOrchestrator();
@@ -114,7 +115,11 @@ router.post("/", async (req, res) => {
 router.post("/:projectId/complete-substep", async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { substep_id } = req.body;
+    const { phase_id, substep_number } = req.body;
+
+    console.log(
+      `[Projects] Manual completion request: ${projectId} - ${phase_id}/${substep_number}`,
+    );
 
     if (!projectId || typeof projectId !== "string") {
       return res.status(400).json({
@@ -122,20 +127,105 @@ router.post("/:projectId/complete-substep", async (req, res) => {
       });
     }
 
-    if (!substep_id || typeof substep_id !== "string") {
+    if (!phase_id || typeof phase_id !== "string") {
       return res.status(400).json({
-        error: "Valid substep_id is required",
+        error: "phase_id is required",
       });
     }
 
-    const result = await orchestrator.completeSubstep({
-      project_id: projectId,
-      substep_id,
-    });
+    if (typeof substep_number !== "number") {
+      return res.status(400).json({
+        error: "substep_number is required",
+      });
+    }
+
+    // Get project
+    const project = await orchestrator.getProjectAsync(projectId);
+    if (!project) {
+      return res.status(404).json({
+        error: "Project not found",
+      });
+    }
+
+    // Get substep details for briefing
+    const completedPhase = project.roadmap?.phases?.find(
+      (p: any) => p.phase_id === phase_id,
+    );
+    const completedSubstep = completedPhase?.substeps?.find(
+      (s: any) => s.step_number === substep_number,
+    );
+
+    if (!completedSubstep) {
+      return res.status(404).json({
+        error: "Substep not found",
+      });
+    }
+
+    // Use ProjectStateManager to atomically update state
+    const newState = await orchestrator.stateManager.applyProjectUpdate(
+      projectId,
+      {
+        completeSubstep: {
+          phase: phase_id,
+          substep: substep_number,
+        },
+        advanceSubstep: true,
+      },
+    );
+
+    console.log(
+      `✅ [Projects] Manual completion: ${phase_id}/${substep_number} → ${newState.current_phase}/${newState.current_substep}`,
+    );
+
+    // Get next substep for briefing
+    const nextSubstep = orchestrator.stateManager.getCurrentSubstep(newState);
+
+    // Generate briefing if there's a next substep
+    let briefingMessage = null;
+    if (nextSubstep) {
+      briefingMessage = await generateSubstepBriefing(
+        project,
+        newState,
+        nextSubstep,
+        completedSubstep,
+      );
+
+      console.log(
+        `🎯 [Projects] Briefing generated for next: ${nextSubstep.label}`,
+      );
+
+      // Store briefing in thread for user to see
+      if (project.thread_id) {
+        await supabase.from("messages").insert({
+          thread_id: project.thread_id,
+          role: "assistant",
+          content: briefingMessage,
+          created_at: new Date().toISOString(),
+        });
+      }
+    } else {
+      console.log("🏁 [Projects] Phase or project complete");
+    }
 
     return res.json({
       ok: true,
-      ...result,
+      project: {
+        current_phase: newState.current_phase,
+        current_substep: newState.current_substep,
+      },
+      briefing: briefingMessage,
+      completed: {
+        phase: phase_id,
+        substep: substep_number,
+        label: completedSubstep.label,
+      },
+      next: nextSubstep
+        ? {
+            phase: newState.current_phase,
+            substep: newState.current_substep,
+            label: nextSubstep.label,
+          }
+        : null,
     });
   } catch (error) {
     console.error("Error completing substep:", error);
@@ -143,12 +233,6 @@ router.post("/:projectId/complete-substep", async (req, res) => {
     if (error instanceof Error && error.message === "Project not found") {
       return res.status(404).json({
         error: "Project not found",
-      });
-    }
-
-    if (error instanceof Error && error.message === "Substep not found") {
-      return res.status(404).json({
-        error: "Substep not found",
       });
     }
 

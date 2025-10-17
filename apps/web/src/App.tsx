@@ -1985,6 +1985,25 @@ function App() {
   // Popup workspace state
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
 
+  // Helper function to load/reload project from API
+  const loadProject = useCallback(async (projectId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+      const data = await response.json();
+
+      if (response.ok && data.project) {
+        setProject(data.project);
+        return data.project;
+      } else {
+        console.error("Failed to load project:", data);
+        return null;
+      }
+    } catch (error) {
+      console.error("Error loading project:", error);
+      return null;
+    }
+  }, []);
+
   // Load project from URL parameter on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -2340,86 +2359,62 @@ Return only the refined vision statement using the format "I want to build _____
     if (!project) return;
 
     try {
-      // Use the existing complete-substep API endpoint
+      // Parse substepId to get phase_id and substep_number
+      // substepId format: "P1-1", "P2-3", etc.
+      const match = substepId.match(/^P(\d+)-(\d+)$/);
+      if (!match) {
+        console.error("Invalid substep ID format:", substepId);
+        setGuidance("❌ Error: Invalid substep format");
+        return;
+      }
+
+      const phaseNumber = parseInt(match[1]);
+      const substepNumber = parseInt(match[2]);
+      const phase_id = `P${phaseNumber}`;
+
+      // Use the updated complete-substep API endpoint
       const response = await fetch(
         `${API_URL}/api/projects/${project.id}/complete-substep`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            substep_id: substepId,
+            phase_id,
+            substep_number: substepNumber,
           }),
         },
       );
 
       const data = await response.json();
 
-      if (response.ok) {
-        // Update project with completed substep and advance to next
-        const updatedProject = { ...project };
-        const currentPhase = updatedProject.phases.find(
-          (p) => p.phase_number === project.current_phase,
-        );
+      if (response.ok && data.ok) {
+        console.log("[Manual Completion] Response:", data);
 
-        if (currentPhase) {
-          // Mark substep as complete
-          const substep = currentPhase.substeps.find(
-            (s) => s.substep_id === substepId,
-          );
-          if (substep) {
-            substep.completed = true;
-          }
+        // Reload project from server to get updated state
+        await loadProject(project.id);
 
-          // Check if all substeps in current phase are complete
-          const allSubstepsComplete = currentPhase.substeps.every(
-            (s) => s.completed,
-          );
+        // Display briefing message if provided
+        if (data.briefing) {
+          // Show briefing as guidance notification
+          setGuidance(data.briefing);
+          setTimeout(() => setGuidance(""), 5000);
 
-          if (allSubstepsComplete) {
-            // Complete current phase and unlock next phase
-            currentPhase.completed = true;
-            const nextPhase = updatedProject.phases.find(
-              (p) => p.phase_number === project.current_phase + 1,
-            );
-            if (nextPhase) {
-              nextPhase.locked = false;
-              nextPhase.expanded = true;
-              updatedProject.current_phase = nextPhase.phase_number;
-              updatedProject.current_substep = 1;
-              setGuidance(
-                `🎉 Phase ${currentPhase.phase_number} completed! Starting Phase ${nextPhase.phase_number}...`,
-              );
-
-              // Clear completion message after 4 seconds
-              setTimeout(() => setGuidance(""), 4000);
-            } else {
-              setGuidance(
-                "🏆 Congratulations! All phases completed. Your project is ready!",
-              );
-
-              // Clear completion message after 5 seconds
-              setTimeout(() => setGuidance(""), 5000);
-            }
-          } else {
-            // Advance to next substep in current phase
-            const nextSubstep = currentPhase.substeps.find((s) => !s.completed);
-            if (nextSubstep) {
-              updatedProject.current_substep = nextSubstep.step_number;
-              setGuidance(
-                `✅ Substep completed! Moving to: ${nextSubstep.label}`,
-              );
-
-              // Clear substep message after 3 seconds
-              setTimeout(() => setGuidance(""), 3000);
-            }
-          }
+          // Note: Briefing is also stored in the thread on the backend
+          // and will appear in chat when thread messages are loaded
+        } else if (data.next) {
+          // No briefing but there's a next step
+          setGuidance(`✅ Substep completed! Moving to: ${data.next.label}`);
+          setTimeout(() => setGuidance(""), 3000);
+        } else {
+          // Phase or project complete
+          setGuidance("🏆 Congratulations! Phase completed!");
+          setTimeout(() => setGuidance(""), 4000);
         }
-
-        setProject(updatedProject);
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to complete substep"}`);
       }
-    } catch {
+    } catch (error) {
+      console.error("[Manual Completion] Error:", error);
       setGuidance("🔌 Network error. Please try again.");
     }
   };

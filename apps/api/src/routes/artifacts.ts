@@ -23,6 +23,8 @@ import {
   detectRollbackNeed,
   shouldAutoRollback,
 } from "../services/rollback-detector";
+import { generateCelebrationAndBriefing } from "../services/celebrationBriefing";
+import { orchestrator } from "./projects";
 
 const router = Router();
 
@@ -487,86 +489,83 @@ router.post("/upload", uploadLimiter, (req, res) => {
               project?.roadmap
             ) {
               console.log(
-                "🎉 [Artifacts] Substep 100% complete - auto-advancing",
+                "🎉 [Artifacts] Substep 100% complete - auto-advancing with celebration",
               );
 
-              const updatedRoadmap = { ...project.roadmap };
-              const currentPhase = updatedRoadmap.phases?.find(
-                (p: any) => p.phase_id === project.current_phase,
-              );
-
-              if (currentPhase) {
-                // Mark current substep as completed
-                const currentSubstep = currentPhase.substeps?.find(
+              try {
+                // Get current substep details for celebration
+                const currentPhase = project.roadmap.phases?.find(
+                  (p: any) => p.phase_id === project.current_phase,
+                );
+                const completedSubstep = currentPhase?.substeps?.find(
                   (s: any) => s.step_number === project.current_substep,
                 );
 
-                if (currentSubstep) {
-                  currentSubstep.completed = true;
-                  console.log(
-                    `✅ [Artifacts] Marked substep ${project.current_substep} as complete`,
+                // Use ProjectStateManager to atomically update state
+                const newState =
+                  await orchestrator.stateManager.applyProjectUpdate(
+                    projectId,
+                    {
+                      completeSubstep: {
+                        phase: project.current_phase,
+                        substep: project.current_substep,
+                      },
+                      advanceSubstep: true,
+                    },
                   );
-                }
 
-                // Find next uncompleted substep in current phase
-                const nextSubstep = currentPhase.substeps?.find(
-                  (s: any) =>
-                    s.step_number > project.current_substep && !s.completed,
+                console.log(
+                  `✅ [Artifacts] State updated: ${newState.current_phase}/${newState.current_substep}`,
                 );
 
-                if (nextSubstep) {
-                  // Advance to next substep in same phase
-                  await supabase
-                    .from("projects")
-                    .update({
-                      current_substep: nextSubstep.step_number,
-                      roadmap: updatedRoadmap,
-                    })
-                    .eq("id", projectId);
+                // Get next substep details for briefing
+                const nextSubstep =
+                  orchestrator.stateManager.getCurrentSubstep(newState);
 
-                  console.log(
-                    `📈 [Artifacts] Advanced to substep ${nextSubstep.step_number}: ${nextSubstep.label}`,
-                  );
-                } else {
-                  // All substeps in phase complete - mark phase complete
-                  currentPhase.completed = true;
-                  console.log(
-                    `🎊 [Artifacts] Phase ${project.current_phase} complete!`,
-                  );
-
-                  // Find next unlocked phase
-                  const currentPhaseNum = parseInt(
-                    project.current_phase.replace("P", ""),
-                  );
-                  const nextPhase = updatedRoadmap.phases?.find(
-                    (p: any) =>
-                      parseInt(p.phase_id.replace("P", "")) ===
-                        currentPhaseNum + 1 && !p.locked,
-                  );
-
-                  if (nextPhase) {
-                    // Advance to first substep of next phase
-                    const firstSubstep = nextPhase.substeps?.[0];
-                    if (firstSubstep) {
-                      await supabase
-                        .from("projects")
-                        .update({
-                          current_phase: nextPhase.phase_id,
-                          current_substep: firstSubstep.step_number,
-                          roadmap: updatedRoadmap,
-                        })
-                        .eq("id", projectId);
-
-                      console.log(
-                        `🚀 [Artifacts] Advanced to ${nextPhase.phase_id}: ${nextPhase.goal}`,
-                      );
-                    }
-                  } else {
-                    console.log(
-                      "🏁 [Artifacts] All phases complete - project finished!",
+                // Generate celebration + briefing if we have next substep
+                if (completedSubstep && nextSubstep) {
+                  const celebrationMessage =
+                    await generateCelebrationAndBriefing(
+                      project,
+                      llmAnalysis,
+                      newState,
+                      completedSubstep,
+                      nextSubstep,
                     );
+
+                  console.log(
+                    `🎊 [Artifacts] Celebration generated for next: ${celebrationMessage.nextSubstep.label}`,
+                  );
+
+                  // Store celebration in thread for user to see
+                  if (project.thread_id) {
+                    const { supabase } = await import("../db");
+                    await supabase.from("messages").insert({
+                      thread_id: project.thread_id,
+                      role: "assistant",
+                      content: celebrationMessage.fullMessage,
+                      created_at: new Date().toISOString(),
+                    });
                   }
+
+                  // Update artifact with celebration info
+                  await supabase
+                    .from("artifacts")
+                    .update({
+                      celebration_message: celebrationMessage.fullMessage,
+                    })
+                    .eq("id", artifact.id);
+                } else {
+                  console.log(
+                    "🏁 [Artifacts] Phase or project complete - no next substep",
+                  );
                 }
+              } catch (stateError) {
+                console.error(
+                  "❌ [Artifacts] Error during state update/celebration:",
+                  stateError,
+                );
+                // Non-fatal - artifact analysis still succeeded
               }
             } else if (llmAnalysis.substep_completion_percentage) {
               console.log(

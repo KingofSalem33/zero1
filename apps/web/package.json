@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --max-old-space-size=4096 ../../node_modules/vite/bin/vite.js",
+    "dev": "node --max-old-space-size=8192 ../../node_modules/vite/bin/vite.js",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
     "lint": "eslint .",

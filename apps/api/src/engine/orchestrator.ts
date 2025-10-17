@@ -18,12 +18,19 @@ import {
   CompleteSubstepRequest,
   CompleteSubstepResponse,
 } from "./types";
+import { ProjectStateManager } from "../services/projectStateManager";
 
 // In-memory storage for demo purposes
 // In production, this would be replaced with database operations
 const projects: Map<string, Project> = new Map();
 
 export class StepOrchestrator {
+  public stateManager: ProjectStateManager;
+
+  constructor() {
+    this.stateManager = new ProjectStateManager(this);
+  }
+
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
