@@ -12,7 +12,7 @@ import type {
   SubstepCompletionResult,
 } from "../engine/types";
 import { supabase } from "../db";
-import type { Orchestrator } from "../engine/orchestrator";
+import type { StepOrchestrator } from "../engine/orchestrator";
 
 // Type definitions for state updates
 export interface ProjectStateUpdate {
@@ -53,10 +53,10 @@ export interface StateChangeEvent {
 type StateChangeListener = (event: StateChangeEvent) => void | Promise<void>;
 
 export class ProjectStateManager {
-  private orchestrator: Orchestrator;
+  private orchestrator: StepOrchestrator;
   private listeners: StateChangeListener[] = [];
 
-  constructor(orchestrator: Orchestrator) {
+  constructor(orchestrator: StepOrchestrator) {
     this.orchestrator = orchestrator;
   }
 

@@ -32,16 +32,36 @@ export interface ProjectHistory {
   created_at: string;
 }
 
+export interface SubstepCompletionResult {
+  phase_number: number;
+  substep_number: number;
+  completed_at: string;
+  quality_score?: number;
+}
+
+export interface ArtifactAnalysis {
+  quality_score: number;
+  implementation_state: string;
+  tech_stack: string[];
+  substep_completion_percentage: number;
+  [key: string]: any;
+}
+
 export interface Project {
   id: string;
   goal: string;
   status: "active" | "completed" | "paused";
-  current_phase: number;
+  current_phase: string;
   current_substep: number;
   phases: ProjectPhase[];
   history: ProjectHistory[];
   created_at: string;
   updated_at: string;
+  roadmap?: {
+    phases: ProjectPhase[];
+  };
+  completed_substeps?: SubstepCompletionResult[];
+  thread_id?: string;
 }
 
 export interface PhaseExpansionRequest {
