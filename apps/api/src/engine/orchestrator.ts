@@ -19,6 +19,7 @@ import {
   CompleteSubstepResponse,
 } from "./types";
 import { ProjectStateManager } from "../services/projectStateManager";
+import { completionDetector } from "../services/completionDetector";
 
 // In-memory storage for demo purposes
 // In production, this would be replaced with database operations
@@ -257,6 +258,11 @@ Return 7 phases (P1-P7) with customized content for this project.`;
           ?.filter((c: any) => c.type === "text")
           .map((c: any) => c.text)
           .join("") || "";
+
+      // If empty response, throw error to trigger fallback
+      if (!responseText || responseText.trim().length === 0) {
+        throw new Error("Empty response from AI - using fallback");
+      }
 
       const parsed = JSON.parse(responseText);
 
@@ -533,6 +539,11 @@ RESPONSE FORMAT:
           .map((c: any) => c.text)
           .join("") || "";
 
+      // If empty response, throw error to trigger fallback
+      if (!responseText || responseText.trim().length === 0) {
+        throw new Error("Empty response from AI - using fallback");
+      }
+
       const parsed = JSON.parse(responseText);
 
       return {
@@ -711,6 +722,11 @@ Return ONLY the master prompt text (no meta-commentary, no JSON, just the prompt
           ?.filter((c: any) => c.type === "text")
           .map((c: any) => c.text)
           .join("") || "";
+
+      // If empty response, throw error to trigger fallback
+      if (!masterPromptText || masterPromptText.trim().length === 0) {
+        throw new Error("Empty response from AI - using fallback");
+      }
 
       console.log(
         `✅ [MASTER] Generated ${masterPromptText.length} character master prompt for ${phaseId}`,
@@ -1787,6 +1803,26 @@ ${request.master_prompt}`;
         ? await threadService.getThread(request.thread_id)
         : await threadService.getOrCreateThread(request.project_id);
 
+      // 🔄 SUBSTEP CHANGE DETECTION
+      // Check if we've moved to a different substep since the last message
+      if (thread && thread.metadata?.last_substep_context) {
+        const lastPhase = thread.metadata.last_substep_context.phase;
+        const lastSubstep = thread.metadata.last_substep_context.substep;
+        const currentPhaseId =
+          project.phases.find((p) => p.phase_number === project.current_phase)
+            ?.phase_id || "";
+        const currentSubstepNum = project.current_substep;
+
+        if (lastPhase !== currentPhaseId || lastSubstep !== currentSubstepNum) {
+          console.log(
+            `📍 [SUBSTEP CHANGE] Detected transition from ${lastPhase}/${lastSubstep} → ${currentPhaseId}/${currentSubstepNum}`,
+          );
+
+          // TODO: Inject celebration/briefing divider here
+          // This is where we would call the celebration/briefing helper
+        }
+      }
+
       // Save user message
       if (request.user_message && thread) {
         await threadService.saveMessage(
@@ -1799,6 +1835,17 @@ ${request.master_prompt}`;
         const messages = await threadService.getRecentMessages(thread.id, 1);
         if (messages.length === 1) {
           await threadService.generateTitle(thread.id, request.user_message);
+        }
+
+        // 🔍 CHECK FOR EXPLICIT COMPLETION REQUEST
+        if (
+          completionDetector.isExplicitCompletionRequest(request.user_message)
+        ) {
+          console.log(
+            "✅ [COMPLETION] User explicitly requested to mark substep complete",
+          );
+          // The actual completion will be handled by the complete endpoint
+          // But we can log it here for awareness
         }
       }
     } catch (error) {
@@ -1909,6 +1956,21 @@ ${request.master_prompt}`;
             accumulatedResponse,
           );
           console.log("✅ [EXECUTE] AI response saved to thread");
+
+          // 📍 UPDATE SUBSTEP CONTEXT IN THREAD METADATA
+          // This enables substep change detection on next message
+          const currentPhaseId = currentPhase?.phase_id || "";
+          const currentSubstepNum = project.current_substep;
+
+          await threadService.updateThreadMetadata(thread.id, {
+            last_substep_context: {
+              phase: currentPhaseId,
+              substep: currentSubstepNum,
+            },
+          });
+          console.log(
+            `📍 [CONTEXT] Saved substep context: ${currentPhaseId}/${currentSubstepNum}`,
+          );
         } catch (saveError) {
           console.error(
             "⚠️ [EXECUTE] Failed to save AI response to thread:",
