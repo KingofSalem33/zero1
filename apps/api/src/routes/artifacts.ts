@@ -24,6 +24,7 @@ import {
   shouldAutoRollback,
 } from "../services/rollback-detector";
 import { generateCelebrationAndBriefing } from "../services/celebrationBriefing";
+import { celebrationBriefingHelper } from "../services/celebrationBriefingHelper";
 import { orchestrator } from "./projects";
 
 const router = Router();
@@ -211,6 +212,35 @@ router.post("/upload", uploadLimiter, (req, res) => {
         }
 
         console.log("✅ [Artifacts] Artifact saved:", artifact.id);
+
+        // Fetch project info for acknowledgment message
+        const { data: project } = await supabase
+          .from("projects")
+          .select("*")
+          .eq("id", projectId)
+          .single();
+
+        let acknowledgmentMessage = `✅ **Received:** ${filename}
+
+I've analyzed your upload and it's being processed. I'll let you know when the analysis is complete.`;
+
+        // Generate acknowledgment with current substep context if available
+        if (project && project.roadmap) {
+          const currentPhase = project.roadmap.phases?.find(
+            (p: any) => p.phase_id === project.current_phase,
+          );
+          const currentSubstep = currentPhase?.substeps?.find(
+            (s: any) => s.step_number === project.current_substep,
+          );
+
+          if (currentSubstep) {
+            acknowledgmentMessage =
+              celebrationBriefingHelper.generateArtifactAcknowledgment(
+                filename,
+                currentSubstep,
+              );
+          }
+        }
 
         // Run LLM analysis in background (non-blocking)
         (async (): Promise<void> => {
@@ -593,6 +623,7 @@ router.post("/upload", uploadLimiter, (req, res) => {
             signals,
             status: "analyzing",
           },
+          acknowledgment: acknowledgmentMessage,
         });
       } catch (analysisError) {
         console.error("❌ [Artifacts] Analysis error:", analysisError);
