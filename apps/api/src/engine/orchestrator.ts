@@ -20,6 +20,7 @@ import {
 } from "./types";
 import { ProjectStateManager } from "../services/projectStateManager";
 import { completionDetector } from "../services/completionDetector";
+import { celebrationBriefingHelper } from "../services/celebrationBriefingHelper";
 
 // In-memory storage for demo purposes
 // In production, this would be replaced with database operations
@@ -1805,9 +1806,9 @@ ${request.master_prompt}`;
 
       // 🔄 SUBSTEP CHANGE DETECTION
       // Check if we've moved to a different substep since the last message
-      if (thread && thread.metadata?.last_substep_context) {
-        const lastPhase = thread.metadata.last_substep_context.phase;
-        const lastSubstep = thread.metadata.last_substep_context.substep;
+      if (thread && thread.context?.last_substep_context) {
+        const lastPhase = thread.context.last_substep_context.phase;
+        const lastSubstep = thread.context.last_substep_context.substep;
         const currentPhaseId =
           project.phases.find((p) => p.phase_number === project.current_phase)
             ?.phase_id || "";
@@ -1818,8 +1819,47 @@ ${request.master_prompt}`;
             `📍 [SUBSTEP CHANGE] Detected transition from ${lastPhase}/${lastSubstep} → ${currentPhaseId}/${currentSubstepNum}`,
           );
 
-          // TODO: Inject celebration/briefing divider here
-          // This is where we would call the celebration/briefing helper
+          // 🎉 INJECT CELEBRATION/BRIEFING DIVIDER
+          // Get the completed and next phase/substep objects
+          const completedPhaseObj = project.phases.find(
+            (p) => p.phase_id === lastPhase,
+          );
+          const completedSubstepObj = completedPhaseObj?.substeps?.find(
+            (s: any) => s.step_number === lastSubstep,
+          );
+          const nextPhaseObj = currentPhase;
+          const nextSubstepObj = currentSubstep;
+
+          if (
+            completedPhaseObj &&
+            completedSubstepObj &&
+            nextPhaseObj &&
+            nextSubstepObj
+          ) {
+            const transitionMessages =
+              celebrationBriefingHelper.generateTransitionMessage(
+                completedPhaseObj,
+                completedSubstepObj,
+                nextPhaseObj,
+                nextSubstepObj,
+              );
+
+            // Save celebration message
+            await threadService.saveMessage(
+              thread.id,
+              "system",
+              transitionMessages.celebration,
+            );
+
+            // Save divider + briefing as a single message
+            await threadService.saveMessage(
+              thread.id,
+              "system",
+              transitionMessages.divider + "\n" + transitionMessages.briefing,
+            );
+
+            console.log("✅ [CELEBRATION] Injected transition messages");
+          }
         }
       }
 
@@ -1957,12 +1997,12 @@ ${request.master_prompt}`;
           );
           console.log("✅ [EXECUTE] AI response saved to thread");
 
-          // 📍 UPDATE SUBSTEP CONTEXT IN THREAD METADATA
+          // 📍 UPDATE SUBSTEP CONTEXT IN THREAD CONTEXT
           // This enables substep change detection on next message
           const currentPhaseId = currentPhase?.phase_id || "";
           const currentSubstepNum = project.current_substep;
 
-          await threadService.updateThreadMetadata(thread.id, {
+          await threadService.updateContext(thread.id, {
             last_substep_context: {
               phase: currentPhaseId,
               substep: currentSubstepNum,

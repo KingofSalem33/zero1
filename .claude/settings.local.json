@@ -9,7 +9,9 @@
       "Bash(powershell -Command:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm run build:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []
