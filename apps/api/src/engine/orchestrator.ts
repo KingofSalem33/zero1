@@ -248,22 +248,28 @@ Return 7 phases (P1-P7) with customized content for this project.`;
       });
 
       console.log(
-        "[DEBUG PHASES] Full API response:",
-        JSON.stringify(result, null, 2),
+        "[DEBUG PHASES] Full API response keys:",
+        Object.keys(result),
+      );
+      console.log(
+        "[DEBUG PHASES] Response output array:",
+        JSON.stringify(result.output, null, 2),
       );
 
-      // Extract content from Responses API format
+      // Responses API format
       const assistantMessage = result.output.find(
         (item: any) => item.type === "message" && item.role === "assistant",
       ) as any;
 
       if (!assistantMessage) {
-        console.error(
-          "[DEBUG PHASES] No assistant message in response:",
-          result,
-        );
+        console.error("[DEBUG PHASES] No assistant message found in output");
         throw new Error("No assistant message in response");
       }
+
+      console.log(
+        "[DEBUG PHASES] Assistant message content:",
+        JSON.stringify(assistantMessage.content, null, 2),
+      );
 
       const responseText =
         assistantMessage.content
