@@ -73,7 +73,7 @@ Great work! You've successfully completed this substep.`;
    * Generate briefing for the next substep
    */
   private generateBriefing(
-    phase: ProjectPhase,
+    _phase: ProjectPhase,
     substep: ProjectSubstep,
   ): string {
     // The substep's prompt_to_send contains the expert instructions

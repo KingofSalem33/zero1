@@ -27,6 +27,10 @@ export interface ThreadContext {
   user_preferences?: string[];
   project_facts?: string[];
   key_decisions?: string[];
+  last_substep_context?: {
+    phase: string;
+    substep: number;
+  };
 }
 
 const MAX_HISTORY_MESSAGES = 10; // Last N messages to include in context

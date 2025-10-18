@@ -1827,8 +1827,12 @@ ${request.master_prompt}`;
           const completedSubstepObj = completedPhaseObj?.substeps?.find(
             (s: any) => s.step_number === lastSubstep,
           );
-          const nextPhaseObj = currentPhase;
-          const nextSubstepObj = currentSubstep;
+          const nextPhaseObj = project.phases.find(
+            (p) => p.phase_number === project.current_phase,
+          );
+          const nextSubstepObj = nextPhaseObj?.substeps?.find(
+            (s: any) => s.step_number === project.current_substep,
+          );
 
           if (
             completedPhaseObj &&
