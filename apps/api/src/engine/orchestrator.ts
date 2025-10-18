@@ -225,9 +225,10 @@ BE SPECIFIC:
 Return 7 phases (P1-P7) with customized content for this project.`;
 
     try {
-      const result = await client.responses.create({
+      // Use chat.completions API instead of responses API for better compatibility
+      const result = await client.chat.completions.create({
         model: ENV.OPENAI_MODEL_NAME,
-        input: [
+        messages: [
           { role: "system", content: systemPrompt },
           {
             role: "user",
@@ -235,30 +236,42 @@ Return 7 phases (P1-P7) with customized content for this project.`;
           },
         ],
         temperature: 0.4, // Some creativity, but stay focused
-        max_output_tokens: 2000,
-        text: {
-          format: {
-            type: "json_schema" as const,
+        max_tokens: 2000,
+        response_format: {
+          type: "json_schema" as const,
+          json_schema: {
             name: phaseGenerationJsonSchema.name,
             schema: phaseGenerationJsonSchema.schema,
+            strict: true,
           },
-          verbosity: "medium",
         },
       });
 
-      const assistantMessage = result.output.find(
-        (item: any) => item.type === "message" && item.role === "assistant",
-      ) as any;
+      console.log(
+        "[DEBUG PHASES] Full API response:",
+        JSON.stringify(result, null, 2),
+      );
 
-      if (!assistantMessage) {
-        throw new Error("No assistant message in response");
+      // Extract content from chat completions API format
+      const choice = result.choices?.[0];
+      if (!choice || !choice.message) {
+        console.error(
+          "[DEBUG PHASES] No choice or message in response:",
+          result,
+        );
+        throw new Error("No message in response");
       }
 
-      const responseText =
-        assistantMessage.content
-          ?.filter((c: any) => c.type === "text")
-          .map((c: any) => c.text)
-          .join("") || "";
+      const responseText = choice.message.content || "";
+
+      console.log(
+        "[DEBUG PHASES] Extracted response text length:",
+        responseText.length,
+      );
+      console.log(
+        "[DEBUG PHASES] Response text preview:",
+        responseText.substring(0, 500),
+      );
 
       // If empty response, throw error to trigger fallback
       if (!responseText || responseText.trim().length === 0) {
@@ -506,39 +519,32 @@ RESPONSE FORMAT:
 }`;
 
     try {
-      const result = await client.responses.create({
+      // Use chat.completions API instead of responses API for better compatibility
+      const result = await client.chat.completions.create({
         model: ENV.OPENAI_MODEL_NAME,
-        input: [
+        messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: "Generate the substeps for this phase." },
         ],
         temperature: 0.3,
-        max_output_tokens: 2000,
-        // Use structured outputs for guaranteed JSON
-        text: {
-          format: {
-            type: "json_schema" as const,
+        max_tokens: 2000,
+        response_format: {
+          type: "json_schema" as const,
+          json_schema: {
             name: substepGenerationJsonSchema.name,
             schema: substepGenerationJsonSchema.schema,
+            strict: true,
           },
-          verbosity: "medium",
         },
       });
 
-      // Extract text from Responses API output
-      const assistantMessage = result.output.find(
-        (item: any) => item.type === "message" && item.role === "assistant",
-      ) as any;
-
-      if (!assistantMessage) {
-        throw new Error("No assistant message in response");
+      // Extract content from chat completions API format
+      const choice = result.choices?.[0];
+      if (!choice || !choice.message) {
+        throw new Error("No message in response");
       }
 
-      const responseText =
-        assistantMessage.content
-          ?.filter((c: any) => c.type === "text")
-          .map((c: any) => c.text)
-          .join("") || "";
+      const responseText = choice.message.content || "";
 
       // If empty response, throw error to trigger fallback
       if (!responseText || responseText.trim().length === 0) {
@@ -703,26 +709,21 @@ Requirements:
 Return ONLY the master prompt text (no meta-commentary, no JSON, just the prompt itself).`;
 
     try {
-      const result = await client.responses.create({
+      // Use chat.completions API instead of responses API for better compatibility
+      const result = await client.chat.completions.create({
         model: ENV.OPENAI_MODEL_NAME,
-        input: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: prompt }],
         temperature: 0.6, // Balanced creativity for domain-specific expertise
-        max_output_tokens: 800,
+        max_tokens: 800,
       });
 
-      const assistantMessage = result.output.find(
-        (item: any) => item.type === "message" && item.role === "assistant",
-      ) as any;
-
-      if (!assistantMessage) {
-        throw new Error("No assistant message in response");
+      // Extract content from chat completions API format
+      const choice = result.choices?.[0];
+      if (!choice || !choice.message) {
+        throw new Error("No message in response");
       }
 
-      const masterPromptText =
-        assistantMessage.content
-          ?.filter((c: any) => c.type === "text")
-          .map((c: any) => c.text)
-          .join("") || "";
+      const masterPromptText = choice.message.content || "";
 
       // If empty response, throw error to trigger fallback
       if (!masterPromptText || masterPromptText.trim().length === 0) {
