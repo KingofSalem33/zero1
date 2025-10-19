@@ -550,7 +550,7 @@ router.get("/:projectId/threads", async (req, res) => {
       });
     }
 
-    const { threadService } = await import("../services/threadService");
+    const { threadService } = await import("../services/threadService.js");
     const threads = await threadService.listThreads(projectId);
 
     return res.json({
