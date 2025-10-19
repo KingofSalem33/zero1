@@ -1,5 +1,4 @@
 import { supabase } from "../db";
-import type { ChatCompletionMessageParam } from "openai/resources";
 import { trimContextIfNeeded } from "../utils/contextTrimmer";
 import pino from "pino";
 
@@ -132,16 +131,17 @@ export class ThreadService {
   /**
    * Build context for the AI with recent history + lightweight facts
    * Automatically trims context if it exceeds token limits
+   * Returns Responses API format (ResponseInputItem[])
    */
   async buildContextMessages(
     threadId: string,
     systemPrompt: string,
     model: string = "gpt-4o",
-  ): Promise<ChatCompletionMessageParam[]> {
+  ): Promise<any[]> {
     const thread = await this.getThread(threadId);
     const recentMessages = await this.getRecentMessages(threadId);
 
-    const messages: ChatCompletionMessageParam[] = [];
+    const messages: any[] = [];
 
     // 1. System message with thread context
     let enhancedSystemPrompt = systemPrompt;
@@ -156,7 +156,7 @@ export class ThreadService {
       content: enhancedSystemPrompt,
     });
 
-    // 2. Recent conversation history
+    // 2. Recent conversation history - convert to Responses API format
     for (const msg of recentMessages) {
       if (msg.role !== "system") {
         messages.push({

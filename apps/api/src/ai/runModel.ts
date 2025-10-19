@@ -6,6 +6,104 @@ import { ENV } from "../env";
 
 const logger = pino({ name: "runModel" });
 
+function extractTextFromItem(msg: any): string {
+  const content = msg?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c: any) =>
+        typeof c === "string"
+          ? c
+          : c && typeof c.text === "string"
+            ? c.text
+            : "",
+      )
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
+}
+
+function getLastUserText(context: any[]): string | null {
+  for (let i = context.length - 1; i >= 0; i--) {
+    const msg = context[i];
+    const role = msg?.role || msg?.author || undefined;
+    if (role === "user") {
+      const txt = extractTextFromItem(msg);
+      if (txt && txt.trim().length > 0) return txt;
+    }
+  }
+  return null;
+}
+
+function buildFallbackQuery(context: any[]): string | null {
+  const lastUser = getLastUserText(context);
+  const chosen = lastUser;
+  if (chosen && chosen.trim().length >= 3) {
+    const trimmed = chosen.trim().slice(0, 200);
+    return `${trimmed} site:.gov`;
+  }
+  return null;
+}
+
+/**
+ * Validate tool arguments before execution
+ * Returns error message if validation fails, null if valid
+ */
+function validateToolArguments(
+  toolName: ToolName,
+  args: any,
+  context: any[] = [],
+): string | null {
+  switch (toolName) {
+    case "web_search":
+      if (!args.q || typeof args.q !== "string" || args.q.trim().length === 0) {
+        const fallbackQuery = buildFallbackQuery(context);
+        if (fallbackQuery) {
+          args.q = fallbackQuery;
+          return null;
+        }
+        return "web_search requires 'q' parameter (non-empty search query string). Example: {q: 'health department regulations'}";
+      }
+      break;
+
+    case "http_fetch":
+      if (
+        !args.url ||
+        typeof args.url !== "string" ||
+        args.url.trim().length === 0
+      ) {
+        return "http_fetch requires 'url' parameter (valid http/https URL). Example: {url: 'https://example.com'}";
+      }
+      if (!args.url.startsWith("http://") && !args.url.startsWith("https://")) {
+        return "http_fetch 'url' must start with http:// or https://";
+      }
+      break;
+
+    case "file_search":
+      if (
+        !args.query ||
+        typeof args.query !== "string" ||
+        args.query.trim().length === 0
+      ) {
+        return "file_search requires 'query' parameter (non-empty search string). Example: {query: 'API documentation'}. Note: Use web_search for internet research, not file_search.";
+      }
+      break;
+
+    case "calculator":
+      if (
+        !args.expression ||
+        typeof args.expression !== "string" ||
+        args.expression.trim().length === 0
+      ) {
+        return "calculator requires 'expression' parameter (mathematical expression). Example: {expression: '2 + 2'}";
+      }
+      break;
+  }
+
+  return null;
+}
+
 // Responses API tool format
 export interface ResponsesAPITool {
   type: "function";
@@ -124,9 +222,17 @@ export async function runModel(
         throw new Error("No assistant message in response");
       }
       // Extract tool calls from output array
-      const toolCalls = response.output.filter(
-        (item: any) => item.type === "function_tool_call",
-      ) as any[];
+      // Be tolerant of SDK/event shape differences (id vs call_id)
+      const toolCalls = (
+        response.output.filter(
+          (item: any) => item.type === "function_tool_call",
+        ) as any[]
+      ).map((item: any) => ({
+        // Prefer call_id if present; fall back to id
+        id: item.call_id || item.id,
+        name: item.name,
+        arguments: item.arguments,
+      }));
 
       logger.info(
         {
@@ -164,9 +270,19 @@ export async function runModel(
 
       for (const toolCall of toolCalls) {
         const { id, name: toolName } = toolCall as {
-          id: string;
+          id: string | undefined;
           name: ToolName;
         };
+
+        if (!id) {
+          logger.error({ toolName }, "Missing call_id for tool call");
+          conversationMessages.push({
+            type: "function_call_output",
+            call_id: "", // intentionally empty to avoid undefined
+            output: JSON.stringify({ error: "Missing call_id for tool call" }),
+          });
+          continue;
+        }
 
         if (!providedToolMap[toolName]) {
           logger.error({ toolName }, "Unknown tool requested");
@@ -185,6 +301,41 @@ export async function runModel(
               ? JSON.parse(toolCall.arguments)
               : toolCall.arguments || {};
           logger.info({ toolName, args }, "Executing tool");
+
+          // ✅ VALIDATION: Check required arguments BEFORE calling tool
+          const validationError = validateToolArguments(
+            toolName,
+            args,
+            conversationMessages,
+          );
+          if (validationError) {
+            logger.error(
+              { toolName, args, validationError },
+              "Tool argument validation failed",
+            );
+
+            // Track validation error
+            if (toolActivity.length < MAX_TOOL_ACTIVITY) {
+              toolActivity.push({
+                type: "tool_error",
+                tool: toolName,
+                error: validationError,
+                timestamp: new Date().toISOString(),
+              });
+            }
+            onToolError?.(toolName, validationError);
+
+            // Return error to model - DO NOT RETRY
+            conversationMessages.push({
+              type: "function_call_output",
+              call_id: id,
+              output: JSON.stringify({
+                error: validationError,
+                hint: "Provide all required parameters with correct types and non-empty values",
+              }),
+            });
+            continue;
+          }
 
           // Track tool call start
           const timestamp = new Date().toISOString();

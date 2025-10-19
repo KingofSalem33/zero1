@@ -34,7 +34,9 @@ router.post("/", async (req, res) => {
       });
     }
 
-    console.log(`💾 [Checkpoints] Creating checkpoint for project: ${project_id}`);
+    console.log(
+      `💾 [Checkpoints] Creating checkpoint for project: ${project_id}`,
+    );
 
     // Get current project state
     const { data: project, error: projectError } = await supabase
@@ -82,48 +84,23 @@ router.post("/", async (req, res) => {
 
     console.log("✅ [Checkpoints] Checkpoint created:", checkpoint.id);
 
-    return res.json({
-      ok: true,
-      checkpoint: {
-        id: checkpoint.id,
-        name: checkpoint.name,
-        created_at: checkpoint.created_at,
-        current_phase: checkpoint.current_phase,
-        artifact_count: artifactIds.length,
+    return res.status(201).json({
+      id: checkpoint.id,
+      object: "checkpoint",
+      name: checkpoint.name,
+      created_at: checkpoint.created_at,
+      current_phase: checkpoint.current_phase,
+      artifact_count: artifactIds.length,
+    });
+  } catch (error) {
+    console.error("❌ [Checkpoints] Error:", error);
+    return res.status(500).json({
+      error: {
+        message: "Failed to create checkpoint",
+        type: "internal_server_error",
+        code: "checkpoint_creation_failed",
       },
     });
-  } catch (error) {
-    console.error("❌ [Checkpoints] Error:", error);
-    return res.status(500).json({ error: "Failed to create checkpoint" });
-  }
-});
-
-/**
- * GET /api/checkpoints/project/:projectId
- * Get all checkpoints for a project
- */
-router.get("/project/:projectId", async (req, res) => {
-  try {
-    const { projectId } = req.params;
-
-    const { data: checkpoints, error } = await supabase
-      .from("checkpoints")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("❌ [Checkpoints] Fetch error:", error);
-      return res.status(500).json({ error: "Failed to fetch checkpoints" });
-    }
-
-    return res.json({
-      ok: true,
-      checkpoints: checkpoints || [],
-    });
-  } catch (error) {
-    console.error("❌ [Checkpoints] Error:", error);
-    return res.status(500).json({ error: "Failed to fetch checkpoints" });
   }
 });
 
@@ -232,7 +209,9 @@ router.get("/:checkpointId/compare/:otherCheckpointId", async (req, res) => {
       .single();
 
     if (!checkpoint1 || !checkpoint2) {
-      return res.status(404).json({ error: "One or both checkpoints not found" });
+      return res
+        .status(404)
+        .json({ error: "One or both checkpoints not found" });
     }
 
     // Compare states
@@ -246,10 +225,10 @@ router.get("/:checkpointId/compare/:otherCheckpointId", async (req, res) => {
         JSON.stringify(checkpoint1.completed_substeps) !==
         JSON.stringify(checkpoint2.completed_substeps),
       substeps_added: (checkpoint2.completed_substeps as string[]).filter(
-        (s) => !(checkpoint1.completed_substeps as string[]).includes(s)
+        (s) => !(checkpoint1.completed_substeps as string[]).includes(s),
       ),
       substeps_removed: (checkpoint1.completed_substeps as string[]).filter(
-        (s) => !(checkpoint2.completed_substeps as string[]).includes(s)
+        (s) => !(checkpoint2.completed_substeps as string[]).includes(s),
       ),
       roadmap_changed:
         JSON.stringify(checkpoint1.roadmap_snapshot) !==

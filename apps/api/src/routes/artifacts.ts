@@ -825,38 +825,4 @@ router.get("/:artifactId", async (req, res) => {
   }
 });
 
-/**
- * GET /api/artifacts/project/:projectId
- * Get all artifacts for a project
- */
-router.get("/project/:projectId", async (req, res) => {
-  try {
-    const { projectId } = req.params;
-
-    const { data: artifacts, error } = await supabase
-      .from("artifacts")
-      .select(
-        `
-        *,
-        artifact_signals (*)
-      `,
-      )
-      .eq("project_id", projectId)
-      .order("uploaded_at", { ascending: false });
-
-    if (error) {
-      console.error("❌ [Artifacts] Fetch error:", error);
-      return res.status(500).json({ error: "Failed to fetch artifacts" });
-    }
-
-    return res.json({
-      ok: true,
-      artifacts: artifacts || [],
-    });
-  } catch (error) {
-    console.error("❌ [Artifacts] Fetch error:", error);
-    return res.status(500).json({ error: "Failed to fetch artifacts" });
-  }
-});
-
 export default router;

@@ -51,10 +51,7 @@ export function selectRelevantTools(
   if (needsCalculator) selectedTools.push("calculator");
   if (needsFileSearch) selectedTools.push("file_search");
 
-  // Fallback: If no tools matched, include web_search as default (most versatile)
-  if (selectedTools.length === 0) {
-    selectedTools.push("web_search");
-  }
+  // Do NOT default to web_search. If nothing matches, provide no tools.
 
   // Build filtered toolSpecs and toolMap
   const filteredSpecs = toolSpecs.filter(

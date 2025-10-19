@@ -12,7 +12,9 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
   try {
     const { artifactId } = req.params;
 
-    console.log(`📋 [Artifact Actions] Applying analysis for artifact: ${artifactId}`);
+    console.log(
+      `📋 [Artifact Actions] Applying analysis for artifact: ${artifactId}`,
+    );
 
     // Get artifact with analysis
     const { data: artifact, error: artifactError } = await supabase
@@ -22,18 +24,37 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
       .single();
 
     if (artifactError || !artifact) {
-      return res.status(404).json({ error: "Artifact not found" });
+      return res.status(404).json({
+        error: {
+          message: "Artifact not found",
+          type: "invalid_request_error",
+          param: "artifactId",
+          code: "resource_not_found",
+        },
+      });
     }
 
     if (artifact.status !== "analyzed") {
       return res.status(400).json({
-        error: `Artifact not analyzed yet. Current status: ${artifact.status}`,
+        error: {
+          message: `Artifact not analyzed yet. Current status: ${artifact.status}`,
+          type: "invalid_request_error",
+          param: "artifactId",
+          code: "artifact_not_analyzed",
+        },
       });
     }
 
     const analysis = artifact.analysis as ArtifactAnalysis;
     if (!analysis) {
-      return res.status(400).json({ error: "No analysis found for artifact" });
+      return res.status(400).json({
+        error: {
+          message: "No analysis found for artifact",
+          type: "invalid_request_error",
+          param: "artifactId",
+          code: "analysis_missing",
+        },
+      });
     }
 
     // Get project
@@ -44,14 +65,21 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
       .single();
 
     if (projectError || !project) {
-      return res.status(404).json({ error: "Project not found" });
+      return res.status(404).json({
+        error: {
+          message: "Project not found",
+          type: "invalid_request_error",
+          param: "project_id",
+          code: "resource_not_found",
+        },
+      });
     }
 
     console.log(`📊 [Artifact Actions] Decision: ${analysis.decision}`);
     console.log(`📊 [Artifact Actions] Actual phase: ${analysis.actual_phase}`);
 
     // Apply roadmap adjustments based on decision type
-    const currentRoadmap = project.roadmap as any || {};
+    const currentRoadmap = (project.roadmap as any) || {};
     const completedPhases = (project.completed_phases as string[]) || [];
     const completedSubsteps = (project.completed_substeps as string[]) || [];
 
@@ -75,7 +103,7 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
           // Add new substep to roadmap
           if (currentRoadmap.phases) {
             const phase = currentRoadmap.phases.find(
-              (p: any) => p.phase_id === phase_id
+              (p: any) => p.phase_id === phase_id,
             );
             if (phase && phase.substeps) {
               const newSubstep = {
@@ -94,7 +122,7 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
           // Update existing substep
           if (currentRoadmap.phases) {
             const phase = currentRoadmap.phases.find(
-              (p: any) => p.phase_id === phase_id
+              (p: any) => p.phase_id === phase_id,
             );
             if (phase && phase.substeps && phase.substeps.length > 0) {
               const lastSubstep = phase.substeps[phase.substeps.length - 1];
@@ -118,7 +146,8 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
       P7: 7,
     };
 
-    const newCurrentPhase = phaseNumberMap[analysis.actual_phase] || project.current_phase;
+    const newCurrentPhase =
+      phaseNumberMap[analysis.actual_phase] || project.current_phase;
 
     // Update project with adjusted roadmap
     const { error: updateError } = await supabase
@@ -133,13 +162,20 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
 
     if (updateError) {
       console.error("❌ [Artifact Actions] Update error:", updateError);
-      return res.status(500).json({ error: "Failed to update project" });
+      return res.status(500).json({
+        error: {
+          message: "Failed to update project",
+          type: "internal_server_error",
+          code: "project_update_failed",
+        },
+      });
     }
 
     console.log("✅ [Artifact Actions] Roadmap adjusted successfully");
 
     return res.json({
-      ok: true,
+      id: artifactId,
+      object: "artifact.analysis_applied",
       decision: analysis.decision,
       actual_phase: analysis.actual_phase,
       adjustments_applied: analysis.roadmap_adjustments.length,
@@ -150,7 +186,13 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ [Artifact Actions] Error:", error);
-    return res.status(500).json({ error: "Failed to apply analysis" });
+    return res.status(500).json({
+      error: {
+        message: "Failed to apply analysis",
+        type: "internal_server_error",
+        code: "analysis_application_failed",
+      },
+    });
   }
 });
 
@@ -169,11 +211,19 @@ router.get("/status/:artifactId", async (req, res) => {
       .single();
 
     if (error || !artifact) {
-      return res.status(404).json({ error: "Artifact not found" });
+      return res.status(404).json({
+        error: {
+          message: "Artifact not found",
+          type: "invalid_request_error",
+          param: "artifactId",
+          code: "resource_not_found",
+        },
+      });
     }
 
     return res.json({
-      ok: true,
+      id: artifact.id,
+      object: "artifact.status",
       status: artifact.status,
       analyzed_at: artifact.analyzed_at,
       has_analysis: !!artifact.analysis,
@@ -182,7 +232,13 @@ router.get("/status/:artifactId", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ [Artifact Actions] Status check error:", error);
-    return res.status(500).json({ error: "Failed to check status" });
+    return res.status(500).json({
+      error: {
+        message: "Failed to check status",
+        type: "internal_server_error",
+        code: "status_check_failed",
+      },
+    });
   }
 });
 

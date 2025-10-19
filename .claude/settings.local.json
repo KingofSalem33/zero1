@@ -14,7 +14,13 @@
       "Bash(git log:*)",
       "Bash(node -e:*)",
       "Bash(git revert:*)",
-      "WebFetch(domain:platform.openai.com)"
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(timeout 5 powershell:*)",
+      "WebSearch",
+      "WebFetch(domain:www.datacamp.com)",
+      "WebFetch(domain:medium.com)",
+      "Bash(taskkill:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

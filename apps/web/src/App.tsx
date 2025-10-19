@@ -146,10 +146,12 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
     const aiMessage: ChatMessage = {
       id: aiMessageId,
       type: "ai",
-      content: "",
+      content: "Thinking...",
       timestamp: new Date(),
     };
-    onUpdateMessages(workspace.id, [...updatedMessages, aiMessage]);
+    // Maintain a local copy that we mutate during streaming
+    let streamMessages: ChatMessage[] = [...updatedMessages, aiMessage];
+    onUpdateMessages(workspace.id, streamMessages);
 
     try {
       const contextPrompt = `
@@ -185,6 +187,8 @@ User question: ${userMessage}
       const decoder = new (window as any).TextDecoder();
       let buffer = "";
       let accumulatedContent = "";
+      let receivedDone = false;
+      let currentEvent = ""; // persist across chunks
 
       while (true) {
         const { done, value } = await reader.read();
@@ -194,8 +198,15 @@ User question: ${userMessage}
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
-        let currentEvent = "";
         for (const line of lines) {
+          if (line === "") {
+            currentEvent = "";
+            continue;
+          }
+          if (line.startsWith(":")) {
+            // heartbeat
+            continue;
+          }
           if (line.startsWith("event:")) {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith("data:")) {
@@ -204,28 +215,67 @@ User question: ${userMessage}
 
             try {
               const parsed = JSON.parse(data);
-              if (currentEvent === "content") {
-                accumulatedContent += parsed.delta;
-                // Update AI message in real-time
-                onUpdateMessages(
-                  workspace.id,
-                  updatedMessages
-                    .map((msg) =>
+              switch (currentEvent) {
+                case "content": {
+                  accumulatedContent += parsed.delta || "";
+                  // Update AI message in our local streamMessages and push
+                  streamMessages = streamMessages.map((msg) =>
+                    msg.id === aiMessageId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg,
+                  );
+                  onUpdateMessages(workspace.id, streamMessages);
+                  break;
+                }
+                case "status": {
+                  const status = parsed.message || "Working...";
+                  // Show status while waiting for content
+                  const display = accumulatedContent
+                    ? accumulatedContent
+                    : status;
+                  streamMessages = streamMessages.map((msg) =>
+                    msg.id === aiMessageId ? { ...msg, content: display } : msg,
+                  );
+                  onUpdateMessages(workspace.id, streamMessages);
+                  break;
+                }
+                case "tool_call": {
+                  const tool = parsed.tool || "tool";
+                  const status = `Using ${tool}...`;
+                  if (!accumulatedContent) {
+                    streamMessages = streamMessages.map((msg) =>
                       msg.id === aiMessageId
-                        ? { ...msg, content: accumulatedContent }
+                        ? { ...msg, content: status }
                         : msg,
-                    )
-                    .concat(
-                      aiMessage.id === aiMessageId
-                        ? []
-                        : [{ ...aiMessage, content: accumulatedContent }],
-                    ),
-                );
+                    );
+                    onUpdateMessages(workspace.id, streamMessages);
+                  }
+                  break;
+                }
+                case "done": {
+                  receivedDone = true;
+                  break;
+                }
+                case "error": {
+                  throw new Error(parsed.message || "Streaming error");
+                }
+                default: {
+                  // Ignore other events
+                }
               }
-            } catch (parseError) {
-              console.error("Failed to parse SSE data:", parseError);
+            } catch {
+              // Failed to parse SSE data - ignore
             }
           }
+        }
+
+        if (receivedDone) {
+          try {
+            await reader.cancel();
+          } catch {
+            // Ignore cancel errors
+          }
+          break;
         }
       }
     } catch {
@@ -855,8 +905,8 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
       await navigator.clipboard.writeText(text);
       setCopiedText(label);
       setTimeout(() => setCopiedText(""), 2000);
-    } catch (error) {
-      console.error("Failed to copy:", error);
+    } catch {
+      // Failed to copy - ignore
     }
   };
 
@@ -1478,7 +1528,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
     const aiMessage: ChatMessage = {
       id: aiMessageId,
       type: "ai",
-      content: "",
+      content: "Thinking...",
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, aiMessage]);
@@ -1509,6 +1559,8 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
       let buffer = "";
       let accumulatedContent = "";
       const allTools: ToolActivity[] = [];
+      let receivedDone = false;
+      let currentEvent = ""; // persist across chunks
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1518,20 +1570,31 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
-        let currentEvent = "";
         for (const line of lines) {
+          if (line === "") {
+            currentEvent = "";
+            continue;
+          }
+          if (line.startsWith(":")) {
+            // heartbeat
+            continue;
+          }
           if (line.startsWith("event:")) {
             currentEvent = line.slice(6).trim();
+            // SSE event received
           } else if (line.startsWith("data:")) {
             const data = line.slice(5).trim();
             if (!data) continue;
 
             try {
               const parsed = JSON.parse(data);
+              // SSE data parsed
 
               switch (currentEvent) {
                 case "content":
+                  // Content delta received
                   accumulatedContent += parsed.delta;
+                  // Content accumulated
                   // Update the AI message content
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -1576,20 +1639,29 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                   break;
 
                 case "done":
-                  console.log("[Chat] Stream complete");
+                  // Stream complete
+                  receivedDone = true;
                   break;
 
                 case "error":
                   throw new Error(parsed.message || "Streaming error");
               }
-            } catch (parseError) {
-              console.error("Failed to parse SSE data:", parseError);
+            } catch {
+              // Failed to parse SSE data - ignore
             }
           }
         }
+        if (receivedDone) {
+          try {
+            await reader.cancel();
+          } catch {
+            // Ignore cancel errors
+          }
+          break;
+        }
       }
-    } catch (error) {
-      console.error("[Chat] Error:", error);
+    } catch {
+      // Chat error occurred
       const errorMessage: ChatMessage = {
         id: (Date.now() + 2).toString(),
         type: "ai",
@@ -1995,11 +2067,11 @@ function App() {
         setProject(data.project);
         return data.project;
       } else {
-        console.error("Failed to load project:", data);
+        // Failed to load project
         return null;
       }
-    } catch (error) {
-      console.error("Error loading project:", error);
+    } catch {
+      // Error loading project
       return null;
     }
   }, []);
@@ -2025,8 +2097,8 @@ function App() {
               "❌ Failed to load shared project. It may not exist or be accessible.",
             );
           }
-        } catch (error) {
-          console.error("Failed to load shared project:", error);
+        } catch {
+          // Failed to load shared project
           setGuidance("🔌 Network error loading shared project.");
         }
       };
@@ -2061,8 +2133,8 @@ function App() {
         const data = await response.json();
         threadId = data.thread?.id;
       }
-    } catch (error) {
-      console.error("Failed to create thread for workspace:", error);
+    } catch {
+      // Failed to create thread for workspace
     }
 
     const newWorkspace: PopupWorkspace = {
@@ -2119,8 +2191,8 @@ function App() {
             data.project.current_substep || prev!.current_substep,
         }));
       }
-    } catch (error) {
-      console.error("[App] Failed to refresh project:", error);
+    } catch {
+      // Failed to refresh project
     }
   };
 
@@ -2209,8 +2281,8 @@ function App() {
               setCreatingProject(false);
             }
             // Continue polling if roadmap isn't ready yet
-          } catch (pollError) {
-            console.error("[App] Poll error:", pollError);
+          } catch {
+            // Poll error occurred
             // Continue polling on individual poll errors
           }
         }, 2000); // Poll every 2 seconds
@@ -2218,8 +2290,8 @@ function App() {
         setGuidance(`❌ Error: ${data?.error || "Failed to create project"}`);
         setCreatingProject(false);
       }
-    } catch (error) {
-      console.error("[App] Create project error:", error);
+    } catch {
+      // Create project error
       setGuidance(
         "🔌 Network error. Please check your connection and try again.",
       );
@@ -2277,6 +2349,8 @@ Return only the refined vision statement using the format "I want to build _____
       let buffer = "";
       let accumulatedContent = "";
       const allTools: ToolActivity[] = [];
+      let receivedDone = false;
+      let currentEvent = ""; // persist across chunks
 
       while (true) {
         const { done, value } = await reader.read();
@@ -2286,8 +2360,15 @@ Return only the refined vision statement using the format "I want to build _____
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
-        let currentEvent = "";
         for (const line of lines) {
+          if (line === "") {
+            currentEvent = "";
+            continue;
+          }
+          if (line.startsWith(":")) {
+            // heartbeat
+            continue;
+          }
           if (line.startsWith("event:")) {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith("data:")) {
@@ -2334,20 +2415,29 @@ Return only the refined vision statement using the format "I want to build _____
                   break;
 
                 case "done":
-                  console.log("[Inspire Me] Stream complete");
+                  // Inspire stream complete
+                  receivedDone = true;
                   break;
 
                 case "error":
                   throw new Error(parsed.message || "Streaming error");
               }
-            } catch (parseError) {
-              console.error("Failed to parse SSE data:", parseError);
+            } catch {
+              // Failed to parse SSE data - ignore
             }
           }
         }
+        if (receivedDone) {
+          try {
+            await reader.cancel();
+          } catch {
+            // Ignore cancel errors
+          }
+          break;
+        }
       }
-    } catch (error) {
-      console.error("[Inspire Me] Error:", error);
+    } catch {
+      // Inspire error occurred
       setGuidance("🔌 Network error. Please try again.");
       setTimeout(() => setGuidance(""), 3000);
     } finally {
@@ -2363,7 +2453,7 @@ Return only the refined vision statement using the format "I want to build _____
       // substepId format: "P1-1", "P2-3", etc.
       const match = substepId.match(/^P(\d+)-(\d+)$/);
       if (!match) {
-        console.error("Invalid substep ID format:", substepId);
+        // Invalid substep ID format
         setGuidance("❌ Error: Invalid substep format");
         return;
       }
@@ -2388,7 +2478,7 @@ Return only the refined vision statement using the format "I want to build _____
       const data = await response.json();
 
       if (response.ok && data.ok) {
-        console.log("[Manual Completion] Response:", data);
+        // Manual completion response received
 
         // Reload project from server to get updated state
         await loadProject(project.id);
@@ -2413,8 +2503,8 @@ Return only the refined vision statement using the format "I want to build _____
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to complete substep"}`);
       }
-    } catch (error) {
-      console.error("[Manual Completion] Error:", error);
+    } catch {
+      // Manual completion error
       setGuidance("🔌 Network error. Please try again.");
     }
   };

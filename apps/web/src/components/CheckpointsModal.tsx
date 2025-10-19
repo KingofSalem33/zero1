@@ -58,14 +58,21 @@ export const CheckpointsModal: React.FC<CheckpointsModalProps> = ({
     setLoading(true);
     try {
       const response = await fetch(
-        `${API_URL}/api/checkpoints/project/${projectId}`,
+        `${API_URL}/api/projects/${projectId}/checkpoints`,
       );
       const data = await response.json();
-      if (data.ok) {
+
+      // Handle both OpenAI format (data) and legacy format (checkpoints)
+      if (data.data) {
+        setCheckpoints(data.data);
+      } else if (data.checkpoints) {
+        // Backwards compatibility
         setCheckpoints(data.checkpoints);
+      } else if (data.error) {
+        // Failed to load checkpoints
       }
-    } catch (error) {
-      console.error("Failed to load checkpoints:", error);
+    } catch {
+      // Failed to load checkpoints
     } finally {
       setLoading(false);
     }
@@ -90,15 +97,17 @@ export const CheckpointsModal: React.FC<CheckpointsModalProps> = ({
       });
 
       const data = await response.json();
-      if (data.ok) {
+
+      if (response.ok) {
         setManualName("");
         setManualReason("");
         await loadCheckpoints();
       } else {
-        window.alert("Failed to create checkpoint");
+        const errorMsg = data.error?.message || "Failed to create checkpoint";
+        window.alert(errorMsg);
       }
-    } catch (error) {
-      console.error("Failed to create checkpoint:", error);
+    } catch {
+      // Failed to create checkpoint
       window.alert("Failed to create checkpoint");
     } finally {
       setCreatingManual(false);
@@ -124,17 +133,19 @@ export const CheckpointsModal: React.FC<CheckpointsModalProps> = ({
       );
 
       const data = await response.json();
-      if (data.ok) {
+
+      if (response.ok) {
         window.alert(
           `Successfully restored to: ${data.restored_to.checkpoint_name}`,
         );
         onRestoreSuccess();
         onClose();
       } else {
-        window.alert("Failed to restore checkpoint");
+        const errorMsg = data.error?.message || "Failed to restore checkpoint";
+        window.alert(errorMsg);
       }
-    } catch (error) {
-      console.error("Failed to restore checkpoint:", error);
+    } catch {
+      // Failed to restore checkpoint
       window.alert("Failed to restore checkpoint");
     } finally {
       setRestoring(null);
@@ -155,13 +166,16 @@ export const CheckpointsModal: React.FC<CheckpointsModalProps> = ({
       );
 
       const data = await response.json();
-      if (data.ok) {
+
+      if (response.ok) {
         await loadCheckpoints();
       } else {
-        window.alert(data.error || "Failed to delete checkpoint");
+        const errorMsg =
+          data.error?.message || data.error || "Failed to delete checkpoint";
+        window.alert(errorMsg);
       }
-    } catch (error) {
-      console.error("Failed to delete checkpoint:", error);
+    } catch {
+      // Failed to delete checkpoint
       window.alert("Failed to delete checkpoint");
     }
   };
@@ -198,13 +212,15 @@ export const CheckpointsModal: React.FC<CheckpointsModalProps> = ({
       );
 
       const data = await response.json();
-      if (data.ok) {
+
+      if (response.ok) {
         setComparison(data.comparison);
       } else {
-        window.alert("Failed to compare checkpoints");
+        const errorMsg = data.error?.message || "Failed to compare checkpoints";
+        window.alert(errorMsg);
       }
-    } catch (error) {
-      console.error("Failed to compare checkpoints:", error);
+    } catch {
+      // Failed to compare checkpoints
       window.alert("Failed to compare checkpoints");
     } finally {
       setComparing(false);

@@ -16,13 +16,15 @@ export const toolSpecs = [
     type: "function" as const,
     name: "web_search",
     description:
-      "Search the web for current information using DuckDuckGo HTML scraping (no API key required)",
+      "Search the PUBLIC INTERNET for current, external information. REQUIRED: You must provide a complete, specific search query string in 'q'. For regulations/laws, include jurisdiction + topic + 'site:.gov'. Examples: web_search({q: 'Minnesota cottage food law site:mn.gov'}), web_search({q: 'Dakota County MN food service license requirements site:co.dakota.mn.us'}), web_search({q: 'California commercial kitchen health department regulations site:ca.gov'}). DO NOT call without a valid 'q' string.",
     parameters: {
       type: "object",
       properties: {
         q: {
           type: "string",
-          description: "Search query",
+          description:
+            "REQUIRED: Complete search query string. Must include specific keywords (e.g., 'Minnesota cottage food law', 'health department permit requirements'). For official info, add 'site:.gov' or specific domain.",
+          minLength: 3,
         },
         count: {
           type: "number",
@@ -37,14 +39,16 @@ export const toolSpecs = [
   {
     type: "function" as const,
     name: "http_fetch",
-    description: "Fetch and read content from a specific URL",
+    description:
+      "Fetch and read content from a specific PUBLIC URL (websites, APIs, government sites, documentation). Use when you have an exact URL to retrieve. Example: http_fetch({url: 'https://www.fda.gov/food/cottage-food'})",
     parameters: {
       type: "object",
       properties: {
         url: {
           type: "string",
           format: "uri",
-          description: "URL to fetch content from",
+          description: "Full URL to fetch - must be a valid http/https URL",
+          minLength: 1,
         },
       },
       required: ["url"],
@@ -71,13 +75,15 @@ export const toolSpecs = [
     type: "function" as const,
     name: "file_search",
     description:
-      "Search through uploaded files to find relevant content based on a query",
+      "Search ONLY through USER-UPLOADED files (docs, PDFs, code that user provided). DO NOT use for: laws, regulations, permits, government requirements, news, or anything on the internet. Only use when user mentions 'uploaded files', 'my documents', 'this file', 'our notes', etc. Example: file_search({query: 'API endpoints in uploaded code'})",
     parameters: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Search query to find relevant files and content",
+          description:
+            "Search query to find relevant content in uploaded files - must be a non-empty string",
+          minLength: 1,
         },
         topK: {
           type: "number",

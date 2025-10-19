@@ -71,10 +71,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   // Apply analysis to update roadmap
   const applyAnalysis = async (artifactId: string): Promise<boolean> => {
     try {
-      console.log(
-        "[Apply Analysis] Applying analysis for artifact:",
-        artifactId,
-      );
+      // Applying analysis for artifact
       const response = await fetch(
         `${API_URL}/api/artifact-actions/apply-analysis/${artifactId}`,
         {
@@ -82,17 +79,15 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         },
       );
 
-      const data = await response.json();
-
       if (response.ok) {
-        console.log("[Apply Analysis] Successfully applied:", data);
+        // Analysis successfully applied
         return true;
       } else {
-        console.error("[Apply Analysis] Failed:", data);
+        // Apply analysis failed
         return false;
       }
-    } catch (error) {
-      console.error("[Apply Analysis] Error:", error);
+    } catch {
+      // Apply analysis error
       return false;
     }
   };
@@ -119,9 +114,10 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         const response = await fetch(`${API_URL}/api/artifacts/${artifactId}`);
         const data = await response.json();
 
-        if (response.ok && data.artifact) {
-          const artifact = data.artifact;
+        // Handle both OpenAI format and legacy format
+        const artifact = data.id ? data : data.artifact;
 
+        if (response.ok && artifact) {
           // Update progress based on attempts (simulate progress)
           const progress = Math.min(10 + (attempts / maxAttempts) * 85, 95);
           setProgressPercentage(Math.round(progress));
@@ -147,8 +143,8 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
             throw new Error("Analysis failed");
           }
         }
-      } catch (error) {
-        console.error("[Poll] Error:", error);
+      } catch {
+        // Poll error
       }
 
       // Wait 1 second before next poll
@@ -164,7 +160,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
     const file = e.target.files?.[0];
     if (!file || !projectId) return;
 
-    console.log("[Upload] Starting upload with project_id:", projectId);
+    // Starting upload
 
     // Reset state
     setIsUploading(true);
@@ -185,12 +181,15 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
       const data = await response.json();
 
-      if (response.ok && data.artifact) {
-        console.log("[Upload] Success:", data);
-        setLastArtifactId(data.artifact.id);
+      // Handle both OpenAI format (id, object) and legacy format (artifact)
+      const artifactId = data.id || data.artifact?.id;
+
+      if (response.ok && artifactId) {
+        // Upload successful
+        setLastArtifactId(artifactId);
 
         // Poll for analysis completion
-        const analyzedData = await pollArtifactStatus(data.artifact.id);
+        const analyzedData = await pollArtifactStatus(artifactId);
 
         if (analyzedData) {
           setUploadProgress("✅ Analysis Complete!");
@@ -199,7 +198,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           // Apply analysis to update roadmap
           if (analyzedData.analysis) {
             setUploadProgress("🔄 Applying changes...");
-            await applyAnalysis(data.artifact.id);
+            await applyAnalysis(artifactId);
           }
 
           // Show diff modal if we have analysis results
@@ -226,13 +225,14 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           setTimeout(() => setUploadProgress(""), 5000);
         }
       } else {
-        console.error("[Upload] Failed:", data);
-        setUploadProgress(`❌ Upload failed: ${data.error || "Unknown error"}`);
+        // Upload failed
+        const errorMsg = data.error?.message || data.error || "Unknown error";
+        setUploadProgress(`❌ Upload failed: ${errorMsg}`);
         setShowRetry(true);
         setTimeout(() => setUploadProgress(""), 5000);
       }
-    } catch (error) {
-      console.error("Upload error:", error);
+    } catch {
+      // Upload error
       setUploadProgress("❌ Network error - check your connection");
       setShowRetry(true);
       setTimeout(() => setUploadProgress(""), 5000);
@@ -287,8 +287,8 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         setShowRetry(true);
         setTimeout(() => setUploadProgress(""), 3000);
       }
-    } catch (error) {
-      console.error("Retry error:", error);
+    } catch {
+      // Retry error
       setUploadProgress("❌ Retry failed");
       setShowRetry(true);
       setTimeout(() => setUploadProgress(""), 3000);

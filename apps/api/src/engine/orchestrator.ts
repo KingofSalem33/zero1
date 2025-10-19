@@ -9,7 +9,6 @@ import {
 } from "../ai/schemas";
 import type { Response } from "express";
 import { threadService } from "../services/threadService";
-import type { ChatCompletionMessageParam } from "openai/resources";
 import { supabase, withRetry, DatabaseError } from "../db";
 import {
   Project,
@@ -225,27 +224,40 @@ BE SPECIFIC:
 Return 7 phases (P1-P7) with customized content for this project.`;
 
     try {
-      // Use Responses API with structured output
-      const result = await client.responses.create({
-        model: ENV.OPENAI_MODEL_NAME,
-        input: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Generate customized P1-P7 phases for: "${request.goal}"`,
+      console.log("[DEBUG PHASES] About to call Responses API...");
+
+      let result: any;
+      try {
+        // Use Responses API with structured output
+        result = await client.responses.create({
+          model: ENV.OPENAI_MODEL_NAME,
+          input: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: `Generate customized P1-P7 phases for: "${request.goal}"`,
+            },
+          ],
+          temperature: 0.4,
+          max_output_tokens: 2000,
+          text: {
+            format: {
+              type: "json_schema" as const,
+              name: phaseGenerationJsonSchema.name,
+              schema: phaseGenerationJsonSchema.schema,
+            },
+            verbosity: "medium",
           },
-        ],
-        temperature: 0.4, // Some creativity, but stay focused
-        max_output_tokens: 2000,
-        text: {
-          format: {
-            type: "json_schema" as const,
-            name: phaseGenerationJsonSchema.name,
-            schema: phaseGenerationJsonSchema.schema,
-          },
-          verbosity: "medium",
-        },
-      });
+        });
+        console.log("[DEBUG PHASES] Responses API call succeeded");
+      } catch (apiError: any) {
+        console.error(
+          "[DEBUG PHASES] Responses API call failed:",
+          apiError.message,
+        );
+        console.error("[DEBUG PHASES] Full error:", apiError);
+        throw apiError;
+      }
 
       console.log(
         "[DEBUG PHASES] Full API response keys:",
@@ -273,7 +285,7 @@ Return 7 phases (P1-P7) with customized content for this project.`;
 
       const responseText =
         assistantMessage.content
-          ?.filter((c: any) => c.type === "text")
+          ?.filter((c: any) => c.type === "text" || c.type === "output_text")
           .map((c: any) => c.text)
           .join("") || "";
 
@@ -562,7 +574,7 @@ RESPONSE FORMAT:
 
       const responseText =
         assistantMessage.content
-          ?.filter((c: any) => c.type === "text")
+          ?.filter((c: any) => c.type === "text" || c.type === "output_text")
           .map((c: any) => c.text)
           .join("") || "";
 
@@ -751,7 +763,7 @@ Return ONLY the master prompt text (no meta-commentary, no JSON, just the prompt
 
       const masterPromptText =
         assistantMessage.content
-          ?.filter((c: any) => c.type === "text")
+          ?.filter((c: any) => c.type === "text" || c.type === "output_text")
           .map((c: any) => c.text)
           .join("") || "";
 
@@ -1735,6 +1747,10 @@ End by instructing the user to review the materials, complete the work, and uplo
 
     const systemMessage = `You are helping with project execution.
 
+Tool usage rules (strict):
+- When calling web_search, you MUST include a complete 'q' string with jurisdiction + topic + 'site:.gov' (e.g., 'Minnesota cottage food law site:mn.gov'). Never call web_search without 'q'.
+- When calling http_fetch, you MUST include a full 'url' starting with http(s). Never call http_fetch without 'url'.
+
 When using web_search or http_fetch tools:
 1. Synthesize information from multiple sources into a comprehensive answer
 2. Provide specific details, examples, and actionable insights
@@ -1951,6 +1967,10 @@ ${request.master_prompt}`;
 
     const systemMessage = `You are helping with project execution.
 
+Tool usage rules (strict):
+- When calling web_search, you MUST include a complete 'q' string with jurisdiction + topic + 'site:.gov' (e.g., 'Minnesota cottage food law site:mn.gov'). Never call web_search without 'q'.
+- When calling http_fetch, you MUST include a full 'url' starting with http(s). Never call http_fetch without 'url'.
+
 When using web_search or http_fetch tools:
 1. Synthesize information from multiple sources into a comprehensive answer
 2. Provide specific details, examples, and actionable insights
@@ -1979,15 +1999,41 @@ ${request.master_prompt}`;
       "Please help me with this step. Provide detailed, actionable guidance to help me complete this specific step. Be practical and specific to my project context.";
 
     try {
-      let contextMessages: ChatCompletionMessageParam[];
+      let contextMessages: any[];
 
       if (useThreads && thread) {
         // Build context with recent history (with automatic token trimming)
-        contextMessages = await threadService.buildContextMessages(
+        const rawMessages = await threadService.buildContextMessages(
           thread.id,
           systemMessage,
           ENV.OPENAI_MODEL_NAME,
         );
+
+        // Filter out any malformed function_call messages
+        // Only allow: system, user, assistant with text content
+        // Function calls should never come from thread history
+        contextMessages = rawMessages.filter((msg: any) => {
+          // Keep system, user, assistant messages
+          if (
+            msg.role === "system" ||
+            msg.role === "user" ||
+            msg.role === "assistant"
+          ) {
+            return true;
+          }
+          // Filter out function_call and function_call_output messages
+          if (
+            msg.type === "function_call" ||
+            msg.type === "function_call_output"
+          ) {
+            console.warn(
+              "[ORCHESTRATOR] Filtered out malformed function message from thread history:",
+              msg,
+            );
+            return false;
+          }
+          return true;
+        });
 
         // Add current user message if not already in history
         if (request.user_message) {
