@@ -27,7 +27,10 @@
       "Bash(npm install tsyringe reflect-metadata)",
       "Bash(npm install uuid)",
       "Bash(npm install --save-dev @types/uuid)",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm install --save-dev jest @types/jest ts-jest @jest/globals)",
+      "Bash(npm test)",
+      "Bash(npm run test:coverage)"
     ],
     "deny": [],
     "ask": []

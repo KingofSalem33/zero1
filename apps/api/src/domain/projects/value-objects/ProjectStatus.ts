@@ -55,6 +55,14 @@ export class ProjectStatus {
     return this.value === ProjectStatusEnum.COMPLETED;
   }
 
+  isPaused(): boolean {
+    return this.value === ProjectStatusEnum.PAUSED;
+  }
+
+  isArchived(): boolean {
+    return this.value === ProjectStatusEnum.ARCHIVED;
+  }
+
   equals(other: ProjectStatus): boolean {
     return this.value === other.value;
   }

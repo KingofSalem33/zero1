@@ -50,8 +50,24 @@ export class Project {
     this.touch();
   }
 
-  getCurrentPhase(): Phase | undefined {
-    return this._phases.find((p) => p.phaseNumber === this._currentPhaseNumber);
+  getCurrentPhase(): Phase | null {
+    return (
+      this._phases.find((p) => p.phaseNumber === this._currentPhaseNumber) ||
+      null
+    );
+  }
+
+  getCurrentSubstep() {
+    const currentPhase = this.getCurrentPhase();
+    if (!currentPhase || currentPhase.substeps.length === 0) {
+      return null;
+    }
+    return currentPhase.substeps[this._currentSubstepNumber - 1] || null;
+  }
+
+  changeGoal(newGoal: ProjectGoal): void {
+    this._goal = newGoal;
+    this.touch();
   }
 
   moveToNextSubstep(): void {
@@ -85,9 +101,12 @@ export class Project {
     this._currentPhaseNumber++;
     this._currentSubstepNumber = 1;
 
-    // Check if project is complete
-    if (this._currentPhaseNumber > this._phases.length) {
-      this.complete();
+    // Check if project is complete (all phases done)
+    if (
+      this._currentPhaseNumber >= this._phases.length &&
+      this.areAllPhasesCompleted()
+    ) {
+      this._status = ProjectStatus.completed();
     }
 
     this.touch();
