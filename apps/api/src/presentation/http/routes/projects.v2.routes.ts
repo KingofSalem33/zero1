@@ -14,9 +14,13 @@ export function createProjectsRouter(): Router {
   // POST /api/projects - Create new project
   router.post("/", (req, res, next) => controller.create(req, res, next));
 
+  // GET /api/projects/:id - Get project by ID
+  router.get("/:id", (req, res, next) => controller.getById(req, res, next));
+
+  // PUT /api/projects/:id - Update project
+  router.put("/:id", (req, res, next) => controller.update(req, res, next));
+
   // TODO: Add other routes
-  // router.get('/:id', (req, res, next) => controller.getById(req, res, next));
-  // router.put('/:id', (req, res, next) => controller.update(req, res, next));
   // router.delete('/:id', (req, res, next) => controller.delete(req, res, next));
 
   return router;

@@ -38,6 +38,8 @@ export const TYPES = {
 
   // Use Cases
   CreateProjectUseCase: Symbol.for("CreateProjectUseCase"),
+  GetProjectByIdUseCase: Symbol.for("GetProjectByIdUseCase"),
+  UpdateProjectUseCase: Symbol.for("UpdateProjectUseCase"),
   CompleteSubstepUseCase: Symbol.for("CompleteSubstepUseCase"),
   GeneratePhaseUseCase: Symbol.for("GeneratePhaseUseCase"),
   CreateThreadUseCase: Symbol.for("CreateThreadUseCase"),
