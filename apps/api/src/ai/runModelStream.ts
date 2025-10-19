@@ -257,7 +257,25 @@ export async function runModelStream(
   sendHeartbeat();
 
   // Set up heartbeat interval (every 15 seconds)
-  const heartbeatInterval = setInterval(sendHeartbeat, 15000);
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = setInterval(
+    sendHeartbeat,
+    15000,
+  );
+
+  // ✅ Critical: Clear interval if client disconnects to prevent memory leak
+  const cleanup = () => {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+      logger.info("Heartbeat interval cleared");
+    }
+  };
+
+  // Handle client disconnect
+  res.on("close", () => {
+    cleanup();
+    logger.info("Client disconnected, cleaned up resources");
+  });
 
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
@@ -399,7 +417,7 @@ export async function runModelStream(
         console.log(
           `[runModelStream] No tool calls in iteration ${iterations}. Ending stream with ${accumulatedResponse.length} total chars.`,
         );
-        clearInterval(heartbeatInterval);
+        cleanup(); // ✅ Use cleanup function
         sendEvent("done", { citations: [...new Set(allCitations)] });
         res.end();
         return accumulatedResponse; // Return accumulated response across all iterations
@@ -427,7 +445,7 @@ export async function runModelStream(
       // If all tool calls were malformed, we're done
       if (validToolCalls.length === 0) {
         logger.warn("All tool calls were malformed, ending stream");
-        clearInterval(heartbeatInterval);
+        cleanup(); // ✅ Use cleanup function
         sendEvent("done", { citations: [...new Set(allCitations)] });
         res.end();
         return accumulatedResponse;
@@ -571,7 +589,7 @@ export async function runModelStream(
     console.log(
       `[runModelStream] Max iterations reached. Returning ${accumulatedResponse.length} total chars.`,
     );
-    clearInterval(heartbeatInterval);
+    cleanup(); // ✅ Use cleanup function
     sendEvent("done", { citations: [...new Set(allCitations)] });
     res.end();
     return accumulatedResponse;
@@ -580,12 +598,15 @@ export async function runModelStream(
       { error: error instanceof Error ? error.message : error },
       "Streaming failed",
     );
-    clearInterval(heartbeatInterval);
+    cleanup(); // ✅ Use cleanup function
     sendEvent("error", {
       message:
         error instanceof Error ? error.message : "Unknown streaming error",
     });
     res.end();
     return accumulatedResponse;
+  } finally {
+    // ✅ Critical: Always cleanup in finally block as last resort
+    cleanup();
   }
 }

@@ -18,7 +18,15 @@ import {
   chatResponseJsonSchema,
 } from "./ai/schemas";
 import { handleFileUpload } from "./files";
-import { getFacts, addFact, pushToThread, clearFacts } from "./memory";
+import {
+  getFacts,
+  addFact,
+  pushToThread,
+  clearFacts,
+  flushMemoryStore,
+  startMemoryCleanup,
+  stopMemoryCleanup,
+} from "./memory";
 import { optionalAuth } from "./middleware/auth";
 import { checkConnectionHealth } from "./db";
 import {
@@ -498,6 +506,78 @@ app.use(
   },
 );
 
-app.listen(ENV.PORT, () => {
+const server = app.listen(ENV.PORT, () => {
   console.log(`🚀 API server running at http://localhost:${ENV.PORT}`);
+
+  // Start memory cleanup interval
+  startMemoryCleanup();
+  console.log("✅ Memory cleanup started");
+
+  // Start memory monitoring (every 5 minutes)
+  setInterval(
+    () => {
+      const usage = process.memoryUsage();
+      const memoryStats = {
+        rss: `${(usage.rss / 1024 / 1024).toFixed(2)} MB`,
+        heapUsed: `${(usage.heapUsed / 1024 / 1024).toFixed(2)} MB`,
+        heapTotal: `${(usage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+        external: `${(usage.external / 1024 / 1024).toFixed(2)} MB`,
+      };
+
+      console.log("[Memory Monitor]", memoryStats);
+
+      // Alert if heap usage exceeds 512MB
+      if (usage.heapUsed > 512 * 1024 * 1024) {
+        console.warn(
+          "⚠️ HIGH MEMORY USAGE DETECTED:",
+          memoryStats.heapUsed,
+          "- consider scaling or investigating memory leaks",
+        );
+      }
+    },
+    5 * 60 * 1000,
+  ); // Every 5 minutes
+
+  console.log("✅ Memory monitoring started");
+});
+
+// ✅ Graceful shutdown handlers to prevent data loss
+async function gracefulShutdown(signal: string) {
+  console.log(`\n${signal} received, starting graceful shutdown...`);
+
+  try {
+    // Stop accepting new connections
+    server.close(() => {
+      console.log("✅ HTTP server closed");
+    });
+
+    // Stop memory cleanup interval
+    stopMemoryCleanup();
+
+    // Flush pending memory changes to disk
+    console.log("Flushing memory store...");
+    await flushMemoryStore();
+    console.log("✅ Memory store flushed");
+
+    console.log("✅ Graceful shutdown complete");
+    process.exit(0);
+  } catch (error) {
+    console.error("❌ Error during graceful shutdown:", error);
+    process.exit(1);
+  }
+}
+
+// Handle termination signals
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+// Handle uncaught errors
+process.on("uncaughtException", (error) => {
+  console.error("❌ Uncaught Exception:", error);
+  gracefulShutdown("UNCAUGHT_EXCEPTION");
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+  gracefulShutdown("UNHANDLED_REJECTION");
 });

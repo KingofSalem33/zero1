@@ -9,6 +9,7 @@ export interface ThreadMessage {
 export interface UserMemory {
   facts: string[];
   thread: ThreadMessage[];
+  lastAccessTime?: number; // Track last access for cleanup
 }
 
 export interface MemoryStore {
@@ -16,6 +17,11 @@ export interface MemoryStore {
 }
 
 const MEMORY_FILE = path.join(process.cwd(), "data", "memory.json");
+
+// Memory limits to prevent unbounded growth
+const MAX_FACTS_PER_USER = 100;
+const MAX_USERS_IN_MEMORY = 1000;
+const USER_INACTIVITY_TIMEOUT = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
 // In-memory cache
 let memoryStore: MemoryStore = {};
@@ -26,6 +32,9 @@ let loadPromise: Promise<void> | null = null; // ✅ Fix race condition
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 5000; // Save after 5 seconds of inactivity
 let hasPendingChanges = false;
+
+// Cleanup interval to prevent memory leaks
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 // Ensure data directory exists
 async function ensureDataDir(): Promise<void> {
@@ -112,9 +121,90 @@ function getUserMemory(userId: string): UserMemory {
     memoryStore[userId] = {
       facts: [],
       thread: [],
+      lastAccessTime: Date.now(),
     };
+  } else {
+    // Update last access time
+    memoryStore[userId].lastAccessTime = Date.now();
   }
   return memoryStore[userId];
+}
+
+/**
+ * Clean up inactive users to prevent unbounded memory growth
+ */
+async function cleanupInactiveUsers(): Promise<void> {
+  const now = Date.now();
+  const userIds = Object.keys(memoryStore);
+
+  // If under limit, only remove truly inactive users (7+ days)
+  if (userIds.length <= MAX_USERS_IN_MEMORY) {
+    for (const userId of userIds) {
+      const lastAccess = memoryStore[userId].lastAccessTime || 0;
+      if (now - lastAccess > USER_INACTIVITY_TIMEOUT) {
+        console.log(`Removing inactive user from memory: ${userId}`);
+        delete memoryStore[userId];
+        hasPendingChanges = true;
+      }
+    }
+    return;
+  }
+
+  // If over limit, remove least recently used users
+  console.log(
+    `Memory limit exceeded (${userIds.length}/${MAX_USERS_IN_MEMORY}), cleaning up...`,
+  );
+
+  const sortedUsers = userIds
+    .map((id) => ({
+      id,
+      lastAccess: memoryStore[id].lastAccessTime || 0,
+    }))
+    .sort((a, b) => a.lastAccess - b.lastAccess);
+
+  const toRemove = sortedUsers.slice(0, userIds.length - MAX_USERS_IN_MEMORY);
+
+  for (const user of toRemove) {
+    console.log(`Evicting user from memory: ${user.id}`);
+    delete memoryStore[user.id];
+  }
+
+  hasPendingChanges = true;
+  await saveMemoryStore(); // Immediate save after cleanup
+}
+
+/**
+ * Start periodic cleanup of inactive users
+ */
+export function startMemoryCleanup(): void {
+  if (cleanupInterval) {
+    return; // Already started
+  }
+
+  // Run cleanup every hour
+  cleanupInterval = setInterval(
+    async () => {
+      try {
+        await cleanupInactiveUsers();
+      } catch (error) {
+        console.error("Error during memory cleanup:", error);
+      }
+    },
+    60 * 60 * 1000,
+  ); // 1 hour
+
+  console.log("Memory cleanup interval started");
+}
+
+/**
+ * Stop periodic cleanup (for graceful shutdown)
+ */
+export function stopMemoryCleanup(): void {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+    console.log("Memory cleanup interval stopped");
+  }
 }
 
 // Get user facts
@@ -137,9 +227,27 @@ export async function addFact(userId: string, fact: string): Promise<void> {
   );
 
   if (!isDuplicate && fact.trim()) {
+    // Enforce maximum facts per user to prevent unbounded growth
+    if (userMemory.facts.length >= MAX_FACTS_PER_USER) {
+      userMemory.facts.shift(); // Remove oldest fact
+      console.log(
+        `Removed oldest fact for user ${userId} (limit: ${MAX_FACTS_PER_USER})`,
+      );
+    }
+
     userMemory.facts.push(fact.trim());
     await saveMemoryStoreDebounced(); // ✅ Use debounced save
     console.log(`Added fact for user ${userId}: ${fact}`);
+  }
+
+  // Trigger cleanup check if approaching limit
+  const userCount = Object.keys(memoryStore).length;
+  if (userCount > MAX_USERS_IN_MEMORY * 0.9) {
+    // 90% threshold
+    console.log(
+      `Approaching user limit (${userCount}/${MAX_USERS_IN_MEMORY}), triggering cleanup...`,
+    );
+    await cleanupInactiveUsers();
   }
 }
 
