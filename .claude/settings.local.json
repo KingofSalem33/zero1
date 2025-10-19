@@ -30,7 +30,10 @@
       "Bash(npx tsc --noEmit)",
       "Bash(npm install --save-dev jest @types/jest ts-jest @jest/globals)",
       "Bash(npm test)",
-      "Bash(npm run test:coverage)"
+      "Bash(npm run test:coverage)",
+      "Bash(npm test -- CompleteSubstepUseCase.test.ts)",
+      "Bash(npm install --save-dev supertest @types/supertest)",
+      "Bash(npm test -- projects.integration.test.ts)"
     ],
     "deny": [],
     "ask": []
