@@ -20,7 +20,14 @@
       "WebFetch(domain:www.datacamp.com)",
       "WebFetch(domain:medium.com)",
       "Bash(taskkill:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(tree \"C:\\Users\\coryh\\zero1\\apps\\api\\src\" -I \"node_modules|dist\" -L 3)",
+      "Bash(ls -la \"C:\\Users\\coryh\\zero1\\apps\\api\\src\\middleware\"\" && ls -la \"C:Userscoryhzero1appsapisrclibai\"\")",
+      "Bash(tree apps/api/src -L 3 -I 'node_modules|dist')",
+      "Bash(npm install tsyringe reflect-metadata)",
+      "Bash(npm install uuid)",
+      "Bash(npm install --save-dev @types/uuid)",
+      "Bash(npx tsc --noEmit)"
     ],
     "deny": [],
     "ask": []
