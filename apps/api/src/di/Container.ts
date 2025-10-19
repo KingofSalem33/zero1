@@ -19,6 +19,7 @@ import { SupabaseProjectRepository } from "../infrastructure/persistence/supabas
 import { CreateProjectUseCase } from "../application/projects/use-cases/CreateProjectUseCase";
 import { GetProjectByIdUseCase } from "../application/projects/use-cases/GetProjectByIdUseCase";
 import { UpdateProjectUseCase } from "../application/projects/use-cases/UpdateProjectUseCase";
+import { CompleteSubstepUseCase } from "../application/projects/use-cases/CompleteSubstepUseCase";
 
 /**
  * Dependency Injection Container Configuration
@@ -57,6 +58,9 @@ export class DIContainer {
     });
     container.register(TYPES.UpdateProjectUseCase, {
       useClass: UpdateProjectUseCase,
+    });
+    container.register(TYPES.CompleteSubstepUseCase, {
+      useClass: CompleteSubstepUseCase,
     });
   }
 

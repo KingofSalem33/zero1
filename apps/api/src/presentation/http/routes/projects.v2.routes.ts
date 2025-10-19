@@ -20,6 +20,11 @@ export function createProjectsRouter(): Router {
   // PUT /api/projects/:id - Update project
   router.put("/:id", (req, res, next) => controller.update(req, res, next));
 
+  // POST /api/projects/:id/complete-substep - Complete a substep
+  router.post("/:id/complete-substep", (req, res, next) =>
+    controller.completeSubstep(req, res, next),
+  );
+
   // TODO: Add other routes
   // router.delete('/:id', (req, res, next) => controller.delete(req, res, next));
 
