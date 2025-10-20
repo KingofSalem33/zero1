@@ -184,6 +184,7 @@ User question: ${userMessage}
         throw new Error("No response body");
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decoder = new (window as any).TextDecoder();
       let buffer = "";
       let accumulatedContent = "";
@@ -884,6 +885,13 @@ interface ExecutionEngineProps {
   onSubstepComplete: (substepId: string) => void;
   onOpenFileManager: () => void;
   onOpenMemoryManager: () => void;
+  completionNudge: {
+    message: string;
+    confidence: string;
+    score: number;
+    substep_id: string;
+  } | null;
+  onDismissNudge: () => void;
 }
 
 const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
@@ -893,6 +901,8 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   onSubstepComplete,
   onOpenFileManager,
   onOpenMemoryManager,
+  completionNudge,
+  onDismissNudge,
 }) => {
   const [copiedText, setCopiedText] = useState("");
   const [isFlipped, setIsFlipped] = useState(false);
@@ -1225,6 +1235,64 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                   </div>
                 )}
 
+                {/* Completion Nudge */}
+                {completionNudge &&
+                  currentSubstep &&
+                  completionNudge.substep_id === currentSubstep.substep_id && (
+                    <div className="bg-gradient-to-r from-amber-900/40 to-yellow-900/40 border border-amber-500/50 rounded-2xl p-4 backdrop-blur-sm animate-pulse">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                          <svg
+                            className="w-5 h-5 text-amber-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-amber-300 font-semibold text-sm mb-1">
+                            Ready to complete?
+                          </h4>
+                          <p className="text-gray-300 text-sm mb-3">
+                            {completionNudge.message}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                onSubstepComplete(completionNudge.substep_id);
+                                onDismissNudge();
+                              }}
+                              className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
+                            >
+                              Mark Complete
+                            </button>
+                            <button
+                              onClick={onDismissNudge}
+                              className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-medium transition-colors"
+                            >
+                              Dismiss
+                            </button>
+                            <span className="ml-auto text-xs text-gray-400">
+                              Confidence:{" "}
+                              {completionNudge.confidence === "high"
+                                ? "🟢 High"
+                                : completionNudge.confidence === "medium"
+                                  ? "🟡 Medium"
+                                  : "🔴 Low"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                 {/* Phase Substeps Overview */}
                 <div className="bg-gradient-to-br from-gray-900/50 to-black/50 border border-gray-600/30 rounded-2xl p-6 backdrop-blur-sm">
                   <h3 className="text-gray-400 font-semibold text-sm uppercase tracking-wide mb-4">
@@ -1458,6 +1526,13 @@ interface IdeationHubProps {
   inspiring: boolean;
   toolsUsed: ToolActivity[];
   setToolsUsed: (tools: ToolActivity[]) => void;
+  onCompletionNudge: (nudge: {
+    message: string;
+    confidence: string;
+    score: number;
+    substep_id: string;
+  }) => void;
+  onSubstepCompleted: (projectId: string, briefing?: string) => void;
 }
 
 const IdeationHub: React.FC<IdeationHubProps> = ({
@@ -1469,6 +1544,8 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
   inspiring,
   toolsUsed,
   setToolsUsed,
+  onCompletionNudge,
+  onSubstepCompleted,
 }) => {
   const [thinking, setThinking] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1555,6 +1632,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         throw new Error("No response body");
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decoder = new (window as any).TextDecoder();
       let buffer = "";
       let accumulatedContent = "";
@@ -1636,6 +1714,27 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                     timestamp: new Date().toISOString(),
                   });
                   setToolsUsed([...allTools]);
+                  break;
+
+                case "completion_nudge":
+                  // AI suggests marking substep complete
+                  onCompletionNudge({
+                    message: parsed.message,
+                    confidence: parsed.confidence,
+                    score: parsed.score,
+                    substep_id: parsed.substep_id,
+                  });
+                  break;
+
+                case "substep_completed":
+                  // Substep was auto-completed by the system
+                  if (project) {
+                    onSubstepCompleted(project.id, parsed.briefing);
+                  }
+                  break;
+
+                case "completion_detected":
+                  // System detected potential completion (informational only)
                   break;
 
                 case "done":
@@ -2044,6 +2143,12 @@ function App() {
   const [showMasterControl, setShowMasterControl] = useState(false);
   const [showFileManager, setShowFileManager] = useState(false);
   const [showMemoryManager, setShowMemoryManager] = useState(false);
+  const [completionNudge, setCompletionNudge] = useState<{
+    message: string;
+    confidence: string;
+    score: number;
+    substep_id: string;
+  } | null>(null);
 
   // User ID for memory system (could be from auth later)
   const [userId] = useState(() => {
@@ -2345,6 +2450,7 @@ Return only the refined vision statement using the format "I want to build _____
         throw new Error("No response body");
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decoder = new (window as any).TextDecoder();
       let buffer = "";
       let accumulatedContent = "";
@@ -2537,6 +2643,13 @@ Return only the refined vision statement using the format "I want to build _____
                 inspiring={inspiring}
                 toolsUsed={toolsUsed}
                 setToolsUsed={setToolsUsed}
+                onCompletionNudge={setCompletionNudge}
+                onSubstepCompleted={(projectId, briefing) => {
+                  loadProject(projectId);
+                  if (briefing) {
+                    setGuidance(briefing);
+                  }
+                }}
               />
             </AnimatedCard>
 
@@ -2552,6 +2665,8 @@ Return only the refined vision statement using the format "I want to build _____
                 onSubstepComplete={handleSubstepComplete}
                 onOpenFileManager={() => setShowFileManager(true)}
                 onOpenMemoryManager={() => setShowMemoryManager(true)}
+                completionNudge={completionNudge}
+                onDismissNudge={() => setCompletionNudge(null)}
               />
             </AnimatedCard>
           </div>
