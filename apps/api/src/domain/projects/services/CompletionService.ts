@@ -130,9 +130,14 @@ export class CompletionService {
     recentMessages: Message[],
     _aiResponse: string,
   ): Promise<CompletionDetectionResult> {
-    const currentPhase = project.phases?.find(
-      (p: any) => p.phase_number === project.current_phase,
-    );
+    // Handle both number (1, 2, 3) and string ("P1", "P2", "P3") phase formats
+    const currentPhase = project.phases?.find((p: any) => {
+      if (typeof project.current_phase === "number") {
+        return p.phase_number === project.current_phase;
+      }
+      return p.phase_id === project.current_phase;
+    });
+
     const currentSubstep = currentPhase?.substeps?.find(
       (s: any) => s.step_number === project.current_substep,
     );
