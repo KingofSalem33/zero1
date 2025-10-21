@@ -892,6 +892,7 @@ interface ExecutionEngineProps {
     substep_id: string;
   } | null;
   onDismissNudge: () => void;
+  onToggleSubstep: (substepId: string) => void;
 }
 
 const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
@@ -903,6 +904,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   onOpenMemoryManager,
   completionNudge,
   onDismissNudge,
+  onToggleSubstep,
 }) => {
   const [copiedText, setCopiedText] = useState("");
   const [isFlipped, setIsFlipped] = useState(false);
@@ -1360,6 +1362,36 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                               d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                             />
                           </svg>
+                        </button>
+                        <button
+                          onClick={() => onToggleSubstep(substep.substep_id)}
+                          className={cls(
+                            "w-6 h-6 rounded-md flex items-center justify-center transition-all duration-200",
+                            substep.completed
+                              ? "bg-green-600 hover:bg-green-700"
+                              : "border-2 border-gray-500 hover:border-green-500 bg-transparent",
+                          )}
+                          title={
+                            substep.completed
+                              ? "Uncheck substep"
+                              : "Check substep"
+                          }
+                        >
+                          {substep.completed && (
+                            <svg
+                              className="w-4 h-4 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     ))}
@@ -2551,6 +2583,46 @@ Return only the refined vision statement using the format "I want to build _____
     }
   };
 
+  const handleToggleSubstep = (substepId: string) => {
+    if (!project) return;
+
+    const updatedProject = { ...project };
+    const phaseIndex = updatedProject.phases?.findIndex(
+      (p) => p.phase_number === project.current_phase,
+    );
+
+    if (phaseIndex !== undefined && phaseIndex >= 0 && updatedProject.phases) {
+      const phase = updatedProject.phases[phaseIndex];
+      const substepIndex = phase.substeps?.findIndex(
+        (s) => s.substep_id === substepId,
+      );
+
+      if (substepIndex !== undefined && substepIndex >= 0 && phase.substeps) {
+        // Toggle completion
+        phase.substeps[substepIndex] = {
+          ...phase.substeps[substepIndex],
+          completed: !phase.substeps[substepIndex].completed,
+        };
+
+        // Check if all substeps are now complete
+        const allComplete = phase.substeps.every((s) => s.completed);
+
+        // Get current substep
+        const currentSubstep = phase.substeps.find(
+          (s) => s.step_number === project.current_substep,
+        );
+
+        // If all complete and this is the current substep, auto-complete it
+        if (allComplete && currentSubstep?.substep_id === substepId) {
+          handleSubstepComplete(currentSubstep.substep_id);
+        } else {
+          // Just update local state
+          setProject(updatedProject);
+        }
+      }
+    }
+  };
+
   const handleSubstepComplete = async (substepId: string) => {
     if (!project) return;
 
@@ -2667,6 +2739,7 @@ Return only the refined vision statement using the format "I want to build _____
                 onOpenMemoryManager={() => setShowMemoryManager(true)}
                 completionNudge={completionNudge}
                 onDismissNudge={() => setCompletionNudge(null)}
+                onToggleSubstep={handleToggleSubstep}
               />
             </AnimatedCard>
           </div>

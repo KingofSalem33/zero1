@@ -72,12 +72,16 @@ export class CompletionDetector {
     let recommendation: CompletionConfidence["recommendation"];
     let nudgeMessage: string | undefined;
 
-    if (confidence === "high") {
-      recommendation = "ready_to_complete";
-      nudgeMessage = this.generateNudgeMessage(substep, satisfiedCriteria);
-    } else if (confidence === "medium") {
-      recommendation = "suggest_complete";
-      nudgeMessage = `You're making good progress on "${substep.label}". When you feel ready, you can mark this substep complete.`;
+    // Only show nudges at score >= 70 (0.7 confidence threshold)
+    if (score >= 70) {
+      if (confidence === "high") {
+        recommendation = "ready_to_complete";
+        nudgeMessage = `Looks ready—press Complete when you agree.`;
+      } else {
+        // Medium confidence (70-79)
+        recommendation = "suggest_complete";
+        nudgeMessage = `Looks ready—press Complete when you agree.`;
+      }
     } else {
       recommendation = "continue_working";
     }
@@ -184,25 +188,6 @@ export class CompletionDetector {
     }
 
     return { satisfied, missing };
-  }
-
-  /**
-   * Generate a friendly nudge message when confidence is high
-   */
-  private generateNudgeMessage(
-    substep: ProjectSubstep,
-    satisfiedCriteria: string[],
-  ): string {
-    const criteriaList = satisfiedCriteria
-      .slice(0, 3)
-      .map((c) => `✅ ${c}`)
-      .join("\n");
-
-    return `**Looks ready!** You've completed:
-
-${criteriaList}
-
-When you're satisfied with your work on "${substep.label}", click **Mark Complete** to move to the next substep.`;
   }
 
   /**
