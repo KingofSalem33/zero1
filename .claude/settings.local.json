@@ -34,7 +34,9 @@
       "Bash(npm test -- CompleteSubstepUseCase.test.ts)",
       "Bash(npm install --save-dev supertest @types/supertest)",
       "Bash(npm test -- projects.integration.test.ts)",
-      "Bash(npx eslint --fix src/App.tsx)"
+      "Bash(npx eslint --fix src/App.tsx)",
+      "Bash(npm run dev:api)",
+      "Bash(npm run)"
     ],
     "deny": [],
     "ask": []
