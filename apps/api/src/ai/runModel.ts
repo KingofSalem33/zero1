@@ -257,6 +257,20 @@ export async function runModel(
             .map((c: any) => c.text)
             .join("") || "";
 
+        // Log if text content is empty to help debug
+        if (!textContent) {
+          logger.warn(
+            {
+              assistantMessageType: assistantMessage.type,
+              contentType: typeof assistantMessage.content,
+              contentIsArray: Array.isArray(assistantMessage.content),
+              contentLength: assistantMessage.content?.length,
+              firstContentItem: assistantMessage.content?.[0],
+            },
+            "Empty text content extracted from assistant message",
+          );
+        }
+
         return {
           text: textContent,
           citations:

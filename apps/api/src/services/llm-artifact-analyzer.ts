@@ -347,6 +347,44 @@ function calculateFilePriority(filePath: string, size: number): number {
 /**
  * Read file contents for analysis with smart prioritization
  */
+// Detect if a file extension is typically text-based
+function isTextExtension(ext: string): boolean {
+  const textExts = new Set([
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".py",
+    ".java",
+    ".go",
+    ".rs",
+    ".json",
+    ".md",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".txt",
+    ".html",
+    ".css",
+  ]);
+  return textExts.has(ext.toLowerCase());
+}
+
+// Heuristic to detect likely-binary content from a buffer
+function looksBinary(buf: Buffer): boolean {
+  // Treat as binary if it contains many NULL bytes or very low printable ratio
+  const len = Math.min(buf.length, 4096);
+  let nonPrintable = 0;
+  for (let i = 0; i < len; i++) {
+    const c = buf[i];
+    // Allow tab/newline/carriage return and standard printable ASCII
+    const printable = c === 9 || c === 10 || c === 13 || (c >= 32 && c <= 126);
+    if (!printable) nonPrintable++;
+  }
+  // If more than 30% of first 4KB are non-printable, assume binary
+  return nonPrintable / (len || 1) > 0.3;
+}
+
 async function readFileContents(
   filePath: string,
   maxFiles: number = 40, // Increased from 20
@@ -375,29 +413,18 @@ async function readFileContents(
         if (entry.isDirectory()) {
           walkDir(fullPath, basePath);
         } else if (entry.isFile()) {
-          // Only include source files
-          const ext = path.extname(entry.name);
+          const ext = path.extname(entry.name).toLowerCase();
+          // Include likely text-based files and common document types
           if (
-            [
-              ".js",
-              ".jsx",
-              ".ts",
-              ".tsx",
-              ".py",
-              ".java",
-              ".go",
-              ".rs",
-              ".json",
-              ".md",
-              ".yaml",
-              ".yml",
-              ".toml",
-            ].includes(ext)
+            isTextExtension(ext) ||
+            ext === ".pdf" ||
+            ext === ".docx" ||
+            ext === ".doc"
           ) {
             try {
               const stat = fs.statSync(fullPath);
-              // Include files up to 200KB (will be filtered by priority later)
-              if (stat.size < 200000) {
+              // Include files up to 2MB; we'll trim extracted text later
+              if (stat.size < 2000000) {
                 const priority = calculateFilePriority(fullPath, stat.size);
                 candidates.push({
                   path: fullPath,
@@ -443,15 +470,110 @@ async function readFileContents(
   const selectedFiles: string[] = [];
   let selectedCount = 0;
 
+  // Helpers for document extraction
+  async function extractPdfText(p: string): Promise<string> {
+    try {
+      const pdf = await import("pdf-parse");
+      const buf = fs.readFileSync(p);
+      const res = await (pdf as any).default(buf);
+      return typeof res?.text === "string" ? res.text : "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function extractDocxText(p: string): Promise<string> {
+    try {
+      const mammoth = await import("mammoth");
+      const res = await (mammoth as any).extractRawText({ path: p });
+      return typeof res?.value === "string" ? res.value : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function trimToBudget(text: string, remaining: number): string {
+    if (remaining <= 0) return "";
+    const maxBytes = Math.max(0, Math.floor(remaining * 0.95));
+    let bytes = 0;
+    let end = 0;
+    while (end < text.length && bytes < maxBytes) {
+      const code = text.codePointAt(end) ?? 0;
+      const char = String.fromCodePoint(code);
+      bytes += Buffer.byteLength(char, "utf-8");
+      if (bytes > maxBytes) break;
+      end += char.length;
+    }
+    return text.slice(0, end);
+  }
+
   for (const candidate of candidates) {
     if (selectedCount >= maxFiles || totalSize >= MAX_SIZE) break;
 
     try {
-      const content = fs.readFileSync(candidate.path, "utf-8");
       const relativePath = fs.statSync(filePath).isDirectory()
         ? path.relative(filePath, candidate.path)
         : path.basename(candidate.path);
 
+      const ext = path.extname(candidate.path).toLowerCase();
+
+      // Extract text for PDFs and DOCX files when possible
+      if (ext === ".pdf" || ext === ".docx") {
+        let extracted =
+          ext === ".pdf"
+            ? await extractPdfText(candidate.path)
+            : await extractDocxText(candidate.path);
+        extracted = extracted.trim();
+
+        if (extracted) {
+          const budget = MAX_SIZE - totalSize;
+          const sliced = trimToBudget(extracted, budget);
+          selectedFiles.push(
+            `\n--- ${relativePath} (extracted text, priority: ${candidate.priority}) ---\n${sliced}`,
+          );
+          totalSize += Buffer.byteLength(sliced, "utf-8");
+          selectedCount++;
+          continue;
+        }
+
+        // Fallback note if extraction failed
+        const note = `\n--- ${relativePath} (priority: ${candidate.priority}) ---\n[Document content could not be extracted; file omitted]\n`;
+        selectedFiles.push(note);
+        totalSize += Math.min(candidate.size, 2048);
+        selectedCount++;
+        continue;
+      }
+
+      // If candidate looks binary or is a non-text type, include placeholder note
+      if (!isTextExtension(ext)) {
+        const note = `\n--- ${relativePath} (priority: ${candidate.priority}) ---\n[Binary file omitted: ${ext || "unknown"}, ${Math.round(candidate.size / 1024)}KB]\n`;
+        selectedFiles.push(note);
+        totalSize += Math.min(candidate.size, 4096); // count a small budget
+        selectedCount++;
+        continue;
+      }
+
+      // Read buffer first to detect binary content heuristically
+      const buf = fs.readFileSync(candidate.path);
+      if (looksBinary(buf)) {
+        const note = `\n--- ${relativePath} (priority: ${candidate.priority}) ---\n[Binary-like content omitted, ${Math.round(candidate.size / 1024)}KB]\n`;
+        selectedFiles.push(note);
+        totalSize += Math.min(candidate.size, 4096);
+        selectedCount++;
+        continue;
+      }
+
+      // Enforce size limit per file to avoid huge prompts
+      if (candidate.size > MAX_SIZE - totalSize) {
+        const note = `\n--- ${relativePath} (priority: ${candidate.priority}) ---\n[File too large to include fully: ${Math.round(candidate.size / 1024)}KB]\n`;
+        selectedFiles.push(note);
+        // Budget a small amount to account for the note
+        totalSize += 1024;
+        selectedCount++;
+        continue;
+      }
+
+      const content = buf.toString("utf-8");
       selectedFiles.push(
         `\n--- ${relativePath} (priority: ${candidate.priority}) ---\n${content}`,
       );
@@ -486,8 +608,17 @@ export async function analyzeArtifactWithLLM(
 ): Promise<ArtifactAnalysis> {
   console.log("🤖 [LLM Analyzer] Starting AI-powered artifact analysis...");
 
-  // Read file contents
-  const fileContents = await readFileContents(filePath);
+  // Read file contents (safe)
+  let fileContents = "";
+  try {
+    fileContents = await readFileContents(filePath);
+  } catch (e) {
+    console.warn(
+      "[LLM Analyzer] readFileContents failed; proceeding without file body:",
+      e instanceof Error ? e.message : e,
+    );
+    fileContents = "[File contents unavailable due to read error]";
+  }
 
   // Detect changes from previous iteration
   const previousAnalysis = currentProject?.previous_artifact_analyses?.length
@@ -716,6 +847,15 @@ This determines auto-completion: 100% = substep auto-completes, <100% = iteratio
     // Parse and validate the JSON response
     let jsonText = result.text.trim();
 
+    // Check if response is empty
+    if (!jsonText) {
+      console.error("❌ [LLM Analyzer] Empty response from LLM");
+      console.error("Full result object:", JSON.stringify(result, null, 2));
+      throw new Error(
+        "Empty response from LLM - this may indicate an API issue or malformed request",
+      );
+    }
+
     // Remove markdown code blocks if present
     if (jsonText.startsWith("```")) {
       jsonText = jsonText
@@ -730,6 +870,7 @@ This determines auto-completion: 100% = substep auto-completes, <100% = iteratio
     } catch (parseError) {
       console.error("❌ [LLM Analyzer] JSON parsing failed:", parseError);
       console.error("Raw response:", jsonText.substring(0, 500));
+      console.error("Full result object:", JSON.stringify(result, null, 2));
       throw new Error(
         `Invalid JSON response from LLM: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
       );
