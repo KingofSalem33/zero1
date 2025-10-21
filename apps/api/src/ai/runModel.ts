@@ -251,9 +251,10 @@ export async function runModel(
       if (toolCalls.length === 0) {
         // No tool calls, return final response
         // Get text content from assistant message
+        // Handle both "text" and "output_text" types (Responses API format)
         const textContent =
           assistantMessage.content
-            ?.filter((c: any) => c.type === "text")
+            ?.filter((c: any) => c.type === "text" || c.type === "output_text")
             .map((c: any) => c.text)
             .join("") || "";
 
@@ -480,9 +481,10 @@ export async function runModel(
       (msg: any) => msg.type === "message" && msg.role === "assistant",
     ) as any;
 
+  // Handle both "text" and "output_text" types (Responses API format)
   const textContent =
     lastAssistantMessage?.content
-      ?.filter((c: any) => c.type === "text")
+      ?.filter((c: any) => c.type === "text" || c.type === "output_text")
       .map((c: any) => c.text)
       .join("") || "Maximum iterations reached without completion";
 
