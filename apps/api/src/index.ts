@@ -17,7 +17,7 @@ import {
   chatJsonResponseSchema,
   chatResponseJsonSchema,
 } from "./ai/schemas";
-import { handleFileUpload } from "./files";
+import { handleFileUpload, listFiles, deleteFile } from "./files";
 import {
   getFacts,
   addFact,
@@ -105,7 +105,6 @@ app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);
 
 app.get("/api/files", optionalAuth, async (_req, res) => {
   try {
-    const { listFiles } = await import("./files.js");
     const files = await listFiles();
     res.json({ files });
   } catch (error) {
@@ -116,7 +115,6 @@ app.get("/api/files", optionalAuth, async (_req, res) => {
 
 app.delete("/api/files/:id", optionalAuth, async (req, res) => {
   try {
-    const { deleteFile } = await import("./files.js");
     const success = await deleteFile(req.params.id);
 
     if (!success) {
