@@ -1217,21 +1217,33 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                         onClick={() =>
                           onSubstepComplete(currentSubstep.substep_id)
                         }
-                        className="w-10 h-10 rounded-xl bg-green-600 hover:bg-green-700 flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-lg shadow-green-500/30"
+                        className={cls(
+                          "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105",
+                          currentSubstep.completed
+                            ? "bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/30"
+                            : "border-2 border-gray-500 hover:border-green-500 bg-transparent hover:bg-green-600/20",
+                        )}
+                        title={
+                          currentSubstep.completed
+                            ? "Substep completed"
+                            : "Mark substep complete"
+                        }
                       >
-                        <svg
-                          className="w-5 h-5 text-white"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
+                        {currentSubstep.completed && (
+                          <svg
+                            className="w-5 h-5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -2586,6 +2598,8 @@ Return only the refined vision statement using the format "I want to build _____
   const handleToggleSubstep = (substepId: string) => {
     if (!project) return;
 
+    console.log("handleToggleSubstep called with:", substepId);
+
     const updatedProject = { ...project };
     const phaseIndex = updatedProject.phases?.findIndex(
       (p) => p.phase_number === project.current_phase,
@@ -2604,20 +2618,38 @@ Return only the refined vision statement using the format "I want to build _____
           completed: !phase.substeps[substepIndex].completed,
         };
 
+        console.log(
+          "Toggled substep",
+          substepId,
+          "to:",
+          phase.substeps[substepIndex].completed,
+        );
+
         // Check if all substeps are now complete
         const allComplete = phase.substeps.every((s) => s.completed);
+        console.log("All substeps complete?", allComplete);
 
         // Get current substep
         const currentSubstep = phase.substeps.find(
           (s) => s.step_number === project.current_substep,
         );
+        console.log("Current substep:", currentSubstep?.substep_id);
 
-        // If all complete and this is the current substep, auto-complete it
-        if (allComplete && currentSubstep?.substep_id === substepId) {
-          handleSubstepComplete(currentSubstep.substep_id);
+        // Update local state first
+        setProject(updatedProject);
+
+        // If all complete, auto-complete the current active substep
+        if (allComplete && currentSubstep) {
+          console.log(
+            "Auto-completing current substep:",
+            currentSubstep.substep_id,
+          );
+          // Use setTimeout to ensure state update completes first
+          setTimeout(() => {
+            handleSubstepComplete(currentSubstep.substep_id);
+          }, 0);
         } else {
-          // Just update local state
-          setProject(updatedProject);
+          console.log("Not all substeps complete yet");
         }
       }
     }
@@ -2629,10 +2661,14 @@ Return only the refined vision statement using the format "I want to build _____
     try {
       // Parse substepId to get phase_id and substep_number
       // substepId format: "P1-1", "P2-3", etc.
+      console.log("handleSubstepComplete called with substepId:", substepId);
       const match = substepId.match(/^P(\d+)-(\d+)$/);
       if (!match) {
         // Invalid substep ID format
-        setGuidance("❌ Error: Invalid substep format");
+        console.error("Invalid substep ID format:", substepId);
+        setGuidance(
+          `❌ Error: Invalid substep format (received: ${substepId})`,
+        );
         return;
       }
 
