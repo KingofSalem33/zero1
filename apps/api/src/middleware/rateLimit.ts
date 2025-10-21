@@ -14,7 +14,7 @@ const RATE_LIMIT_WINDOWS = {
 
 const RATE_LIMIT_MAX_REQUESTS = {
   API_GENERAL: 100,
-  AI_ENDPOINTS: 10,
+  AI_ENDPOINTS: 50, // Increased from 10 to 50 for better dev/testing experience
   STRICT_ENDPOINTS: 20,
   FILE_UPLOADS: 30,
 } as const;
@@ -41,8 +41,8 @@ export const apiLimiter = rateLimit({
 /**
  * AI endpoint rate limiter
  * Applied to AI-heavy routes (chat, step execution)
- * Limits: 10 requests per minute per IP
- * More restrictive due to expensive AI operations
+ * Limits: 50 requests per minute per IP
+ * Allows for interactive development while preventing abuse
  */
 export const aiLimiter = rateLimit({
   windowMs: RATE_LIMIT_WINDOWS.ONE_MINUTE,

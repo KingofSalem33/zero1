@@ -176,6 +176,14 @@ User question: ${userMessage}
       );
 
       if (!response.ok) {
+        if (response.status === 429) {
+          // Rate limit exceeded
+          const errorData = await response.json().catch(() => ({}));
+          const retryAfter = errorData.retryAfter || "1 minute";
+          throw new Error(
+            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+          );
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -1668,6 +1676,14 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
       );
 
       if (!response.ok) {
+        if (response.status === 429) {
+          // Rate limit exceeded
+          const errorData = await response.json().catch(() => ({}));
+          const retryAfter = errorData.retryAfter || "1 minute";
+          throw new Error(
+            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+          );
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
