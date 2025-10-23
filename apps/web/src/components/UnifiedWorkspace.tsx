@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
 import { ArtifactUploadButton } from "./ArtifactUploadButton";
@@ -87,15 +87,178 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
 
-  // Expose handleAskAI to parent via ref
-  useEffect(() => {
-    if (onAskAIRef) {
-      onAskAIRef.current = handleAskAI;
-    }
-  }, [project, onAskAIRef]);
+  // Helper function to send a message directly with a specific prompt
+  const sendMessageWithPrompt = useCallback(
+    async (promptText: string) => {
+      if (!project || !promptText.trim()) return;
 
-  const handleAskAI = () => {
-    if (!project) return;
+      setIsProcessing(true);
+      setToolsUsed([]); // Clear previous tools
+      const userMessage = promptText.trim();
+      const newMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: "user",
+        content: userMessage,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, newMessage]);
+
+      // Get current substep's master prompt
+      const currentPhase = project.phases?.find(
+        (p) => p.phase_number === project.current_phase,
+      );
+      const currentSubstep = currentPhase?.substeps?.find(
+        (s) => s.step_number === project.current_substep,
+      );
+
+      if (!currentSubstep) {
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: "ai",
+          content:
+            "No active substep found. Please make sure you have an active project with substeps.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setIsProcessing(false);
+        return;
+      }
+
+      // Create placeholder for AI message that will be streamed
+      const aiMessageId = (Date.now() + 1).toString();
+      const aiMessage: ChatMessage = {
+        id: aiMessageId,
+        type: "ai",
+        content: "Thinking...",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/projects/${project.id}/execute-step/stream`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              master_prompt: currentSubstep.prompt_to_send,
+              user_message: userMessage,
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            const errorData = await response.json().catch(() => ({}));
+            const retryAfter = errorData.retryAfter || "1 minute";
+            throw new Error(
+              `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            );
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("No response body");
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const decoder = new (window as any).TextDecoder();
+        let buffer = "";
+        let accumulatedContent = "";
+        const allTools: ToolActivity[] = [];
+        let receivedDone = false;
+        let currentEvent = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line === "") {
+              currentEvent = "";
+              continue;
+            }
+
+            if (line.startsWith("event:")) {
+              currentEvent = line.substring(6).trim();
+              continue;
+            }
+
+            if (line.startsWith("data:")) {
+              const data = line.substring(5).trim();
+
+              if (currentEvent === "content") {
+                accumulatedContent += data;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === aiMessageId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg,
+                  ),
+                );
+              } else if (currentEvent === "tool") {
+                try {
+                  const toolData = JSON.parse(data);
+                  const toolActivity: ToolActivity = {
+                    name: toolData.name,
+                    status: toolData.status || "active",
+                    timestamp: new Date(),
+                  };
+                  allTools.push(toolActivity);
+                  setToolsUsed([...allTools]);
+                } catch {
+                  // Ignore JSON parse errors
+                }
+              } else if (currentEvent === "done") {
+                receivedDone = true;
+                try {
+                  const doneData = JSON.parse(data);
+                  if (doneData.substepCompleted) {
+                    onSubstepComplete(currentSubstep.substep_id);
+                    onRefreshProject();
+                  }
+                } catch {
+                  // Ignore JSON parse errors
+                }
+              } else if (currentEvent === "error") {
+                throw new Error(data);
+              }
+            }
+          }
+        }
+
+        if (!receivedDone && accumulatedContent) {
+          // Stream completed successfully even without explicit done event
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to get AI response";
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMessageId
+              ? {
+                  ...msg,
+                  content: `❌ Error: ${errorMessage}`,
+                }
+              : msg,
+          ),
+        );
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [project, setToolsUsed, onSubstepComplete, onRefreshProject],
+  );
+
+  const handleAskAI = useCallback(() => {
+    if (!project || isProcessing) return;
 
     const currentPhase = project.phases?.find(
       (p) => p.phase_number === project.current_phase,
@@ -104,7 +267,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       (s) => s.step_number === project.current_substep,
     );
 
-    if (!currentSubstep) return;
+    if (!currentSubstep || !currentSubstep.prompt_to_send.trim()) return;
 
     // Log for threading
     console.log("Ask AI triggered:", {
@@ -114,13 +277,16 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       substep_number: project.current_substep,
     });
 
-    // Set the prompt as input and trigger send
-    setCurrentInput(currentSubstep.prompt_to_send);
-    // Trigger send after a brief delay to ensure state updates
-    setTimeout(() => {
-      handleSendMessage();
-    }, 100);
-  };
+    // Send the message directly without relying on state
+    sendMessageWithPrompt(currentSubstep.prompt_to_send);
+  }, [project, isProcessing, sendMessageWithPrompt]);
+
+  // Expose handleAskAI to parent via ref
+  useEffect(() => {
+    if (onAskAIRef) {
+      onAskAIRef.current = handleAskAI;
+    }
+  }, [onAskAIRef, handleAskAI]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
