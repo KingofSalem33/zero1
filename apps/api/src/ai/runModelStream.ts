@@ -342,7 +342,7 @@ export async function runModelStream(
             console.log(
               `[runModelStream] Iteration ${iterations}: Text delta received (${delta.length} chars)`,
             );
-            sendEvent("content", delta);
+            sendEvent("content", { delta });
           }
         }
 
@@ -396,7 +396,7 @@ export async function runModelStream(
           );
           currentIterationContent = fallbackText;
           accumulatedResponse += fallbackText;
-          sendEvent("content", fallbackText);
+          sendEvent("content", { delta: fallbackText });
         }
       }
 

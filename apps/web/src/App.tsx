@@ -227,22 +227,19 @@ User question: ${userMessage}
             if (!data) continue;
 
             try {
-              // For content events, data is plain text (not JSON)
-              if (currentEvent === "content") {
-                accumulatedContent += data;
-                // Update AI message in our local streamMessages and push
-                streamMessages = streamMessages.map((msg) =>
-                  msg.id === aiMessageId
-                    ? { ...msg, content: accumulatedContent }
-                    : msg,
-                );
-                onUpdateMessages(workspace.id, streamMessages);
-                continue;
-              }
-
-              // For other events, parse as JSON
               const parsed = JSON.parse(data);
               switch (currentEvent) {
+                case "content": {
+                  accumulatedContent += parsed.delta || "";
+                  // Update AI message in our local streamMessages and push
+                  streamMessages = streamMessages.map((msg) =>
+                    msg.id === aiMessageId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg,
+                  );
+                  onUpdateMessages(workspace.id, streamMessages);
+                  break;
+                }
                 case "status": {
                   const status = parsed.message || "Working...";
                   // Show status while waiting for content
@@ -1736,30 +1733,26 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
             if (!data) continue;
 
             try {
-              // For content events, data is plain text (not JSON)
-              if (currentEvent === "content") {
-                // Content delta received
-                accumulatedContent += data;
-                // Content accumulated
-                // Update the AI message content
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === aiMessageId
-                      ? {
-                          ...msg,
-                          content: accumulatedContent, // Keep full markdown for MarkdownMessage component
-                        }
-                      : msg,
-                  ),
-                );
-                continue;
-              }
-
-              // For other events, parse as JSON
               const parsed = JSON.parse(data);
               // SSE data parsed
 
               switch (currentEvent) {
+                case "content":
+                  // Content delta received
+                  accumulatedContent += parsed.delta;
+                  // Content accumulated
+                  // Update the AI message content
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessageId
+                        ? {
+                            ...msg,
+                            content: accumulatedContent, // Keep full markdown for MarkdownMessage component
+                          }
+                        : msg,
+                    ),
+                  );
+                  break;
                 case "tool_call":
                   allTools.push({
                     type: "tool_start",
@@ -2559,17 +2552,13 @@ Return only the refined vision statement using the format "I want to build _____
             if (!data) continue;
 
             try {
-              // For content events, data is plain text (not JSON)
-              if (currentEvent === "content") {
-                accumulatedContent += data;
-                setThinking(accumulatedContent);
-                continue;
-              }
-
-              // For other events, parse as JSON
               const parsed = JSON.parse(data);
 
               switch (currentEvent) {
+                case "content":
+                  accumulatedContent += parsed.delta;
+                  setThinking(accumulatedContent);
+                  break;
                 case "tool_call":
                   allTools.push({
                     type: "tool_start",
