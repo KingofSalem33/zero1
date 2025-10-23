@@ -36,7 +36,8 @@
       "Bash(npm test -- projects.integration.test.ts)",
       "Bash(npx eslint --fix src/App.tsx)",
       "Bash(npm run dev:api)",
-      "Bash(npm run)"
+      "Bash(npm run)",
+      "Bash(npx eslint:*)"
     ],
     "deny": [],
     "ask": []

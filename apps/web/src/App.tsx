@@ -8,6 +8,8 @@ import { StreamingChatDemo } from "./components/StreamingChatDemo";
 import { MarkdownMessage } from "./components/MarkdownMessage";
 import { FileManager } from "./components/FileManager";
 import { UserMemoryManager } from "./components/UserMemoryManager";
+import RoadmapSidebar from "./components/RoadmapSidebar";
+import UnifiedWorkspace from "./components/UnifiedWorkspace";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -47,6 +49,8 @@ interface AnimatedCardProps {
   className?: string;
 }
 
+// AnimatedCard component - kept for reference but not currently used
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const AnimatedCard: React.FC<AnimatedCardProps> = ({
   children,
   delay = 0,
@@ -903,6 +907,8 @@ interface ExecutionEngineProps {
   onToggleSubstep: (substepId: string) => void;
 }
 
+// ExecutionEngine component - kept for reference but not currently used
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   project,
   onViewRoadmap,
@@ -1587,6 +1593,8 @@ interface IdeationHubProps {
   onSubstepCompleted: (projectId: string, briefing?: string) => void;
 }
 
+// IdeationHub component - kept for reference but not currently used
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const IdeationHub: React.FC<IdeationHubProps> = ({
   project,
   onCreateProject,
@@ -2614,8 +2622,6 @@ Return only the refined vision statement using the format "I want to build _____
   const handleToggleSubstep = (substepId: string) => {
     if (!project) return;
 
-    console.log("handleToggleSubstep called with:", substepId);
-
     const updatedProject = { ...project };
     const phaseIndex = updatedProject.phases?.findIndex(
       (p) => p.phase_number === project.current_phase,
@@ -2634,38 +2640,23 @@ Return only the refined vision statement using the format "I want to build _____
           completed: !phase.substeps[substepIndex].completed,
         };
 
-        console.log(
-          "Toggled substep",
-          substepId,
-          "to:",
-          phase.substeps[substepIndex].completed,
-        );
-
         // Check if all substeps are now complete
         const allComplete = phase.substeps.every((s) => s.completed);
-        console.log("All substeps complete?", allComplete);
 
         // Get current substep
         const currentSubstep = phase.substeps.find(
           (s) => s.step_number === project.current_substep,
         );
-        console.log("Current substep:", currentSubstep?.substep_id);
 
         // Update local state first
         setProject(updatedProject);
 
         // If all complete, auto-complete the current active substep
         if (allComplete && currentSubstep) {
-          console.log(
-            "Auto-completing current substep:",
-            currentSubstep.substep_id,
-          );
           // Use setTimeout to ensure state update completes first
           setTimeout(() => {
             handleSubstepComplete(currentSubstep.substep_id);
           }, 0);
-        } else {
-          console.log("Not all substeps complete yet");
         }
       }
     }
@@ -2677,11 +2668,9 @@ Return only the refined vision statement using the format "I want to build _____
     try {
       // Parse substepId to get phase_id and substep_number
       // substepId format: "P1-1", "P2-3", etc.
-      console.log("handleSubstepComplete called with substepId:", substepId);
       const match = substepId.match(/^P(\d+)-(\d+)$/);
       if (!match) {
         // Invalid substep ID format
-        console.error("Invalid substep ID format:", substepId);
         setGuidance(
           `❌ Error: Invalid substep format (received: ${substepId})`,
         );
@@ -2753,57 +2742,41 @@ Return only the refined vision statement using the format "I want to build _____
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
       <NavBar />
 
-      <main className="flex-1 p-6 pb-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 h-[calc(100vh-140px)]">
-            {/* Left Panel - Ideation Hub */}
-            <AnimatedCard className="bg-gradient-to-br from-gray-900/98 to-black/95 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl shadow-black/60 flex flex-col overflow-hidden">
-              <IdeationHub
-                project={project}
-                onCreateProject={handleCreateProject}
-                onInspireMe={handleInspireMe}
-                onRefreshProject={refreshProject}
-                creating={creatingProject}
-                inspiring={inspiring}
-                toolsUsed={toolsUsed}
-                setToolsUsed={setToolsUsed}
-                onCompletionNudge={setCompletionNudge}
-                onSubstepCompleted={(projectId, briefing) => {
-                  loadProject(projectId);
-                  if (briefing) {
-                    setGuidance(briefing);
-                  }
-                }}
-              />
-            </AnimatedCard>
+      <div className="flex">
+        {/* Collapsible Roadmap Sidebar */}
+        <RoadmapSidebar
+          project={project}
+          onViewFullRoadmap={() => setShowMasterControl(true)}
+          onOpenFileManager={() => setShowFileManager(true)}
+          onOpenMemoryManager={() => setShowMemoryManager(true)}
+          onOpenNewWorkspace={createPopupWorkspace}
+        />
 
-            {/* Right Panel - Execution Engine */}
-            <AnimatedCard
-              delay={200}
-              className="bg-gradient-to-br from-gray-900/98 to-black/95 backdrop-blur-xl rounded-3xl border border-gray-700/50 shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
-            >
-              <ExecutionEngine
-                project={project}
-                onViewRoadmap={() => setShowMasterControl(true)}
-                onOpenNewWorkspace={createPopupWorkspace}
-                onSubstepComplete={handleSubstepComplete}
-                onOpenFileManager={() => setShowFileManager(true)}
-                onOpenMemoryManager={() => setShowMemoryManager(true)}
-                completionNudge={completionNudge}
-                onDismissNudge={() => setCompletionNudge(null)}
-                onToggleSubstep={handleToggleSubstep}
-              />
-            </AnimatedCard>
-          </div>
+        {/* Main Workspace - Full Width */}
+        <main className="flex-1 min-h-[calc(100vh-64px)]">
+          <UnifiedWorkspace
+            project={project}
+            onCreateProject={handleCreateProject}
+            onInspireMe={handleInspireMe}
+            onSubstepComplete={handleSubstepComplete}
+            onToggleSubstep={handleToggleSubstep}
+            toolsUsed={toolsUsed}
+            setToolsUsed={setToolsUsed}
+            completionNudge={completionNudge}
+            onDismissNudge={() => setCompletionNudge(null)}
+            creating={creatingProject}
+            inspiring={inspiring}
+            onRefreshProject={refreshProject}
+          />
+        </main>
+      </div>
 
-          {/* Guidance Toast */}
-          {guidance && (
-            <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-2xl shadow-2xl shadow-blue-500/30 backdrop-blur-sm border border-blue-400/30 max-w-md text-center font-medium">
-              {guidance}
-            </div>
-          )}
+      {/* Guidance Toast */}
+      {guidance && (
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-2xl shadow-2xl shadow-blue-500/30 backdrop-blur-sm border border-blue-400/30 max-w-md text-center font-medium z-50">
+          {guidance}
         </div>
-      </main>
+      )}
 
       {/* Popup Workspaces */}
       {popupWorkspaces.map((workspace) => (
