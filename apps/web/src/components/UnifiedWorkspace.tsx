@@ -64,6 +64,7 @@ interface UnifiedWorkspaceProps {
   creating: boolean;
   inspiring: boolean;
   onRefreshProject: () => void;
+  onAskAIRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -78,12 +79,48 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   creating,
   inspiring,
   onRefreshProject,
+  onAskAIRef,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentInput, setCurrentInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+
+  // Expose handleAskAI to parent via ref
+  useEffect(() => {
+    if (onAskAIRef) {
+      onAskAIRef.current = handleAskAI;
+    }
+  }, [project, onAskAIRef]);
+
+  const handleAskAI = () => {
+    if (!project) return;
+
+    const currentPhase = project.phases?.find(
+      (p) => p.phase_number === project.current_phase,
+    );
+    const currentSubstep = currentPhase?.substeps?.find(
+      (s) => s.step_number === project.current_substep,
+    );
+
+    if (!currentSubstep) return;
+
+    // Log for threading
+    console.log("Ask AI triggered:", {
+      substep_id: currentSubstep.substep_id,
+      phase_id: currentPhase?.phase_id,
+      phase_number: project.current_phase,
+      substep_number: project.current_substep,
+    });
+
+    // Set the prompt as input and trigger send
+    setCurrentInput(currentSubstep.prompt_to_send);
+    // Trigger send after a brief delay to ensure state updates
+    setTimeout(() => {
+      handleSendMessage();
+    }, 100);
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

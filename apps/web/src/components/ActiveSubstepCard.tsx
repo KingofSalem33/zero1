@@ -17,25 +17,22 @@ interface ActiveSubstepCardProps {
   phase: ProjectPhase | null;
   substep: ProjectSubstep | null;
   className?: string;
+  onAskAI?: () => void;
 }
 
 const ActiveSubstepCard: React.FC<ActiveSubstepCardProps> = ({
   phase,
   substep,
   className = "",
+  onAskAI,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const copyToClipboard = async () => {
-    if (!substep?.prompt_to_send) return;
-
-    try {
-      await navigator.clipboard.writeText(substep.prompt_to_send);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Failed to copy - ignore
-    }
+  const handleAskAI = async () => {
+    if (!onAskAI) return;
+    setSending(true);
+    onAskAI();
+    setTimeout(() => setSending(false), 1000);
   };
 
   if (!phase || !substep) {
@@ -54,50 +51,42 @@ const ActiveSubstepCard: React.FC<ActiveSubstepCardProps> = ({
     <div
       className={`p-3 rounded-lg bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/50 ${className}`}
     >
-      <div className="flex items-center justify-between mb-1">
-        <div className="text-xs font-semibold text-blue-400">
-          CURRENTLY WORKING ON
-        </div>
-        <button
-          onClick={copyToClipboard}
-          className="p-1 rounded hover:bg-blue-500/30 transition-colors"
-          title="Copy master prompt"
-        >
-          {copied ? (
-            <svg
-              className="w-4 h-4 text-green-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="w-4 h-4 text-blue-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-              />
-            </svg>
-          )}
-        </button>
+      <div className="text-xs font-semibold text-blue-400 mb-2">
+        CURRENTLY WORKING ON
       </div>
       <div className="text-sm font-bold text-white">
         P{phase.phase_number}.{substep.step_number}
       </div>
-      <div className="text-xs text-gray-300 mt-1">{substep.label}</div>
+      <div className="text-xs text-gray-300 mt-1 mb-3">{substep.label}</div>
+      <button
+        onClick={handleAskAI}
+        disabled={sending || !onAskAI}
+        className="w-full px-3 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 text-white text-xs font-medium transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
+      >
+        {sending ? (
+          <>
+            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            <span>Sending...</span>
+          </>
+        ) : (
+          <>
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              />
+            </svg>
+            <span>Ask AI</span>
+          </>
+        )}
+      </button>
     </div>
   );
 };

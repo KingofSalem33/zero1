@@ -68,6 +68,7 @@ interface RoadmapSidebarProps {
   onOpenFileManager: () => void;
   onOpenMemoryManager: () => void;
   onOpenNewWorkspace: () => void;
+  onAskAI: () => void;
 }
 
 const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
@@ -76,6 +77,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   onOpenFileManager,
   onOpenMemoryManager,
   onOpenNewWorkspace,
+  onAskAI,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Load collapse state from localStorage (desktop only)
@@ -181,6 +183,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
         phase={currentPhase || null}
         substep={currentSubstep || null}
         className="mb-4"
+        onAskAI={onAskAI}
       />
 
       {/* Action Buttons */}

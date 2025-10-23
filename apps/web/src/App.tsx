@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
 import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
 import { CheckpointsModal } from "./components/CheckpointsModal";
@@ -2211,6 +2211,9 @@ function App() {
   const [showMasterControl, setShowMasterControl] = useState(false);
   const [showFileManager, setShowFileManager] = useState(false);
   const [showMemoryManager, setShowMemoryManager] = useState(false);
+
+  // Ref to connect RoadmapSidebar "Ask AI" to UnifiedWorkspace
+  const askAIRef = useRef<(() => void) | null>(null);
   const [completionNudge, setCompletionNudge] = useState<{
     message: string;
     confidence: string;
@@ -2750,6 +2753,7 @@ Return only the refined vision statement using the format "I want to build _____
           onOpenFileManager={() => setShowFileManager(true)}
           onOpenMemoryManager={() => setShowMemoryManager(true)}
           onOpenNewWorkspace={createPopupWorkspace}
+          onAskAI={() => askAIRef.current?.()}
         />
 
         {/* Main Workspace - Full Width */}
@@ -2767,6 +2771,7 @@ Return only the refined vision statement using the format "I want to build _____
             creating={creatingProject}
             inspiring={inspiring}
             onRefreshProject={refreshProject}
+            onAskAIRef={askAIRef}
           />
         </main>
       </div>
