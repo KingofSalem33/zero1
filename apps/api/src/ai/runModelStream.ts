@@ -240,9 +240,13 @@ export async function runModelStream(
   // Helper to send SSE event
   const sendEvent = (event: string, data: unknown) => {
     const eventStr = `event: ${event}\n`;
-    const dataStr = `data: ${JSON.stringify(data)}\n\n`;
+    // For strings, send as-is; for objects, stringify
+    const dataStr =
+      typeof data === "string"
+        ? `data: ${data}\n\n`
+        : `data: ${JSON.stringify(data)}\n\n`;
     console.log(
-      `[SSE] Sending event: ${event}, data: ${JSON.stringify(data).substring(0, 100)}...`,
+      `[SSE] Sending event: ${event}, data: ${typeof data === "string" ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100)}...`,
     );
     res.write(eventStr);
     res.write(dataStr);
