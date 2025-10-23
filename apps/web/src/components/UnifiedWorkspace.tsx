@@ -195,14 +195,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               const data = line.substring(5).trim();
 
               if (currentEvent === "content") {
-                accumulatedContent += data;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === aiMessageId
-                      ? { ...msg, content: accumulatedContent }
-                      : msg,
-                  ),
-                );
+                try {
+                  const parsed = JSON.parse(data);
+                  accumulatedContent += parsed.delta || "";
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessageId
+                        ? { ...msg, content: accumulatedContent }
+                        : msg,
+                    ),
+                  );
+                } catch {
+                  // Ignore JSON parse errors for content
+                }
               } else if (currentEvent === "tool") {
                 try {
                   const toolData = JSON.parse(data);
