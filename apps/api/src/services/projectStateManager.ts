@@ -332,8 +332,11 @@ export class ProjectStateManager {
    * Validate that current_phase and current_substep point to valid locations
    */
   private validateCurrentPointer(state: NormalizedProjectState): void {
+    // current_phase can be either phase_id (string like "P1") or phase_number (number like 1)
     const currentPhase = state.roadmap.phases.find(
-      (p) => p.phase_id === state.current_phase,
+      (p) =>
+        p.phase_id === state.current_phase ||
+        p.phase_number === state.current_phase,
     );
 
     if (!currentPhase) {
