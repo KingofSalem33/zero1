@@ -333,6 +333,17 @@ export class ProjectStateManager {
    */
   private validateCurrentPointer(state: NormalizedProjectState): void {
     // current_phase can be either phase_id (string like "P1") or phase_number (number like 1)
+    console.log(
+      `[ProjectStateManager] Validating current_phase: ${state.current_phase} (type: ${typeof state.current_phase})`,
+    );
+    console.log(
+      `[ProjectStateManager] Available phases:`,
+      state.roadmap.phases.map((p) => ({
+        phase_id: p.phase_id,
+        phase_number: p.phase_number,
+      })),
+    );
+
     const currentPhase = state.roadmap.phases.find(
       (p) =>
         p.phase_id === state.current_phase ||
@@ -341,7 +352,7 @@ export class ProjectStateManager {
 
     if (!currentPhase) {
       throw new Error(
-        `Invalid state: current_phase ${state.current_phase} not found in roadmap`,
+        `Invalid state: current_phase ${state.current_phase} not found in roadmap. Available phases: ${state.roadmap.phases.map((p) => `${p.phase_id}(${p.phase_number})`).join(", ")}`,
       );
     }
 
