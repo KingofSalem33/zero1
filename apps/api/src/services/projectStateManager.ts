@@ -119,11 +119,24 @@ export class ProjectStateManager {
     project: Project,
     update: ProjectStateUpdate,
   ): NormalizedProjectState {
+    console.log(
+      `[ProjectStateManager] normalizeProjectState - project.roadmap exists: ${!!project.roadmap}, phases count: ${project.roadmap?.phases?.length || 0}`,
+    );
+    console.log(
+      `[ProjectStateManager] normalizeProjectState - project.phases exists: ${!!project.phases}, count: ${project.phases?.length || 0}`,
+    );
+
     // Create a deep copy to avoid mutations
+    // Check both project.roadmap.phases and project.phases for phase data
+    const phases =
+      project.roadmap?.phases && project.roadmap.phases.length > 0
+        ? project.roadmap.phases
+        : project.phases || [];
+
     const normalized: NormalizedProjectState = {
       current_phase: project.current_phase,
       current_substep: project.current_substep,
-      roadmap: JSON.parse(JSON.stringify(project.roadmap || { phases: [] })),
+      roadmap: JSON.parse(JSON.stringify({ phases })),
       completed_substeps: [...(project.completed_substeps || [])],
     };
 
@@ -420,7 +433,6 @@ export class ProjectStateManager {
         current_substep: state.current_substep,
         roadmap: state.roadmap,
         completed_substeps: state.completed_substeps,
-        updated_at: new Date().toISOString(),
       })
       .eq("id", projectId);
 
