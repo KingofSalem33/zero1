@@ -141,35 +141,8 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   const SidebarContent = ({ onClose }: { onClose?: () => void }) => (
     <div className="flex flex-col h-full p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
-          className="flex-1 text-left group"
-        >
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-gray-300 tracking-wider">
-              ROADMAP
-            </h3>
-            <svg
-              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {isRoadmapExpanded
-              ? `${project.phases.filter((p) => p.completed).length} of ${project.phases.length} phases complete`
-              : `Currently on P${project.current_phase}`}
-          </div>
-        </button>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-400">ZERO1 BUILDER</h3>
         <div className="flex items-center gap-2">
           {onClose && (
             <button
@@ -222,6 +195,37 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
         </p>
       </div>
 
+      {/* Roadmap Dropdown Toggle */}
+      <button
+        onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
+        className="group w-full px-4 py-2.5 mb-4 rounded-lg bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 hover:border-blue-400/70 transition-all hover:shadow-lg hover:shadow-blue-500/20 flex items-center gap-3 text-sm font-semibold"
+      >
+        <span className="text-base group-hover:scale-110 transition-transform">
+          📋
+        </span>
+        <div className="flex-1 text-left">
+          <div className="font-bold">Roadmap</div>
+          <div className="text-xs opacity-75">
+            {isRoadmapExpanded
+              ? `${project.phases.filter((p) => p.completed).length} of ${project.phases.length} complete`
+              : `Currently on P${project.current_phase}`}
+          </div>
+        </div>
+        <svg
+          className={`w-4 h-4 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
       {/* Phase List */}
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out mb-4 ${
@@ -240,7 +244,6 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                   ? project.current_substep
                   : undefined
               }
-              onClick={onViewFullRoadmap}
               onToggleExpand={() =>
                 setExpandedPhaseId((prev) =>
                   prev === phase.phase_id ? null : phase.phase_id,
@@ -259,7 +262,6 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
             isActive={true}
             isExpanded={true}
             currentSubstep={project.current_substep}
-            onClick={onViewFullRoadmap}
             onToggleExpand={() => {
               /* Keep expanded when showing only current */
             }}
@@ -277,29 +279,6 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
       {/* Action Buttons */}
       <div className="space-y-2">
-        <button
-          onClick={onViewFullRoadmap}
-          className="group w-full px-4 py-2.5 rounded-lg bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 hover:border-blue-400/70 transition-all hover:shadow-lg hover:shadow-blue-500/20 flex items-center gap-3 text-sm font-semibold"
-        >
-          <span className="text-base group-hover:scale-110 transition-transform">
-            📋
-          </span>
-          <span>Full Roadmap</span>
-          <svg
-            className="w-3 h-3 ml-auto opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </button>
-
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onOpenFileManager}
