@@ -139,9 +139,9 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
   // Sidebar content (reusable for both desktop and mobile)
   const SidebarContent = ({ onClose }: { onClose?: () => void }) => (
-    <div className="flex flex-col h-full p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full">
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 flex items-center justify-between p-4 pb-0">
         <h3 className="text-sm font-semibold text-gray-400">ZERO1 BUILDER</h3>
         <div className="flex items-center gap-2">
           {onClose && (
@@ -187,98 +187,101 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
         </div>
       </div>
 
-      {/* Progress Ring */}
-      <div className="flex flex-col items-center mb-6">
-        <CircularProgress value={progress} size="lg" />
-        <p className="text-xs text-gray-400 mt-2 text-center line-clamp-2">
-          {project.goal}
-        </p>
-      </div>
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden hover:pr-2 p-4">
+        {/* Progress Ring */}
+        <div className="flex flex-col items-center mb-6">
+          <CircularProgress value={progress} size="lg" />
+          <p className="text-xs text-gray-400 mt-2 text-center line-clamp-2">
+            {project.goal}
+          </p>
+        </div>
 
-      {/* Roadmap Dropdown Toggle */}
-      <button
-        onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
-        className="group w-full px-4 py-2.5 mb-4 rounded-lg bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 hover:border-blue-400/70 transition-all hover:shadow-lg hover:shadow-blue-500/20 flex items-center gap-3 text-sm font-semibold"
-      >
-        <span className="text-base group-hover:scale-110 transition-transform">
-          📋
-        </span>
-        <div className="flex-1 text-left">
-          <div className="font-bold">Roadmap</div>
-          <div className="text-xs opacity-75">
-            {isRoadmapExpanded
-              ? `${project.phases.filter((p) => p.completed).length} of ${project.phases.length} complete`
-              : `Currently on P${project.current_phase}`}
+        {/* Active Substep Card */}
+        <ActiveSubstepCard
+          phase={currentPhase || null}
+          substep={currentSubstep || null}
+          className="mb-4"
+          onAskAI={onAskAI}
+        />
+
+        {/* Roadmap Dropdown Toggle */}
+        <button
+          onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
+          className="group w-full px-4 py-2.5 mb-4 rounded-lg bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 hover:border-blue-400/70 transition-all hover:shadow-lg hover:shadow-blue-500/20 flex items-center gap-3 text-sm font-semibold"
+        >
+          <span className="text-base group-hover:scale-110 transition-transform">
+            📋
+          </span>
+          <div className="flex-1 text-left">
+            <div className="font-bold">Roadmap</div>
+            <div className="text-xs opacity-75">
+              {isRoadmapExpanded
+                ? `${project.phases.filter((p) => p.completed).length} of ${project.phases.length} complete`
+                : `Currently on P${project.current_phase}`}
+            </div>
+          </div>
+          <svg
+            className={`w-4 h-4 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
+
+        {/* Phase List */}
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out mb-4 ${
+            isRoadmapExpanded ? "opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <div className="space-y-2">
+            {project.phases.map((phase) => (
+              <PhaseButton
+                key={phase.phase_id}
+                phase={phase}
+                isActive={phase.phase_number === project.current_phase}
+                isExpanded={expandedPhaseId === phase.phase_id}
+                currentSubstep={
+                  phase.phase_number === project.current_phase
+                    ? project.current_substep
+                    : undefined
+                }
+                onToggleExpand={() =>
+                  setExpandedPhaseId((prev) =>
+                    prev === phase.phase_id ? null : phase.phase_id,
+                  )
+                }
+              />
+            ))}
           </div>
         </div>
-        <svg
-          className={`w-4 h-4 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-      </button>
 
-      {/* Phase List */}
-      <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out mb-4 ${
-          isRoadmapExpanded ? "flex-1 opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div className="flex-1 overflow-y-auto space-y-2">
-          {project.phases.map((phase) => (
+        {/* Current Phase Only (when collapsed) */}
+        {!isRoadmapExpanded && currentPhase && (
+          <div className="mb-4">
             <PhaseButton
-              key={phase.phase_id}
-              phase={phase}
-              isActive={phase.phase_number === project.current_phase}
-              isExpanded={expandedPhaseId === phase.phase_id}
-              currentSubstep={
-                phase.phase_number === project.current_phase
-                  ? project.current_substep
-                  : undefined
-              }
-              onToggleExpand={() =>
-                setExpandedPhaseId((prev) =>
-                  prev === phase.phase_id ? null : phase.phase_id,
-                )
-              }
+              phase={currentPhase}
+              isActive={true}
+              isExpanded={true}
+              currentSubstep={project.current_substep}
+              onToggleExpand={() => {
+                /* Keep expanded when showing only current */
+              }}
             />
-          ))}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Current Phase Only (when collapsed) */}
-      {!isRoadmapExpanded && currentPhase && (
-        <div className="mb-4">
-          <PhaseButton
-            phase={currentPhase}
-            isActive={true}
-            isExpanded={true}
-            currentSubstep={project.current_substep}
-            onToggleExpand={() => {
-              /* Keep expanded when showing only current */
-            }}
-          />
-        </div>
-      )}
-
-      {/* Active Substep Card */}
-      <ActiveSubstepCard
-        phase={currentPhase || null}
-        substep={currentSubstep || null}
-        className="mb-4"
-        onAskAI={onAskAI}
-      />
-
-      {/* Action Buttons */}
-      <div className="space-y-2">
+      {/* Action Buttons - Fixed at bottom */}
+      <div className="flex-shrink-0 p-4 pt-0 space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onOpenFileManager}
