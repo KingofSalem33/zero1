@@ -85,11 +85,30 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
     return saved === "true";
   });
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [expandedPhaseId, setExpandedPhaseId] = useState<string | null>(() => {
+    // Auto-expand current phase on mount
+    return (
+      project?.phases?.find((p) => p.phase_number === project.current_phase)
+        ?.phase_id || null
+    );
+  });
 
   // Save collapse state to localStorage
   useEffect(() => {
     localStorage.setItem("roadmapSidebarCollapsed", String(isCollapsed));
   }, [isCollapsed]);
+
+  // Auto-expand active phase when it changes
+  useEffect(() => {
+    if (project?.current_phase) {
+      const currentPhaseObj = project.phases?.find(
+        (p) => p.phase_number === project.current_phase,
+      );
+      if (currentPhaseObj) {
+        setExpandedPhaseId(currentPhaseObj.phase_id);
+      }
+    }
+  }, [project?.current_phase, project?.phases]);
 
   if (!project) return null;
 
@@ -173,7 +192,18 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
             key={phase.phase_id}
             phase={phase}
             isActive={phase.phase_number === project.current_phase}
+            isExpanded={expandedPhaseId === phase.phase_id}
+            currentSubstep={
+              phase.phase_number === project.current_phase
+                ? project.current_substep
+                : undefined
+            }
             onClick={onViewFullRoadmap}
+            onToggleExpand={() =>
+              setExpandedPhaseId((prev) =>
+                prev === phase.phase_id ? null : phase.phase_id,
+              )
+            }
           />
         ))}
       </div>
