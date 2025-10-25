@@ -238,10 +238,21 @@ export class ProjectStateManager {
     );
     if (!currentPhase) return;
 
+    const currentPhaseNum =
+      typeof state.current_phase === "string"
+        ? parseInt(state.current_phase.replace("P", ""))
+        : state.current_phase;
+
     // Find next uncompleted substep in current phase
-    const nextSubstep = currentPhase.substeps?.find(
-      (s) => s.step_number > state.current_substep && !s.completed,
-    );
+    // Check against completed_substeps array instead of substep.completed property
+    const nextSubstep = currentPhase.substeps?.find((s) => {
+      const isCompleted = state.completed_substeps.some(
+        (cs) =>
+          cs.phase_number === currentPhaseNum &&
+          cs.substep_number === s.step_number,
+      );
+      return s.step_number > state.current_substep && !isCompleted;
+    });
 
     if (nextSubstep) {
       state.current_substep = nextSubstep.step_number;
