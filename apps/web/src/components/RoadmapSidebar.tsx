@@ -68,6 +68,7 @@ interface RoadmapSidebarProps {
   onOpenMemoryManager: () => void;
   onOpenNewWorkspace: () => void;
   onAskAI: () => void;
+  onCompleteSubstep: (substepId: string) => void;
 }
 
 const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
@@ -77,7 +78,9 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   onOpenMemoryManager,
   onOpenNewWorkspace,
   onAskAI,
+  onCompleteSubstep,
 }) => {
+  const [completingSubstep, setCompletingSubstep] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Load collapse state from localStorage (desktop only)
     const saved = localStorage.getItem("roadmapSidebarCollapsed");
@@ -246,28 +249,68 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                 {currentSubstep?.label}
               </div>
 
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAskAI?.();
-                }}
-                className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
-              >
-                <svg
-                  className="w-4 h-4 group-hover:rotate-12 transition-transform"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <div className="flex gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAskAI?.();
+                  }}
+                  className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
-                </svg>
-                <span>Ask AI to Start</span>
-              </button>
+                  <svg
+                    className="w-4 h-4 group-hover:rotate-12 transition-transform"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  <span>Ask AI</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!currentSubstep || completingSubstep) return;
+                    setCompletingSubstep(true);
+                    // Add delay for celebration animation
+                    setTimeout(() => {
+                      onCompleteSubstep(currentSubstep.substep_id);
+                      setCompletingSubstep(false);
+                    }, 600);
+                  }}
+                  disabled={completingSubstep}
+                  className={`flex-shrink-0 w-12 h-12 rounded-lg border-2 transition-all duration-300 flex items-center justify-center ${
+                    completingSubstep
+                      ? "border-green-500 bg-green-500 scale-110"
+                      : "border-gray-500 hover:border-green-400 hover:bg-green-500/20"
+                  }`}
+                  title="Mark as complete"
+                >
+                  {completingSubstep ? (
+                    <svg
+                      className="w-6 h-6 text-white animate-bounce"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    <div className="w-5 h-5 rounded border-2 border-gray-400" />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Progress Footer */}

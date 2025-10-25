@@ -2752,6 +2752,7 @@ Return only the refined vision statement using the format "I want to build _____
           onOpenMemoryManager={() => setShowMemoryManager(true)}
           onOpenNewWorkspace={createPopupWorkspace}
           onAskAI={() => askAIRef.current?.()}
+          onCompleteSubstep={handleSubstepComplete}
         />
 
         {/* Main Workspace - Full Width */}
