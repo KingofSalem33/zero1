@@ -689,9 +689,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       </div>
 
       {/* Input Composer (sticky bottom) */}
-      <div ref={composerRef} className="px-6 py-4">
+      <div ref={composerRef} className="px-6 py-3">
         <div className="max-w-4xl mx-auto">
-          <div className="flex gap-2 items-start">
+          <div className="flex gap-2 items-center bg-gray-800/50 border border-gray-600/50 rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all">
             <ArtifactUploadButton
               projectId={project?.id || null}
               onUploadComplete={onRefreshProject}
@@ -701,16 +701,33 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               onChange={(e) => setCurrentInput(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder={getContextualPlaceholder()}
-              className="flex-1 bg-gray-800/50 border border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none min-h-[56px] max-h-[200px]"
+              className="flex-1 bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[200px]"
               rows={1}
               disabled={isProcessing}
             />
             <button
               onClick={handleSendMessage}
               disabled={!currentInput.trim() || isProcessing}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-medium transition-all disabled:cursor-not-allowed whitespace-nowrap"
+              className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 text-white transition-all disabled:cursor-not-allowed flex items-center justify-center"
+              title={isProcessing ? "Sending..." : "Send message"}
             >
-              {isProcessing ? "Sending..." : "Send"}
+              {isProcessing ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
+                </svg>
+              )}
             </button>
           </div>
         </div>
