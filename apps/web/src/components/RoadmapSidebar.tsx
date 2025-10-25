@@ -201,13 +201,13 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
         {/* Unified Roadmap Dropdown */}
         <div className="mb-4">
-          {/* Roadmap Header with Current Step */}
-          <button
-            onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
-            className="group w-full rounded-xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/50 shadow-lg shadow-blue-500/20 overflow-hidden transition-all hover:shadow-xl"
-          >
-            {/* Current Step Display */}
-            <div className="p-4">
+          {/* Roadmap Card */}
+          <div className="rounded-xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/50 shadow-lg shadow-blue-500/20 overflow-hidden">
+            {/* Header - Clickable to expand/collapse */}
+            <button
+              onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
+              className="w-full p-4 pb-3 text-left transition-all hover:shadow-xl"
+            >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-base">📋</span>
@@ -245,20 +245,54 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                 </div>
               </div>
 
-              <div className="text-sm text-gray-200 mb-4 leading-relaxed">
+              <div className="text-sm text-gray-200 leading-relaxed">
                 {currentSubstep?.label}
               </div>
+            </button>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAskAI?.();
-                  }}
-                  className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+            {/* Action Buttons - Not nested in the toggle button */}
+            <div className="px-4 pb-4 flex gap-2">
+              <button
+                onClick={() => onAskAI?.()}
+                className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+              >
+                <svg
+                  className="w-4 h-4 group-hover:rotate-12 transition-transform"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span>Ask AI</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!currentSubstep || completingSubstep) return;
+                  setCompletingSubstep(true);
+                  // Add delay for celebration animation
+                  setTimeout(() => {
+                    onCompleteSubstep(currentSubstep.substep_id);
+                    setCompletingSubstep(false);
+                  }, 600);
+                }}
+                disabled={completingSubstep}
+                className={`flex-shrink-0 w-12 h-12 rounded-lg border-2 transition-all duration-300 flex items-center justify-center ${
+                  completingSubstep
+                    ? "border-green-500 bg-green-500 scale-110"
+                    : "border-gray-500 hover:border-green-400 hover:bg-green-500/20"
+                }`}
+                title="Mark as complete"
+              >
+                {completingSubstep ? (
                   <svg
-                    className="w-4 h-4 group-hover:rotate-12 transition-transform"
+                    className="w-6 h-6 text-white animate-bounce"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -266,51 +300,14 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                      strokeWidth={3}
+                      d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span>Ask AI</span>
-                </button>
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!currentSubstep || completingSubstep) return;
-                    setCompletingSubstep(true);
-                    // Add delay for celebration animation
-                    setTimeout(() => {
-                      onCompleteSubstep(currentSubstep.substep_id);
-                      setCompletingSubstep(false);
-                    }, 600);
-                  }}
-                  disabled={completingSubstep}
-                  className={`flex-shrink-0 w-12 h-12 rounded-lg border-2 transition-all duration-300 flex items-center justify-center ${
-                    completingSubstep
-                      ? "border-green-500 bg-green-500 scale-110"
-                      : "border-gray-500 hover:border-green-400 hover:bg-green-500/20"
-                  }`}
-                  title="Mark as complete"
-                >
-                  {completingSubstep ? (
-                    <svg
-                      className="w-6 h-6 text-white animate-bounce"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={3}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  ) : (
-                    <div className="w-5 h-5 rounded border-2 border-gray-400" />
-                  )}
-                </button>
-              </div>
+                ) : (
+                  <div className="w-5 h-5 rounded border-2 border-gray-400" />
+                )}
+              </button>
             </div>
 
             {/* Progress Footer */}
@@ -320,7 +317,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                 {project.phases.length} phases complete
               </div>
             </div>
-          </button>
+          </div>
 
           {/* Expanded Phase List */}
           <div
