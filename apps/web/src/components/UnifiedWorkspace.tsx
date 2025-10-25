@@ -689,11 +689,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       </div>
 
       {/* Input Composer (sticky bottom) */}
-      <div
-        ref={composerRef}
-        className="border-t border-gray-700/50 bg-gray-900/50 backdrop-blur-xl"
-      >
-        <div className="max-w-4xl mx-auto px-6 py-4">
+      <div ref={composerRef} className="px-6 py-4">
+        <div className="max-w-4xl mx-auto">
           <div className="flex gap-2 items-start">
             <ArtifactUploadButton
               projectId={project?.id || null}
