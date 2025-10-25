@@ -2668,8 +2668,8 @@ Return only the refined vision statement using the format "I want to build _____
 
     try {
       // Parse substepId to get phase_id and substep_number
-      // substepId format: "P1-1", "P2-3", etc.
-      const match = substepId.match(/^P(\d+)-(\d+)$/);
+      // substepId format: "P1-1", "P2-3", or "P1-S1", "P2-S3", etc.
+      const match = substepId.match(/^P(\d+)-S?(\d+)$/);
       if (!match) {
         // Invalid substep ID format
         setGuidance(
