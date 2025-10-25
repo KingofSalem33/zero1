@@ -87,6 +87,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [showUploadButton, setShowUploadButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<number | null>(null);
+  const lastScrollTimeRef = useRef<number>(0);
 
   // Helper function to send a message directly with a specific prompt
   const sendMessageWithPrompt = useCallback(
@@ -294,10 +296,42 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
   }, [onAskAIRef, handleAskAI]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Smooth, throttled auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const now = Date.now();
+    const timeSinceLastScroll = now - lastScrollTimeRef.current;
+
+    // Clear any pending scroll timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    // Throttle scrolls to max once every 150ms during streaming
+    if (timeSinceLastScroll < 150 && isProcessing) {
+      // Schedule a scroll for later
+      scrollTimeoutRef.current = setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
+        lastScrollTimeRef.current = Date.now();
+      }, 150 - timeSinceLastScroll);
+    } else {
+      // Scroll immediately
+      messagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+      lastScrollTimeRef.current = now;
+    }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [messages, isProcessing]);
 
   const getContextualPlaceholder = (): string => {
     if (!project) {
