@@ -84,6 +84,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentInput, setCurrentInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showUploadButton, setShowUploadButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
 
@@ -692,10 +693,32 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       <div ref={composerRef} className="px-6 py-3">
         <div className="max-w-4xl mx-auto">
           <div className="flex gap-2 items-center bg-gray-800/50 border border-gray-600/50 rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all">
-            <ArtifactUploadButton
-              projectId={project?.id || null}
-              onUploadComplete={onRefreshProject}
-            />
+            {showUploadButton ? (
+              <ArtifactUploadButton
+                projectId={project?.id || null}
+                onUploadComplete={onRefreshProject}
+              />
+            ) : (
+              <button
+                onClick={() => setShowUploadButton(true)}
+                className="flex-shrink-0 w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/50 transition-all flex items-center justify-center"
+                title="Add attachment"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+              </button>
+            )}
             <textarea
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
