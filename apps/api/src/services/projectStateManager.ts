@@ -236,12 +236,28 @@ export class ProjectStateManager {
     const currentPhase = state.roadmap.phases.find(
       (p) => p.phase_id === state.current_phase,
     );
-    if (!currentPhase) return;
+    if (!currentPhase) {
+      console.log(
+        `[ProjectStateManager] Cannot advance: phase ${state.current_phase} not found`,
+      );
+      return;
+    }
 
     const currentPhaseNum =
       typeof state.current_phase === "string"
         ? parseInt(state.current_phase.replace("P", ""))
         : state.current_phase;
+
+    console.log(
+      `[ProjectStateManager] Looking for next substep after ${state.current_substep} in phase ${currentPhaseNum}`,
+    );
+    console.log(
+      `[ProjectStateManager] Total substeps: ${currentPhase.substeps?.length}`,
+    );
+    console.log(
+      `[ProjectStateManager] Completed substeps:`,
+      state.completed_substeps,
+    );
 
     // Find next uncompleted substep in current phase
     // Check against completed_substeps array instead of substep.completed property
@@ -251,17 +267,20 @@ export class ProjectStateManager {
           cs.phase_number === currentPhaseNum &&
           cs.substep_number === s.step_number,
       );
+      console.log(
+        `[ProjectStateManager] Substep ${s.step_number}: step_number=${s.step_number}, current=${state.current_substep}, isCompleted=${isCompleted}`,
+      );
       return s.step_number > state.current_substep && !isCompleted;
     });
 
     if (nextSubstep) {
       state.current_substep = nextSubstep.step_number;
       console.log(
-        `[ProjectStateManager] Advanced to substep ${nextSubstep.step_number}`,
+        `[ProjectStateManager] ✅ Advanced to substep ${nextSubstep.step_number}`,
       );
     } else {
       console.log(
-        `[ProjectStateManager] No more substeps in phase ${state.current_phase}`,
+        `[ProjectStateManager] ⚠️ No more substeps in phase ${state.current_phase}`,
       );
     }
   }
