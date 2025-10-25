@@ -306,8 +306,12 @@ router.get("/:projectId", async (req, res) => {
 
     // Enrich substeps with completed status
     const completedSubsteps = mergedProject.completed_substeps || [];
-    if (mergedProject.phases) {
-      mergedProject.phases = mergedProject.phases.map((phase: any) => ({
+
+    // Check both mergedProject.phases and mergedProject.roadmap.phases
+    const phasesArray = mergedProject.phases || mergedProject.roadmap?.phases;
+
+    if (phasesArray && Array.isArray(phasesArray)) {
+      const enrichedPhases = phasesArray.map((phase: any) => ({
         ...phase,
         substeps: phase.substeps?.map((substep: any) => ({
           ...substep,
@@ -318,6 +322,14 @@ router.get("/:projectId", async (req, res) => {
           ),
         })),
       }));
+
+      // Update both locations to be safe
+      if (mergedProject.phases) {
+        mergedProject.phases = enrichedPhases;
+      }
+      if (mergedProject.roadmap?.phases) {
+        mergedProject.roadmap.phases = enrichedPhases;
+      }
     }
 
     return res.json({
