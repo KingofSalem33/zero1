@@ -304,6 +304,22 @@ router.get("/:projectId", async (req, res) => {
         supabaseProject?.current_substep || project.current_substep,
     };
 
+    // Enrich substeps with completed status
+    const completedSubsteps = mergedProject.completed_substeps || [];
+    if (mergedProject.phases) {
+      mergedProject.phases = mergedProject.phases.map((phase: any) => ({
+        ...phase,
+        substeps: phase.substeps?.map((substep: any) => ({
+          ...substep,
+          completed: completedSubsteps.some(
+            (cs: any) =>
+              cs.phase_number === phase.phase_number &&
+              cs.substep_number === substep.step_number,
+          ),
+        })),
+      }));
+    }
+
     return res.json({
       ok: true,
       project: mergedProject,
