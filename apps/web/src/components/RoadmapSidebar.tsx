@@ -53,6 +53,7 @@ interface ProjectSubstep {
   substep_id: string;
   step_number: number;
   label: string;
+  completed?: boolean;
 }
 
 interface SubstepCompletion {
@@ -274,7 +275,12 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
               <button
                 onClick={() => {
-                  if (!currentSubstep || completingSubstep) return;
+                  if (
+                    !currentSubstep ||
+                    completingSubstep ||
+                    currentSubstep.completed
+                  )
+                    return;
                   setCompletingSubstep(true);
                   // Add delay for celebration animation
                   setTimeout(() => {
@@ -282,17 +288,21 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                     setCompletingSubstep(false);
                   }, 600);
                 }}
-                disabled={completingSubstep}
+                disabled={completingSubstep || currentSubstep?.completed}
                 className={`flex-shrink-0 w-12 h-12 rounded-lg border-2 transition-all duration-300 flex items-center justify-center ${
-                  completingSubstep
-                    ? "border-green-500 bg-green-500 scale-110"
-                    : "border-gray-500 hover:border-green-400 hover:bg-green-500/20"
+                  currentSubstep?.completed
+                    ? "border-green-500 bg-green-500"
+                    : completingSubstep
+                      ? "border-green-500 bg-green-500 scale-110"
+                      : "border-gray-500 hover:border-green-400 hover:bg-green-500/20"
                 }`}
-                title="Mark as complete"
+                title={
+                  currentSubstep?.completed ? "Completed" : "Mark as complete"
+                }
               >
-                {completingSubstep ? (
+                {currentSubstep?.completed || completingSubstep ? (
                   <svg
-                    className="w-6 h-6 text-white animate-bounce"
+                    className={`w-6 h-6 text-white ${completingSubstep ? "animate-bounce" : ""}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -304,9 +314,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                ) : (
-                  <div className="w-5 h-5 rounded border-2 border-gray-400" />
-                )}
+                ) : null}
               </button>
             </div>
 

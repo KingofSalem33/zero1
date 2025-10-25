@@ -1,5 +1,4 @@
 import React from "react";
-import CircularProgress from "./CircularProgress";
 
 interface ProjectSubstep {
   substep_id: string;
@@ -89,11 +88,6 @@ const PhaseButton: React.FC<PhaseButtonProps> = ({
           className="w-full px-3 py-3 text-left"
         >
           <div className="flex items-center gap-3">
-            {/* Progress Ring */}
-            <div className="flex-shrink-0">
-              <CircularProgress value={progress} size="sm" />
-            </div>
-
             {/* Phase Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
