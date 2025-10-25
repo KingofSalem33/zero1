@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import CircularProgress from "./CircularProgress";
 import PhaseButton from "./PhaseButton";
-import ActiveSubstepCard from "./ActiveSubstepCard";
 
 // Mobile drawer overlay component
 interface MobileDrawerProps {
@@ -197,87 +196,117 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           </p>
         </div>
 
-        {/* Active Substep Card */}
-        <ActiveSubstepCard
-          phase={currentPhase || null}
-          substep={currentSubstep || null}
-          className="mb-4"
-          onAskAI={onAskAI}
-        />
+        {/* Unified Roadmap Dropdown */}
+        <div className="mb-4">
+          {/* Roadmap Header with Current Step */}
+          <button
+            onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
+            className="group w-full rounded-xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/50 shadow-lg shadow-blue-500/20 overflow-hidden transition-all hover:shadow-xl"
+          >
+            {/* Current Step Display */}
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📋</span>
+                  <span className="text-xs font-bold text-blue-400 tracking-wider">
+                    ROADMAP
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                    <span className="text-xs text-blue-300">In Progress</span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </div>
+              </div>
 
-        {/* Roadmap Dropdown Toggle */}
-        <button
-          onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
-          className="group w-full px-4 py-2.5 mb-4 rounded-lg bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 hover:border-blue-400/70 transition-all hover:shadow-lg hover:shadow-blue-500/20 flex items-center gap-3 text-sm font-semibold"
-        >
-          <span className="text-base group-hover:scale-110 transition-transform">
-            📋
-          </span>
-          <div className="flex-1 text-left">
-            <div className="font-bold">Roadmap</div>
-            <div className="text-xs opacity-75">
-              {isRoadmapExpanded
-                ? `${project.phases.filter((p) => p.completed).length} of ${project.phases.length} complete`
-                : `Currently on P${project.current_phase}`}
+              <div className="flex items-baseline gap-2 mb-2">
+                <div className="text-2xl font-black text-white">
+                  P{currentPhase?.phase_number}.{currentSubstep?.step_number}
+                </div>
+                <div className="text-xs text-gray-400">
+                  / {currentPhase?.goal}
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-200 mb-4 leading-relaxed">
+                {currentSubstep?.label}
+              </div>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAskAI?.();
+                }}
+                className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+              >
+                <svg
+                  className="w-4 h-4 group-hover:rotate-12 transition-transform"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span>Ask AI to Start</span>
+              </button>
+            </div>
+
+            {/* Progress Footer */}
+            <div className="px-4 py-2 bg-blue-900/20 border-t border-blue-500/30">
+              <div className="text-xs text-blue-300">
+                {project.phases.filter((p) => p.completed).length} of{" "}
+                {project.phases.length} phases complete
+              </div>
+            </div>
+          </button>
+
+          {/* Expanded Phase List */}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              isRoadmapExpanded ? "opacity-100 mt-2" : "max-h-0 opacity-0"
+            }`}
+          >
+            <div className="space-y-2">
+              {project.phases.map((phase) => (
+                <PhaseButton
+                  key={phase.phase_id}
+                  phase={phase}
+                  isActive={phase.phase_number === project.current_phase}
+                  isExpanded={expandedPhaseId === phase.phase_id}
+                  currentSubstep={
+                    phase.phase_number === project.current_phase
+                      ? project.current_substep
+                      : undefined
+                  }
+                  onToggleExpand={() =>
+                    setExpandedPhaseId((prev) =>
+                      prev === phase.phase_id ? null : phase.phase_id,
+                    )
+                  }
+                />
+              ))}
             </div>
           </div>
-          <svg
-            className={`w-4 h-4 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
-        </button>
-
-        {/* Phase List */}
-        <div
-          className={`overflow-hidden transition-all duration-300 ease-in-out mb-4 ${
-            isRoadmapExpanded ? "opacity-100" : "max-h-0 opacity-0"
-          }`}
-        >
-          <div className="space-y-2">
-            {project.phases.map((phase) => (
-              <PhaseButton
-                key={phase.phase_id}
-                phase={phase}
-                isActive={phase.phase_number === project.current_phase}
-                isExpanded={expandedPhaseId === phase.phase_id}
-                currentSubstep={
-                  phase.phase_number === project.current_phase
-                    ? project.current_substep
-                    : undefined
-                }
-                onToggleExpand={() =>
-                  setExpandedPhaseId((prev) =>
-                    prev === phase.phase_id ? null : phase.phase_id,
-                  )
-                }
-              />
-            ))}
-          </div>
         </div>
-
-        {/* Current Phase Only (when collapsed) */}
-        {!isRoadmapExpanded && currentPhase && (
-          <div className="mb-4">
-            <PhaseButton
-              phase={currentPhase}
-              isActive={true}
-              isExpanded={true}
-              currentSubstep={project.current_substep}
-              onToggleExpand={() => {
-                /* Keep expanded when showing only current */
-              }}
-            />
-          </div>
-        )}
       </div>
 
       {/* Action Buttons - Fixed at bottom */}
