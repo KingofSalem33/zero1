@@ -274,7 +274,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
               </button>
 
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (
                     !currentSubstep ||
                     completingSubstep ||
@@ -282,9 +282,11 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                   )
                     return;
                   setCompletingSubstep(true);
-                  // Add delay for celebration animation
+                  // Show celebration animation while completion happens
+                  // The animation is 600ms, completion happens in parallel
+                  onCompleteSubstep(currentSubstep.substep_id);
+                  // Keep animation visible for full duration
                   setTimeout(() => {
-                    onCompleteSubstep(currentSubstep.substep_id);
                     setCompletingSubstep(false);
                   }, 600);
                 }}
