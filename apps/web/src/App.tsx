@@ -2235,7 +2235,12 @@ function App() {
   // Helper function to load/reload project from API
   const loadProject = useCallback(async (projectId: string) => {
     try {
-      const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+      const response = await fetch(`${API_URL}/api/projects/${projectId}`, {
+        cache: "no-cache",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      });
       const data = await response.json();
 
       if (response.ok && data.project) {
