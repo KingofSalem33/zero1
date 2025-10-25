@@ -716,9 +716,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               {isProcessing ? "Sending..." : "Send"}
             </button>
           </div>
-          <div className="text-xs text-gray-500 mt-2">
-            Press Enter to send, Shift+Enter for new line
-          </div>
         </div>
       </div>
     </div>
