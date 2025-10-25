@@ -1,0 +1,65 @@
+﻿Community Bike Shop Survey
+Thank you for participating! Your feedback will help us create a bike shop that meets your needs.
+1. Demographics
+* Age:
+☐ Under 18
+☐ 18-24
+☐ 25-34
+☐ 35-44
+☐ 45-54
+☐ 55-64
+☐ 65 and over
+* Gender:
+☐ Male
+☐ Female
+☐ Non-binary
+☐ Prefer not to say
+* Zip Code: ___________
+2. Cycling Habits
+   * How often do you ride a bike?
+☐ Daily
+☐ Several times a week
+☐ Once a week
+☐ A few times a month
+☐ Rarely
+☐ Never
+   * What type of cycling do you primarily engage in? (Select all that apply)
+☐ Commuting
+☐ Leisure
+☐ Racing
+☐ Mountain biking
+☐ Touring
+☐ Other: ___________
+3. Preferences
+      * What factors are most important to you when purchasing a bike? (Rank from 1 to 5, with 1 being the most important)
+☐ Price
+☐ Quality
+☐ Brand
+☐ Features (e.g., gears, brakes)
+☐ Customer service
+      * What type of bike are you most interested in?
+☐ Road bike
+☐ Mountain bike
+☐ Hybrid bike
+☐ Electric bike
+☐ Kids bike
+☐ Other: ___________
+4. Usage Scenarios
+         * Where do you typically ride your bike? (Select all that apply)
+☐ Streets
+☐ Bike paths
+☐ Trails
+☐ Parks
+☐ Other: ___________
+         * What would encourage you to ride more often? (Select all that apply)
+☐ Better bike lanes
+☐ Community events
+☐ Group rides
+☐ Discounts on bike maintenance
+☐ Other: ___________
+5. Additional Comments
+Please share any other thoughts or suggestions:
+________________
+
+
+Thank you for your time!
