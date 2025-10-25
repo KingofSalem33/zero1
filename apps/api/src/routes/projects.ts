@@ -148,14 +148,25 @@ router.post("/:projectId/complete-substep", async (req, res) => {
     }
 
     // Get substep details for briefing
-    const completedPhase = project.roadmap?.phases?.find(
-      (p: any) => p.phase_id === phase_id,
-    );
+    // Check both project.roadmap.phases and project.phases for compatibility
+    const phases =
+      project.roadmap?.phases && project.roadmap.phases.length > 0
+        ? project.roadmap.phases
+        : project.phases || [];
+
+    const completedPhase = phases.find((p: any) => p.phase_id === phase_id);
     const completedSubstep = completedPhase?.substeps?.find(
       (s: any) => s.step_number === substep_number,
     );
 
     if (!completedSubstep) {
+      console.error(
+        `[Projects] Substep not found: ${phase_id}/${substep_number}`,
+      );
+      console.error(
+        `[Projects] Available phases:`,
+        phases.map((p: any) => p.phase_id),
+      );
       return res.status(404).json({
         error: "Substep not found",
       });
