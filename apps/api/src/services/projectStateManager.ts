@@ -233,20 +233,22 @@ export class ProjectStateManager {
    * Advance to the next substep within the current phase
    */
   private advanceToNextSubstep(state: NormalizedProjectState): void {
-    const currentPhase = state.roadmap.phases.find(
-      (p) => p.phase_id === state.current_phase,
-    );
-    if (!currentPhase) {
-      console.log(
-        `[ProjectStateManager] Cannot advance: phase ${state.current_phase} not found`,
-      );
-      return;
-    }
-
+    // Normalize current_phase to a number for comparison
     const currentPhaseNum =
       typeof state.current_phase === "string"
         ? parseInt(state.current_phase.replace("P", ""))
         : state.current_phase;
+
+    // Find phase by phase_number (not phase_id) since current_phase might be a number
+    const currentPhase = state.roadmap.phases.find(
+      (p) => p.phase_number === currentPhaseNum,
+    );
+    if (!currentPhase) {
+      console.log(
+        `[ProjectStateManager] Cannot advance: phase with phase_number ${currentPhaseNum} not found`,
+      );
+      return;
+    }
 
     console.log(
       `[ProjectStateManager] Looking for next substep after ${state.current_substep} in phase ${currentPhaseNum}`,
