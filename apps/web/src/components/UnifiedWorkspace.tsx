@@ -334,16 +334,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   }, [messages, isProcessing]);
 
   const getContextualPlaceholder = (): string => {
-    if (!project) {
-      return 'Describe your vision... (e.g., "I want to build a task manager")';
-    }
-    const currentPhase = project.phases?.find(
-      (p) => p.phase_number === project.current_phase,
-    );
-    const currentSubstep = currentPhase?.substeps?.find(
-      (s) => s.step_number === project.current_substep,
-    );
-    return currentSubstep?.label || "Continue building...";
+    return "What's on your mind?";
   };
 
   const handleSendMessage = async () => {
@@ -725,7 +716,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
       {/* Input Composer (sticky bottom) */}
       <div ref={composerRef} className="px-6 py-3">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <div className="flex gap-2 items-center bg-gray-800/50 border border-gray-600/50 rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all">
             {showUploadButton ? (
               <ArtifactUploadButton
