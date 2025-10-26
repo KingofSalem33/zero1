@@ -248,17 +248,37 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
           {/* Current Step Info */}
           <div className="p-3 bg-neutral-800/30 rounded-lg space-y-2">
-            <div className="flex items-baseline gap-2">
-              <div className="text-xl font-black text-white">
-                P{currentPhase?.phase_number}.{currentSubstep?.step_number}
+            {!currentPhase || !currentSubstep ? (
+              // Loading state - roadmap being generated
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-brand-primary-400 animate-pulse" />
+                  <div className="text-sm text-neutral-400 animate-pulse">
+                    Generating your roadmap...
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 bg-neutral-700/30 rounded-full w-3/4 animate-pulse" />
+                  <div className="h-3 bg-neutral-700/30 rounded-full w-full animate-pulse" />
+                  <div className="h-3 bg-neutral-700/30 rounded-full w-2/3 animate-pulse" />
+                </div>
               </div>
-              <div className="text-xs text-neutral-500">
-                {currentPhase?.goal}
-              </div>
-            </div>
-            <div className="text-sm text-neutral-300 leading-snug">
-              {currentSubstep?.label}
-            </div>
+            ) : (
+              // Normal state - show current substep
+              <>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-xl font-black text-white">
+                    P{currentPhase.phase_number}.{currentSubstep.step_number}
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    {currentPhase.goal}
+                  </div>
+                </div>
+                <div className="text-sm text-neutral-300 leading-snug">
+                  {currentSubstep.label}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -346,8 +366,14 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
           {/* Progress Summary */}
           <div className="text-xs text-neutral-500 text-center">
-            {project.phases.filter((p) => p.completed).length} /{" "}
-            {project.phases.length} phases
+            {project.phases.length === 0 ? (
+              <span className="animate-pulse">Preparing roadmap...</span>
+            ) : (
+              <>
+                {project.phases.filter((p) => p.completed).length} /{" "}
+                {project.phases.length} phases
+              </>
+            )}
           </div>
         </div>
 
@@ -358,24 +384,38 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           }`}
         >
           <div className="space-y-1.5">
-            {project.phases.map((phase) => (
-              <PhaseButton
-                key={phase.phase_id}
-                phase={phase}
-                isActive={phase.phase_number === currentPhaseNumber}
-                isExpanded={expandedPhaseId === phase.phase_id}
-                currentSubstep={
-                  phase.phase_number === currentPhaseNumber
-                    ? project.current_substep
-                    : undefined
-                }
-                onToggleExpand={() =>
-                  setExpandedPhaseId((prev) =>
-                    prev === phase.phase_id ? null : phase.phase_id,
-                  )
-                }
-              />
-            ))}
+            {project.phases.length === 0 ? (
+              // Loading skeleton for phases
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-10 bg-neutral-800/30 rounded-lg animate-pulse"
+                    style={{ animationDelay: `${i * 100}ms` }}
+                  />
+                ))}
+              </div>
+            ) : (
+              // Actual phases
+              project.phases.map((phase) => (
+                <PhaseButton
+                  key={phase.phase_id}
+                  phase={phase}
+                  isActive={phase.phase_number === currentPhaseNumber}
+                  isExpanded={expandedPhaseId === phase.phase_id}
+                  currentSubstep={
+                    phase.phase_number === currentPhaseNumber
+                      ? project.current_substep
+                      : undefined
+                  }
+                  onToggleExpand={() =>
+                    setExpandedPhaseId((prev) =>
+                      prev === phase.phase_id ? null : phase.phase_id,
+                    )
+                  }
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
