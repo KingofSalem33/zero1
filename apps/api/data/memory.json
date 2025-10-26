@@ -1,101 +1,7 @@
 {
-  "user123": {
-    "facts": [
-      "User prefers TypeScript over JavaScript",
-      "User is building a web application"
-    ],
-    "thread": [
-      {
-        "role": "user",
-        "content": "What programming language should I use?"
-      },
-      {
-        "role": "assistant",
-        "content": "Choosing a programming language depends on several factors, including your goals, the type of project you're working on, your existing skills, and the ecosystem you prefer. Here are some considerations:\n\n1. **Web Development**: \n   - **Frontend**: JavaScript or TypeScript (since you prefer TypeScript, it's a great choice for building robust and scalable web applications).\n   - **Backend**: JavaScript/TypeScript (Node.js), Python (Django, Flask), Ruby (Ruby on Rails), or PHP.\n\n2. **Mobile Development**:\n   - **iOS**: Swift or Objective-C.\n   - **Android**: Kotlin or Java.\n   - **Cross-platform**: Dart (Flutter), JavaScript/TypeScript (React Native).\n\n3. **Data Science and Machine Learning**:\n   - Python is the most popular due to its extensive libraries like NumPy, pandas, and TensorFlow.\n   - R is also used for statistical analysis.\n\n4. **Game Development**:\n   - C++ and C# are popular, especially with engines like Unreal Engine and Unity, respectively.\n\n5. **Systems Programming**:\n   - C or C++ for performance-critical applications.\n   - Rust for safety and concurrency.\n\n6. **Scripting and Automation**:\n   - Python is widely used for its simplicity and readability.\n   - Bash or PowerShell for system scripts.\n\n7. **Enterprise Applications**:\n   - Java is a common choice for large-scale enterprise applications.\n   - C# is also popular, especially in Microsoft environments.\n\nIf you're already comfortable with TypeScript, it can be a strong choice for web development, both on the frontend and backend with Node.js. If you have specific goals or projects in mind, I can provide more tailored advice."
-      }
-    ]
-  },
-  "test-user": {
-    "facts": [],
-    "thread": [
-      {
-        "role": "user",
-        "content": "What is 2+2?"
-      },
-      {
-        "role": "assistant",
-        "content": "The result of \\(2 + 2\\) is \\(4\\)."
-      },
-      {
-        "role": "user",
-        "content": "Search for latest news about OpenAI and include the sources"
-      },
-      {
-        "role": "assistant",
-        "content": "I couldn't find any recent news articles about OpenAI at the moment. You might want to try checking major news websites or OpenAI's official blog for updates. If you have any other questions or need further assistance, feel free to ask!"
-      },
-      {
-        "role": "user",
-        "content": "Search for Python programming tutorials and include source links"
-      },
-      {
-        "role": "assistant",
-        "content": "I couldn't find any specific results for Python programming tutorials at the moment. You might want to try searching directly on popular educational platforms like Coursera, Udemy, or YouTube for a wide range of tutorials. If you have any specific topics or areas in Python you are interested in, let me know, and I can help you further!"
-      },
-      {
-        "role": "user",
-        "content": "Calculate sqrt(144) + 3^4"
-      },
-      {
-        "role": "assistant",
-        "content": "The result of \\(\\sqrt{144} + 3^4\\) is 93."
-      },
-      {
-        "role": "user",
-        "content": "Search for latest news about artificial intelligence"
-      },
-      {
-        "role": "assistant",
-        "content": "Here are some of the latest news articles about artificial intelligence:\n\n1. **AI News | Latest AI News, Analysis & Events**  \n   - **Snippet:** SoftBank chief: Forget AGI, ASI will be here within 10 years. Malaysia launches Ryt Bank, its first AI-powered bank. Google's Veo 3 AI video creation tools.  \n   - **Link:** [Artificial Intelligence News](https://www.artificialintelligence-news.com/)\n\n2. **Artificial Intelligence News - NBC News**  \n   - **Snippet:** The latest news and top stories on artificial intelligence, including AI chatbots like Microsoft's ChatGPT, Apple's AI Chatbot, and Google's Bard.  \n   - **Link:** [NBC News AI](https://www.nbcnews.com/artificial-intelligence)\n\n3. **Artificial Intelligence - BBC News**  \n   - **Snippet:** All the latest content about artificial intelligence from the BBC.  \n   - **Link:** [BBC News AI](https://www.bbc.com/news/topics/ce1qrvleleqt)\n\n4. **Artificial Intelligence - MIT News**  \n   - **Snippet:** MIT Schwarzman College of Computing and MBZUAI launch international collaboration to shape the future of AI. Using generative AI to...  \n   - **Link:** [MIT News AI](https://news.mit.edu/topic/artificial-intelligence2)\n\n5. **Artificial Intelligence - WSJ.com**  \n   - **Snippet:** OpenAI, AMD Announce Massive Computing Deal, marking a new phase of the AI boom. The five-year agreement will challenge Nvidia's market dominance.  \n   - **Link:** [Wall Street Journal AI](https://www.wsj.com/tech/ai?gaa_at=eafs&gaa_n=ASWzDAjq7xrVszlkZUSseHrc3pzePYJk2-s4BIhIXPfQgRMFCaWAKwSdzDN9&gaa_ts=68ebc056&gaa_sig=qXkqu6O4yhXyfwP4Vo-IYoz0e33aHcFTAm31_N6YEHRPPB2bgL9hWsPGa0-IBW907lUg_dLFCLJ6_IjktIcPQg%3D%3D)\n\nFeel free to explore these links for more detailed information!"
-      },
-      {
-        "role": "user",
-        "content": "What is 5 + 7?"
-      },
-      {
-        "role": "user",
-        "content": "What is 5 + 7?"
-      }
-    ]
-  },
-  "test-elite": {
-    "facts": [],
-    "thread": [
-      {
-        "role": "user",
-        "content": "Search the web for the latest AI developments in 2024 and summarize the top 3 trends"
-      },
-      {
-        "role": "assistant",
-        "content": "Here are the top three AI trends in 2024 based on recent developments:\n\n1. **Generative AI Expansion**: Generative AI continues to grow rapidly, integrating into new platforms, mediums, and devices. This expansion is making generative AI tools more accessible and useful for everyday users, beyond just tech enthusiasts. The technology is being applied in creative fields, business solutions, and personal productivity tools, showcasing its versatility and broad appeal [Forbes](https://www.forbes.com/sites/bernardmarr/2024/12/16/6-game-changing-ai-breakthroughs-that-defined-2024/), [Digital Trends](https://www.digitaltrends.com/computing/the-10-biggest-ai-announcements-of-2024/).\n\n2. **AI in Automation and Machine Learning**: 2024 has seen significant advancements in automation and machine learning. These technologies are being increasingly integrated into various industries, enhancing efficiency and productivity. AI-driven automation is reshaping workflows and processes, enabling businesses to operate more effectively and with greater precision [Analytics Insight](https://www.analyticsinsight.net/artificial-intelligence/top-ai-developments-we-saw-in-2024).\n\n3. **Human-AI Collaboration**: There is a growing focus on human-AI collaboration, where AI tools are designed to augment human capabilities rather than replace them. This trend emphasizes the development of AI systems that work alongside humans, enhancing decision-making and creativity. Such collaboration is becoming crucial in sectors like healthcare, education, and creative industries [MIT Technology Review](https://www.technologyreview.com/2024/01/04/1086046/whats-next-for-ai-in-2024/).\n\nThese trends highlight the transformative impact of AI technologies across various domains, driving innovation and changing how we interact with technology."
-      },
-      {
-        "role": "user",
-        "content": "Calculate the compound interest on 0,000 at 7% annual rate for 5 years using the formula A = P(1 + r)^t"
-      },
-      {
-        "role": "assistant",
-        "content": "The amount after 5 years with a principal of $10,000 at an annual interest rate of 7% compounded annually is approximately $14,025.52."
-      }
-    ]
-  },
   "vision-generator": {
     "facts": [],
     "thread": [
-      {
-        "role": "user",
-        "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"A personal finance tracker\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
-      },
       {
         "role": "user",
         "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"A personal finance tracker\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
@@ -251,43 +157,22 @@
       {
         "role": "user",
         "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"A recipe sharing platform\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
+      },
+      {
+        "role": "user",
+        "content": "A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:\n\n**Original idea:** \"Personal budget tracker with AI categorization\"\n\n**The Vision Formula:** \"I want to build ______ so that ______\"\n\n**Refinement principles:**\n1. **First blank**: Be specific and concrete (not \"an app\" but \"a mobile app for busy parents\")\n2. **Second blank**: Focus on user benefit, not features (not \"has GPS\" but \"parents never lose track of pickup times\")\n3. **Clarity test**: Could someone else explain your project after hearing this once?\n\n**Common mistakes to avoid:**\n- Too vague (\"productivity app\")\n- Feature-focused (\"app with notifications\")\n- Multiple audiences in one sentence\n\n**Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**\n\nReturn only the refined vision statement using the format \"I want to build ______ so that ______.\""
       }
     ],
-    "lastAccessTime": 1761482598051
-  },
-  "test": {
-    "facts": [],
-    "thread": [
-      {
-        "role": "user",
-        "content": "Search the web for the latest news about AI"
-      },
-      {
-        "role": "assistant",
-        "content": "Here are the latest news articles about artificial intelligence:\n\n1. **AI's Future with DeepSeek—Free - How Will DeepSeek Affect AI?**\n   - Explore what DeepSeek means for AI and how it will affect companies like NVIDIA. A free report is available discussing AI's next evolution.\n   - [Read more](https://duckduckgo.com/y.js?ad_domain=zacks.com&ad_provider=bingv7aa&ad_type=txad&click_metadata=TFw6Qccvpv_0j-9OXPEh1V9xMFYmPJE3iMXZ2LvTHV-UBx510SCeH833kuXYDRno-ydS2kx2UhMO6-QCa6YoQc2rFKuxIWqkNndEFraHg44V8CVjuQwhES5fB3CN4Fi0.awKXFvySpfsJCv7IGsnDcA)\n\n2. **Google News - Artificial Intelligence - Latest**\n   - Access a variety of articles, videos, and updates on artificial intelligence topics through Google News.\n   - [Explore here](https://news.google.com/topics/CAAqJAgKIh5DQkFTRUFvSEwyMHZNRzFyZWhJRlpXNHRSMElvQUFQAQ)\n\n3. **AI News & Artificial Intelligence | TechCrunch**\n   - Stay updated with the latest developments in AI and machine learning, including ethical issues and company news.\n   - [Check it out](https://techcrunch.com/category/artificial-intelligence/)\n\n4. **AI News | Latest Headlines and Developments | Reuters**\n   - Discover the latest breakthroughs, technology trends, and ethical discussions surrounding artificial intelligence.\n   - [Read more](https://www.reuters.com/technology/artificial-intelligence/)\n\n5. **AI News - Top AI News - Discover Top AI Resources**\n   - This resource explores how AI can enhance productivity and daily tasks with cutting-edge tools.\n   - [Learn more](https://duckduckgo.com/y.js?ad_domain=popado.net&ad_provider=bingv7aa&ad_type=txad&click_metadata=nvIDOoD0WQe4pU_kh9AiosbRIvNmjKOLcnKyxcwKMndzoiFbQoCeGn9eIEx8xGrzCHSRiTIakVCspJS8EJ9FaLQOdSPK78H2cepOQuLR_7nD6F0FPGSyDSQYcibe54k9.8er0RqSateE-M5h3Ut77rQ)\n\nFor more detailed insights, you can visit the links provided."
-      },
-      {
-        "role": "user",
-        "content": "Search the web for the latest AI news"
-      },
-      {
-        "role": "user",
-        "content": "Search the web for latest news about AI"
-      }
-    ]
-  },
-  "demo-user": {
-    "facts": [],
-    "thread": [
-      {
-        "role": "user",
-        "content": "I want to learn how to start a cookie businees search the internet\n"
-      }
-    ]
+    "lastAccessTime": 1761503575138
   },
   "user_1760880241353_zmmasn2": {
     "facts": ["hi my name is cory"],
     "thread": [],
     "lastAccessTime": 1760956736323
+  },
+  "user_1760277730027_kytnwe1": {
+    "facts": [],
+    "thread": [],
+    "lastAccessTime": 1761503564908
   }
 }

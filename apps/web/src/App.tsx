@@ -2879,12 +2879,11 @@ Return only the refined vision statement using the format "I want to build _____
       />
 
       {/* User Memory Manager Modal */}
-      {showMemoryManager && (
-        <UserMemoryManager
-          userId={userId}
-          onClose={() => setShowMemoryManager(false)}
-        />
-      )}
+      <UserMemoryManager
+        isOpen={showMemoryManager}
+        userId={userId}
+        onClose={() => setShowMemoryManager(false)}
+      />
     </div>
   );
 }
