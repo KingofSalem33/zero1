@@ -58,6 +58,9 @@ router.post("/", async (req, res) => {
       .createProjectWithId(supabaseProject.id, goal.trim(), (progress) => {
         // Send progress to SSE stream if connected
         const streamRes = projectStreamResponses.get(supabaseProject.id);
+        console.log(
+          `[Projects] Progress callback fired: type=${progress.type}, streamRes=${streamRes ? "CONNECTED" : "NOT CONNECTED"}`,
+        );
         if (streamRes) {
           if (progress.type === "phase_generation") {
             streamingService.sendPhaseProgress(streamRes, {
@@ -74,6 +77,10 @@ router.post("/", async (req, res) => {
               substeps: progress.substeps,
             });
           }
+        } else {
+          console.warn(
+            `[Projects] ⚠️ SSE stream NOT connected for project ${supabaseProject.id} - events will not be sent!`,
+          );
         }
       })
       .then(async (project) => {

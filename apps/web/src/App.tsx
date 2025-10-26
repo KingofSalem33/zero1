@@ -2484,6 +2484,7 @@ function App() {
           (e: Event) => {
             const messageEvent = e as { data: string };
             const eventData = JSON.parse(messageEvent.data);
+            console.log("[SSE] phase_progress received:", eventData);
             setGuidance(
               `Generating Phase ${eventData.phase}/${eventData.total}: ${eventData.title}`,
             );
@@ -2500,11 +2501,19 @@ function App() {
                 );
 
                 if (!phaseExists) {
+                  console.log(
+                    "[SSE] Adding phase to state:",
+                    eventData.phaseData.phase_number,
+                  );
                   return {
                     ...prev,
                     phases: [...existingPhases, eventData.phaseData],
                   };
                 }
+                console.log(
+                  "[SSE] Phase already exists, skipping:",
+                  eventData.phaseData.phase_number,
+                );
                 return prev;
               });
             }
@@ -2517,16 +2526,24 @@ function App() {
           (e: Event) => {
             const messageEvent = e as { data: string };
             const eventData = JSON.parse(messageEvent.data);
+            console.log("[SSE] substep_expansion received:", eventData);
             setGuidance(
               `Expanding Phase ${eventData.phase} with ${eventData.substepCount} substeps...`,
             );
 
             // Update Phase 1 with substeps
             if (eventData.phaseData && eventData.substeps) {
+              console.log(
+                "[SSE] Updating P1 with substeps:",
+                eventData.substeps.length,
+              );
               setProject((prev) => {
-                if (!prev || !prev.phases) return prev;
+                if (!prev || !prev.phases) {
+                  console.log("[SSE] No prev project or phases, skipping");
+                  return prev;
+                }
 
-                return {
+                const updated = {
                   ...prev,
                   current_phase: 1,
                   current_substep: 1,
@@ -2545,6 +2562,11 @@ function App() {
                       : phase,
                   ),
                 };
+                console.log(
+                  "[SSE] Project state updated with P1 substeps. New state:",
+                  updated,
+                );
+                return updated;
               });
             }
           },
@@ -2554,52 +2576,79 @@ function App() {
           "roadmap_complete",
           // eslint-disable-next-line no-undef
           async (_e: Event) => {
+            console.log("[SSE] roadmap_complete received");
             eventSource.close();
 
-            // Fetch the completed project
-            try {
-              const pollResponse = await fetch(
-                `${API_URL}/api/projects/${projectId}`,
-              );
-              const pollData = await pollResponse.json();
-
-              const phases =
-                pollData.project?.phases || pollData.project?.roadmap?.phases;
-              if (phases && Array.isArray(phases) && phases.length > 0) {
-                // Process the project phases for progressive revelation
-                const processedProject = {
-                  ...pollData.project,
-                  current_phase: 1,
-                  current_substep: 1,
-                  phases: phases.map((phase: ProjectPhase, index: number) => ({
-                    ...phase,
-                    phase_number: index + 1,
-                    expanded: index === 0,
-                    locked: index > 0,
-                    substeps:
-                      index === 0
-                        ? (phase.substeps || []).map(
-                            (substep: ProjectSubstep, subIndex: number) => ({
-                              ...substep,
-                              step_number: subIndex + 1,
-                              completed: false,
-                            }),
-                          )
-                        : [],
-                  })),
-                };
-
-                setProject(processedProject);
+            // Check if we already have phases from SSE stream
+            setProject((prev) => {
+              if (prev && prev.phases && prev.phases.length > 0) {
+                console.log(
+                  "[SSE] We already have phases from stream, just marking complete",
+                );
+                // We already have the roadmap from SSE updates, just mark as done
                 setGuidance("Roadmap complete! Ready to start building.");
                 setCreatingProject(false);
-
                 setTimeout(() => setGuidance(""), 4000);
+                return prev; // Keep existing state
               }
-            } catch (error) {
-              console.error("Error fetching completed project:", error);
-              setGuidance("Roadmap complete, but failed to load details.");
-              setCreatingProject(false);
-            }
+              return prev;
+            });
+
+            // Only fetch as fallback if we somehow don't have phases
+            setProject((prev) => {
+              if (!prev || !prev.phases || prev.phases.length === 0) {
+                console.log("[SSE] No phases yet, fetching as fallback");
+                // Fallback: fetch from API
+                fetch(`${API_URL}/api/projects/${projectId}`)
+                  .then((pollResponse) => pollResponse.json())
+                  .then((pollData) => {
+                    const phases =
+                      pollData.project?.phases ||
+                      pollData.project?.roadmap?.phases;
+                    if (phases && Array.isArray(phases) && phases.length > 0) {
+                      const processedProject = {
+                        ...pollData.project,
+                        current_phase: 1,
+                        current_substep: 1,
+                        phases: phases.map(
+                          (phase: ProjectPhase, index: number) => ({
+                            ...phase,
+                            phase_number: index + 1,
+                            expanded: index === 0,
+                            locked: index > 0,
+                            substeps:
+                              index === 0
+                                ? (phase.substeps || []).map(
+                                    (
+                                      substep: ProjectSubstep,
+                                      subIndex: number,
+                                    ) => ({
+                                      ...substep,
+                                      step_number: subIndex + 1,
+                                      completed: false,
+                                    }),
+                                  )
+                                : [],
+                          }),
+                        ),
+                      };
+
+                      setProject(processedProject);
+                      setGuidance("Roadmap complete! Ready to start building.");
+                      setCreatingProject(false);
+                      setTimeout(() => setGuidance(""), 4000);
+                    }
+                  })
+                  .catch((error) => {
+                    console.error("Error fetching completed project:", error);
+                    setGuidance(
+                      "Roadmap complete, but failed to load details.",
+                    );
+                    setCreatingProject(false);
+                  });
+              }
+              return prev;
+            });
           },
         );
 
