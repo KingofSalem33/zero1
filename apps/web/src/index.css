@@ -250,3 +250,135 @@ pre code {
   background-color: var(--color-brand-primary);
   color: white;
 }
+
+/* ===================================================================
+   Button System - Unified treatments for consistent UX
+   =================================================================== */
+
+@layer components {
+  /* Base button styles */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-semibold text-sm;
+    @apply rounded-xl px-4 py-2.5;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Primary CTA - Brand gradient (use sparingly for main actions) */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-semibold text-sm;
+    @apply rounded-xl px-4 py-2.5;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-gradient-to-r from-blue-600 to-purple-600;
+    @apply hover:from-blue-500 hover:to-purple-500;
+    @apply text-white shadow-lg shadow-blue-500/20;
+    @apply focus:ring-blue-500;
+    @apply disabled:from-neutral-700 disabled:to-neutral-700 disabled:shadow-none;
+  }
+
+  /* Secondary - Neutral (standard actions) */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-semibold text-sm;
+    @apply rounded-xl px-4 py-2.5;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-neutral-800/80 border border-neutral-700/50;
+    @apply hover:bg-neutral-700/80 hover:border-neutral-600/50;
+    @apply text-neutral-200;
+    @apply focus:ring-neutral-600;
+  }
+
+  /* Ghost - Minimal (tertiary actions) */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-semibold text-sm;
+    @apply rounded-xl px-4 py-2.5;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-transparent;
+    @apply hover:bg-neutral-800/50;
+    @apply text-neutral-400 hover:text-neutral-200;
+    @apply focus:ring-neutral-700;
+  }
+
+  /* Success state (completion, confirmations) */
+  .btn-success {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-semibold text-sm;
+    @apply rounded-xl px-4 py-2.5;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-green-600/20 border border-green-500/50;
+    @apply hover:bg-green-600/30 hover:border-green-500/70;
+    @apply text-green-400 hover:text-green-300;
+    @apply focus:ring-green-500;
+  }
+
+  /* Error/Danger state (destructive actions) */
+  .btn-error {
+    @apply inline-flex items-center justify-center gap-2;
+    @apply font-semibold text-sm;
+    @apply rounded-xl px-4 py-2.5;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-red-600/20 border border-red-500/50;
+    @apply hover:bg-red-600/30 hover:border-red-500/70;
+    @apply text-red-400 hover:text-red-300;
+    @apply focus:ring-red-500;
+  }
+
+  /* Icon-only buttons */
+  .btn-icon {
+    @apply inline-flex items-center justify-center;
+    @apply w-9 h-9 rounded-lg;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-icon-primary {
+    @apply inline-flex items-center justify-center;
+    @apply w-9 h-9 rounded-lg;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-gradient-to-r from-blue-600 to-purple-600;
+    @apply hover:from-blue-500 hover:to-purple-500;
+    @apply text-white shadow-sm;
+    @apply focus:ring-blue-500;
+  }
+
+  .btn-icon-secondary {
+    @apply inline-flex items-center justify-center;
+    @apply w-9 h-9 rounded-lg;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-neutral-800/50 border border-neutral-700/50;
+    @apply hover:bg-neutral-700/50 hover:border-neutral-600/50;
+    @apply text-neutral-400 hover:text-neutral-200;
+    @apply focus:ring-neutral-600;
+  }
+
+  .btn-icon-ghost {
+    @apply inline-flex items-center justify-center;
+    @apply w-9 h-9 rounded-lg;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-900;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-transparent;
+    @apply hover:bg-neutral-800/50;
+    @apply text-neutral-400 hover:text-neutral-200;
+    @apply focus:ring-neutral-700;
+  }
+}

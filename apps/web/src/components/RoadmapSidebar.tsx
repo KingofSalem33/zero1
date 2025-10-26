@@ -263,10 +263,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
           {/* Action Buttons */}
           <div className="flex gap-2">
-            <button
-              onClick={() => onAskAI?.()}
-              className="flex-1 px-3 py-2.5 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
-            >
+            <button onClick={() => onAskAI?.()} className="btn-primary flex-1">
               <svg
                 className="w-4 h-4"
                 fill="none"
@@ -318,13 +315,13 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                 }, 600);
               }}
               disabled={completingSubstep || currentSubstep?.completed}
-              className={`flex-shrink-0 w-10 h-10 rounded-lg transition-all duration-300 flex items-center justify-center ${
+              className={`btn-icon ${
                 currentSubstep?.completed
-                  ? "bg-success-500"
+                  ? "bg-green-600 border-green-500"
                   : completingSubstep
-                    ? "bg-success-500 scale-110"
-                    : "bg-neutral-700/50 hover:bg-success-500/20 border border-neutral-600/50 hover:border-success-400"
-              }`}
+                    ? "bg-green-600 border-green-500 scale-110"
+                    : "bg-neutral-700/50 hover:bg-green-600/20 border border-neutral-600/50 hover:border-green-500"
+              } w-10 h-10`}
               title={
                 currentSubstep?.completed ? "Completed" : "Mark as complete"
               }
@@ -388,31 +385,22 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onOpenFileManager}
-            className="group px-2 py-2 rounded-lg bg-neutral-800/30 hover:bg-neutral-800/50 text-neutral-400 hover:text-neutral-300 transition-all flex flex-col items-center gap-1 text-xs font-medium"
+            className="btn-ghost flex-col gap-1 text-xs"
           >
-            <span className="text-base group-hover:scale-110 transition-transform">
-              📁
-            </span>
+            <span className="text-base">📁</span>
             <span>Files</span>
           </button>
           <button
             onClick={onOpenMemoryManager}
-            className="group px-2 py-2 rounded-lg bg-neutral-800/30 hover:bg-neutral-800/50 text-neutral-400 hover:text-neutral-300 transition-all flex flex-col items-center gap-1 text-xs font-medium"
+            className="btn-ghost flex-col gap-1 text-xs"
           >
-            <span className="text-base group-hover:scale-110 transition-transform">
-              🧠
-            </span>
+            <span className="text-base">🧠</span>
             <span>Memory</span>
           </button>
         </div>
 
-        <button
-          onClick={onOpenNewWorkspace}
-          className="group w-full px-3 py-2 rounded-lg bg-success-500/10 hover:bg-success-500/20 border border-success-500/30 hover:border-success-500/50 text-success-400 transition-all flex items-center justify-center gap-2 text-sm font-medium"
-        >
-          <span className="text-sm group-hover:rotate-90 transition-transform">
-            ➕
-          </span>
+        <button onClick={onOpenNewWorkspace} className="btn-secondary w-full">
+          <span className="text-sm">➕</span>
           <span>New Workspace</span>
         </button>
       </div>

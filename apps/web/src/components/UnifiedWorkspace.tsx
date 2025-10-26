@@ -580,13 +580,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     }
                   }}
                   disabled={!currentInput.trim() || creating || inspiring}
-                  className="px-6 py-3 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-600 text-white font-medium transition-all disabled:cursor-not-allowed"
+                  className="btn-secondary"
                 >
                   {inspiring ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <>
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       <span>Inspiring...</span>
-                    </div>
+                    </>
                   ) : (
                     "✨ Inspire Me"
                   )}
@@ -594,13 +594,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 <button
                   onClick={handleSendMessage}
                   disabled={!currentInput.trim() || creating || inspiring}
-                  className="px-6 py-3 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-600 text-white font-medium transition-all disabled:cursor-not-allowed"
+                  className="btn-primary"
                 >
                   {creating ? (
-                    <div className="flex items-center justify-center gap-2">
+                    <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>Creating...</span>
-                    </div>
+                    </>
                   ) : (
                     "Start Building"
                   )}
@@ -626,9 +626,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     onInspireMe(idea, setCurrentInput);
                   }}
                   disabled={creating || inspiring}
-                  className="px-4 py-3 rounded-xl bg-neutral-800/30 border border-neutral-700/50 hover:border-brand-primary-500/50 hover:bg-neutral-800/50 text-neutral-300 text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left shadow-sm"
+                  className="btn-ghost text-left justify-start"
                 >
-                  💡 {idea}
+                  <span>💡</span>
+                  <span>{idea}</span>
                 </button>
               ))}
             </div>
@@ -702,14 +703,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       onSubstepComplete(completionNudge.substep_id);
                       onDismissNudge();
                     }}
-                    className="px-4 py-2.5 rounded-lg bg-green-600/50 hover:bg-green-600/70 text-white text-sm font-semibold transition-all shadow-sm"
+                    className="btn-success"
                   >
                     Mark Complete & Continue
                   </button>
-                  <button
-                    onClick={onDismissNudge}
-                    className="px-4 py-2.5 rounded-lg bg-gray-700/50 hover:bg-gray-700/70 text-gray-300 text-sm font-medium transition-all"
-                  >
+                  <button onClick={onDismissNudge} className="btn-ghost">
                     Keep Working
                   </button>
                 </div>
@@ -730,7 +728,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all shadow-lg">
             <button
               onClick={() => setShowUploadButton(!showUploadButton)}
-              className="flex-shrink-0 w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/50 transition-all flex items-center justify-center"
+              className="btn-icon-ghost w-8 h-8"
               title="Add options"
             >
               <svg
@@ -800,7 +798,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <button
               onClick={handleSendMessage}
               disabled={!currentInput.trim() || isProcessing}
-              className="flex-shrink-0 w-9 h-9 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-700 disabled:opacity-50 text-white transition-all disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
+              className="btn-icon-primary"
               title={isProcessing ? "Sending..." : "Send message"}
             >
               {isProcessing ? (

@@ -187,7 +187,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
           {onCopy && (
             <button
               onClick={handleCopy}
-              className="p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-400 hover:text-white transition-colors text-xs"
+              className="btn-icon-secondary text-xs w-7 h-7"
               title="Copy message"
             >
               {copied ? "✓" : "📋"}
@@ -196,7 +196,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
           {onRegenerate && (
             <button
               onClick={onRegenerate}
-              className="p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-400 hover:text-white transition-colors text-xs"
+              className="btn-icon-secondary text-xs w-7 h-7"
               title="Regenerate"
             >
               🔄
@@ -205,7 +205,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
           {onEdit && (
             <button
               onClick={onEdit}
-              className="p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-400 hover:text-white transition-colors text-xs"
+              className="btn-icon-secondary text-xs w-7 h-7"
               title="Edit message"
             >
               ✏️
