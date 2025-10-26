@@ -10,6 +10,7 @@ import { FileManager } from "./components/FileManager";
 import { UserMemoryManager } from "./components/UserMemoryManager";
 import RoadmapSidebar from "./components/RoadmapSidebar";
 import UnifiedWorkspace from "./components/UnifiedWorkspace";
+import { Toast } from "./components/Toast";
 
 // ---- Utility helpers ----
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -2836,9 +2837,18 @@ Return only the refined vision statement using the format "I want to build _____
 
       {/* Guidance Toast */}
       {guidance && (
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-2xl shadow-2xl shadow-blue-500/30 backdrop-blur-sm border border-blue-400/30 max-w-md text-center font-medium z-50">
-          {guidance}
-        </div>
+        <Toast
+          message={guidance}
+          duration={4000}
+          onClose={() => setGuidance("")}
+          type={
+            guidance.includes("✅") || guidance.includes("🎯")
+              ? "success"
+              : guidance.includes("❌") || guidance.includes("⚠")
+                ? "error"
+                : "info"
+          }
+        />
       )}
 
       {/* Popup Workspaces */}
@@ -2863,9 +2873,10 @@ Return only the refined vision statement using the format "I want to build _____
       )}
 
       {/* File Manager Modal */}
-      {showFileManager && (
-        <FileManager onClose={() => setShowFileManager(false)} />
-      )}
+      <FileManager
+        isOpen={showFileManager}
+        onClose={() => setShowFileManager(false)}
+      />
 
       {/* User Memory Manager Modal */}
       {showMemoryManager && (

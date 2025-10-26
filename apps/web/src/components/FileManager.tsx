@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Modal, ModalHeader, ModalBody } from "./Modal";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -11,10 +12,14 @@ interface FileMetadata {
 }
 
 interface FileManagerProps {
+  isOpen: boolean;
   onClose: () => void;
 }
 
-export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
+export const FileManager: React.FC<FileManagerProps> = ({
+  isOpen,
+  onClose,
+}) => {
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -100,39 +105,16 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-white">File Manager</h2>
-            <p className="text-sm text-gray-400 mt-1">
-              Upload documents for AI to search and reference
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-
+    <Modal isOpen={isOpen} onClose={onClose} size="lg">
+      <ModalHeader
+        title="File Manager"
+        subtitle="Upload documents for AI to search and reference"
+        onClose={onClose}
+      />
+      <ModalBody>
         {/* Upload Section */}
-        <div className="px-6 py-4 border-b border-gray-700">
-          <label className="flex items-center justify-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-lg cursor-pointer transition-all duration-200">
+        <div className="pb-4 border-b border-neutral-700/50">
+          <label className="btn-primary w-full cursor-pointer justify-center">
             <svg
               className="w-5 h-5 text-white"
               fill="none"
@@ -255,7 +237,7 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
             tool
           </p>
         </div>
-      </div>
-    </div>
+      </ModalBody>
+    </Modal>
   );
 };
