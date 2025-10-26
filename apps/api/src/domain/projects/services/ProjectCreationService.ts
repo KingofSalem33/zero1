@@ -19,6 +19,8 @@ export interface ProjectCreationProgress {
   total: number;
   title: string;
   type: "phase_generation" | "substep_expansion";
+  phaseData?: any; // The actual phase object for incremental UI updates
+  substeps?: any[]; // Substeps when type is "substep_expansion"
 }
 
 export type ProgressCallback = (progress: ProjectCreationProgress) => void;
@@ -49,14 +51,27 @@ export class ProjectCreationService {
         "Initial project creation - no clarification needed.",
     });
 
-    // Send progress updates for each phase generated
+    // Send progress updates for each phase generated WITH phase data
+    const now = new Date().toISOString();
     if (onProgress) {
       phaseResponse.phases.forEach((phase, index) => {
+        const phaseNumber = index + 1;
+        const phaseData = {
+          ...phase,
+          phase_number: phaseNumber,
+          substeps: [], // Will be filled for P1 later
+          expanded: false,
+          locked: phaseNumber > 1, // Only P1 is unlocked
+          completed: false,
+          created_at: now,
+        };
+
         onProgress({
-          phase: index + 1,
+          phase: phaseNumber,
           total: phaseResponse.phases.length,
-          title: phase.goal || `Phase ${index + 1}`,
+          title: phase.goal || `Phase ${phaseNumber}`,
           type: "phase_generation",
+          phaseData, // Send the actual phase object!
         });
       });
     }
@@ -70,18 +85,26 @@ export class ProjectCreationService {
     const expandedPhase1 =
       await this.substepGenerationService.expandPhaseWithSubsteps(phase1, goal);
 
-    // Send progress for substep expansion
+    // Send progress for substep expansion WITH substep data
     if (onProgress && expandedPhase1.substeps) {
       onProgress({
         phase: 1,
         total: expandedPhase1.substeps.length,
         title: `Expanded Phase 1 with ${expandedPhase1.substeps.length} substeps`,
         type: "substep_expansion",
+        phaseData: {
+          ...expandedPhase1,
+          phase_number: 1,
+          expanded: true,
+          locked: false,
+          completed: false,
+          created_at: now,
+        },
+        substeps: expandedPhase1.substeps,
       });
     }
 
     // Build project with Phase 1 expanded, rest locked
-    const now = new Date().toISOString();
     const project: Project = {
       id,
       goal,

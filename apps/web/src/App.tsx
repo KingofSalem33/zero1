@@ -2483,10 +2483,31 @@ function App() {
           // eslint-disable-next-line no-undef
           (e: Event) => {
             const messageEvent = e as { data: string };
-            const phaseData = JSON.parse(messageEvent.data);
+            const eventData = JSON.parse(messageEvent.data);
             setGuidance(
-              `Generating Phase ${phaseData.phase}/${phaseData.total}: ${phaseData.title}`,
+              `Generating Phase ${eventData.phase}/${eventData.total}: ${eventData.title}`,
             );
+
+            // Incrementally add phase to project state
+            if (eventData.phaseData) {
+              setProject((prev) => {
+                if (!prev) return prev;
+
+                const existingPhases = prev.phases || [];
+                const phaseExists = existingPhases.some(
+                  (p: ProjectPhase) =>
+                    p.phase_number === eventData.phaseData.phase_number,
+                );
+
+                if (!phaseExists) {
+                  return {
+                    ...prev,
+                    phases: [...existingPhases, eventData.phaseData],
+                  };
+                }
+                return prev;
+              });
+            }
           },
         );
 
@@ -2495,10 +2516,37 @@ function App() {
           // eslint-disable-next-line no-undef
           (e: Event) => {
             const messageEvent = e as { data: string };
-            const substepData = JSON.parse(messageEvent.data);
+            const eventData = JSON.parse(messageEvent.data);
             setGuidance(
-              `Expanding Phase ${substepData.phase} with ${substepData.substepCount} substeps...`,
+              `Expanding Phase ${eventData.phase} with ${eventData.substepCount} substeps...`,
             );
+
+            // Update Phase 1 with substeps
+            if (eventData.phaseData && eventData.substeps) {
+              setProject((prev) => {
+                if (!prev || !prev.phases) return prev;
+
+                return {
+                  ...prev,
+                  current_phase: 1,
+                  current_substep: 1,
+                  phases: prev.phases.map((phase: ProjectPhase) =>
+                    phase.phase_number === 1
+                      ? {
+                          ...eventData.phaseData,
+                          substeps: eventData.substeps.map(
+                            (substep: ProjectSubstep, index: number) => ({
+                              ...substep,
+                              step_number: index + 1,
+                              completed: false,
+                            }),
+                          ),
+                        }
+                      : phase,
+                  ),
+                };
+              });
+            }
           },
         );
 

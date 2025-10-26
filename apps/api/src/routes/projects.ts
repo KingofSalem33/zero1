@@ -64,11 +64,14 @@ router.post("/", async (req, res) => {
               phase: progress.phase,
               total: progress.total,
               title: progress.title,
+              phaseData: progress.phaseData, // Include the actual phase object
             });
           } else if (progress.type === "substep_expansion") {
             streamingService.sendSubstepExpansion(streamRes, {
               phase: progress.phase,
               substepCount: progress.total,
+              phaseData: progress.phaseData, // Include expanded Phase 1 with substeps
+              substeps: progress.substeps,
             });
           }
         }

@@ -198,7 +198,7 @@ export class StreamingService {
    */
   sendPhaseProgress(
     res: Response,
-    data: { phase: number; total: number; title: string },
+    data: { phase: number; total: number; title: string; phaseData?: any },
   ): void {
     console.log(
       `📋 [StreamingService] Phase ${data.phase}/${data.total}: ${data.title}`,
@@ -211,7 +211,12 @@ export class StreamingService {
    */
   sendSubstepExpansion(
     res: Response,
-    data: { phase: number; substepCount: number },
+    data: {
+      phase: number;
+      substepCount: number;
+      phaseData?: any;
+      substeps?: any[];
+    },
   ): void {
     console.log(
       `🔍 [StreamingService] Expanding Phase ${data.phase} with ${data.substepCount} substeps`,
