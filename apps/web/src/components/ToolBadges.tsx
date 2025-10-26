@@ -13,18 +13,164 @@ interface ToolBadgesProps {
   tools?: ToolActivity[];
 }
 
-const TOOL_ICONS: Record<string, string> = {
-  web_search: "🔍",
-  http_fetch: "📄",
-  calculator: "🧮",
-  file_search: "📁",
+// Consistent icon set with SVG paths for better scalability
+const TOOL_ICONS: Record<string, { label: string; icon: string }> = {
+  web_search: { label: "Web Search", icon: "search" },
+  http_fetch: { label: "Fetch URL", icon: "download" },
+  calculator: { label: "Calculate", icon: "calculator" },
+  file_search: { label: "File Search", icon: "file" },
 };
 
-const TOOL_LABELS: Record<string, string> = {
-  web_search: "Web Search",
-  http_fetch: "Fetch URL",
-  calculator: "Calculate",
-  file_search: "File Search",
+// SVG icon components
+const Icon: React.FC<{ name: string; className?: string }> = ({
+  name,
+  className = "w-3.5 h-3.5",
+}) => {
+  const icons: Record<string, React.ReactElement> = {
+    search: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        />
+      </svg>
+    ),
+    download: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+        />
+      </svg>
+    ),
+    calculator: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+        />
+      </svg>
+    ),
+    file: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
+      </svg>
+    ),
+    spinner: (
+      <svg
+        className={`${className} animate-spin`}
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+        />
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        />
+      </svg>
+    ),
+    check: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M5 13l4 4L19 7"
+        />
+      </svg>
+    ),
+    alert: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+        />
+      </svg>
+    ),
+    chevronRight: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 5l7 7-7 7"
+        />
+      </svg>
+    ),
+    chevronDown: (
+      <svg
+        className={className}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
+      </svg>
+    ),
+  };
+
+  return icons[name] || icons.file;
 };
 
 // Format tool result for display (currently unused but kept for future enhancement)
@@ -123,106 +269,149 @@ export const ToolBadges: React.FC<ToolBadgesProps> = ({ tools }) => {
   };
 
   return (
-    <div className="space-y-2 mb-3">
+    <div className="space-y-3">
+      {/* Tool badges - horizontal list */}
       <div className="flex flex-wrap gap-2">
-        {/* Active tools (in progress) */}
-        {activeTools.map((tool, idx) => (
-          <div
-            key={`active-${tool.tool}-${idx}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-500/30 text-xs font-medium text-yellow-300 animate-pulse"
-            title={`Running ${TOOL_LABELS[tool.tool] || tool.tool}...`}
-          >
-            <span className="text-sm">{TOOL_ICONS[tool.tool] || "🔧"}</span>
-            <span>{TOOL_LABELS[tool.tool] || tool.tool}...</span>
-          </div>
-        ))}
+        {/* Active tools - subtle spinner, no pulse */}
+        {activeTools.map((tool, idx) => {
+          const toolInfo = TOOL_ICONS[tool.tool];
+          return (
+            <div
+              key={`active-${tool.tool}-${idx}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-800/50 border border-neutral-700/50 text-xs font-medium text-neutral-300"
+              title={`Running ${toolInfo?.label || tool.tool}...`}
+            >
+              <Icon name="spinner" className="w-3 h-3" />
+              <span>{toolInfo?.label || tool.tool}</span>
+            </div>
+          );
+        })}
 
-        {/* Completed tools */}
+        {/* Completed tools - clean checkmark */}
         {completedTools.map((tool, idx) => {
           const toolKey = `completed-${tool.tool}-${idx}`;
           const isExpanded = expandedTool === toolKey;
           const hasResult = !!tool.result;
+          const toolInfo = TOOL_ICONS[tool.tool];
 
           return (
-            <div key={toolKey} className="inline-block">
-              <button
-                onClick={() => hasResult && toggleToolExpansion(toolKey)}
-                className={
-                  hasResult
-                    ? "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 text-xs font-medium text-blue-300 hover:from-blue-600/30 hover:to-purple-600/30 transition-all cursor-pointer"
-                    : "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 text-xs font-medium text-blue-300"
-                }
-                title={
-                  hasResult
-                    ? `Click to ${isExpanded ? "hide" : "view"} result`
-                    : `Used ${TOOL_LABELS[tool.tool] || tool.tool}`
-                }
-              >
-                <span className="text-sm">{TOOL_ICONS[tool.tool] || "🔧"}</span>
-                <span>{TOOL_LABELS[tool.tool] || tool.tool}</span>
-                {hasResult && (
-                  <span className="text-[10px] opacity-70">
-                    {isExpanded ? "▼" : "▶"}
-                  </span>
-                )}
-              </button>
-            </div>
+            <button
+              key={toolKey}
+              onClick={() => hasResult && toggleToolExpansion(toolKey)}
+              disabled={!hasResult}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-800/50 border border-neutral-700/50 text-xs font-medium transition-colors ${
+                hasResult
+                  ? "text-neutral-300 hover:bg-neutral-800 hover:border-neutral-600 cursor-pointer"
+                  : "text-neutral-400 cursor-default"
+              }`}
+              title={
+                hasResult
+                  ? `Click to ${isExpanded ? "hide" : "view"} result`
+                  : `Used ${toolInfo?.label || tool.tool}`
+              }
+            >
+              <Icon name={toolInfo?.icon || "file"} />
+              <span>{toolInfo?.label || tool.tool}</span>
+              <Icon name="check" className="w-3 h-3 text-green-500" />
+              {hasResult && (
+                <Icon
+                  name={isExpanded ? "chevronDown" : "chevronRight"}
+                  className="w-3 h-3 opacity-50"
+                />
+              )}
+            </button>
           );
         })}
 
-        {/* Error tools */}
+        {/* Error tools - alert icon */}
         {errorTools.map((tool, idx) => {
           const toolKey = `error-${tool.tool}-${idx}`;
           const isExpanded = expandedTool === toolKey;
+          const toolInfo = TOOL_ICONS[tool.tool];
 
           return (
-            <div key={toolKey} className="inline-block">
-              <button
-                onClick={() => toggleToolExpansion(toolKey)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 text-xs font-medium text-red-300 hover:from-red-600/30 hover:to-orange-600/30 transition-all cursor-pointer"
-                title={`Click to ${isExpanded ? "hide" : "view"} error`}
-              >
-                <span className="text-sm">⚠️</span>
-                <span>{TOOL_LABELS[tool.tool] || tool.tool} failed</span>
-                <span className="text-[10px] opacity-70">
-                  {isExpanded ? "▼" : "▶"}
-                </span>
-              </button>
-            </div>
+            <button
+              key={toolKey}
+              onClick={() => toggleToolExpansion(toolKey)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-900/20 border border-red-500/30 text-xs font-medium text-red-400 hover:bg-red-900/30 hover:border-red-500/50 transition-colors cursor-pointer"
+              title={`Click to ${isExpanded ? "hide" : "view"} error`}
+            >
+              <Icon name="alert" className="w-3 h-3" />
+              <span>{toolInfo?.label || tool.tool} failed</span>
+              <Icon
+                name={isExpanded ? "chevronDown" : "chevronRight"}
+                className="w-3 h-3 opacity-50"
+              />
+            </button>
           );
         })}
       </div>
 
-      {/* Expanded result preview */}
+      {/* Dedicated results panel with typography hierarchy */}
       {expandedTool && (
-        <div className="mt-2 p-3 bg-gray-800/60 border border-gray-700/50 rounded-lg">
-          <div className="flex items-start justify-between mb-2">
-            <h4 className="text-xs font-semibold text-gray-300">
-              {expandedTool.startsWith("error-") ? "Error Details" : "Result"}
-            </h4>
+        <div className="bg-neutral-900/80 border border-neutral-700/50 rounded-xl overflow-hidden">
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700/50 bg-neutral-800/30">
+            <div className="flex items-center gap-2">
+              <Icon
+                name={expandedTool.startsWith("error-") ? "alert" : "check"}
+                className="w-4 h-4"
+              />
+              <h3 className="text-sm font-semibold text-neutral-200">
+                {expandedTool.startsWith("error-")
+                  ? "Error Details"
+                  : "Tool Result"}
+              </h3>
+            </div>
             <button
               onClick={() => setExpandedTool(null)}
-              className="text-gray-400 hover:text-white text-xs"
+              className="btn-icon-ghost w-6 h-6"
+              title="Close"
             >
-              ✕
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
             </button>
           </div>
-          <div className="text-xs text-gray-400 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto">
-            {(() => {
-              const tool = [...completedTools, ...errorTools].find(
-                (t) =>
-                  `${t.type === "tool_error" ? "error" : "completed"}-${t.tool}-${completedTools.includes(t) ? completedTools.indexOf(t) : errorTools.indexOf(t)}` ===
-                  expandedTool,
-              );
 
-              if (!tool) return "No data";
+          {/* Panel content */}
+          <div className="p-4">
+            <div className="font-mono text-xs text-neutral-300 whitespace-pre-wrap max-h-80 overflow-y-auto">
+              {(() => {
+                const tool = [...completedTools, ...errorTools].find(
+                  (t) =>
+                    `${t.type === "tool_error" ? "error" : "completed"}-${t.tool}-${completedTools.includes(t) ? completedTools.indexOf(t) : errorTools.indexOf(t)}` ===
+                    expandedTool,
+                );
 
-              if (tool.type === "tool_error") {
-                return tool.error || "Unknown error";
-              }
+                if (!tool)
+                  return (
+                    <span className="text-neutral-500 italic">
+                      No data available
+                    </span>
+                  );
 
-              return getResultPreview(tool);
-            })()}
+                if (tool.type === "tool_error") {
+                  return (
+                    <span className="text-red-400">
+                      {tool.error || "Unknown error"}
+                    </span>
+                  );
+                }
+
+                return getResultPreview(tool);
+              })()}
+            </div>
           </div>
         </div>
       )}
