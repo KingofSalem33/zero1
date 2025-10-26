@@ -51,41 +51,38 @@ export class ProjectCreationService {
         "Initial project creation - no clarification needed.",
     });
 
-    // Send progress updates for each phase generated WITH phase data
     const now = new Date().toISOString();
-    if (onProgress) {
-      phaseResponse.phases.forEach((phase, index) => {
-        const phaseNumber = index + 1;
-        const phaseData = {
-          ...phase,
-          phase_number: phaseNumber,
-          substeps: [], // Will be filled for P1 later
-          expanded: false,
-          locked: phaseNumber > 1, // Only P1 is unlocked
-          completed: false,
-          created_at: now,
-        };
-
-        onProgress({
-          phase: phaseNumber,
-          total: phaseResponse.phases.length,
-          title: phase.goal || `Phase ${phaseNumber}`,
-          type: "phase_generation",
-          phaseData, // Send the actual phase object!
-        });
-      });
-    }
-
-    // Expand Phase 1 with substeps
     const phase1 = phaseResponse.phases[0];
     if (!phase1) {
       throw new Error("Failed to generate Phase 1");
     }
 
+    // SEND P1 FIRST for immediate user feedback
+    if (onProgress) {
+      const phase1Data = {
+        ...phase1,
+        phase_number: 1,
+        substeps: [], // Will be filled shortly
+        expanded: false,
+        locked: false,
+        completed: false,
+        created_at: now,
+      };
+
+      onProgress({
+        phase: 1,
+        total: phaseResponse.phases.length,
+        title: phase1.goal || "Phase 1",
+        type: "phase_generation",
+        phaseData: phase1Data,
+      });
+    }
+
+    // EXPAND P1 IMMEDIATELY (before sending P2-P7)
     const expandedPhase1 =
       await this.substepGenerationService.expandPhaseWithSubsteps(phase1, goal);
 
-    // Send progress for substep expansion WITH substep data
+    // SEND P1 SUBSTEPS - User sees P1.1, P1.2, etc. right away
     if (onProgress && expandedPhase1.substeps) {
       onProgress({
         phase: 1,
@@ -101,6 +98,30 @@ export class ProjectCreationService {
           created_at: now,
         },
         substeps: expandedPhase1.substeps,
+      });
+    }
+
+    // NOW send P2-P7 (these fill in after user already sees P1.1)
+    if (onProgress) {
+      phaseResponse.phases.slice(1).forEach((phase, index) => {
+        const phaseNumber = index + 2; // Starting from P2
+        const phaseData = {
+          ...phase,
+          phase_number: phaseNumber,
+          substeps: [],
+          expanded: false,
+          locked: true,
+          completed: false,
+          created_at: now,
+        };
+
+        onProgress({
+          phase: phaseNumber,
+          total: phaseResponse.phases.length,
+          title: phase.goal || `Phase ${phaseNumber}`,
+          type: "phase_generation",
+          phaseData,
+        });
       });
     }
 
