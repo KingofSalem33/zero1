@@ -549,30 +549,47 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 py-12">
         <div className="max-w-3xl w-full space-y-8">
-          <div className="text-center space-y-4">
-            <h1 className="text-4xl font-bold bg-gradient-brand bg-clip-text text-transparent">
-              Zero-to-One Builder
+          {/* Hero Section */}
+          <div className="text-center space-y-3">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-brand mb-2">
+              <svg
+                className="w-9 h-9 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-white">
+              Ship your first version
             </h1>
-            <p className="text-neutral-400 text-lg">
-              Transform your idea into reality with AI-powered scaffolding
+            <p className="text-neutral-400 text-base max-w-md mx-auto">
+              AI guides you through 7 phases—from vision to live product
             </p>
           </div>
 
+          {/* Input Card */}
           <div className="space-y-6">
             <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
-              <label className="text-sm font-semibold text-neutral-300 mb-3 block">
-                What do you want to build?
+              <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
+                Describe your project
               </label>
               <textarea
                 value={currentInput}
                 onChange={(e) => setCurrentInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="I want to build a task manager that helps teams collaborate..."
+                placeholder="Example: A budget tracker that categorizes expenses automatically"
                 className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
-                rows={4}
+                rows={3}
                 disabled={creating || inspiring}
               />
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 <button
                   onClick={() => {
                     if (currentInput.trim()) {
@@ -585,10 +602,25 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   {inspiring ? (
                     <>
                       <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span>Inspiring...</span>
+                      <span>Refining...</span>
                     </>
                   ) : (
-                    "✨ Inspire Me"
+                    <>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                        />
+                      </svg>
+                      <span>Refine Idea</span>
+                    </>
                   )}
                 </button>
                 <button
@@ -602,36 +634,123 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       <span>Creating...</span>
                     </>
                   ) : (
-                    "Start Building"
+                    <>
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                      <span>Generate Roadmap</span>
+                    </>
                   )}
                 </button>
               </div>
             </div>
 
-            <div className="text-center text-sm text-neutral-500 font-medium">
-              or try one of these ideas:
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {[
-                "A personal finance tracker",
-                "A recipe sharing platform",
-                "A habit tracking app",
-                "A team collaboration tool",
-              ].map((idea) => (
-                <button
-                  key={idea}
-                  onClick={() => {
-                    setCurrentInput(idea);
-                    onInspireMe(idea, setCurrentInput);
-                  }}
-                  disabled={creating || inspiring}
-                  className="btn-ghost text-left justify-start"
-                >
-                  <span>💡</span>
-                  <span>{idea}</span>
-                </button>
-              ))}
+            {/* Quick Start Examples */}
+            <div className="space-y-3">
+              <div className="text-center">
+                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                  Quick Start
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {[
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    ),
+                    text: "Personal budget tracker with AI categorization",
+                  },
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                        />
+                      </svg>
+                    ),
+                    text: "Task manager with team notifications",
+                  },
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    ),
+                    text: "Habit tracker with streak rewards",
+                  },
+                  {
+                    icon: (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                        />
+                      </svg>
+                    ),
+                    text: "Recipe collection with meal planning",
+                  },
+                ].map((example) => (
+                  <button
+                    key={example.text}
+                    onClick={() => {
+                      setCurrentInput(example.text);
+                      onInspireMe(example.text, setCurrentInput);
+                    }}
+                    disabled={creating || inspiring}
+                    className="btn-ghost text-left justify-start text-sm py-2.5"
+                  >
+                    <span className="text-neutral-400">{example.icon}</span>
+                    <span className="text-neutral-300">{example.text}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -683,17 +802,44 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <div className="ml-[2.625rem]">
               <div className="bg-green-600/20 border border-green-500/50 rounded-xl p-5 space-y-4 shadow-sm">
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl">✅</span>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                    <svg
+                      className="w-5 h-5 text-green-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-green-400">
-                      Ready to advance
+                    <div className="text-sm font-semibold text-green-400">
+                      Step complete
                     </div>
-                    <div className="text-sm text-gray-300 mt-1">
+                    <div className="text-sm text-neutral-300 mt-1">
                       {completionNudge.message}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Confidence: {completionNudge.confidence} (Score:{" "}
-                      {completionNudge.score})
+                    <div className="text-xs text-neutral-500 mt-1.5 flex items-center gap-1">
+                      <svg
+                        className="w-3 h-3"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <span>
+                        {completionNudge.confidence} confidence ·{" "}
+                        {completionNudge.score}% match
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -705,7 +851,20 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     }}
                     className="btn-success"
                   >
-                    Mark Complete & Continue
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 7l5 5m0 0l-5 5m5-5H6"
+                      />
+                    </svg>
+                    <span>Continue to Next Step</span>
                   </button>
                   <button onClick={onDismissNudge} className="btn-ghost">
                     Keep Working
