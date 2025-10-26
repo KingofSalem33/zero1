@@ -39,7 +39,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   return (
     <div className="group relative">
       {/* Markdown content */}
-      <div className="prose prose-invert prose-sm max-w-none">
+      <div className="prose prose-invert prose-neutral max-w-none">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex, rehypeHighlight]}
@@ -56,13 +56,13 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
               }
 
               return !inline ? (
-                <div className="relative group/code">
+                <div className="relative group/code my-4">
                   {match && (
-                    <div className="absolute right-2 top-2 text-xs text-gray-400 font-mono">
+                    <div className="absolute right-3 top-3 text-xs text-neutral-400 font-mono">
                       {language}
                     </div>
                   )}
-                  <pre className="!bg-gray-900 !p-4 !rounded-lg overflow-x-auto">
+                  <pre className="!bg-neutral-900/80 !p-4 !rounded-xl overflow-x-auto border border-neutral-800/50">
                     <code className={className} {...props}>
                       {children}
                     </code>
@@ -70,7 +70,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
                 </div>
               ) : (
                 <code
-                  className="!bg-gray-800 !text-blue-300 !px-1.5 !py-0.5 !rounded"
+                  className="!bg-neutral-800/60 !text-brand-primary-300 !px-1.5 !py-0.5 !rounded"
                   {...props}
                 >
                   {children}
@@ -80,26 +80,26 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             // Tables with better styling
             table({ children }) {
               return (
-                <div className="overflow-x-auto my-4">
-                  <table className="min-w-full divide-y divide-gray-700 border border-gray-700 rounded-lg">
+                <div className="overflow-x-auto my-5">
+                  <table className="min-w-full divide-y divide-neutral-700 border border-neutral-700/50 rounded-xl">
                     {children}
                   </table>
                 </div>
               );
             },
             thead({ children }) {
-              return <thead className="bg-gray-800/50">{children}</thead>;
+              return <thead className="bg-neutral-800/50">{children}</thead>;
             },
             th({ children }) {
               return (
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-300 uppercase tracking-wider">
                   {children}
                 </th>
               );
             },
             td({ children }) {
               return (
-                <td className="px-4 py-2 text-sm text-gray-200 border-t border-gray-700">
+                <td className="px-4 py-3 text-sm text-neutral-200 border-t border-neutral-700/50">
                   {children}
                 </td>
               );
@@ -111,7 +111,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 underline transition-colors"
+                  className="text-brand-primary-400 hover:text-brand-primary-300 underline decoration-brand-primary-400/30 hover:decoration-brand-primary-300 transition-colors"
                 >
                   {children}
                 </a>
@@ -120,7 +120,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             // Blockquotes
             blockquote({ children }) {
               return (
-                <blockquote className="border-l-4 border-blue-500 pl-4 italic text-gray-300 my-4">
+                <blockquote className="border-l-4 border-brand-primary-500/50 pl-4 italic text-neutral-300 my-5 bg-neutral-800/30 py-3 rounded-r-lg">
                   {children}
                 </blockquote>
               );
@@ -128,14 +128,14 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             // Lists
             ul({ children }) {
               return (
-                <ul className="list-disc list-inside space-y-1 text-gray-200 my-2">
+                <ul className="list-disc list-inside space-y-2 text-neutral-200 my-3 ml-1">
                   {children}
                 </ul>
               );
             },
             ol({ children }) {
               return (
-                <ol className="list-decimal list-inside space-y-1 text-gray-200 my-2">
+                <ol className="list-decimal list-inside space-y-2 text-neutral-200 my-3 ml-1">
                   {children}
                 </ol>
               );
@@ -143,21 +143,21 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             // Headings
             h1({ children }) {
               return (
-                <h1 className="text-2xl font-bold text-white mt-6 mb-3">
+                <h1 className="text-2xl font-bold text-white mt-8 mb-4 first:mt-0">
                   {children}
                 </h1>
               );
             },
             h2({ children }) {
               return (
-                <h2 className="text-xl font-bold text-white mt-5 mb-2">
+                <h2 className="text-xl font-bold text-white mt-6 mb-3 first:mt-0">
                   {children}
                 </h2>
               );
             },
             h3({ children }) {
               return (
-                <h3 className="text-lg font-semibold text-white mt-4 mb-2">
+                <h3 className="text-lg font-semibold text-white mt-5 mb-2.5 first:mt-0">
                   {children}
                 </h3>
               );
@@ -165,7 +165,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             // Paragraphs
             p({ children }) {
               return (
-                <p className="text-gray-200 leading-relaxed my-2">{children}</p>
+                <p className="text-neutral-200 leading-relaxed my-3 first:mt-0 last:mb-0">
+                  {children}
+                </p>
               );
             },
           }}

@@ -548,19 +548,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 py-12">
-        <div className="max-w-2xl w-full space-y-8">
+        <div className="max-w-3xl w-full space-y-8">
           <div className="text-center space-y-4">
             <h1 className="text-4xl font-bold bg-gradient-brand bg-clip-text text-transparent">
               Zero-to-One Builder
             </h1>
-            <p className="text-gray-400 text-lg">
+            <p className="text-neutral-400 text-lg">
               Transform your idea into reality with AI-powered scaffolding
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div className="bg-gray-800/50 border border-gray-700/50 rounded-2xl p-6">
-              <label className="text-sm font-medium text-gray-300 mb-3 block">
+          <div className="space-y-6">
+            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
+              <label className="text-sm font-semibold text-neutral-300 mb-3 block">
                 What do you want to build?
               </label>
               <textarea
@@ -568,11 +568,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 onChange={(e) => setCurrentInput(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="I want to build a task manager that helps teams collaborate..."
-                className="w-full bg-gray-900/50 border border-gray-600/50 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
+                className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
                 rows={4}
                 disabled={creating || inspiring}
               />
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 <button
                   onClick={() => {
                     if (currentInput.trim()) {
@@ -608,7 +608,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               </div>
             </div>
 
-            <div className="text-center text-sm text-gray-500">
+            <div className="text-center text-sm text-neutral-500 font-medium">
               or try one of these ideas:
             </div>
 
@@ -626,7 +626,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     onInspireMe(idea, setCurrentInput);
                   }}
                   disabled={creating || inspiring}
-                  className="px-4 py-3 rounded-xl bg-gray-800/30 border border-gray-700/50 hover:border-blue-500/50 hover:bg-gray-800/50 text-gray-300 text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  className="px-4 py-3 rounded-xl bg-neutral-800/30 border border-neutral-700/50 hover:border-brand-primary-500/50 hover:bg-neutral-800/50 text-neutral-300 text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left shadow-sm"
                 >
                   💡 {idea}
                 </button>
@@ -648,19 +648,21 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <div key={message.id}>
               {message.type === "user" ? (
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] rounded-2xl px-5 py-3 bg-gradient-brand text-white">
+                  <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-gradient-brand text-white shadow-sm">
                     {message.content}
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
                       AI
                     </div>
-                    <span className="text-xs text-gray-500">Workshop AI</span>
+                    <span className="text-xs text-neutral-500 font-medium">
+                      Workshop AI
+                    </span>
                   </div>
-                  <div className="pl-10 pr-4">
+                  <div className="ml-[2.625rem]">
                     <MarkdownMessage content={message.content} />
                   </div>
                 </div>
@@ -670,15 +672,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
           {/* Tool Activity Inline */}
           {toolsUsed.length > 0 && (
-            <div className="pl-10">
+            <div className="ml-[2.625rem]">
               <ToolBadges tools={toolsUsed} />
             </div>
           )}
 
           {/* Completion Nudge Inline */}
           {completionNudge && (
-            <div className="pl-10">
-              <div className="bg-green-600/20 border border-green-500/50 rounded-xl p-4 space-y-3">
+            <div className="ml-[2.625rem]">
+              <div className="bg-green-600/20 border border-green-500/50 rounded-xl p-5 space-y-4 shadow-sm">
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">✅</span>
                   <div className="flex-1">
@@ -694,19 +696,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <button
                     onClick={() => {
                       onSubstepComplete(completionNudge.substep_id);
                       onDismissNudge();
                     }}
-                    className="px-4 py-2 rounded-lg bg-green-600/50 hover:bg-green-600/70 text-white text-sm font-medium transition-colors"
+                    className="px-4 py-2.5 rounded-lg bg-green-600/50 hover:bg-green-600/70 text-white text-sm font-semibold transition-all shadow-sm"
                   >
                     Mark Complete & Continue
                   </button>
                   <button
                     onClick={onDismissNudge}
-                    className="px-4 py-2 rounded-lg bg-gray-700/50 hover:bg-gray-700/70 text-gray-300 text-sm font-medium transition-colors"
+                    className="px-4 py-2.5 rounded-lg bg-gray-700/50 hover:bg-gray-700/70 text-gray-300 text-sm font-medium transition-all"
                   >
                     Keep Working
                   </button>
@@ -720,9 +722,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       </div>
 
       {/* Input Composer (sticky bottom) */}
-      <div ref={composerRef} className="px-6 py-3">
-        <div className="max-w-3xl mx-auto">
-          <div className="relative flex gap-2 items-center bg-gray-800/50 border border-gray-600/50 rounded-2xl px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all">
+      <div
+        ref={composerRef}
+        className="border-t border-neutral-800/50 bg-neutral-950/30 backdrop-blur-sm px-6 py-4"
+      >
+        <div className="max-w-4xl mx-auto">
+          <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all shadow-lg">
             <button
               onClick={() => setShowUploadButton(!showUploadButton)}
               className="flex-shrink-0 w-8 h-8 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/50 transition-all flex items-center justify-center"
@@ -788,14 +793,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               onChange={(e) => setCurrentInput(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder={getContextualPlaceholder()}
-              className="flex-1 bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none min-h-[40px] max-h-[200px]"
+              className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
               rows={1}
               disabled={isProcessing}
             />
             <button
               onClick={handleSendMessage}
               disabled={!currentInput.trim() || isProcessing}
-              className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-600 text-white transition-all disabled:cursor-not-allowed flex items-center justify-center"
+              className="flex-shrink-0 w-9 h-9 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-700 disabled:opacity-50 text-white transition-all disabled:cursor-not-allowed flex items-center justify-center shadow-sm"
               title={isProcessing ? "Sending..." : "Send message"}
             >
               {isProcessing ? (
