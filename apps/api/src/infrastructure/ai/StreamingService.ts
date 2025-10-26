@@ -175,6 +175,72 @@ export class StreamingService {
     );
     this.sendEvent(res, "completion_detected", detection);
   }
+
+  // ========================================
+  // NEW: Roadmap Generation Progress Events
+  // ========================================
+
+  /**
+   * Send roadmap generation start
+   */
+  sendRoadmapStart(
+    res: Response,
+    data: { projectId: string; goal: string },
+  ): void {
+    console.log(
+      `🚀 [StreamingService] Starting roadmap generation for project: ${data.projectId}`,
+    );
+    this.sendEvent(res, "roadmap_start", data);
+  }
+
+  /**
+   * Send phase generation progress
+   */
+  sendPhaseProgress(
+    res: Response,
+    data: { phase: number; total: number; title: string },
+  ): void {
+    console.log(
+      `📋 [StreamingService] Phase ${data.phase}/${data.total}: ${data.title}`,
+    );
+    this.sendEvent(res, "phase_progress", data);
+  }
+
+  /**
+   * Send substep expansion progress
+   */
+  sendSubstepExpansion(
+    res: Response,
+    data: { phase: number; substepCount: number },
+  ): void {
+    console.log(
+      `🔍 [StreamingService] Expanding Phase ${data.phase} with ${data.substepCount} substeps`,
+    );
+    this.sendEvent(res, "substep_expansion", data);
+  }
+
+  /**
+   * Send roadmap generation complete
+   */
+  sendRoadmapComplete(
+    res: Response,
+    data: { projectId: string; phaseCount: number },
+  ): void {
+    console.log(
+      `✅ [StreamingService] Roadmap complete for project: ${data.projectId} (${data.phaseCount} phases)`,
+    );
+    this.sendEvent(res, "roadmap_complete", data);
+  }
+
+  /**
+   * Send roadmap generation error
+   */
+  sendRoadmapError(res: Response, error: { message: string }): void {
+    console.log(
+      `❌ [StreamingService] Roadmap generation error: ${error.message}`,
+    );
+    this.sendEvent(res, "roadmap_error", error);
+  }
 }
 
 /**

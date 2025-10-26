@@ -2465,85 +2465,112 @@ function App() {
       if (response.ok && data.project) {
         // Set initial project state
         setProject(data.project);
-        setGuidance("⏳ Generating your roadmap with AI...");
+        setGuidance("Creating your project workspace...");
 
-        // Poll for roadmap completion
+        // Connect to SSE stream for real-time roadmap generation progress
         const projectId = data.project.id;
-        let pollAttempts = 0;
-        const maxAttempts = 90; // Poll for up to 3 minutes (90 * 2s = 180 seconds)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const eventSource = new (window as any).EventSource(
+          `${API_URL}/api/projects/stream/${projectId}`,
+        );
 
-        const pollInterval = setInterval(async () => {
-          try {
-            pollAttempts++;
+        eventSource.addEventListener("roadmap_start", () => {
+          setGuidance("Generating your roadmap...");
+        });
 
-            // Update guidance with progress indicator
-            if (pollAttempts % 5 === 0) {
-              const elapsed = pollAttempts * 2;
-              setGuidance(
-                `⏳ Generating your roadmap with AI... (${elapsed}s elapsed)`,
-              );
-            }
-
-            const pollResponse = await fetch(
-              `${API_URL}/api/projects/${projectId}`,
+        eventSource.addEventListener(
+          "phase_progress",
+          // eslint-disable-next-line no-undef
+          (e: Event) => {
+            const messageEvent = e as { data: string };
+            const phaseData = JSON.parse(messageEvent.data);
+            setGuidance(
+              `Generating Phase ${phaseData.phase}/${phaseData.total}: ${phaseData.title}`,
             );
-            const pollData = await pollResponse.json();
+          },
+        );
 
-            // Check if roadmap is ready (phases can be in project.phases or project.roadmap.phases)
-            const phases =
-              pollData.project?.phases || pollData.project?.roadmap?.phases;
-            const hasPhases =
-              phases && Array.isArray(phases) && phases.length > 0;
+        eventSource.addEventListener(
+          "substep_expansion",
+          // eslint-disable-next-line no-undef
+          (e: Event) => {
+            const messageEvent = e as { data: string };
+            const substepData = JSON.parse(messageEvent.data);
+            setGuidance(
+              `Expanding Phase ${substepData.phase} with ${substepData.substepCount} substeps...`,
+            );
+          },
+        );
 
-            if (pollResponse.ok && pollData.project && hasPhases) {
-              // Roadmap is ready!
-              clearInterval(pollInterval);
+        eventSource.addEventListener(
+          "roadmap_complete",
+          // eslint-disable-next-line no-undef
+          async (_e: Event) => {
+            eventSource.close();
 
-              // Process the project phases for progressive revelation
-              const processedProject = {
-                ...pollData.project,
-                current_phase: 1,
-                current_substep: 1,
-                phases: phases.map((phase: ProjectPhase, index: number) => ({
-                  ...phase,
-                  phase_number: index + 1,
-                  expanded: index === 0, // Only first phase expanded
-                  locked: index > 0, // Lock future phases
-                  substeps:
-                    index === 0
-                      ? (phase.substeps || []).map(
-                          (substep: ProjectSubstep, subIndex: number) => ({
-                            ...substep,
-                            step_number: subIndex + 1,
-                            completed: false,
-                          }),
-                        )
-                      : [],
-                })),
-              };
-
-              setProject(processedProject);
-              setGuidance(
-                "🎯 Perfect! Your action plan is ready. Start with the first master prompt in your execution workspace!",
+            // Fetch the completed project
+            try {
+              const pollResponse = await fetch(
+                `${API_URL}/api/projects/${projectId}`,
               );
-              setCreatingProject(false);
+              const pollData = await pollResponse.json();
 
-              // Clear guidance message after 4 seconds
-              setTimeout(() => setGuidance(""), 4000);
-            } else if (pollAttempts >= maxAttempts) {
-              // Timeout
-              clearInterval(pollInterval);
-              setGuidance(
-                "⏱️ Roadmap generation is taking longer than expected. Please refresh the page.",
-              );
+              const phases =
+                pollData.project?.phases || pollData.project?.roadmap?.phases;
+              if (phases && Array.isArray(phases) && phases.length > 0) {
+                // Process the project phases for progressive revelation
+                const processedProject = {
+                  ...pollData.project,
+                  current_phase: 1,
+                  current_substep: 1,
+                  phases: phases.map((phase: ProjectPhase, index: number) => ({
+                    ...phase,
+                    phase_number: index + 1,
+                    expanded: index === 0,
+                    locked: index > 0,
+                    substeps:
+                      index === 0
+                        ? (phase.substeps || []).map(
+                            (substep: ProjectSubstep, subIndex: number) => ({
+                              ...substep,
+                              step_number: subIndex + 1,
+                              completed: false,
+                            }),
+                          )
+                        : [],
+                  })),
+                };
+
+                setProject(processedProject);
+                setGuidance("Roadmap complete! Ready to start building.");
+                setCreatingProject(false);
+
+                setTimeout(() => setGuidance(""), 4000);
+              }
+            } catch (error) {
+              console.error("Error fetching completed project:", error);
+              setGuidance("Roadmap complete, but failed to load details.");
               setCreatingProject(false);
             }
-            // Continue polling if roadmap isn't ready yet
-          } catch {
-            // Poll error occurred
-            // Continue polling on individual poll errors
-          }
-        }, 2000); // Poll every 2 seconds
+          },
+        );
+
+        // eslint-disable-next-line no-undef
+        eventSource.addEventListener("roadmap_error", (e: Event) => {
+          const messageEvent = e as { data: string };
+          const data = JSON.parse(messageEvent.data);
+          eventSource.close();
+          setGuidance(`Error: ${data.message}`);
+          setCreatingProject(false);
+        });
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          setGuidance(
+            "Connection lost. Roadmap may still be generating. Refresh to check status.",
+          );
+          setCreatingProject(false);
+        };
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to create project"}`);
         setCreatingProject(false);

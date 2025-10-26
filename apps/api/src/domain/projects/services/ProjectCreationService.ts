@@ -12,6 +12,18 @@ import type { SubstepGenerationService } from "./SubstepGenerationService";
 import type { Project } from "../../../engine/types";
 
 /**
+ * Progress callback for project creation
+ */
+export interface ProjectCreationProgress {
+  phase: number;
+  total: number;
+  title: string;
+  type: "phase_generation" | "substep_expansion";
+}
+
+export type ProgressCallback = (progress: ProjectCreationProgress) => void;
+
+/**
  * ProjectCreationService - Handle project creation logic
  */
 export class ProjectCreationService {
@@ -23,7 +35,11 @@ export class ProjectCreationService {
   /**
    * Create a new project with given ID (for Supabase UUID)
    */
-  async createProjectWithId(id: string, goal: string): Promise<Project> {
+  async createProjectWithId(
+    id: string,
+    goal: string,
+    onProgress?: ProgressCallback,
+  ): Promise<Project> {
     console.log(`🎯 [ProjectCreationService] Creating project with ID: ${id}`);
 
     // Generate P1-P7 phases
@@ -33,6 +49,18 @@ export class ProjectCreationService {
         "Initial project creation - no clarification needed.",
     });
 
+    // Send progress updates for each phase generated
+    if (onProgress) {
+      phaseResponse.phases.forEach((phase, index) => {
+        onProgress({
+          phase: index + 1,
+          total: phaseResponse.phases.length,
+          title: phase.goal || `Phase ${index + 1}`,
+          type: "phase_generation",
+        });
+      });
+    }
+
     // Expand Phase 1 with substeps
     const phase1 = phaseResponse.phases[0];
     if (!phase1) {
@@ -41,6 +69,16 @@ export class ProjectCreationService {
 
     const expandedPhase1 =
       await this.substepGenerationService.expandPhaseWithSubsteps(phase1, goal);
+
+    // Send progress for substep expansion
+    if (onProgress && expandedPhase1.substeps) {
+      onProgress({
+        phase: 1,
+        total: expandedPhase1.substeps.length,
+        title: `Expanded Phase 1 with ${expandedPhase1.substeps.length} substeps`,
+        type: "substep_expansion",
+      });
+    }
 
     // Build project with Phase 1 expanded, rest locked
     const now = new Date().toISOString();

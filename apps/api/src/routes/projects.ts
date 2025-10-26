@@ -1,10 +1,15 @@
 import { Router } from "express";
+import type { Response } from "express";
 import { StepOrchestrator } from "../engine/orchestrator";
 import { supabase, withRetry, DatabaseError } from "../db";
 import { aiLimiter } from "../middleware/rateLimit";
+import { streamingService } from "../infrastructure/ai/StreamingService";
 
 const router = Router();
 export const orchestrator = new StepOrchestrator();
+
+// Map to store active SSE connections for roadmap generation
+const projectStreamResponses = new Map<string, Response>();
 
 // POST /api/projects - Create a new project
 router.post("/", async (req, res) => {
@@ -50,7 +55,24 @@ router.post("/", async (req, res) => {
 
     // Start roadmap generation in background (don't await)
     orchestrator
-      .createProjectWithId(supabaseProject.id, goal.trim())
+      .createProjectWithId(supabaseProject.id, goal.trim(), (progress) => {
+        // Send progress to SSE stream if connected
+        const streamRes = projectStreamResponses.get(supabaseProject.id);
+        if (streamRes) {
+          if (progress.type === "phase_generation") {
+            streamingService.sendPhaseProgress(streamRes, {
+              phase: progress.phase,
+              total: progress.total,
+              title: progress.title,
+            });
+          } else if (progress.type === "substep_expansion") {
+            streamingService.sendSubstepExpansion(streamRes, {
+              phase: progress.phase,
+              substepCount: progress.total,
+            });
+          }
+        }
+      })
       .then(async (project) => {
         console.log("[Projects] Step 2 complete. Roadmap generated.");
 
@@ -87,12 +109,44 @@ router.post("/", async (req, res) => {
             "[Projects] Cache cleared for project:",
             supabaseProject.id,
           );
+
+          // Send completion event to SSE stream
+          const streamRes = projectStreamResponses.get(supabaseProject.id);
+          if (streamRes) {
+            streamingService.sendRoadmapComplete(streamRes, {
+              projectId: supabaseProject.id,
+              phaseCount: project.phases?.length || 0,
+            });
+            // Close the stream after completion
+            streamRes.end();
+            projectStreamResponses.delete(supabaseProject.id);
+          }
         } catch (err) {
           console.error("[Projects] Error persisting roadmap:", err);
+
+          // Send error event to SSE stream
+          const streamRes = projectStreamResponses.get(supabaseProject.id);
+          if (streamRes) {
+            streamingService.sendRoadmapError(streamRes, {
+              message: "Failed to persist roadmap",
+            });
+            streamRes.end();
+            projectStreamResponses.delete(supabaseProject.id);
+          }
         }
       })
       .catch((err) => {
         console.error("[Projects] Error generating roadmap:", err);
+
+        // Send error event to SSE stream
+        const streamRes = projectStreamResponses.get(supabaseProject.id);
+        if (streamRes) {
+          streamingService.sendRoadmapError(streamRes, {
+            message: err.message || "Failed to generate roadmap",
+          });
+          streamRes.end();
+          projectStreamResponses.delete(supabaseProject.id);
+        }
       });
 
     console.log("[Projects] Created with UUID:", supabaseProject.id);
@@ -734,6 +788,40 @@ router.get("/:projectId/artifacts", async (req, res) => {
       },
     });
   }
+});
+
+// GET /api/projects/stream/:projectId - Stream roadmap generation progress
+router.get("/stream/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+
+  console.log(
+    `📡 [Projects] Starting SSE stream for roadmap generation: ${projectId}`,
+  );
+
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  // Send initial heartbeat
+  res.write(`: heartbeat\n\n`);
+
+  // Store the response object for this project
+  projectStreamResponses.set(projectId, res);
+
+  // Send start event
+  res.write(`event: roadmap_start\n`);
+  res.write(`data: ${JSON.stringify({ projectId })}\n\n`);
+
+  // Clean up when client disconnects
+  req.on("close", () => {
+    console.log(
+      `📡 [Projects] SSE connection closed for project: ${projectId}`,
+    );
+    projectStreamResponses.delete(projectId);
+    res.end();
+  });
 });
 
 export default router;

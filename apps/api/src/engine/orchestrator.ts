@@ -60,10 +60,15 @@ export class StepOrchestrator {
   /**
    * Create project with specific ID (for Supabase UUID)
    */
-  async createProjectWithId(id: string, goal: string): Promise<Project> {
+  async createProjectWithId(
+    id: string,
+    goal: string,
+    onProgress?: (progress: any) => void,
+  ): Promise<Project> {
     const project = await services.projectCreation.createProjectWithId(
       id,
       goal,
+      onProgress,
     );
     projects.set(project.id, project);
     console.log("✅ [Orchestrator] Project created with ID:", id);
