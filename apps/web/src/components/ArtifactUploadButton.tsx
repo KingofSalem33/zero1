@@ -105,7 +105,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
     while (attempts < maxAttempts) {
       // Check if cancel was requested
       if (cancelRequested) {
-        setUploadProgress("❌ Cancelled");
+        setUploadProgress("Cancelled");
         setCanCancel(false);
         return null;
       }
@@ -124,13 +124,13 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
           // Update status message based on progress
           if (progress < 30) {
-            setUploadProgress("🔍 Starting analysis...");
+            setUploadProgress("Starting analysis...");
           } else if (progress < 60) {
-            setUploadProgress("🧠 Analyzing code structure...");
+            setUploadProgress("Analyzing code structure...");
           } else if (progress < 90) {
-            setUploadProgress("📊 Matching to roadmap...");
+            setUploadProgress("Matching to roadmap...");
           } else {
-            setUploadProgress("✨ Finalizing...");
+            setUploadProgress("Finalizing...");
           }
 
           // Check if analysis is complete
@@ -164,7 +164,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
     // Reset state
     setIsUploading(true);
-    setUploadProgress("📤 Uploading file...");
+    setUploadProgress("Uploading...");
     setProgressPercentage(5);
     setCancelRequested(false);
     setShowRetry(false);
@@ -192,12 +192,12 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         const analyzedData = await pollArtifactStatus(artifactId);
 
         if (analyzedData) {
-          setUploadProgress("✅ Analysis Complete!");
+          setUploadProgress("Analysis complete");
           setProgressPercentage(100);
 
           // Apply analysis to update roadmap
           if (analyzedData.analysis) {
-            setUploadProgress("🔄 Applying changes...");
+            setUploadProgress("Applying changes...");
             await applyAnalysis(artifactId);
           }
 
@@ -218,22 +218,20 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
             setProgressPercentage(0);
           }, 1500);
         } else {
-          setUploadProgress(
-            "⚠️ Analysis timeout - artifact saved but analysis incomplete",
-          );
+          setUploadProgress("Analysis timeout - artifact saved");
           setShowRetry(true);
           setTimeout(() => setUploadProgress(""), 5000);
         }
       } else {
         // Upload failed
         const errorMsg = data.error?.message || data.error || "Unknown error";
-        setUploadProgress(`❌ Upload failed: ${errorMsg}`);
+        setUploadProgress(`Upload failed: ${errorMsg}`);
         setShowRetry(true);
         setTimeout(() => setUploadProgress(""), 5000);
       }
     } catch {
       // Upload error
-      setUploadProgress("❌ Network error - check your connection");
+      setUploadProgress("Network error - check connection");
       setShowRetry(true);
       setTimeout(() => setUploadProgress(""), 5000);
     } finally {
@@ -252,7 +250,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
     setIsUploading(true);
     setShowRetry(false);
-    setUploadProgress("🔄 Retrying analysis...");
+    setUploadProgress("Retrying analysis...");
     setProgressPercentage(10);
     setCancelRequested(false);
 
@@ -260,12 +258,12 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
       const analyzedData = await pollArtifactStatus(lastArtifactId);
 
       if (analyzedData) {
-        setUploadProgress("✅ Analysis Complete!");
+        setUploadProgress("Analysis complete");
         setProgressPercentage(100);
 
         // Apply analysis to update roadmap
         if (analyzedData.analysis) {
-          setUploadProgress("🔄 Applying changes...");
+          setUploadProgress("Applying changes...");
           await applyAnalysis(lastArtifactId);
         }
 
@@ -283,13 +281,13 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           setProgressPercentage(0);
         }, 1500);
       } else {
-        setUploadProgress("⚠️ Analysis timeout again");
+        setUploadProgress("Analysis timeout");
         setShowRetry(true);
         setTimeout(() => setUploadProgress(""), 3000);
       }
     } catch {
       // Retry error
-      setUploadProgress("❌ Retry failed");
+      setUploadProgress("Retry failed");
       setShowRetry(true);
       setTimeout(() => setUploadProgress(""), 3000);
     } finally {
@@ -410,8 +408,15 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
           {/* Guidance for timeout/errors */}
           {showRetry && (
-            <div className="mt-2 pt-2 border-t border-gray-700 text-[10px] text-gray-400">
-              💡 Click the retry button to try again
+            <div className="mt-2 pt-2 border-t border-gray-700 text-[10px] text-gray-400 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span>Click retry button to try again</span>
             </div>
           )}
         </div>
