@@ -5,6 +5,11 @@ import { ArtifactUploadButton } from "./ArtifactUploadButton";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
+// Helper to convert phase format: "P1" -> 1, or pass through if already number
+const getPhaseNumber = (phase: string | number): number => {
+  return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
+};
+
 interface Project {
   id: string;
   goal: string;
@@ -109,7 +114,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
       // Get current substep's master prompt
       const currentPhase = project.phases?.find(
-        (p) => p.phase_number === project.current_phase,
+        (p) => p.phase_number === getPhaseNumber(project.current_phase),
       );
       const currentSubstep = currentPhase?.substeps?.find(
         (s) => s.step_number === project.current_substep,
@@ -269,7 +274,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     if (!project || isProcessing) return;
 
     const currentPhase = project.phases?.find(
-      (p) => p.phase_number === project.current_phase,
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
@@ -362,7 +367,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     // Get current substep's master prompt
     const currentPhase = project.phases?.find(
-      (p) => p.phase_number === project.current_phase,
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
@@ -545,7 +550,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       <div className="flex flex-col items-center justify-center h-full px-6 py-12">
         <div className="max-w-2xl w-full space-y-8">
           <div className="text-center space-y-4">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold bg-gradient-brand bg-clip-text text-transparent">
               Zero-to-One Builder
             </h1>
             <p className="text-gray-400 text-lg">
@@ -575,7 +580,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     }
                   }}
                   disabled={!currentInput.trim() || creating || inspiring}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-medium transition-all disabled:cursor-not-allowed"
+                  className="px-6 py-3 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-600 text-white font-medium transition-all disabled:cursor-not-allowed"
                 >
                   {inspiring ? (
                     <div className="flex items-center justify-center gap-2">
@@ -589,7 +594,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 <button
                   onClick={handleSendMessage}
                   disabled={!currentInput.trim() || creating || inspiring}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-medium transition-all disabled:cursor-not-allowed"
+                  className="px-6 py-3 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-600 text-white font-medium transition-all disabled:cursor-not-allowed"
                 >
                   {creating ? (
                     <div className="flex items-center justify-center gap-2">
@@ -643,14 +648,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <div key={message.id}>
               {message.type === "user" ? (
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] rounded-2xl px-5 py-3 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
+                  <div className="max-w-[80%] rounded-2xl px-5 py-3 bg-gradient-brand text-white">
                     {message.content}
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                    <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm">
                       AI
                     </div>
                     <span className="text-xs text-gray-500">Workshop AI</span>
@@ -790,7 +795,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <button
               onClick={handleSendMessage}
               disabled={!currentInput.trim() || isProcessing}
-              className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-600 disabled:to-gray-600 text-white transition-all disabled:cursor-not-allowed flex items-center justify-center"
+              className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover disabled:bg-neutral-600 text-white transition-all disabled:cursor-not-allowed flex items-center justify-center"
               title={isProcessing ? "Sending..." : "Send message"}
             >
               {isProcessing ? (

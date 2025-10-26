@@ -155,20 +155,107 @@ const DesignSystemShowcase: React.FC = () => {
           </div>
         </section>
 
+        {/* Gradients */}
+        <section className="space-y-4">
+          <h2 className="text-2xl font-semibold text-white">
+            Standardized Gradients
+          </h2>
+          <p className="text-sm text-neutral-400">
+            Limited, intentional gradient palette for consistency
+          </p>
+
+          {/* Brand Gradients */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium text-neutral-300">
+              Brand Gradients (Blue → Purple)
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-brand" />
+                <p className="text-xs text-neutral-400">bg-gradient-brand</p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-brand-hover" />
+                <p className="text-xs text-neutral-400">
+                  bg-gradient-brand-hover
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-brand-subtle border border-brand-primary-500/50" />
+                <p className="text-xs text-neutral-400">
+                  bg-gradient-brand-subtle
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-brand-muted border border-brand-primary-500/30" />
+                <p className="text-xs text-neutral-400">
+                  bg-gradient-brand-muted
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Semantic Gradients */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium text-neutral-300">
+              Semantic Gradients
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-success" />
+                <p className="text-xs text-neutral-400">bg-gradient-success</p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-warning" />
+                <p className="text-xs text-neutral-400">bg-gradient-warning</p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-error" />
+                <p className="text-xs text-neutral-400">bg-gradient-error</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Surface Gradients */}
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium text-neutral-300">
+              Surface Gradients
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-surface border border-neutral-700" />
+                <p className="text-xs text-neutral-400">bg-gradient-surface</p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-surface-elevated border border-neutral-700" />
+                <p className="text-xs text-neutral-400">
+                  bg-gradient-surface-elevated
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="h-20 rounded-lg bg-gradient-surface-subtle border border-neutral-700" />
+                <p className="text-xs text-neutral-400">
+                  bg-gradient-surface-subtle
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Buttons */}
         <section className="space-y-4">
           <h2 className="text-2xl font-semibold text-white">Buttons</h2>
           <div className="flex flex-wrap gap-4">
-            <button className="px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary-600 to-brand-secondary-600 hover:from-brand-primary-500 hover:to-brand-secondary-500 text-white font-medium transition-all shadow-lg hover:shadow-xl">
+            <button className="px-6 py-3 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover text-white font-medium transition-all shadow-lg hover:shadow-xl">
               Primary Button
             </button>
             <button className="px-4 py-2 rounded-lg bg-neutral-700/30 border border-neutral-600/50 text-neutral-300 hover:bg-neutral-700/50 hover:border-neutral-500/70 transition-all">
               Secondary Button
             </button>
-            <button className="px-4 py-2 rounded-lg bg-success-500 hover:bg-success-600 text-white font-medium transition-colors">
+            <button className="px-4 py-2 rounded-lg bg-gradient-success hover:bg-gradient-success-hover text-white font-medium transition-all">
               Success Button
             </button>
-            <button className="px-4 py-2 rounded-lg bg-error-500 hover:bg-error-600 text-white font-medium transition-colors">
+            <button className="px-4 py-2 rounded-lg bg-gradient-error hover:bg-gradient-error-hover text-white font-medium transition-all">
               Error Button
             </button>
             <button className="px-4 py-2 rounded-lg border-2 border-brand-primary-500 text-brand-primary-500 hover:bg-brand-primary-500/10 font-medium transition-all">
@@ -189,15 +276,15 @@ const DesignSystemShowcase: React.FC = () => {
                 A basic card with neutral colors and subtle border.
               </p>
             </div>
-            <div className="bg-gradient-to-br from-brand-primary-600/20 to-brand-secondary-600/20 border border-brand-primary-500/50 rounded-xl shadow-lg shadow-glow p-6">
+            <div className="bg-gradient-brand-subtle border border-brand-primary-500/50 rounded-xl shadow-lg shadow-glow p-6">
               <h3 className="text-lg font-semibold text-white mb-2">
                 Elevated Card
               </h3>
               <p className="text-neutral-300">
-                A card with gradient background and glow effect.
+                A card with brand gradient background and glow effect.
               </p>
             </div>
-            <div className="bg-success-500/20 border border-success-500/50 rounded-xl p-6">
+            <div className="bg-gradient-success-subtle border border-success-500/50 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-success-400 mb-2">
                 Success Card
               </h3>
@@ -205,7 +292,7 @@ const DesignSystemShowcase: React.FC = () => {
                 Used for success messages and confirmations.
               </p>
             </div>
-            <div className="bg-error-500/20 border border-error-500/50 rounded-xl p-6">
+            <div className="bg-gradient-error-subtle border border-error-500/50 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-error-400 mb-2">
                 Error Card
               </h3>

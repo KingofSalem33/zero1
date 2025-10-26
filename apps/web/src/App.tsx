@@ -15,6 +15,11 @@ import UnifiedWorkspace from "./components/UnifiedWorkspace";
 const cls = (...arr: (string | boolean | undefined)[]) =>
   arr.filter(Boolean).join(" ");
 
+// Helper to convert phase format: "P1" -> 1, or pass through if already number
+const getPhaseNumber = (phase: string | number): number => {
+  return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
+};
+
 // Convert markdown to plain text (currently unused but kept for future use)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const markdownToPlainText = (markdown: string): string => {
@@ -126,7 +131,7 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
 
     // Get current substep's master prompt
     const currentPhase = project.phases?.find(
-      (p) => p.phase_number === project.current_phase,
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
@@ -610,7 +615,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
   const getPhaseStatus = (phase: ProjectPhase) => {
     if (phase.completed)
       return { icon: "✅", label: "Complete", color: "text-green-400" };
-    if (phase.phase_number === project.current_phase)
+    if (phase.phase_number === getPhaseNumber(project.current_phase))
       return { icon: "🔄", label: "Active", color: "text-blue-400" };
     if (phase.locked)
       return { icon: "🔒", label: "Locked", color: "text-gray-500" };
@@ -724,7 +729,8 @@ const MasterControl: React.FC<MasterControlProps> = ({
                   "border rounded-2xl overflow-hidden transition-all duration-300",
                   phase.completed
                     ? "border-green-500/40 bg-gradient-to-br from-green-950/20 to-emerald-950/20"
-                    : phase.phase_number === project.current_phase
+                    : phase.phase_number ===
+                        getPhaseNumber(project.current_phase)
                       ? "border-blue-500/60 bg-gradient-to-br from-blue-950/30 to-purple-950/30"
                       : phase.locked
                         ? "border-gray-600/40 bg-gradient-to-br from-gray-900/40 to-gray-800/40"
@@ -739,7 +745,8 @@ const MasterControl: React.FC<MasterControlProps> = ({
                         "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold border-2",
                         phase.completed
                           ? "bg-green-500 border-green-400 text-white"
-                          : phase.phase_number === project.current_phase
+                          : phase.phase_number ===
+                              getPhaseNumber(project.current_phase)
                             ? "bg-blue-500 border-blue-400 text-white"
                             : phase.locked
                               ? "bg-gray-600 border-gray-500 text-gray-300"
@@ -801,7 +808,8 @@ const MasterControl: React.FC<MasterControlProps> = ({
                                 "h-full transition-all duration-500",
                                 phase.completed
                                   ? "bg-green-500"
-                                  : phase.phase_number === project.current_phase
+                                  : phase.phase_number ===
+                                      getPhaseNumber(project.current_phase)
                                     ? "bg-gradient-to-r from-blue-500 to-purple-500"
                                     : "bg-gray-600",
                               )}
@@ -954,7 +962,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
 
     // Get current substep's master prompt
     const currentPhase = project.phases?.find(
-      (p) => p.phase_number === project.current_phase,
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
@@ -1641,7 +1649,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 
     // Get current substep's master prompt
     const currentPhase = project.phases?.find(
-      (p) => p.phase_number === project.current_phase,
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
@@ -2164,14 +2172,20 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 };
 
 // ---- Navigation Component ----
-const NavBar = () => (
-  <nav className="bg-black/95 backdrop-blur-xl border-b border-gray-800/50 shadow-2xl">
-    <div className="max-w-7xl mx-auto px-6">
-      <div className="flex items-center justify-between h-16">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 via-purple-600 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30">
+interface NavBarProps {
+  onCreateProject?: () => void;
+  hasProject?: boolean;
+}
+
+const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
+  <nav className="sticky top-0 z-50 bg-neutral-900/98 backdrop-blur-xl border-b border-neutral-700/50 shadow-2xl">
+    <div className="mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex items-center justify-between h-14">
+        {/* Brand Lockup - Tightened spacing */}
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center shadow-lg shadow-glow">
             <svg
-              className="w-4 h-4 text-white"
+              className="w-3.5 h-3.5 text-white"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -2179,17 +2193,65 @@ const NavBar = () => (
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
+                strokeWidth={2.5}
                 d="M13 10V3L4 14h7v7l9-11h-7z"
               />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-white">Zero-to-One Builder</h1>
+          <h1 className="text-lg font-bold text-white tracking-tight">
+            Zero<span className="text-brand-primary-400">1</span>
+          </h1>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-400 text-sm font-medium">
-            AI-Powered Project Scaffolding
-          </span>
+
+        {/* Primary Actions - Right side */}
+        <div className="flex items-center gap-3">
+          {hasProject ? (
+            <>
+              <button
+                onClick={onCreateProject}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-700/30 hover:bg-neutral-700/50 border border-neutral-600/50 hover:border-neutral-500/70 text-neutral-300 text-sm font-medium transition-all"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="hidden md:inline">New Project</span>
+              </button>
+              <div className="hidden sm:block w-px h-5 bg-neutral-700/50" />
+              <span className="hidden lg:block text-neutral-500 text-xs font-medium uppercase tracking-wider">
+                Workspace
+              </span>
+            </>
+          ) : (
+            <button
+              onClick={onCreateProject}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover text-white text-sm font-semibold transition-all shadow-lg hover:shadow-xl"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              <span>Create Project</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -2244,6 +2306,14 @@ function App() {
       const data = await response.json();
 
       if (response.ok && data.project) {
+        console.log(
+          "[Frontend] Loaded project:",
+          data.project.id,
+          "current_phase:",
+          data.project.current_phase,
+          "current_substep:",
+          data.project.current_substep,
+        );
         setProject(data.project);
         return data.project;
       } else {
@@ -2292,7 +2362,7 @@ function App() {
     if (!project) return;
 
     const currentPhase = project?.phases?.find(
-      (p) => p.phase_number === project.current_phase,
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
 
     const workspaceId = Date.now().toString();
@@ -2399,23 +2469,32 @@ function App() {
         // Poll for roadmap completion
         const projectId = data.project.id;
         let pollAttempts = 0;
-        const maxAttempts = 30; // Poll for up to 60 seconds (30 * 2s)
+        const maxAttempts = 90; // Poll for up to 3 minutes (90 * 2s = 180 seconds)
 
         const pollInterval = setInterval(async () => {
           try {
             pollAttempts++;
+
+            // Update guidance with progress indicator
+            if (pollAttempts % 5 === 0) {
+              const elapsed = pollAttempts * 2;
+              setGuidance(
+                `⏳ Generating your roadmap with AI... (${elapsed}s elapsed)`,
+              );
+            }
 
             const pollResponse = await fetch(
               `${API_URL}/api/projects/${projectId}`,
             );
             const pollData = await pollResponse.json();
 
-            if (
-              pollResponse.ok &&
-              pollData.project &&
-              pollData.project.phases &&
-              pollData.project.phases.length > 0
-            ) {
+            // Check if roadmap is ready (phases can be in project.phases or project.roadmap.phases)
+            const phases =
+              pollData.project?.phases || pollData.project?.roadmap?.phases;
+            const hasPhases =
+              phases && Array.isArray(phases) && phases.length > 0;
+
+            if (pollResponse.ok && pollData.project && hasPhases) {
               // Roadmap is ready!
               clearInterval(pollInterval);
 
@@ -2424,24 +2503,22 @@ function App() {
                 ...pollData.project,
                 current_phase: 1,
                 current_substep: 1,
-                phases: pollData.project.phases.map(
-                  (phase: ProjectPhase, index: number) => ({
-                    ...phase,
-                    phase_number: index + 1,
-                    expanded: index === 0, // Only first phase expanded
-                    locked: index > 0, // Lock future phases
-                    substeps:
-                      index === 0
-                        ? (phase.substeps || []).map(
-                            (substep: ProjectSubstep, subIndex: number) => ({
-                              ...substep,
-                              step_number: subIndex + 1,
-                              completed: false,
-                            }),
-                          )
-                        : [],
-                  }),
-                ),
+                phases: phases.map((phase: ProjectPhase, index: number) => ({
+                  ...phase,
+                  phase_number: index + 1,
+                  expanded: index === 0, // Only first phase expanded
+                  locked: index > 0, // Lock future phases
+                  substeps:
+                    index === 0
+                      ? (phase.substeps || []).map(
+                          (substep: ProjectSubstep, subIndex: number) => ({
+                            ...substep,
+                            step_number: subIndex + 1,
+                            completed: false,
+                          }),
+                        )
+                      : [],
+                })),
               };
 
               setProject(processedProject);
@@ -2628,41 +2705,26 @@ Return only the refined vision statement using the format "I want to build _____
   const handleToggleSubstep = (substepId: string) => {
     if (!project) return;
 
-    const updatedProject = { ...project };
-    const phaseIndex = updatedProject.phases?.findIndex(
-      (p) => p.phase_number === project.current_phase,
+    // Check if this substep is already completed
+    const phaseIndex = project.phases?.findIndex(
+      (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
 
-    if (phaseIndex !== undefined && phaseIndex >= 0 && updatedProject.phases) {
-      const phase = updatedProject.phases[phaseIndex];
-      const substepIndex = phase.substeps?.findIndex(
-        (s) => s.substep_id === substepId,
-      );
+    if (phaseIndex !== undefined && phaseIndex >= 0 && project.phases) {
+      const phase = project.phases[phaseIndex];
+      const substep = phase.substeps?.find((s) => s.substep_id === substepId);
 
-      if (substepIndex !== undefined && substepIndex >= 0 && phase.substeps) {
-        // Toggle completion
-        phase.substeps[substepIndex] = {
-          ...phase.substeps[substepIndex],
-          completed: !phase.substeps[substepIndex].completed,
-        };
-
-        // Check if all substeps are now complete
-        const allComplete = phase.substeps.every((s) => s.completed);
-
-        // Get current substep
-        const currentSubstep = phase.substeps.find(
-          (s) => s.step_number === project.current_substep,
-        );
-
-        // Update local state first
-        setProject(updatedProject);
-
-        // If all complete, auto-complete the current active substep
-        if (allComplete && currentSubstep) {
-          // Use setTimeout to ensure state update completes first
-          setTimeout(() => {
-            handleSubstepComplete(currentSubstep.substep_id);
-          }, 0);
+      if (substep) {
+        if (!substep.completed) {
+          // Substep is not complete - call backend to complete it
+          console.log(
+            "[Frontend] Checkbox clicked, calling backend:",
+            substepId,
+          );
+          handleSubstepComplete(substepId);
+        } else {
+          // Substep is already complete - optionally could allow unchecking
+          console.log("[Frontend] Substep already completed:", substepId);
         }
       }
     }
@@ -2702,34 +2764,26 @@ Return only the refined vision statement using the format "I want to build _____
 
       const data = await response.json();
 
+      console.log("[Frontend] Completion response:", response.status, data);
+
       if (response.ok && data.ok) {
-        // Manual completion response received
-
-        // Reload project from server to get updated state
-        await loadProject(project.id);
-
-        // Display briefing message if provided
-        if (data.briefing) {
-          // Show briefing as guidance notification
-          setGuidance(data.briefing);
-          setTimeout(() => setGuidance(""), 5000);
-
-          // Note: Briefing is also stored in the thread on the backend
-          // and will appear in chat when thread messages are loaded
-        } else if (data.next) {
-          // No briefing but there's a next step
-          setGuidance(`✅ Substep completed! Moving to: ${data.next.label}`);
-          setTimeout(() => setGuidance(""), 3000);
-        } else {
-          // Phase or project complete
-          setGuidance("🏆 Congratulations! Phase completed!");
-          setTimeout(() => setGuidance(""), 4000);
-        }
+        // Manual completion successful
+        console.log(
+          `[Frontend] Calling loadProject after completing ${phase_id}/${substepNumber}`,
+        );
+        // Simply reload project to show updated state
+        // No guidance message needed - user sees checkmark update
+        const reloadedProject = await loadProject(project.id);
+        console.log(
+          "[Frontend] After reload, current_substep:",
+          reloadedProject?.current_substep,
+        );
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to complete substep"}`);
       }
-    } catch {
+    } catch (err) {
       // Manual completion error
+      console.error("[Frontend] Completion error:", err);
       setGuidance("🔌 Network error. Please try again.");
     }
   };
@@ -2738,7 +2792,7 @@ Return only the refined vision statement using the format "I want to build _____
   if (isDemoMode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-        <NavBar />
+        <NavBar hasProject={false} />
         <StreamingChatDemo />
       </div>
     );
@@ -2746,7 +2800,7 @@ Return only the refined vision statement using the format "I want to build _____
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-      <NavBar />
+      <NavBar hasProject={!!project} onCreateProject={createPopupWorkspace} />
 
       <div className="flex">
         {/* Collapsible Roadmap Sidebar */}

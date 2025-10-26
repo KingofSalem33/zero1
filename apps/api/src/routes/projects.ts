@@ -2,7 +2,6 @@ import { Router } from "express";
 import { StepOrchestrator } from "../engine/orchestrator";
 import { supabase, withRetry, DatabaseError } from "../db";
 import { aiLimiter } from "../middleware/rateLimit";
-import { generateSubstepBriefing } from "../services/celebrationBriefing";
 
 const router = Router();
 export const orchestrator = new StepOrchestrator();
@@ -34,7 +33,8 @@ router.post("/", async (req, res) => {
         .insert({
           goal: goal.trim(),
           status: "active",
-          current_phase: "P0",
+          current_phase: "P1", // Start at P1 (will have substeps)
+          current_substep: 1,
           roadmap: {},
         })
         .select()
@@ -56,19 +56,37 @@ router.post("/", async (req, res) => {
 
         // Update Supabase with the full roadmap (with retry logic)
         try {
+          // Ensure current_phase is in phase_id format (P1, P2, etc.)
+          const currentPhaseId =
+            typeof project.current_phase === "number"
+              ? `P${project.current_phase}`
+              : project.current_phase;
+
           await withRetry(async () => {
             const result = await supabase
               .from("projects")
               .update({
-                current_phase: project.current_phase || "P0",
-                roadmap: project.phases || {},
+                current_phase: currentPhaseId || "P1",
+                current_substep: project.current_substep || 1,
+                roadmap: {
+                  phases: project.phases || [],
+                },
               })
               .eq("id", supabaseProject.id)
               .select()
               .single();
             return result;
           });
-          console.log("[Projects] Roadmap persisted to Supabase");
+          console.log(
+            `[Projects] Roadmap persisted to Supabase (current_phase: ${currentPhaseId})`,
+          );
+
+          // Clear the cache so the next GET request fetches fresh data
+          orchestrator.clearProjectCache(supabaseProject.id);
+          console.log(
+            "[Projects] Cache cleared for project:",
+            supabaseProject.id,
+          );
         } catch (err) {
           console.error("[Projects] Error persisting roadmap:", err);
         }
@@ -86,7 +104,7 @@ router.post("/", async (req, res) => {
         id: supabaseProject.id,
         goal: goal.trim(),
         status: "active",
-        current_phase: 1,
+        current_phase: "P1", // Use phase_id format for consistency
         current_substep: 1,
         phases: [], // Will be populated async
         history: [],
@@ -172,71 +190,78 @@ router.post("/:projectId/complete-substep", async (req, res) => {
       });
     }
 
-    // Use ProjectStateManager to atomically update state
-    const newState = await orchestrator.stateManager.applyProjectUpdate(
-      projectId,
-      {
-        completeSubstep: {
-          phase: phase_id,
-          substep: substep_number,
-        },
-        advanceSubstep: true,
-      },
-    );
+    // Simple manual completion: mark complete, increment substep, save
+    console.log(`[Projects] Manual completion: ${phase_id}/${substep_number}`);
 
-    console.log(
-      `✅ [Projects] Manual completion: ${phase_id}/${substep_number} → ${newState.current_phase}/${newState.current_substep}`,
-    );
+    // Mark substep as complete in roadmap
+    completedSubstep.completed = true;
 
-    // Get next substep for briefing
-    const nextSubstep = orchestrator.stateManager.getCurrentSubstep(newState);
+    // Add to completed_substeps array
+    const completedSubstepsArray = project.completed_substeps || [];
+    const phaseNum = parseInt(phase_id.replace("P", ""));
+    const completionRecord = {
+      phase_number: phaseNum,
+      substep_number,
+      completed_at: new Date().toISOString(),
+    };
 
-    // Generate briefing if there's a next substep
-    let briefingMessage = null;
-    if (nextSubstep) {
-      briefingMessage = await generateSubstepBriefing(
-        project,
-        newState,
-        nextSubstep,
-        completedSubstep,
-      );
-
-      console.log(
-        `🎯 [Projects] Briefing generated for next: ${nextSubstep.label}`,
-      );
-
-      // Store briefing in thread for user to see
-      if (project.thread_id) {
-        await supabase.from("messages").insert({
-          thread_id: project.thread_id,
-          role: "assistant",
-          content: briefingMessage,
-          created_at: new Date().toISOString(),
-        });
-      }
-    } else {
-      console.log("🏁 [Projects] Phase or project complete");
+    // Avoid duplicates
+    if (
+      !completedSubstepsArray.some(
+        (cs: any) =>
+          cs.phase_number === phaseNum && cs.substep_number === substep_number,
+      )
+    ) {
+      completedSubstepsArray.push(completionRecord);
     }
 
+    // Advance to next substep
+    const nextSubstepNumber = substep_number + 1;
+    const nextSubstep = completedPhase?.substeps?.find(
+      (s: any) => s.step_number === nextSubstepNumber,
+    );
+
+    if (nextSubstep) {
+      project.current_substep = nextSubstepNumber;
+      console.log(`[Projects] Advanced to substep ${nextSubstepNumber}`);
+    } else {
+      console.log(`[Projects] No more substeps in ${phase_id}`);
+    }
+
+    // Update in-memory project object
+    project.completed_substeps = completedSubstepsArray;
+
+    // Save to Supabase
+    await withRetry(async () => {
+      const result = await supabase
+        .from("projects")
+        .update({
+          current_substep: project.current_substep,
+          roadmap: { phases: project.phases || project.roadmap?.phases },
+          completed_substeps: completedSubstepsArray,
+        })
+        .eq("id", projectId)
+        .select()
+        .single();
+      return result;
+    });
+
+    // Clear the cache so the next GET request fetches fresh data
+    orchestrator.clearProjectCache(projectId);
+    console.log("[Projects] Cache cleared for project:", projectId);
+
+    console.log(
+      `✅ [Projects] Completion saved: ${phase_id}/${substep_number} → current: ${project.current_phase}/${project.current_substep}`,
+    );
+
+    // Return simple confirmation
     return res.json({
       ok: true,
-      project: {
-        current_phase: newState.current_phase,
-        current_substep: newState.current_substep,
-      },
-      briefing: briefingMessage,
       completed: {
         phase: phase_id,
         substep: substep_number,
         label: completedSubstep.label,
       },
-      next: nextSubstep
-        ? {
-            phase: newState.current_phase,
-            substep: newState.current_substep,
-            label: nextSubstep.label,
-          }
-        : null,
     });
   } catch (error) {
     console.error("Error completing substep:", error);

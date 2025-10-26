@@ -125,14 +125,88 @@ className = "rounded-2xl"; // 24px - Large cards, modals
 className = "rounded-full"; // Circular elements
 ```
 
+## Gradients
+
+Our design system uses a **limited, intentional gradient palette** to maintain consistency:
+
+### Brand Gradients (Blue → Purple)
+
+Primary brand gradients for buttons, badges, and brand elements:
+
+```tsx
+className = "bg-gradient-brand"; // Standard: blue to purple
+className = "bg-gradient-brand hover:bg-gradient-brand-hover"; // With hover state
+className = "bg-gradient-brand-subtle"; // 20% opacity for subtle backgrounds
+className = "bg-gradient-brand-muted"; // 30% opacity for headers/footers
+```
+
+**Use for**: Primary buttons, brand badges, active state indicators, hero elements
+
+### Neutral Gradients (Dark Surfaces)
+
+Neutral gradients for backgrounds and surfaces:
+
+```tsx
+className = "bg-gradient-surface"; // Deep black gradient for modals
+className = "bg-gradient-surface-elevated"; // Slightly lighter for cards
+className = "bg-gradient-surface-subtle"; // Semi-transparent for overlays
+```
+
+**Use for**: Modal backgrounds, card surfaces, elevated panels
+
+### Semantic Gradients
+
+Success (Green only - no mixing):
+
+```tsx
+className = "bg-gradient-success"; // Standard green gradient
+className = "bg-gradient-success-hover"; // Hover state
+className = "bg-gradient-success-subtle"; // 20% opacity background
+```
+
+Warning (Amber only - no mixing):
+
+```tsx
+className = "bg-gradient-warning"; // Standard amber gradient
+className = "bg-gradient-warning-hover"; // Hover state
+className = "bg-gradient-warning-subtle"; // 20% opacity background
+```
+
+Error (Red only - no mixing):
+
+```tsx
+className = "bg-gradient-error"; // Standard red gradient
+className = "bg-gradient-error-hover"; // Hover state
+className = "bg-gradient-error-subtle"; // 20% opacity background
+```
+
+**Use for**: Status indicators, alerts, notifications, feedback messages
+
+### ❌ What NOT to Do
+
+Avoid creating one-off gradient combinations:
+
+```tsx
+// ❌ DON'T: Random color combinations
+className = "bg-gradient-to-br from-purple-600/20 to-indigo-600/20";
+className = "bg-gradient-to-r from-emerald-900/20 to-blue-900/20";
+className = "bg-gradient-to-r from-red-600 to-orange-600";
+
+// ✅ DO: Use standardized gradients
+className = "bg-gradient-brand-subtle";
+className = "bg-gradient-success-subtle";
+className = "bg-gradient-error";
+```
+
 ## Shadows
 
 ```tsx
 className = "shadow-soft-sm"; // Subtle shadow
 className = "shadow-soft-md"; // Medium shadow
 className = "shadow-soft-lg"; // Large shadow
-className = "shadow-glow"; // Blue glow effect
+className = "shadow-glow"; // Blue glow effect (pairs with brand gradients)
 className = "shadow-glow-purple"; // Purple glow effect
+className = "shadow-glow-green"; // Green glow effect (pairs with success)
 ```
 
 ## Common Patterns
@@ -142,7 +216,7 @@ className = "shadow-glow-purple"; // Purple glow effect
 Primary action button:
 
 ```tsx
-<button className="px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary-600 to-brand-secondary-600 hover:from-brand-primary-500 hover:to-brand-secondary-500 text-white font-medium transition-all shadow-lg hover:shadow-xl">
+<button className="px-6 py-3 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover text-white font-medium transition-all shadow-lg hover:shadow-xl">
   Click Me
 </button>
 ```
@@ -152,6 +226,22 @@ Secondary button:
 ```tsx
 <button className="px-4 py-2 rounded-lg bg-neutral-700/30 border border-neutral-600/50 text-neutral-300 hover:bg-neutral-700/50 hover:border-neutral-500/70 transition-all">
   Cancel
+</button>
+```
+
+Success button:
+
+```tsx
+<button className="px-4 py-2 rounded-lg bg-gradient-success hover:bg-gradient-success-hover text-white font-medium transition-all">
+  Complete
+</button>
+```
+
+Destructive button:
+
+```tsx
+<button className="px-4 py-2 rounded-lg bg-gradient-error hover:bg-gradient-error-hover text-white font-medium transition-all">
+  Delete
 </button>
 ```
 
@@ -165,11 +255,27 @@ Standard card:
 </div>
 ```
 
-Elevated card with glow:
+Elevated card with brand gradient:
 
 ```tsx
-<div className="bg-gradient-to-br from-brand-primary-600/20 to-brand-secondary-600/20 border border-brand-primary-500/50 rounded-xl shadow-lg shadow-glow p-4">
+<div className="bg-gradient-brand-subtle border border-brand-primary-500/50 rounded-xl shadow-lg shadow-glow p-4">
   {/* Card content */}
+</div>
+```
+
+Success notification card:
+
+```tsx
+<div className="bg-gradient-success-subtle border border-success-500/50 rounded-xl p-4">
+  {/* Success message */}
+</div>
+```
+
+Warning alert card:
+
+```tsx
+<div className="bg-gradient-warning-subtle border border-warning-500/50 rounded-xl p-4">
+  {/* Warning message */}
 </div>
 ```
 
@@ -205,8 +311,13 @@ Modal content:
 
 ```tsx
 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-  <div className="bg-neutral-800 border border-neutral-700 rounded-2xl shadow-2xl max-w-2xl w-full p-6">
-    {/* Modal content */}
+  <div className="bg-gradient-surface border border-neutral-700 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden">
+    {/* Modal header with brand gradient */}
+    <div className="p-6 border-b border-neutral-700/50 bg-gradient-brand-muted">
+      <h2>Modal Title</h2>
+    </div>
+    {/* Modal body */}
+    <div className="p-6">{/* Content */}</div>
   </div>
 </div>
 ```

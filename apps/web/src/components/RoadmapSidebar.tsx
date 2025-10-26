@@ -20,11 +20,11 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
     <>
       {/* Overlay */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+        className="fixed inset-0 bg-black/70 z-40 lg:hidden"
         onClick={onClose}
       />
       {/* Drawer */}
-      <div className="fixed inset-y-0 left-0 w-80 bg-gray-900/95 backdrop-blur-xl border-r border-gray-700/50 z-50 lg:hidden overflow-y-auto">
+      <div className="fixed inset-y-0 left-0 w-80 bg-neutral-900 border-r border-neutral-700/50 z-50 lg:hidden overflow-y-auto shadow-2xl">
         {children}
       </div>
     </>
@@ -72,6 +72,11 @@ interface RoadmapSidebarProps {
   onCompleteSubstep: (substepId: string) => void;
 }
 
+// Helper to convert phase format: "P1" -> 1, or pass through if already number
+const getPhaseNumber = (phase: string | number): number => {
+  return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
+};
+
 const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   project,
   onViewFullRoadmap,
@@ -96,8 +101,9 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   const [expandedPhaseId, setExpandedPhaseId] = useState<string | null>(() => {
     // Auto-expand current phase on mount
     return (
-      project?.phases?.find((p) => p.phase_number === project.current_phase)
-        ?.phase_id || null
+      project?.phases?.find(
+        (p) => p.phase_number === getPhaseNumber(project.current_phase),
+      )?.phase_id || null
     );
   });
 
@@ -115,7 +121,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   useEffect(() => {
     if (project?.current_phase) {
       const currentPhaseObj = project.phases?.find(
-        (p) => p.phase_number === project.current_phase,
+        (p) => p.phase_number === getPhaseNumber(project.current_phase),
       );
       if (currentPhaseObj) {
         setExpandedPhaseId(currentPhaseObj.phase_id);
@@ -131,8 +137,11 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
     return Math.round((completedPhases / project.phases.length) * 100);
   };
 
+  // Convert current_phase from "P1" to 1 for comparison
+  const currentPhaseNumber = getPhaseNumber(project.current_phase);
+
   const currentPhase = project.phases?.find(
-    (p) => p.phase_number === project.current_phase,
+    (p) => p.phase_number === currentPhaseNumber,
   );
   const currentSubstep = currentPhase?.substeps?.find(
     (s) => s.step_number === project.current_substep,
@@ -144,17 +153,19 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   const SidebarContent = ({ onClose }: { onClose?: () => void }) => (
     <div className="flex flex-col h-full">
       {/* Header - Fixed */}
-      <div className="flex-shrink-0 flex items-center justify-between p-4 pb-0">
-        <h3 className="text-sm font-semibold text-gray-400">ZERO1 BUILDER</h3>
-        <div className="flex items-center gap-2">
+      <div className="flex-shrink-0 flex items-center justify-between px-3 py-3 border-b border-neutral-700/50">
+        <h3 className="text-xs font-bold text-neutral-500 tracking-wider">
+          ZERO1 BUILDER
+        </h3>
+        <div className="flex items-center gap-1">
           {onClose && (
             <button
               onClick={onClose}
-              className="lg:hidden text-gray-400 hover:text-white transition-colors p-1 hover:bg-gray-800/50 rounded"
+              className="lg:hidden text-neutral-400 hover:text-white transition-colors p-1 hover:bg-neutral-700/30 rounded"
               title="Close"
             >
               <svg
-                className="w-5 h-5"
+                className="w-4 h-4"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -170,11 +181,11 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           )}
           <button
             onClick={() => setIsCollapsed(true)}
-            className="hidden lg:block text-gray-400 hover:text-white transition-colors p-1 hover:bg-gray-800/50 rounded"
+            className="hidden lg:block text-neutral-400 hover:text-white transition-colors p-1 hover:bg-neutral-700/30 rounded"
             title="Collapse sidebar"
           >
             <svg
-              className="w-5 h-5"
+              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -191,74 +202,136 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden hover:pr-2 p-4">
-        {/* Progress Ring */}
-        <div className="flex flex-col items-center mb-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-3">
+        {/* Progress Section */}
+        <div className="flex flex-col items-center py-2">
           <CircularProgress value={progress} size="lg" />
-          <p className="text-xs text-gray-400 mt-2 text-center line-clamp-2">
+          <p className="text-xs text-neutral-400 mt-2 text-center line-clamp-2 px-2">
             {project.goal}
           </p>
         </div>
 
-        {/* Unified Roadmap Dropdown */}
-        <div className="mb-4">
-          {/* Roadmap Card */}
-          <div className="rounded-xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/50 shadow-lg shadow-blue-500/20 overflow-hidden">
-            {/* Header - Clickable to expand/collapse */}
-            <button
-              onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
-              className="w-full p-4 pb-3 text-left transition-all hover:shadow-xl"
+        {/* Divider */}
+        <div className="h-px bg-neutral-700/30" />
+
+        {/* Current Step Card */}
+        <div className="space-y-3">
+          {/* Roadmap Header */}
+          <button
+            onClick={() => setIsRoadmapExpanded(!isRoadmapExpanded)}
+            className="w-full flex items-center justify-between p-3 rounded-lg bg-neutral-800/50 hover:bg-neutral-800/70 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">📋</span>
+              <span className="text-xs font-bold text-brand-primary-400 tracking-wider">
+                ROADMAP
+              </span>
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary-400 animate-pulse" />
+                <span className="text-xs text-neutral-400">Active</span>
+              </div>
+            </div>
+            <svg
+              className={`w-4 h-4 text-neutral-400 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">📋</span>
-                  <span className="text-xs font-bold text-blue-400 tracking-wider">
-                    ROADMAP
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                    <span className="text-xs text-blue-300">In Progress</span>
-                  </div>
-                  <svg
-                    className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isRoadmapExpanded ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
 
-              <div className="flex items-baseline gap-2 mb-2">
-                <div className="text-2xl font-black text-white">
-                  P{currentPhase?.phase_number}.{currentSubstep?.step_number}
-                </div>
-                <div className="text-xs text-gray-400">
-                  / {currentPhase?.goal}
-                </div>
+          {/* Current Step Info */}
+          <div className="p-3 bg-neutral-800/30 rounded-lg space-y-2">
+            <div className="flex items-baseline gap-2">
+              <div className="text-xl font-black text-white">
+                P{currentPhase?.phase_number}.{currentSubstep?.step_number}
               </div>
+              <div className="text-xs text-neutral-500">
+                {currentPhase?.goal}
+              </div>
+            </div>
+            <div className="text-sm text-neutral-300 leading-snug">
+              {currentSubstep?.label}
+            </div>
+          </div>
 
-              <div className="text-sm text-gray-200 leading-relaxed">
-                {currentSubstep?.label}
-              </div>
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => onAskAI?.()}
+              className="flex-1 px-3 py-2.5 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+              <span>Ask AI</span>
             </button>
 
-            {/* Action Buttons - Not nested in the toggle button */}
-            <div className="px-4 pb-4 flex gap-2">
-              <button
-                onClick={() => onAskAI?.()}
-                className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
-              >
+            <button
+              onClick={async () => {
+                console.log("[RoadmapSidebar] Complete button clicked!");
+                console.log("[RoadmapSidebar] currentSubstep:", currentSubstep);
+                console.log(
+                  "[RoadmapSidebar] completingSubstep:",
+                  completingSubstep,
+                );
+                console.log(
+                  "[RoadmapSidebar] currentSubstep.completed:",
+                  currentSubstep?.completed,
+                );
+
+                if (
+                  !currentSubstep ||
+                  completingSubstep ||
+                  currentSubstep.completed
+                ) {
+                  console.log(
+                    "[RoadmapSidebar] Button click blocked, returning",
+                  );
+                  return;
+                }
+
+                console.log(
+                  "[RoadmapSidebar] Calling onCompleteSubstep:",
+                  currentSubstep.substep_id,
+                );
+                setCompletingSubstep(true);
+                onCompleteSubstep(currentSubstep.substep_id);
+                setTimeout(() => {
+                  setCompletingSubstep(false);
+                }, 600);
+              }}
+              disabled={completingSubstep || currentSubstep?.completed}
+              className={`flex-shrink-0 w-10 h-10 rounded-lg transition-all duration-300 flex items-center justify-center ${
+                currentSubstep?.completed
+                  ? "bg-success-500"
+                  : completingSubstep
+                    ? "bg-success-500 scale-110"
+                    : "bg-neutral-700/50 hover:bg-success-500/20 border border-neutral-600/50 hover:border-success-400"
+              }`}
+              title={
+                currentSubstep?.completed ? "Completed" : "Mark as complete"
+              }
+            >
+              {currentSubstep?.completed || completingSubstep ? (
                 <svg
-                  className="w-4 h-4 group-hover:rotate-12 transition-transform"
+                  className={`w-5 h-5 text-white ${completingSubstep ? "animate-bounce" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -266,116 +339,67 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                    strokeWidth={3}
+                    d="M5 13l4 4L19 7"
                   />
                 </svg>
-                <span>Ask AI</span>
-              </button>
-
-              <button
-                onClick={async () => {
-                  if (
-                    !currentSubstep ||
-                    completingSubstep ||
-                    currentSubstep.completed
-                  )
-                    return;
-                  setCompletingSubstep(true);
-                  // Show celebration animation while completion happens
-                  // The animation is 600ms, completion happens in parallel
-                  onCompleteSubstep(currentSubstep.substep_id);
-                  // Keep animation visible for full duration
-                  setTimeout(() => {
-                    setCompletingSubstep(false);
-                  }, 600);
-                }}
-                disabled={completingSubstep || currentSubstep?.completed}
-                className={`flex-shrink-0 w-12 h-12 rounded-lg border-2 transition-all duration-300 flex items-center justify-center ${
-                  currentSubstep?.completed
-                    ? "border-green-500 bg-green-500"
-                    : completingSubstep
-                      ? "border-green-500 bg-green-500 scale-110"
-                      : "border-gray-500 hover:border-green-400 hover:bg-green-500/20"
-                }`}
-                title={
-                  currentSubstep?.completed ? "Completed" : "Mark as complete"
-                }
-              >
-                {currentSubstep?.completed || completingSubstep ? (
-                  <svg
-                    className={`w-6 h-6 text-white ${completingSubstep ? "animate-bounce" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={3}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                ) : null}
-              </button>
-            </div>
-
-            {/* Progress Footer */}
-            <div className="px-4 py-2 bg-blue-900/20 border-t border-blue-500/30">
-              <div className="text-xs text-blue-300">
-                {project.phases.filter((p) => p.completed).length} of{" "}
-                {project.phases.length} phases complete
-              </div>
-            </div>
+              ) : null}
+            </button>
           </div>
 
-          {/* Expanded Phase List */}
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              isRoadmapExpanded ? "opacity-100 mt-2" : "max-h-0 opacity-0"
-            }`}
-          >
-            <div className="space-y-2">
-              {project.phases.map((phase) => (
-                <PhaseButton
-                  key={phase.phase_id}
-                  phase={phase}
-                  isActive={phase.phase_number === project.current_phase}
-                  isExpanded={expandedPhaseId === phase.phase_id}
-                  currentSubstep={
-                    phase.phase_number === project.current_phase
-                      ? project.current_substep
-                      : undefined
-                  }
-                  onToggleExpand={() =>
-                    setExpandedPhaseId((prev) =>
-                      prev === phase.phase_id ? null : phase.phase_id,
-                    )
-                  }
-                />
-              ))}
-            </div>
+          {/* Progress Summary */}
+          <div className="text-xs text-neutral-500 text-center">
+            {project.phases.filter((p) => p.completed).length} /{" "}
+            {project.phases.length} phases
+          </div>
+        </div>
+
+        {/* Expanded Phase List */}
+        <div
+          className={`overflow-hidden transition-all duration-300 ease-in-out ${
+            isRoadmapExpanded ? "opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <div className="space-y-1.5">
+            {project.phases.map((phase) => (
+              <PhaseButton
+                key={phase.phase_id}
+                phase={phase}
+                isActive={phase.phase_number === currentPhaseNumber}
+                isExpanded={expandedPhaseId === phase.phase_id}
+                currentSubstep={
+                  phase.phase_number === currentPhaseNumber
+                    ? project.current_substep
+                    : undefined
+                }
+                onToggleExpand={() =>
+                  setExpandedPhaseId((prev) =>
+                    prev === phase.phase_id ? null : phase.phase_id,
+                  )
+                }
+              />
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Action Buttons - Fixed at bottom */}
-      <div className="flex-shrink-0 p-4 pt-0 space-y-2">
+      {/* Bottom Actions - Fixed */}
+      <div className="flex-shrink-0 border-t border-neutral-700/50 p-3 space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={onOpenFileManager}
-            className="group px-3 py-2.5 rounded-lg bg-gray-700/30 border border-gray-600/50 text-gray-300 hover:bg-gray-700/50 hover:border-gray-500/70 transition-all hover:shadow-md flex flex-col items-center gap-1 text-xs font-medium"
+            className="group px-2 py-2 rounded-lg bg-neutral-800/30 hover:bg-neutral-800/50 text-neutral-400 hover:text-neutral-300 transition-all flex flex-col items-center gap-1 text-xs font-medium"
           >
-            <span className="text-lg group-hover:scale-110 transition-transform">
+            <span className="text-base group-hover:scale-110 transition-transform">
               📁
             </span>
             <span>Files</span>
           </button>
           <button
             onClick={onOpenMemoryManager}
-            className="group px-3 py-2.5 rounded-lg bg-gray-700/30 border border-gray-600/50 text-gray-300 hover:bg-gray-700/50 hover:border-gray-500/70 transition-all hover:shadow-md flex flex-col items-center gap-1 text-xs font-medium"
+            className="group px-2 py-2 rounded-lg bg-neutral-800/30 hover:bg-neutral-800/50 text-neutral-400 hover:text-neutral-300 transition-all flex flex-col items-center gap-1 text-xs font-medium"
           >
-            <span className="text-lg group-hover:scale-110 transition-transform">
+            <span className="text-base group-hover:scale-110 transition-transform">
               🧠
             </span>
             <span>Memory</span>
@@ -384,9 +408,9 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
         <button
           onClick={onOpenNewWorkspace}
-          className="group w-full px-4 py-2.5 rounded-lg bg-green-600/20 border border-green-500/50 text-green-400 hover:bg-green-600/30 hover:border-green-400/70 transition-all hover:shadow-lg hover:shadow-green-500/20 flex items-center justify-center gap-2 text-sm font-semibold"
+          className="group w-full px-3 py-2 rounded-lg bg-success-500/10 hover:bg-success-500/20 border border-success-500/30 hover:border-success-500/50 text-success-400 transition-all flex items-center justify-center gap-2 text-sm font-medium"
         >
-          <span className="text-base group-hover:rotate-90 transition-transform">
+          <span className="text-sm group-hover:rotate-90 transition-transform">
             ➕
           </span>
           <span>New Workspace</span>
@@ -399,7 +423,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
     return (
       <>
         {/* Desktop: Collapsed sidebar */}
-        <aside className="hidden lg:flex sticky top-16 h-[calc(100vh-64px)] w-16 bg-gray-900/95 backdrop-blur-xl border-r border-gray-700/50 flex-col items-center py-4 space-y-4 z-30">
+        <aside className="hidden lg:flex sticky top-14 h-[calc(100vh-56px)] w-14 bg-neutral-900 border-r border-neutral-700/50 flex-col items-center py-3 space-y-3 z-30">
           {/* Expand button */}
           <button
             onClick={() => setIsCollapsed(false)}
@@ -430,7 +454,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           {/* Phase dots */}
           <div className="flex-1 flex flex-col items-center space-y-2 overflow-y-auto py-2">
             {project.phases.map((phase) => {
-              const isActive = phase.phase_number === project.current_phase;
+              const isActive = phase.phase_number === currentPhaseNumber;
               let statusIcon = "⚪";
               if (phase.completed) statusIcon = "✅";
               else if (isActive) statusIcon = "🔄";
@@ -489,7 +513,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
         {/* Mobile: Floating Action Button */}
         <button
           onClick={() => setIsMobileDrawerOpen(true)}
-          className="lg:hidden fixed bottom-6 left-6 w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg shadow-blue-500/30 flex items-center justify-center text-white z-40 hover:scale-110 transition-transform"
+          className="lg:hidden fixed bottom-6 left-6 w-14 h-14 rounded-full bg-gradient-brand shadow-lg shadow-glow flex items-center justify-center text-white z-40 hover:scale-110 transition-transform"
           title="Open roadmap"
         >
           <svg
@@ -521,14 +545,14 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   return (
     <>
       {/* Desktop: Expanded sidebar */}
-      <aside className="hidden lg:flex sticky top-16 h-[calc(100vh-64px)] w-72 bg-gray-900/95 backdrop-blur-xl border-r border-gray-700/50 flex-col z-30 overflow-hidden">
+      <aside className="hidden lg:flex sticky top-14 h-[calc(100vh-56px)] w-72 bg-neutral-900 border-r border-neutral-700/50 flex-col z-30 overflow-hidden">
         <SidebarContent />
       </aside>
 
       {/* Mobile: Floating Action Button */}
       <button
         onClick={() => setIsMobileDrawerOpen(true)}
-        className="lg:hidden fixed bottom-6 left-6 w-14 h-14 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 shadow-lg shadow-blue-500/30 flex items-center justify-center text-white z-40 hover:scale-110 transition-transform"
+        className="lg:hidden fixed bottom-6 left-6 w-14 h-14 rounded-full bg-gradient-brand shadow-lg shadow-glow flex items-center justify-center text-white z-40 hover:scale-110 transition-transform"
         title="Open roadmap"
       >
         <svg

@@ -20,7 +20,8 @@ export interface ProjectStateUpdate {
     phase: string; // e.g., "P1"
     substep: number; // e.g., 2
   };
-  advanceSubstep?: boolean;
+  advanceSubstep?: boolean; // Advance to next UNCOMPLETED substep (AI mode)
+  advanceSubstepSequential?: boolean; // Advance to next substep number (manual mode)
   advancePhase?: boolean;
   unlockPhase?: string; // e.g., "P2"
   addCompletionResult?: SubstepCompletionResult;
@@ -151,9 +152,14 @@ export class ProjectStateManager {
       this.markSubstepComplete(normalized, phase, substep);
     }
 
-    // Advance to next substep if requested
+    // Advance to next substep if requested (AI mode: finds next uncompleted)
     if (update.advanceSubstep) {
       this.advanceToNextSubstep(normalized);
+    }
+
+    // Advance sequentially to next substep (manual mode: just increment)
+    if (update.advanceSubstepSequential) {
+      this.advanceToNextSubstepSequential(normalized);
     }
 
     // Advance to next phase if requested
@@ -223,14 +229,63 @@ export class ProjectStateManager {
       return;
     }
 
+    // Mark substep as complete in roadmap
     substep.completed = true;
+
+    // Add to completed_substeps array for persistence and GET endpoint
+    const completionResult = {
+      phase_number: phase.phase_number,
+      substep_number: substepNumber,
+      completed_at: new Date().toISOString(),
+    };
+    this.addCompletionResult(state, completionResult);
+
     console.log(
       `[ProjectStateManager] Marked ${phaseId} substep ${substepNumber} as complete`,
     );
   }
 
   /**
-   * Advance to the next substep within the current phase
+   * Advance to the next substep sequentially (for manual checkbox completion)
+   * Simply increments substep number by 1, regardless of completion status
+   */
+  private advanceToNextSubstepSequential(state: NormalizedProjectState): void {
+    const currentPhaseNum =
+      typeof state.current_phase === "string"
+        ? parseInt(state.current_phase.replace("P", ""))
+        : state.current_phase;
+
+    const currentPhase = state.roadmap.phases.find(
+      (p) => p.phase_number === currentPhaseNum,
+    );
+    if (!currentPhase) {
+      console.log(
+        `[ProjectStateManager] Cannot advance: phase ${currentPhaseNum} not found`,
+      );
+      return;
+    }
+
+    // Find the next substep by step_number (just increment by 1)
+    const nextSubstep = currentPhase.substeps?.find(
+      (s) => s.step_number === state.current_substep + 1,
+    );
+
+    if (nextSubstep) {
+      state.current_substep = nextSubstep.step_number;
+      console.log(
+        `[ProjectStateManager] ✅ Advanced sequentially to substep ${nextSubstep.step_number}`,
+      );
+    } else {
+      // No more substeps in this phase
+      console.log(
+        `[ProjectStateManager] ⚠️ No more substeps in phase ${state.current_phase}`,
+      );
+    }
+  }
+
+  /**
+   * Advance to the next substep within the current phase (AI mode)
+   * Finds next UNCOMPLETED substep (may skip completed ones)
    */
   private advanceToNextSubstep(state: NormalizedProjectState): void {
     // Normalize current_phase to a number for comparison
@@ -389,15 +444,26 @@ export class ProjectStateManager {
       })),
     );
 
-    const currentPhase = state.roadmap.phases.find(
-      (p) =>
-        p.phase_id === state.current_phase ||
-        p.phase_number === state.current_phase,
-    );
+    // Normalize both current_phase and phase_number to numbers for comparison
+    // This handles cases where one might be string "1" and other is number 1
+    const normalizeToNumber = (val: string | number): number => {
+      if (typeof val === "string") {
+        // Handle both "P1" and "1" formats
+        return parseInt(val.replace("P", ""));
+      }
+      return val;
+    };
+
+    const currentPhaseNum = normalizeToNumber(state.current_phase);
+
+    const currentPhase = state.roadmap.phases.find((p) => {
+      const phaseNum = normalizeToNumber(p.phase_number);
+      return p.phase_id === state.current_phase || phaseNum === currentPhaseNum;
+    });
 
     if (!currentPhase) {
       throw new Error(
-        `Invalid state: current_phase ${state.current_phase} not found in roadmap. Available phases: ${state.roadmap.phases.map((p) => `${p.phase_id}(${p.phase_number})`).join(", ")}`,
+        `Invalid state: current_phase ${state.current_phase} (normalized: ${currentPhaseNum}) not found in roadmap. Available phases: ${state.roadmap.phases.map((p) => `${p.phase_id}(${p.phase_number}, type: ${typeof p.phase_number})`).join(", ")}`,
       );
     }
 

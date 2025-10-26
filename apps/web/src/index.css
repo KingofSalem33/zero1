@@ -84,9 +84,10 @@
   --color-error-bg: rgba(239, 68, 68, 0.2);
   --color-error-border: rgba(239, 68, 68, 0.5);
 
-  /* Gradient Stops */
-  --gradient-brand: linear-gradient(to right, var(--color-brand-primary), var(--color-brand-secondary));
-  --gradient-brand-hover: linear-gradient(to right, var(--color-brand-primary-hover), var(--color-brand-secondary-hover));
+  /* Gradients - Use standardized Tailwind classes instead of these variables */
+  /* Brand gradients: bg-gradient-brand, bg-gradient-brand-hover, bg-gradient-brand-subtle, bg-gradient-brand-muted */
+  /* Surface gradients: bg-gradient-surface, bg-gradient-surface-elevated, bg-gradient-surface-subtle */
+  /* Semantic gradients: bg-gradient-success, bg-gradient-warning, bg-gradient-error (+ -hover, -subtle variants) */
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);

@@ -48,7 +48,7 @@ export class ProjectCreationService {
       id,
       goal,
       status: "active",
-      current_phase: 1,
+      current_phase: "P1", // Use phase_id format for consistency
       current_substep: 1,
       phases: [
         // Phase 1: Fully expanded with substeps

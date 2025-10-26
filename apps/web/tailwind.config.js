@@ -179,6 +179,43 @@ export default {
           "100%": { transform: "translateY(0)", opacity: "1" },
         },
       },
+
+      // Standardized background images (gradients)
+      backgroundImage: {
+        // Brand gradients - Primary blue to purple
+        "gradient-brand": "linear-gradient(to right, #3b82f6, #a855f7)",
+        "gradient-brand-hover": "linear-gradient(to right, #2563eb, #9333ea)",
+        "gradient-brand-subtle":
+          "linear-gradient(to bottom right, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.2))",
+        "gradient-brand-muted":
+          "linear-gradient(to right, rgba(30, 58, 138, 0.3), rgba(88, 28, 135, 0.3))",
+
+        // Neutral gradients - Dark surfaces
+        "gradient-surface":
+          "linear-gradient(to bottom right, #18181b, #09090b)",
+        "gradient-surface-elevated":
+          "linear-gradient(to bottom right, #27272a, #18181b)",
+        "gradient-surface-subtle":
+          "linear-gradient(to bottom right, rgba(39, 39, 42, 0.6), rgba(24, 24, 27, 0.4))",
+
+        // Success gradients - Green tones only
+        "gradient-success": "linear-gradient(to right, #16a34a, #15803d)",
+        "gradient-success-hover": "linear-gradient(to right, #22c55e, #16a34a)",
+        "gradient-success-subtle":
+          "linear-gradient(to bottom right, rgba(34, 197, 94, 0.2), rgba(22, 163, 74, 0.2))",
+
+        // Warning gradients - Amber tones only
+        "gradient-warning": "linear-gradient(to right, #f59e0b, #d97706)",
+        "gradient-warning-hover": "linear-gradient(to right, #fbbf24, #f59e0b)",
+        "gradient-warning-subtle":
+          "linear-gradient(to bottom right, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.2))",
+
+        // Error gradients - Red tones only
+        "gradient-error": "linear-gradient(to right, #ef4444, #dc2626)",
+        "gradient-error-hover": "linear-gradient(to right, #f87171, #ef4444)",
+        "gradient-error-subtle":
+          "linear-gradient(to bottom right, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.2))",
+      },
     },
   },
   plugins: [],

@@ -332,6 +332,14 @@ export class StepOrchestrator {
   }
 
   /**
+   * Clear cached project (forces fresh load from Supabase on next get)
+   */
+  clearProjectCache(projectId: string): void {
+    projects.delete(projectId);
+    console.log(`[Orchestrator] Cleared cache for project: ${projectId}`);
+  }
+
+  /**
    * Get all projects
    */
   async getAllProjects(): Promise<Project[]> {
