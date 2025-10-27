@@ -2069,7 +2069,20 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
           <div className="flex gap-2 relative">
             <ArtifactUploadButton
               projectId={project?.id || null}
-              onUploadComplete={onRefreshProject}
+              onUploadComplete={(artifact) => {
+                onRefreshProject();
+
+                // Add analysis message to conversation if available
+                if (artifact.analysis_message) {
+                  const analysisMsg = {
+                    id: `analysis-${Date.now()}`,
+                    type: "ai" as const,
+                    content: artifact.analysis_message,
+                    timestamp: new Date(),
+                  };
+                  setMessages((prev) => [...prev, analysisMsg]);
+                }
+              }}
             />
             <input
               type="text"

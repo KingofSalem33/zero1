@@ -1,0 +1,55 @@
+﻿Gourmet Cookie Preferences Survey
+Thank you for participating in our survey! Your feedback will help us create the perfect gourmet cookie experience for busy individuals like you.
+1. How often do you purchase cookies?
+   * Daily
+   * Weekly
+   * Monthly
+   * Rarely
+2. What is your favorite cookie flavor? (Select all that apply)
+   * Chocolate Chip
+   * Oatmeal Raisin
+   * Peanut Butter
+   * Snickerdoodle
+   * Red Velvet
+   * Other (please specify): __________
+3. How important is it for you to have gourmet or unique flavors?
+   * Very important
+   * Somewhat important
+   * Not important
+4. What type of packaging do you prefer for cookies?
+   * Individual packaging
+   * Boxed sets
+   * Reusable containers
+   * Eco-friendly packaging
+   * Other (please specify): __________
+5. How much are you willing to spend on a dozen gourmet cookies?
+   * Under $10
+   * 10−
+   * 10−15
+   * 15−
+   * 15−20
+   * Over $20
+6. Where do you typically purchase cookies? (Select all that apply)
+   * Grocery store
+   * Specialty bakery
+   * Online
+   * Farmers market
+   * Other (please specify): __________
+7. What factors influence your decision to purchase cookies? (Select all that apply)
+   * Price
+   * Flavor variety
+   * Ingredients (organic, gluten-free, etc.)
+   * Brand reputation
+   * Packaging design
+   * Other (please specify): __________
+8. How likely are you to order cookies online for delivery?
+   * Very likely
+   * Somewhat likely
+   * Not likely
+9. What additional features would you like to see in an online cookie store? (Select all that apply)
+   * Subscription service
+   * Customizable cookie boxes
+   * Gift options
+   * Seasonal flavors
+   * Other (please specify): __________
+10. Any additional comments or suggestions?

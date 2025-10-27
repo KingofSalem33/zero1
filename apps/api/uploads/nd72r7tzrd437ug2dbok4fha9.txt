@@ -1,0 +1,26 @@
+﻿Step 1: Conducting the Survey/Interview
+1. Identify Participants: Reach out to at least three busy parents. You can use social media, community groups, or personal contacts.
+2. Prepare Questions: Here are some questions you can ask:
+   * What are your biggest challenges when it comes to budgeting?
+   * How do you currently track your expenses?
+   * What features would you find most helpful in a budgeting app?
+   * How much time do you spend managing your finances each week?
+   * What would make budgeting easier for you?
+Step 2: User Persona Template
+Once you’ve gathered insights, use the following template to create your user persona:
+User Persona Template
+* Name: (Create a fictional name)
+* Demographics:
+   * Age:
+   * Gender:
+   * Occupation:
+   * Family Size:
+   * Location:
+* Needs:
+   * What do they need from a budgeting app?
+   * What are their financial goals?
+* Pain Points:
+   * What challenges do they face in budgeting?
+   * What frustrations do they have with current budgeting tools?
+Step 3: Fill in the Template
+Based on your findings from the interviews, fill in the template with the information you gathered.

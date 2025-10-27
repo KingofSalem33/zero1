@@ -260,6 +260,20 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               .eq("id", projectId)
               .single();
 
+            // Get thread_id for this project
+            const { data: thread } = await supabase
+              .from("threads")
+              .select("id")
+              .eq("project_id", projectId)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .single();
+
+            const threadId = thread?.id;
+            console.log(
+              `🔍 [Artifacts] Thread lookup: ${threadId || "not found"}`,
+            );
+
             // Fetch previous artifact analyses AND signals for THIS substep
             const { data: previousArtifacts } = await supabase
               .from("artifacts")
@@ -356,13 +370,75 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               }
             }
 
-            // Save LLM analysis results + roadmap diff
+            // Format analysis message for frontend display
+            let analysisMessage = "";
+            if (llmAnalysis) {
+              analysisMessage = `## Artifact Analysis Report\n\n`;
+              analysisMessage += `**Quality Score:** ${llmAnalysis.quality_score}/10\n`;
+              analysisMessage += `**Decision:** ${llmAnalysis.decision}\n`;
+              analysisMessage += `**Phase:** ${llmAnalysis.actual_phase}\n\n`;
+
+              if (llmAnalysis.substep_completion_percentage) {
+                analysisMessage += `**Progress:** ${llmAnalysis.substep_completion_percentage}% complete\n\n`;
+              }
+
+              if (llmAnalysis.detailed_analysis) {
+                analysisMessage += `### Expert Review\n${llmAnalysis.detailed_analysis}\n\n`;
+              }
+
+              if (
+                llmAnalysis.substep_requirements &&
+                llmAnalysis.substep_requirements.length > 0
+              ) {
+                analysisMessage += `### Substep Requirements\n`;
+                llmAnalysis.substep_requirements.forEach((req: any) => {
+                  const icon = req.is_met ? "✅" : "❌";
+                  analysisMessage += `${icon} **${req.requirement}**\n`;
+                  if (req.evidence) {
+                    analysisMessage += `   ${req.evidence}\n`;
+                  }
+                });
+                analysisMessage += `\n`;
+              }
+
+              if (
+                llmAnalysis.missing_elements &&
+                llmAnalysis.missing_elements.length > 0
+              ) {
+                analysisMessage += `### Missing Elements\n`;
+                llmAnalysis.missing_elements.forEach((element: string) => {
+                  analysisMessage += `- ${element}\n`;
+                });
+                analysisMessage += `\n`;
+              }
+
+              if (
+                llmAnalysis.bugs_or_errors &&
+                llmAnalysis.bugs_or_errors.length > 0
+              ) {
+                analysisMessage += `### Bugs & Errors\n`;
+                llmAnalysis.bugs_or_errors.forEach((bug: string) => {
+                  analysisMessage += `- ${bug}\n`;
+                });
+                analysisMessage += `\n`;
+              }
+
+              if (llmAnalysis.next_steps && llmAnalysis.next_steps.length > 0) {
+                analysisMessage += `### Next Steps\n`;
+                llmAnalysis.next_steps.forEach((step: string, idx: number) => {
+                  analysisMessage += `${idx + 1}. ${step}\n`;
+                });
+              }
+            }
+
+            // Save LLM analysis results + roadmap diff + formatted message
             await supabase
               .from("artifacts")
               .update({
                 status: "analyzed",
                 analyzed_at: new Date().toISOString(),
                 analysis: llmAnalysis,
+                analysis_message: analysisMessage,
                 completed_substeps: roadmapDiff?.completed_substeps || [],
                 roadmap_diff: roadmapDiff?.changes_summary || null,
                 progress_percentage: roadmapDiff?.progress_percentage || 0,
@@ -513,6 +589,12 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               }
             }
 
+            // Debug: Log completion percentage value
+            console.log(
+              `🔍 [Artifacts] Completion percentage value: ${llmAnalysis.substep_completion_percentage} (type: ${typeof llmAnalysis.substep_completion_percentage})`,
+            );
+            console.log(`🔍 [Artifacts] Has thread_id: ${!!threadId}`);
+
             // AUTO-COMPLETION: Check if substep requirements are 100% complete
             if (
               llmAnalysis.substep_completion_percentage === 100 &&
@@ -568,14 +650,33 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                   );
 
                   // Store celebration in thread for user to see
-                  if (project.thread_id) {
-                    const { supabase } = await import("../db.js");
-                    await supabase.from("messages").insert({
-                      thread_id: project.thread_id,
-                      role: "assistant",
-                      content: celebrationMessage.fullMessage,
-                      created_at: new Date().toISOString(),
-                    });
+                  if (threadId) {
+                    console.log(
+                      `💬 [Artifacts] Inserting celebration message into thread ${threadId}`,
+                    );
+                    const { error: insertError } = await supabase
+                      .from("messages")
+                      .insert({
+                        thread_id: threadId,
+                        role: "assistant",
+                        content: celebrationMessage.fullMessage,
+                        created_at: new Date().toISOString(),
+                      });
+
+                    if (insertError) {
+                      console.error(
+                        "❌ [Artifacts] Failed to insert celebration message:",
+                        insertError,
+                      );
+                    } else {
+                      console.log(
+                        "✅ [Artifacts] Celebration message inserted successfully",
+                      );
+                    }
+                  } else {
+                    console.warn(
+                      "⚠️ [Artifacts] No thread_id found - cannot insert celebration message",
+                    );
                   }
 
                   // Update artifact with celebration info
@@ -601,6 +702,183 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               console.log(
                 `📊 [Artifacts] Substep ${llmAnalysis.substep_completion_percentage}% complete - iteration continues`,
               );
+
+              // Send analysis report to thread so user can see feedback
+              if (threadId) {
+                console.log(
+                  `💬 [Artifacts] Sending analysis report to thread ${threadId}`,
+                );
+                try {
+                  // Format analysis report message
+                  let reportMessage = `## Artifact Analysis Report\n\n`;
+                  reportMessage += `**Progress:** ${llmAnalysis.substep_completion_percentage}% complete\n`;
+                  reportMessage += `**Quality Score:** ${llmAnalysis.quality_score}/10\n\n`;
+
+                  if (
+                    llmAnalysis.substep_requirements &&
+                    llmAnalysis.substep_requirements.length > 0
+                  ) {
+                    reportMessage += `### Substep Requirements\n`;
+                    llmAnalysis.substep_requirements.forEach((req: any) => {
+                      const icon = req.is_met ? "✅" : "❌";
+                      reportMessage += `${icon} **${req.requirement}**\n`;
+                      if (req.evidence) {
+                        reportMessage += `   ${req.evidence}\n`;
+                      }
+                    });
+                    reportMessage += `\n`;
+                  }
+
+                  if (
+                    llmAnalysis.missing_elements &&
+                    llmAnalysis.missing_elements.length > 0
+                  ) {
+                    reportMessage += `### Missing Elements\n`;
+                    llmAnalysis.missing_elements.forEach((element: string) => {
+                      reportMessage += `- ${element}\n`;
+                    });
+                    reportMessage += `\n`;
+                  }
+
+                  if (
+                    llmAnalysis.bugs_or_errors &&
+                    llmAnalysis.bugs_or_errors.length > 0
+                  ) {
+                    reportMessage += `### Bugs & Errors\n`;
+                    llmAnalysis.bugs_or_errors.forEach((bug: string) => {
+                      reportMessage += `- ${bug}\n`;
+                    });
+                    reportMessage += `\n`;
+                  }
+
+                  if (
+                    llmAnalysis.next_steps &&
+                    llmAnalysis.next_steps.length > 0
+                  ) {
+                    reportMessage += `### Next Steps\n`;
+                    llmAnalysis.next_steps.forEach(
+                      (step: string, idx: number) => {
+                        reportMessage += `${idx + 1}. ${step}\n`;
+                      },
+                    );
+                    reportMessage += `\n`;
+                  }
+
+                  if (llmAnalysis.detailed_analysis) {
+                    reportMessage += `### Expert Review\n${llmAnalysis.detailed_analysis}\n\n`;
+                  }
+
+                  // Insert into thread
+                  const { error: insertError } = await supabase
+                    .from("messages")
+                    .insert({
+                      thread_id: threadId,
+                      role: "assistant",
+                      content: reportMessage,
+                      created_at: new Date().toISOString(),
+                    });
+
+                  if (insertError) {
+                    console.error(
+                      "❌ [Artifacts] Failed to insert analysis report:",
+                      insertError,
+                    );
+                  } else {
+                    console.log(
+                      "✅ [Artifacts] Analysis report sent to thread",
+                    );
+                  }
+                } catch (reportError) {
+                  console.error(
+                    "❌ [Artifacts] Error formatting/sending analysis report:",
+                    reportError,
+                  );
+                }
+              } else {
+                console.warn(
+                  "⚠️ [Artifacts] No thread_id - cannot send analysis report",
+                );
+              }
+            } else {
+              // No completion percentage - still send analysis if we have it
+              console.log(
+                "⚠️ [Artifacts] No substep_completion_percentage found - sending basic analysis report",
+              );
+
+              if (threadId && llmAnalysis) {
+                console.log(
+                  `💬 [Artifacts] Sending basic analysis report to thread ${threadId}`,
+                );
+                try {
+                  let reportMessage = `## Artifact Analysis Report\n\n`;
+                  reportMessage += `**Quality Score:** ${llmAnalysis.quality_score}/10\n`;
+                  reportMessage += `**Decision:** ${llmAnalysis.decision}\n`;
+                  reportMessage += `**Phase:** ${llmAnalysis.actual_phase}\n\n`;
+
+                  if (llmAnalysis.detailed_analysis) {
+                    reportMessage += `### Expert Review\n${llmAnalysis.detailed_analysis}\n\n`;
+                  }
+
+                  if (
+                    llmAnalysis.missing_elements &&
+                    llmAnalysis.missing_elements.length > 0
+                  ) {
+                    reportMessage += `### Missing Elements\n`;
+                    llmAnalysis.missing_elements.forEach((element: string) => {
+                      reportMessage += `- ${element}\n`;
+                    });
+                    reportMessage += `\n`;
+                  }
+
+                  if (
+                    llmAnalysis.bugs_or_errors &&
+                    llmAnalysis.bugs_or_errors.length > 0
+                  ) {
+                    reportMessage += `### Bugs & Errors\n`;
+                    llmAnalysis.bugs_or_errors.forEach((bug: string) => {
+                      reportMessage += `- ${bug}\n`;
+                    });
+                    reportMessage += `\n`;
+                  }
+
+                  if (
+                    llmAnalysis.next_steps &&
+                    llmAnalysis.next_steps.length > 0
+                  ) {
+                    reportMessage += `### Next Steps\n`;
+                    llmAnalysis.next_steps.forEach(
+                      (step: string, idx: number) => {
+                        reportMessage += `${idx + 1}. ${step}\n`;
+                      },
+                    );
+                  }
+
+                  const { error: insertError } = await supabase
+                    .from("messages")
+                    .insert({
+                      thread_id: threadId,
+                      role: "assistant",
+                      content: reportMessage,
+                      created_at: new Date().toISOString(),
+                    });
+
+                  if (insertError) {
+                    console.error(
+                      "❌ [Artifacts] Failed to insert basic analysis report:",
+                      insertError,
+                    );
+                  } else {
+                    console.log(
+                      "✅ [Artifacts] Basic analysis report sent to thread",
+                    );
+                  }
+                } catch (reportError) {
+                  console.error(
+                    "❌ [Artifacts] Error sending basic analysis report:",
+                    reportError,
+                  );
+                }
+              }
             }
           } catch (llmError) {
             console.error("❌ [Artifacts] LLM analysis failed:", llmError);

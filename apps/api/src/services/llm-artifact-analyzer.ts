@@ -273,7 +273,26 @@ function attemptSchemaFix(rawAnalysis: any, _error: z.ZodError): any {
     }));
   }
 
-  // Fix 7: Ensure required string fields exist
+  // Fix 7: Filter out invalid roadmap_adjustments actions
+  if (Array.isArray(fixed.roadmap_adjustments)) {
+    const validActions = [
+      "complete",
+      "unlock",
+      "add_substep",
+      "update_substep",
+    ];
+    fixed.roadmap_adjustments = fixed.roadmap_adjustments.filter((adj: any) => {
+      if (!validActions.includes(adj.action)) {
+        console.warn(
+          `⚠️ [LLM Analyzer] Filtering out invalid roadmap action: "${adj.action}"`,
+        );
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // Fix 8: Ensure required string fields exist
   if (!fixed.vision || typeof fixed.vision !== "string") {
     fixed.vision = "Unable to determine vision from artifact";
   }

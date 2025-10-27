@@ -44,6 +44,7 @@ interface ArtifactData {
   completed_substeps?: SubstepCompletion[];
   progress_percentage?: number;
   analysis?: LLMAnalysis;
+  analysis_message?: string;
 }
 
 interface ArtifactUploadButtonProps {

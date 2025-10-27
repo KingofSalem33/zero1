@@ -39,7 +39,9 @@
       "Bash(npm run)",
       "Bash(npx eslint:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(npm run dev:web:*)"
+      "Bash(npm run dev:web:*)",
+      "Bash(dir \"C:\\Users\\coryh\\zero1\\apps\\web\\src\")",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []
