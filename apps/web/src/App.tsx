@@ -48,6 +48,50 @@ const markdownToPlainText = (markdown: string): string => {
 // Get API URL from environment or default to localhost
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
+// ---- Project Normalization ----
+/**
+ * Normalize project data to ensure progressive disclosure.
+ * This transformation ensures that:
+ * - Only Phase 1 is unlocked and expanded with substeps
+ * - Phases 2-7 are locked with empty substeps array
+ * - All phases have phase_number set correctly
+ *
+ * This must be applied consistently:
+ * - When loading existing projects (loadProject)
+ * - When loading shared projects (URL parameters)
+ * - When receiving roadmap_complete (fallback)
+ */
+const normalizeProject = (rawProject: any): any => {
+  if (!rawProject || !rawProject.phases) {
+    return rawProject;
+  }
+
+  const phases = rawProject.phases;
+
+  return {
+    ...rawProject,
+    current_phase:
+      typeof rawProject.current_phase === "string"
+        ? getPhaseNumber(rawProject.current_phase)
+        : rawProject.current_phase || 1,
+    current_substep: rawProject.current_substep || 1,
+    phases: phases.map((phase: any, index: number) => ({
+      ...phase,
+      phase_number: index + 1,
+      expanded: index === 0,
+      locked: index > 0,
+      substeps:
+        index === 0
+          ? (phase.substeps || []).map((substep: any, subIndex: number) => ({
+              ...substep,
+              step_number: subIndex + 1,
+              completed: false,
+            }))
+          : [],
+    })),
+  };
+};
+
 // ---- Enhanced Animation Components ----
 interface AnimatedCardProps {
   children: React.ReactNode;
@@ -2315,8 +2359,9 @@ function App() {
           "current_substep:",
           data.project.current_substep,
         );
-        setProject(data.project);
-        return data.project;
+        const normalizedProject = normalizeProject(data.project);
+        setProject(normalizedProject);
+        return normalizedProject;
       } else {
         // Failed to load project
         return null;
@@ -2340,7 +2385,8 @@ function App() {
           const data = await response.json();
 
           if (response.ok && data.project) {
-            setProject(data.project);
+            const normalizedProject = normalizeProject(data.project);
+            setProject(normalizedProject);
             setGuidance("✅ Shared project loaded successfully!");
             setTimeout(() => setGuidance(""), 3000);
           } else {
@@ -2606,34 +2652,11 @@ function App() {
                       pollData.project?.phases ||
                       pollData.project?.roadmap?.phases;
                     if (phases && Array.isArray(phases) && phases.length > 0) {
-                      const processedProject = {
-                        ...pollData.project,
-                        current_phase: 1,
-                        current_substep: 1,
-                        phases: phases.map(
-                          (phase: ProjectPhase, index: number) => ({
-                            ...phase,
-                            phase_number: index + 1,
-                            expanded: index === 0,
-                            locked: index > 0,
-                            substeps:
-                              index === 0
-                                ? (phase.substeps || []).map(
-                                    (
-                                      substep: ProjectSubstep,
-                                      subIndex: number,
-                                    ) => ({
-                                      ...substep,
-                                      step_number: subIndex + 1,
-                                      completed: false,
-                                    }),
-                                  )
-                                : [],
-                          }),
-                        ),
-                      };
+                      const normalizedProject = normalizeProject(
+                        pollData.project,
+                      );
 
-                      setProject(processedProject);
+                      setProject(normalizedProject);
                       setGuidance("Roadmap complete! Ready to start building.");
                       setCreatingProject(false);
                       setTimeout(() => setGuidance(""), 4000);
