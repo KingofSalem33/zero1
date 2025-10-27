@@ -41,7 +41,8 @@
       "Bash(python -m json.tool:*)",
       "Bash(npm run dev:web:*)",
       "Bash(dir \"C:\\Users\\coryh\\zero1\\apps\\web\\src\")",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

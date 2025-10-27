@@ -11,6 +11,7 @@ import { uploadLimiter } from "../middleware/rateLimit";
 import {
   analyzeDirectory,
   analyzeSingleFile,
+  extractAndAnalyzeZip,
   type ArtifactSignals,
 } from "../services/artifact-analyzer";
 import { analyzeArtifactWithLLM } from "../services/llm-artifact-analyzer";
@@ -140,6 +141,7 @@ router.post("/upload", uploadLimiter, (req, res) => {
         `📁 [Artifacts] Processing file: ${filename} (${fileSize} bytes)`,
       );
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let artifact: any = null; // Declare in outer scope for error handling
 
       try {
@@ -150,11 +152,14 @@ router.post("/upload", uploadLimiter, (req, res) => {
         // Run static analysis
         console.log("🔍 [Artifacts] Running static analysis...");
         let signals: ArtifactSignals;
+        let extractedPath: string | null = null;
 
         if (isZip) {
-          // For zip files, extract and analyze
-          // TODO: Implement zip extraction
-          signals = await analyzeSingleFile(filePath);
+          // Extract and analyze ZIP contents
+          const result = await extractAndAnalyzeZip(filePath);
+          signals = result.signals;
+          extractedPath = result.extractedPath;
+          console.log(`📦 [Artifacts] ZIP extracted to: ${extractedPath}`);
         } else {
           signals = await analyzeSingleFile(filePath);
         }
@@ -229,6 +234,7 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
           const currentPhase = project.roadmap.phases?.find(
             (p: any) => p.phase_id === project.current_phase,
           );
+
           const currentSubstep = currentPhase?.substeps?.find(
             (s: any) => s.step_number === project.current_substep,
           );
@@ -310,7 +316,7 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 .filter((s) => s) || [];
 
             const llmAnalysis = await analyzeArtifactWithLLM(
-              filePath,
+              extractedPath || filePath, // Use extracted directory if ZIP was uploaded
               signals,
               project
                 ? {
@@ -391,6 +397,7 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 llmAnalysis.substep_requirements.length > 0
               ) {
                 analysisMessage += `### Substep Requirements\n`;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 llmAnalysis.substep_requirements.forEach((req: any) => {
                   const icon = req.is_met ? "✅" : "❌";
                   analysisMessage += `${icon} **${req.requirement}**\n`;
@@ -606,9 +613,11 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
 
               try {
                 // Get current substep details for celebration
+
                 const currentPhase = project.roadmap.phases?.find(
                   (p: any) => p.phase_id === project.current_phase,
                 );
+
                 const completedSubstep = currentPhase?.substeps?.find(
                   (s: any) => s.step_number === project.current_substep,
                 );
@@ -719,6 +728,7 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                     llmAnalysis.substep_requirements.length > 0
                   ) {
                     reportMessage += `### Substep Requirements\n`;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     llmAnalysis.substep_requirements.forEach((req: any) => {
                       const icon = req.is_met ? "✅" : "❌";
                       reportMessage += `${icon} **${req.requirement}**\n`;
@@ -889,6 +899,21 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 error_message: "LLM analysis failed",
               })
               .eq("id", artifact.id);
+          } finally {
+            // Cleanup extracted ZIP directory if it exists
+            if (extractedPath && fs.existsSync(extractedPath)) {
+              try {
+                fs.rmSync(extractedPath, { recursive: true, force: true });
+                console.log(
+                  `🗑️  [Artifacts] Cleaned up extracted directory: ${extractedPath}`,
+                );
+              } catch (cleanupError) {
+                console.error(
+                  `⚠️  [Artifacts] Failed to cleanup ${extractedPath}:`,
+                  cleanupError,
+                );
+              }
+            }
           }
         })();
 

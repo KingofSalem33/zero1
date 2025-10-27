@@ -6,6 +6,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const AdmZip = require("adm-zip");
 
 export type ArtifactType =
   | "code"
@@ -443,7 +445,7 @@ async function analyzeGitHistory(
       {
         cwd: dirPath,
         encoding: "utf-8",
-      }
+      },
     );
 
     const lastCommit = lastCommitTimestamp.trim()
@@ -456,7 +458,7 @@ async function analyzeGitHistory(
       {
         cwd: dirPath,
         encoding: "utf-8",
-      }
+      },
     );
     const commitCount = parseInt(commitCountStr.trim());
 
@@ -468,7 +470,7 @@ async function analyzeGitHistory(
 }
 
 /**
- * Analyze a single uploaded file
+ * Analyze a single uploaded file with enhanced context detection
  */
 export async function analyzeSingleFile(
   filePath: string,
@@ -507,6 +509,15 @@ export async function analyzeSingleFile(
     signals.has_tests = true;
   }
 
+  // Enhanced config file detection
+  detectConfigFiles(filename, signals);
+
+  // Enhanced package manifest detection
+  detectPackageManifests(filename, filePath, signals);
+
+  // Enhanced deployment config detection
+  detectDeploymentConfigs(filename, signals);
+
   // Check if it's a README
   if (filename.startsWith("readme")) {
     try {
@@ -519,6 +530,224 @@ export async function analyzeSingleFile(
   }
 
   return signals;
+}
+
+/**
+ * Detect linter and formatter configs from filename
+ */
+function detectConfigFiles(filename: string, signals: ArtifactSignals): void {
+  // ESLint configs
+  if (
+    filename === ".eslintrc" ||
+    filename === ".eslintrc.js" ||
+    filename === ".eslintrc.json" ||
+    filename === ".eslintrc.yml" ||
+    filename === ".eslintrc.yaml" ||
+    filename === "eslint.config.js" ||
+    filename === "eslint.config.mjs"
+  ) {
+    signals.has_linter = true;
+  }
+
+  // Prettier configs
+  if (
+    filename === ".prettierrc" ||
+    filename === ".prettierrc.js" ||
+    filename === ".prettierrc.json" ||
+    filename === ".prettierrc.yml" ||
+    filename === ".prettierrc.yaml" ||
+    filename === "prettier.config.js" ||
+    filename === ".prettierignore"
+  ) {
+    signals.has_prettier = true;
+  }
+
+  // Other linters
+  if (
+    filename === ".pylintrc" ||
+    filename === "pylintrc" ||
+    filename === ".flake8" ||
+    filename === ".rubocop.yml" ||
+    filename === "clippy.toml" ||
+    filename === ".golangci.yml"
+  ) {
+    signals.has_linter = true;
+  }
+
+  // TypeScript config
+  if (filename === "tsconfig.json") {
+    signals.has_typescript = true;
+  }
+}
+
+/**
+ * Detect package manifests and extract tech stack
+ */
+function detectPackageManifests(
+  filename: string,
+  filePath: string,
+  signals: ArtifactSignals,
+): void {
+  try {
+    // Node.js/JavaScript
+    if (filename === "package.json") {
+      const content = fs.readFileSync(filePath, "utf-8");
+      const pkg = JSON.parse(content);
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+      // Add framework/library signals
+      if (deps["react"]) signals.tech_stack.push("react");
+      if (deps["vue"]) signals.tech_stack.push("vue");
+      if (deps["angular"]) signals.tech_stack.push("angular");
+      if (deps["next"]) signals.tech_stack.push("nextjs");
+      if (deps["express"]) signals.tech_stack.push("express");
+      if (deps["fastify"]) signals.tech_stack.push("fastify");
+      if (deps["typescript"]) signals.has_typescript = true;
+      if (deps["prettier"]) signals.has_prettier = true;
+      if (deps["eslint"]) signals.has_linter = true;
+    }
+
+    // Python
+    if (
+      filename === "requirements.txt" ||
+      filename === "pyproject.toml" ||
+      filename === "setup.py"
+    ) {
+      signals.tech_stack.push("python");
+      const content = fs.readFileSync(filePath, "utf-8").toLowerCase();
+      if (content.includes("django")) signals.tech_stack.push("django");
+      if (content.includes("flask")) signals.tech_stack.push("flask");
+      if (content.includes("fastapi")) signals.tech_stack.push("fastapi");
+    }
+
+    // Rust
+    if (filename === "cargo.toml") {
+      signals.tech_stack.push("rust");
+    }
+
+    // Go
+    if (filename === "go.mod") {
+      signals.tech_stack.push("go");
+    }
+
+    // Ruby
+    if (filename === "gemfile") {
+      signals.tech_stack.push("ruby");
+      const content = fs.readFileSync(filePath, "utf-8").toLowerCase();
+      if (content.includes("rails")) signals.tech_stack.push("rails");
+    }
+
+    // Java/JVM
+    if (filename === "pom.xml" || filename === "build.gradle") {
+      signals.tech_stack.push("java");
+    }
+
+    // PHP
+    if (filename === "composer.json") {
+      signals.tech_stack.push("php");
+      const content = fs.readFileSync(filePath, "utf-8").toLowerCase();
+      if (content.includes("laravel")) signals.tech_stack.push("laravel");
+    }
+  } catch {
+    // Ignore parse errors
+  }
+}
+
+/**
+ * Detect deployment and infrastructure configs
+ */
+function detectDeploymentConfigs(
+  filename: string,
+  signals: ArtifactSignals,
+): void {
+  // Docker
+  if (
+    filename === "dockerfile" ||
+    filename === "docker-compose.yml" ||
+    filename === "docker-compose.yaml"
+  ) {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "docker";
+  }
+
+  // Vercel
+  if (filename === "vercel.json" || filename === ".vercelignore") {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "vercel";
+  }
+
+  // Netlify
+  if (filename === "netlify.toml" || filename === "_redirects") {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "netlify";
+  }
+
+  // Heroku
+  if (filename === "procfile" || filename === "app.json") {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "heroku";
+  }
+
+  // AWS
+  if (
+    filename === "serverless.yml" ||
+    filename === "sam.yaml" ||
+    filename === "cloudformation.yml"
+  ) {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "aws";
+  }
+
+  // Kubernetes
+  if (
+    filename.includes("k8s") ||
+    filename.includes("kubernetes") ||
+    filename === "deployment.yml"
+  ) {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "kubernetes";
+  }
+
+  // Railway
+  if (filename === "railway.toml") {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "railway";
+  }
+
+  // Render
+  if (filename === "render.yaml") {
+    signals.has_deploy_config = true;
+    signals.deploy_platform = "render";
+  }
+}
+
+/**
+ * Extract ZIP file to temporary directory and analyze
+ */
+export async function extractAndAnalyzeZip(
+  zipPath: string,
+): Promise<{ extractedPath: string; signals: ArtifactSignals }> {
+  const zip = new AdmZip(zipPath);
+  const zipEntries = zip.getEntries();
+
+  // Create temp directory for extraction
+  const tempDir = path.join(
+    path.dirname(zipPath),
+    `extracted_${path.basename(zipPath, ".zip")}_${Date.now()}`,
+  );
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  // Extract all files
+  zip.extractAllTo(tempDir, true);
+
+  console.log(
+    `📦 [Artifact] Extracted ${zipEntries.length} entries to ${tempDir}`,
+  );
+
+  // Analyze the extracted directory
+  const signals = await analyzeDirectory(tempDir);
+
+  return { extractedPath: tempDir, signals };
 }
 
 /**
