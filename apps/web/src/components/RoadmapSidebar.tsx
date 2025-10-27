@@ -147,6 +147,16 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
     (s) => s.step_number === project.current_substep,
   );
 
+  // Debug logging
+  console.log("[RoadmapSidebar] Render:", {
+    phases: project.phases?.length || 0,
+    currentPhaseNumber,
+    currentPhase: currentPhase ? `P${currentPhase.phase_number}` : "none",
+    substeps: currentPhase?.substeps?.length || 0,
+    currentSubstep: currentSubstep ? `${currentSubstep.step_number}` : "none",
+    showLoading: !currentPhase || !currentSubstep,
+  });
+
   const progress = calculateProgress();
 
   // Sidebar content (reusable for both desktop and mobile)

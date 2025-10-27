@@ -168,7 +168,7 @@ router.post("/", async (req, res) => {
         id: supabaseProject.id,
         goal: goal.trim(),
         status: "active",
-        current_phase: "P1", // Use phase_id format for consistency
+        current_phase: 1, // Use number format to match SSE updates
         current_substep: 1,
         phases: [], // Will be populated async
         history: [],

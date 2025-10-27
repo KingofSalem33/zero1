@@ -69,6 +69,9 @@ export class ProjectCreationService {
         created_at: now,
       };
 
+      console.log(
+        "📤 [ProjectCreationService] Sending P1 via progress callback",
+      );
       onProgress({
         phase: 1,
         total: phaseResponse.phases.length,
@@ -78,12 +81,16 @@ export class ProjectCreationService {
       });
     }
 
+    console.log("🔍 [ProjectCreationService] Starting P1 substep expansion...");
     // EXPAND P1 IMMEDIATELY (before sending P2-P7)
     const expandedPhase1 =
       await this.substepGenerationService.expandPhaseWithSubsteps(phase1, goal);
 
     // SEND P1 SUBSTEPS - User sees P1.1, P1.2, etc. right away
     if (onProgress && expandedPhase1.substeps) {
+      console.log(
+        `📤 [ProjectCreationService] Sending P1 substeps (${expandedPhase1.substeps.length}) via progress callback`,
+      );
       onProgress({
         phase: 1,
         total: expandedPhase1.substeps.length,
@@ -102,6 +109,9 @@ export class ProjectCreationService {
     }
 
     // NOW send P2-P7 (these fill in after user already sees P1.1)
+    console.log(
+      "📤 [ProjectCreationService] Sending P2-P7 via progress callbacks",
+    );
     if (onProgress) {
       phaseResponse.phases.slice(1).forEach((phase, index) => {
         const phaseNumber = index + 2; // Starting from P2
@@ -124,6 +134,7 @@ export class ProjectCreationService {
         });
       });
     }
+    console.log("✅ [ProjectCreationService] All progress callbacks completed");
 
     // Build project with Phase 1 expanded, rest locked
     const project: Project = {
