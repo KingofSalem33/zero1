@@ -318,7 +318,7 @@ router.post("/:projectId/complete-substep", async (req, res) => {
       `✅ [Projects] Completion saved: ${phase_id}/${substep_number} → current: ${project.current_phase}/${project.current_substep}`,
     );
 
-    // Return simple confirmation
+    // Return updated state so client doesn't need to refetch
     return res.json({
       ok: true,
       completed: {
@@ -326,6 +326,10 @@ router.post("/:projectId/complete-substep", async (req, res) => {
         substep: substep_number,
         label: completedSubstep.label,
       },
+      // Include updated state for tighter feedback loop
+      current_phase: project.current_phase,
+      current_substep: project.current_substep,
+      completed_substeps: completedSubstepsArray,
     });
   } catch (error) {
     console.error("Error completing substep:", error);

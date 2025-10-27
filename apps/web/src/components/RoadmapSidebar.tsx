@@ -70,6 +70,7 @@ interface RoadmapSidebarProps {
   onOpenNewWorkspace: () => void;
   onAskAI: () => void;
   onCompleteSubstep: (substepId: string) => void;
+  pendingSubstepId: string | null;
 }
 
 // Helper to convert phase format: "P1" -> 1, or pass through if already number
@@ -85,8 +86,8 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   onOpenNewWorkspace,
   onAskAI,
   onCompleteSubstep,
+  pendingSubstepId,
 }) => {
-  const [completingSubstep, setCompletingSubstep] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Load collapse state from localStorage (desktop only)
     const saved = localStorage.getItem("roadmapSidebarCollapsed");
@@ -312,24 +313,18 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
 
             <button
               onClick={async () => {
-                console.log("[RoadmapSidebar] Complete button clicked!");
-                console.log("[RoadmapSidebar] currentSubstep:", currentSubstep);
-                console.log(
-                  "[RoadmapSidebar] completingSubstep:",
-                  completingSubstep,
-                );
-                console.log(
-                  "[RoadmapSidebar] currentSubstep.completed:",
-                  currentSubstep?.completed,
-                );
-
-                if (
-                  !currentSubstep ||
-                  completingSubstep ||
-                  currentSubstep.completed
-                ) {
+                if (!currentSubstep || currentSubstep.completed) {
                   console.log(
-                    "[RoadmapSidebar] Button click blocked, returning",
+                    "[RoadmapSidebar] Button click blocked - already completed or no substep",
+                  );
+                  return;
+                }
+
+                // Check if request already pending for this substep
+                if (pendingSubstepId === currentSubstep.substep_id) {
+                  console.log(
+                    "[RoadmapSidebar] Request already pending for:",
+                    currentSubstep.substep_id,
                   );
                   return;
                 }
@@ -338,17 +333,16 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                   "[RoadmapSidebar] Calling onCompleteSubstep:",
                   currentSubstep.substep_id,
                 );
-                setCompletingSubstep(true);
                 onCompleteSubstep(currentSubstep.substep_id);
-                setTimeout(() => {
-                  setCompletingSubstep(false);
-                }, 600);
               }}
-              disabled={completingSubstep || currentSubstep?.completed}
+              disabled={
+                pendingSubstepId === currentSubstep?.substep_id ||
+                currentSubstep?.completed
+              }
               className={`btn-icon ${
                 currentSubstep?.completed
                   ? "bg-green-600 border-green-500"
-                  : completingSubstep
+                  : pendingSubstepId === currentSubstep?.substep_id
                     ? "bg-green-600 border-green-500 scale-110"
                     : "bg-neutral-700/50 hover:bg-green-600/20 border border-neutral-600/50 hover:border-green-500"
               } w-10 h-10`}
@@ -356,9 +350,10 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
                 currentSubstep?.completed ? "Completed" : "Mark as complete"
               }
             >
-              {currentSubstep?.completed || completingSubstep ? (
+              {currentSubstep?.completed ||
+              pendingSubstepId === currentSubstep?.substep_id ? (
                 <svg
-                  className={`w-5 h-5 text-white ${completingSubstep ? "animate-bounce" : ""}`}
+                  className={`w-5 h-5 text-white ${pendingSubstepId === currentSubstep?.substep_id ? "animate-bounce" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"

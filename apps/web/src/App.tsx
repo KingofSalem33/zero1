@@ -57,9 +57,9 @@ const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
  * - All phases have phase_number set correctly
  *
  * This must be applied consistently:
- * - When loading existing projects (loadProject)
  * - When loading shared projects (URL parameters)
  * - When receiving roadmap_complete (fallback)
+ * - When refreshing project data
  */
 const normalizeProject = (rawProject: any): any => {
   if (!rawProject || !rawProject.phases) {
@@ -2326,6 +2326,7 @@ function App() {
     score: number;
     substep_id: string;
   } | null>(null);
+  const [pendingSubstepId, setPendingSubstepId] = useState<string | null>(null);
 
   // User ID for memory system (could be from auth later)
   const [userId] = useState(() => {
@@ -2338,39 +2339,6 @@ function App() {
 
   // Popup workspace state
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
-
-  // Helper function to load/reload project from API
-  const loadProject = useCallback(async (projectId: string) => {
-    try {
-      const response = await fetch(`${API_URL}/api/projects/${projectId}`, {
-        cache: "no-cache",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      });
-      const data = await response.json();
-
-      if (response.ok && data.project) {
-        console.log(
-          "[Frontend] Loaded project:",
-          data.project.id,
-          "current_phase:",
-          data.project.current_phase,
-          "current_substep:",
-          data.project.current_substep,
-        );
-        const normalizedProject = normalizeProject(data.project);
-        setProject(normalizedProject);
-        return normalizedProject;
-      } else {
-        // Failed to load project
-        return null;
-      }
-    } catch {
-      // Error loading project
-      return null;
-    }
-  }, []);
 
   // Load project from URL parameter on mount
   useEffect(() => {
@@ -2853,6 +2821,12 @@ Return only the refined vision statement using the format "I want to build _____
   const handleToggleSubstep = (substepId: string) => {
     if (!project) return;
 
+    // Prevent duplicate requests
+    if (pendingSubstepId === substepId) {
+      console.log("[Frontend] Request already pending for:", substepId);
+      return;
+    }
+
     // Check if this substep is already completed
     const phaseIndex = project.phases?.findIndex(
       (p) => p.phase_number === getPhaseNumber(project.current_phase),
@@ -2881,6 +2855,9 @@ Return only the refined vision statement using the format "I want to build _____
   const handleSubstepComplete = async (substepId: string) => {
     if (!project) return;
 
+    // Set pending state to prevent duplicate requests
+    setPendingSubstepId(substepId);
+
     try {
       // Parse substepId to get phase_id and substep_number
       // substepId format: "P1-1", "P2-3", or "P1-S1", "P2-S3", etc.
@@ -2890,6 +2867,7 @@ Return only the refined vision statement using the format "I want to build _____
         setGuidance(
           `❌ Error: Invalid substep format (received: ${substepId})`,
         );
+        setPendingSubstepId(null);
         return;
       }
 
@@ -2915,24 +2893,55 @@ Return only the refined vision statement using the format "I want to build _____
       console.log("[Frontend] Completion response:", response.status, data);
 
       if (response.ok && data.ok) {
-        // Manual completion successful
+        // Manual completion successful - use returned state instead of refetching
         console.log(
-          `[Frontend] Calling loadProject after completing ${phase_id}/${substepNumber}`,
+          `[Frontend] Substep completed: ${phase_id}/${substepNumber}`,
         );
-        // Simply reload project to show updated state
-        // No guidance message needed - user sees checkmark update
-        const reloadedProject = await loadProject(project.id);
-        console.log(
-          "[Frontend] After reload, current_substep:",
-          reloadedProject?.current_substep,
-        );
+        console.log("[Frontend] Updated state from server:", {
+          current_phase: data.current_phase,
+          current_substep: data.current_substep,
+          completed_substeps: data.completed_substeps?.length,
+        });
+
+        // Update local project state with server response (no refetch needed!)
+        setProject((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            current_phase: data.current_phase,
+            current_substep: data.current_substep,
+            completed_substeps: data.completed_substeps,
+            // Mark the substep as completed in the phases array
+            phases: prev.phases.map((phase) =>
+              phase.phase_number === phaseNumber
+                ? {
+                    ...phase,
+                    substeps: phase.substeps.map((substep) =>
+                      substep.step_number === substepNumber
+                        ? { ...substep, completed: true }
+                        : substep,
+                    ),
+                  }
+                : phase,
+            ),
+          };
+        });
+
+        // Show brief success feedback
+        setGuidance("✅ Substep completed!");
+        setTimeout(() => setGuidance(""), 2000);
       } else {
         setGuidance(`❌ Error: ${data?.error || "Failed to complete substep"}`);
+        setTimeout(() => setGuidance(""), 4000);
       }
     } catch (err) {
       // Manual completion error
       console.error("[Frontend] Completion error:", err);
       setGuidance("🔌 Network error. Please try again.");
+      setTimeout(() => setGuidance(""), 4000);
+    } finally {
+      // Clear pending state
+      setPendingSubstepId(null);
     }
   };
 
@@ -2960,6 +2969,7 @@ Return only the refined vision statement using the format "I want to build _____
           onOpenNewWorkspace={createPopupWorkspace}
           onAskAI={() => askAIRef.current?.()}
           onCompleteSubstep={handleSubstepComplete}
+          pendingSubstepId={pendingSubstepId}
         />
 
         {/* Main Workspace - Full Width */}
@@ -2975,6 +2985,7 @@ Return only the refined vision statement using the format "I want to build _____
             completionNudge={completionNudge}
             onDismissNudge={() => setCompletionNudge(null)}
             creating={creatingProject}
+            pendingSubstepId={pendingSubstepId}
             inspiring={inspiring}
             onRefreshProject={refreshProject}
             onAskAIRef={askAIRef}

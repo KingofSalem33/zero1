@@ -70,6 +70,7 @@ interface UnifiedWorkspaceProps {
   inspiring: boolean;
   onRefreshProject: () => void;
   onAskAIRef?: React.MutableRefObject<(() => void) | null>;
+  pendingSubstepId: string | null;
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -77,6 +78,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   onCreateProject,
   onInspireMe,
   onSubstepComplete,
+  onToggleSubstep: _onToggleSubstep,
   toolsUsed,
   setToolsUsed,
   completionNudge,
@@ -85,6 +87,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   inspiring,
   onRefreshProject,
   onAskAIRef,
+  pendingSubstepId: _pendingSubstepId,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentInput, setCurrentInput] = useState("");
