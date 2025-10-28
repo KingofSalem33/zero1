@@ -76,14 +76,14 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-gradient-to-br from-gray-900 to-black border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-emerald-900/20 to-blue-900/20">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/30 to-purple-950/30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
               <svg
-                className="w-5 h-5 text-emerald-400"
+                className="w-5 h-5 text-white"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -100,7 +100,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               <h2 className="text-lg font-semibold text-white">
                 Work Reviewed
               </h2>
-              <p className="text-sm text-emerald-400">
+              <p className="text-sm text-blue-400">
                 Expert feedback on your progress
               </p>
             </div>
@@ -255,18 +255,18 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
           {/* Quality Score - Lead with this */}
           {llmAnalysis?.quality_score !== undefined && (
-            <div className="p-4 rounded-lg bg-gradient-to-r from-emerald-900/20 to-blue-900/20 border border-emerald-500/30">
+            <div className="p-4 rounded-lg bg-gradient-to-r from-blue-950/20 to-purple-950/20 border border-blue-500/30">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-emerald-400">
+                <span className="text-sm font-semibold text-blue-400">
                   Quality Score
                 </span>
-                <span className="text-2xl font-bold text-emerald-300">
+                <span className="text-2xl font-bold text-blue-300">
                   {llmAnalysis.quality_score}/10
                 </span>
               </div>
               <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 transition-all duration-500"
+                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
                   style={{ width: `${llmAnalysis.quality_score * 10}%` }}
                 />
               </div>
@@ -491,10 +491,10 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-700 bg-gray-800/40">
+        <div className="px-6 py-4 border-t border-gray-700/50 bg-gray-800/40">
           <button
             onClick={onClose}
-            className="w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-semibold transition-all"
+            className="w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold transition-all"
           >
             {llmAnalysis?.next_steps && llmAnalysis.next_steps.length > 0
               ? "Got it - Let's keep building 🚀"
