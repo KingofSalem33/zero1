@@ -77,11 +77,11 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-gradient-to-br from-gray-900 to-black border border-gray-700/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-gradient-surface border border-neutral-700/50 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/30 to-purple-950/30">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700/50 bg-gradient-brand-muted">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-brand flex items-center justify-center shadow-glow">
               <svg
                 className="w-5 h-5 text-white"
                 fill="none"
@@ -100,17 +100,17 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               <h2 className="text-lg font-semibold text-white">
                 Work Reviewed
               </h2>
-              <p className="text-sm text-blue-400">
+              <p className="text-sm text-brand-primary-400 font-medium">
                 Expert feedback on your progress
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors"
+            className="w-10 h-10 rounded-xl bg-neutral-800/60 hover:bg-neutral-700/60 flex items-center justify-center transition-colors backdrop-blur-sm"
           >
             <svg
-              className="w-5 h-5 text-gray-400"
+              className="w-5 h-5 text-neutral-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -127,18 +127,18 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
         {/* Progress bar */}
         {progressPercentage !== undefined && (
-          <div className="px-6 py-3 bg-gray-800/40">
+          <div className="px-6 py-3 bg-neutral-800/40">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-gray-400">
+              <span className="text-xs font-medium text-neutral-400">
                 Overall Progress
               </span>
-              <span className="text-xs font-semibold text-blue-400">
+              <span className="text-xs font-semibold text-brand-primary-400">
                 {progressPercentage}%
               </span>
             </div>
-            <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-neutral-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+                className="h-full bg-gradient-brand transition-all duration-500"
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
@@ -149,12 +149,12 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {/* Rollback Executed Warning */}
           {llmAnalysis?.rollback_executed && (
-            <div className="p-4 rounded-lg bg-orange-900/20 border-2 border-orange-500/50 animate-pulse">
-              <h3 className="text-sm font-bold text-orange-400 mb-2 flex items-center gap-2">
+            <div className="p-4 rounded-xl bg-gradient-warning-subtle border-2 border-warning-500/50 animate-pulse">
+              <h3 className="text-sm font-bold text-warning-400 mb-2 flex items-center gap-2">
                 <span className="text-xl">⚠️</span>
                 Project Rolled Back
               </h3>
-              <p className="text-sm text-gray-300 mb-3">
+              <p className="text-sm text-neutral-300 mb-3">
                 Multiple attempts showed critical issues. Your project has been
                 restored to an earlier, stable phase to rebuild the foundation
                 correctly.
@@ -164,7 +164,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                   {llmAnalysis.rollback_guidance.map((guidance, i) => (
                     <div
                       key={i}
-                      className="text-sm text-orange-300 flex items-start gap-2"
+                      className="text-sm text-warning-300 flex items-start gap-2"
                     >
                       <span>→</span>
                       <span>{guidance}</span>
@@ -180,10 +180,10 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
             llmAnalysis?.rollback_warning &&
             !warningDismissed && (
               <div
-                className={`p-4 rounded-lg border-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "bg-red-900/20 border-red-500/50" : "bg-yellow-900/20 border-yellow-500/50"}`}
+                className={`p-4 rounded-xl border-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "bg-gradient-error-subtle border-error-500/50" : "bg-gradient-warning-subtle border-warning-500/50"}`}
               >
                 <h3
-                  className={`text-sm font-bold mb-2 flex items-center gap-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "text-red-400" : "text-yellow-400"}`}
+                  className={`text-sm font-bold mb-2 flex items-center gap-2 ${llmAnalysis.rollback_warning.severity === "critical" ? "text-error-400" : "text-warning-400"}`}
                 >
                   <span className="text-xl">
                     {llmAnalysis.rollback_warning.severity === "critical"
@@ -194,18 +194,18 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                     ? "Critical Warning"
                     : "Warning"}
                 </h3>
-                <p className="text-sm text-gray-300 mb-2">
+                <p className="text-sm text-neutral-300 mb-2">
                   {llmAnalysis.rollback_warning.reason}
                 </p>
                 {llmAnalysis.rollback_warning.evidence.length > 0 && (
                   <div className="mb-3 space-y-1">
-                    <p className="text-xs font-semibold text-gray-400">
+                    <p className="text-xs font-semibold text-neutral-400">
                       Evidence:
                     </p>
                     {llmAnalysis.rollback_warning.evidence.map((ev, i) => (
                       <div
                         key={i}
-                        className="text-sm text-gray-400 flex items-start gap-2"
+                        className="text-sm text-neutral-400 flex items-start gap-2"
                       >
                         <span>•</span>
                         <span>{ev}</span>
@@ -215,13 +215,13 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                 )}
                 {llmAnalysis.rollback_warning.guidance.length > 0 && (
                   <div className="mb-4 space-y-1">
-                    <p className="text-xs font-semibold text-gray-400">
+                    <p className="text-xs font-semibold text-neutral-400">
                       Recommendations:
                     </p>
                     {llmAnalysis.rollback_warning.guidance.map((guide, i) => (
                       <div
                         key={i}
-                        className="text-sm text-gray-300 flex items-start gap-2"
+                        className="text-sm text-neutral-300 flex items-start gap-2"
                       >
                         <span>→</span>
                         <span>{guide}</span>
@@ -231,21 +231,21 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-3 pt-3 border-t border-gray-700">
+                <div className="flex items-center gap-3 pt-3 border-t border-neutral-700">
                   <button
                     onClick={handleAcceptRollback}
                     disabled={acceptingRollback}
-                    className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                    className={`flex-1 px-4 py-2 rounded-xl font-medium text-sm transition-all ${
                       llmAnalysis.rollback_warning.severity === "critical"
-                        ? "bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 disabled:from-gray-600 disabled:to-gray-600"
-                        : "bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 disabled:from-gray-600 disabled:to-gray-600"
+                        ? "bg-gradient-error hover:bg-gradient-error-hover disabled:bg-neutral-700"
+                        : "bg-gradient-warning hover:bg-gradient-warning-hover disabled:bg-neutral-700"
                     } text-white disabled:cursor-not-allowed`}
                   >
                     {acceptingRollback ? "Processing..." : "🔄 Accept Rollback"}
                   </button>
                   <button
                     onClick={handleIgnoreWarning}
-                    className="flex-1 px-4 py-2 rounded-lg font-medium text-sm bg-gray-700/60 hover:bg-gray-600/60 text-white transition-all"
+                    className="flex-1 px-4 py-2 rounded-xl font-medium text-sm bg-neutral-700/60 hover:bg-neutral-600/60 text-white transition-all"
                   >
                     Continue Anyway
                   </button>
@@ -255,18 +255,18 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
           {/* Quality Score - Lead with this */}
           {llmAnalysis?.quality_score !== undefined && (
-            <div className="p-4 rounded-lg bg-gradient-to-r from-blue-950/20 to-purple-950/20 border border-blue-500/30">
+            <div className="p-4 rounded-xl bg-gradient-brand-subtle border border-brand-primary-500/30">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-blue-400">
+                <span className="text-sm font-semibold text-brand-primary-400">
                   Quality Score
                 </span>
-                <span className="text-2xl font-bold text-blue-300">
+                <span className="text-2xl font-bold text-brand-primary-300">
                   {llmAnalysis.quality_score}/10
                 </span>
               </div>
-              <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-neutral-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+                  className="h-full bg-gradient-brand transition-all duration-500"
                   style={{ width: `${llmAnalysis.quality_score * 10}%` }}
                 />
               </div>
@@ -276,9 +276,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
           {/* Substep Requirements Progress */}
           {llmAnalysis?.substep_requirements &&
             llmAnalysis.substep_requirements.length > 0 && (
-              <div className="p-4 rounded-lg bg-purple-900/10 border border-purple-500/30">
+              <div className="p-4 rounded-xl bg-gradient-brand-subtle border border-brand-secondary-500/30">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-purple-400 flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-brand-secondary-400 flex items-center gap-2">
                     <svg
                       className="w-4 h-4"
                       fill="none"
@@ -294,7 +294,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                     </svg>
                     Substep Requirements
                   </h3>
-                  <span className="text-sm font-bold text-purple-300">
+                  <span className="text-sm font-bold text-brand-secondary-300">
                     {llmAnalysis.substep_completion_percentage || 0}%
                   </span>
                 </div>
@@ -303,7 +303,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                     <div key={i} className="text-sm">
                       <div className="flex items-start gap-2 mb-1">
                         <span
-                          className={`mt-0.5 ${req.status === "DONE" ? "text-green-400" : req.status === "PARTIAL" ? "text-yellow-400" : "text-gray-500"}`}
+                          className={`mt-0.5 ${req.status === "DONE" ? "text-success-400" : req.status === "PARTIAL" ? "text-warning-400" : "text-neutral-500"}`}
                         >
                           {req.status === "DONE"
                             ? "✓"
@@ -313,11 +313,11 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                         </span>
                         <div className="flex-1">
                           <span
-                            className={`font-medium ${req.status === "DONE" ? "text-green-400" : req.status === "PARTIAL" ? "text-yellow-400" : "text-gray-400"}`}
+                            className={`font-medium ${req.status === "DONE" ? "text-success-400" : req.status === "PARTIAL" ? "text-warning-400" : "text-neutral-400"}`}
                           >
                             {req.requirement}
                           </span>
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-neutral-500 mt-0.5">
                             {req.evidence}
                           </p>
                         </div>
@@ -330,10 +330,10 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
           {/* Expert Feedback */}
           {llmAnalysis?.detailed_analysis && (
-            <div className="p-4 rounded-lg bg-gray-800/60 border border-gray-600">
+            <div className="p-4 rounded-xl bg-neutral-800/60 border border-neutral-600">
               <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
                 <svg
-                  className="w-4 h-4 text-blue-400"
+                  className="w-4 h-4 text-brand-primary-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -347,7 +347,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                 </svg>
                 Expert Review
               </h3>
-              <p className="text-sm text-gray-300 leading-relaxed">
+              <p className="text-sm text-neutral-300 leading-relaxed">
                 {llmAnalysis.detailed_analysis}
               </p>
             </div>
@@ -355,8 +355,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
           {/* What's Working */}
           {completedSubsteps.length > 0 && (
-            <div className="p-4 rounded-lg bg-green-900/10 border border-green-500/30">
-              <h3 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2">
+            <div className="p-4 rounded-xl bg-gradient-success-subtle border border-success-500/30">
+              <h3 className="text-sm font-semibold text-success-400 mb-3 flex items-center gap-2">
                 <svg
                   className="w-4 h-4"
                   fill="none"
@@ -376,9 +376,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                 {completedSubsteps.slice(0, 3).map((substep, i) => (
                   <div
                     key={i}
-                    className="text-sm text-gray-300 flex items-start gap-2"
+                    className="text-sm text-neutral-300 flex items-start gap-2"
                   >
-                    <span className="text-green-400">✓</span>
+                    <span className="text-success-400">✓</span>
                     <span>{substep.evidence}</span>
                   </div>
                 ))}
@@ -389,8 +389,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
           {/* Missing Elements */}
           {llmAnalysis?.missing_elements &&
             llmAnalysis.missing_elements.length > 0 && (
-              <div className="p-4 rounded-lg bg-yellow-900/10 border border-yellow-500/30">
-                <h3 className="text-sm font-semibold text-yellow-400 mb-3 flex items-center gap-2">
+              <div className="p-4 rounded-xl bg-gradient-warning-subtle border border-warning-500/30">
+                <h3 className="text-sm font-semibold text-warning-400 mb-3 flex items-center gap-2">
                   <svg
                     className="w-4 h-4"
                     fill="none"
@@ -410,9 +410,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                   {llmAnalysis.missing_elements.map((item, i) => (
                     <li
                       key={i}
-                      className="text-sm text-gray-300 flex items-start gap-2"
+                      className="text-sm text-neutral-300 flex items-start gap-2"
                     >
-                      <span className="text-yellow-400 mt-0.5">•</span>
+                      <span className="text-warning-400 mt-0.5">•</span>
                       <span>{item}</span>
                     </li>
                   ))}
@@ -423,8 +423,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
           {/* Bugs/Issues */}
           {llmAnalysis?.bugs_or_errors &&
             llmAnalysis.bugs_or_errors.length > 0 && (
-              <div className="p-4 rounded-lg bg-red-900/10 border border-red-500/30">
-                <h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2">
+              <div className="p-4 rounded-xl bg-gradient-error-subtle border border-error-500/30">
+                <h3 className="text-sm font-semibold text-error-400 mb-3 flex items-center gap-2">
                   <svg
                     className="w-4 h-4"
                     fill="none"
@@ -444,9 +444,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                   {llmAnalysis.bugs_or_errors.map((bug, i) => (
                     <li
                       key={i}
-                      className="text-sm text-gray-300 flex items-start gap-2"
+                      className="text-sm text-neutral-300 flex items-start gap-2"
                     >
-                      <span className="text-red-400 mt-0.5">!</span>
+                      <span className="text-error-400 mt-0.5">!</span>
                       <span>{bug}</span>
                     </li>
                   ))}
@@ -456,8 +456,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
           {/* Next Steps */}
           {llmAnalysis?.next_steps && llmAnalysis.next_steps.length > 0 && (
-            <div className="p-4 rounded-lg bg-blue-900/10 border border-blue-500/30">
-              <h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+            <div className="p-4 rounded-xl bg-gradient-brand-subtle border border-brand-primary-500/30">
+              <h3 className="text-sm font-semibold text-brand-primary-400 mb-3 flex items-center gap-2">
                 <svg
                   className="w-4 h-4"
                   fill="none"
@@ -477,9 +477,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                 {llmAnalysis.next_steps.map((step, i) => (
                   <li
                     key={i}
-                    className="text-sm text-gray-300 flex items-start gap-3"
+                    className="text-sm text-neutral-300 flex items-start gap-3"
                   >
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-primary-500/20 text-brand-primary-400 flex items-center justify-center text-xs font-bold">
                       {i + 1}
                     </span>
                     <span>{step}</span>
@@ -491,10 +491,10 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-700/50 bg-gray-800/40">
+        <div className="px-6 py-4 border-t border-neutral-700/50 bg-neutral-800/40">
           <button
             onClick={onClose}
-            className="w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold transition-all"
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover text-white font-semibold transition-all shadow-lg"
           >
             {llmAnalysis?.next_steps && llmAnalysis.next_steps.length > 0
               ? "Got it - Let's keep building 🚀"
