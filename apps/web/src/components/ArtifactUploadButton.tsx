@@ -44,12 +44,11 @@ interface ArtifactData {
   completed_substeps?: SubstepCompletion[];
   progress_percentage?: number;
   analysis?: LLMAnalysis;
-  analysis_message?: string;
 }
 
 interface ArtifactUploadButtonProps {
   projectId: string | null;
-  onUploadComplete?: (artifact: ArtifactData) => void;
+  onUploadComplete?: () => void;
 }
 
 export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
@@ -93,54 +92,121 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
     }
   };
 
-  // Poll artifact status until analysis completes
-  const pollArtifactStatus = async (
+  // Stream artifact status via SSE until analysis completes
+  const streamArtifactStatus = async (
     artifactId: string,
   ): Promise<ArtifactData | null> => {
-    const maxAttempts = 30; // 30 seconds max
+    return new Promise((resolve) => {
+      setCanCancel(true);
+      setProgressPercentage(10); // Start at 10% after upload
+
+      // Open SSE connection
+      // eslint-disable-next-line no-undef
+      const eventSource = new EventSource(
+        `${API_URL}/api/artifacts/stream/${artifactId}`,
+      );
+
+      // Timeout after 60 seconds
+      const timeout = setTimeout(() => {
+        eventSource.close();
+        setCanCancel(false);
+        resolve(null);
+      }, 60000);
+
+      // Handle status events
+      eventSource.addEventListener("status", (event) => {
+        const data = JSON.parse(event.data);
+
+        // Check if cancel was requested
+        if (cancelRequested) {
+          clearTimeout(timeout);
+          eventSource.close();
+          setUploadProgress("Cancelled");
+          setCanCancel(false);
+          resolve(null);
+          return;
+        }
+
+        // Update UI based on status
+        if (data.status === "connected") {
+          setUploadProgress("Connected - waiting for analysis...");
+          setProgressPercentage(15);
+        } else if (data.status === "analyzing") {
+          setUploadProgress(data.message || "Analyzing with AI...");
+          setProgressPercentage(50);
+        } else if (data.status === "analyzed") {
+          setUploadProgress(data.message || "Analysis complete");
+          setProgressPercentage(95);
+
+          // Fetch final artifact data
+          clearTimeout(timeout);
+          eventSource.close();
+          setCanCancel(false);
+
+          fetch(`${API_URL}/api/artifacts/${artifactId}`)
+            .then((res) => res.json())
+            .then((result) => {
+              const artifact = result.id ? result : result.artifact;
+              setProgressPercentage(100);
+              resolve(artifact);
+            })
+            .catch(() => {
+              resolve(null);
+            });
+        } else if (data.status === "failed") {
+          clearTimeout(timeout);
+          eventSource.close();
+          setCanCancel(false);
+          setUploadProgress("Analysis failed");
+          resolve(null);
+        }
+      });
+
+      // Handle errors
+      eventSource.addEventListener("error", () => {
+        clearTimeout(timeout);
+        eventSource.close();
+        setCanCancel(false);
+
+        // Fall back to polling on SSE failure
+        setUploadProgress("Falling back to polling...");
+        pollArtifactStatusFallback(artifactId).then(resolve);
+      });
+    });
+  };
+
+  // Fallback polling if SSE fails
+  const pollArtifactStatusFallback = async (
+    artifactId: string,
+  ): Promise<ArtifactData | null> => {
+    const maxAttempts = 30;
     let attempts = 0;
 
-    setCanCancel(true);
-    setProgressPercentage(10); // Start at 10% after upload
-
     while (attempts < maxAttempts) {
-      // Check if cancel was requested
       if (cancelRequested) {
         setUploadProgress("Cancelled");
-        setCanCancel(false);
         return null;
       }
 
       try {
         const response = await fetch(`${API_URL}/api/artifacts/${artifactId}`);
         const data = await response.json();
-
-        // Handle both OpenAI format and legacy format
         const artifact = data.id ? data : data.artifact;
 
         if (response.ok && artifact) {
-          // Update progress based on attempts (simulate progress)
           const progress = Math.min(10 + (attempts / maxAttempts) * 85, 95);
           setProgressPercentage(Math.round(progress));
 
-          // Update status message based on progress
-          if (progress < 30) {
-            setUploadProgress("Starting analysis...");
-          } else if (progress < 60) {
+          if (progress < 30) setUploadProgress("Starting analysis...");
+          else if (progress < 60)
             setUploadProgress("Analyzing code structure...");
-          } else if (progress < 90) {
-            setUploadProgress("Matching to roadmap...");
-          } else {
-            setUploadProgress("Finalizing...");
-          }
+          else if (progress < 90) setUploadProgress("Matching to roadmap...");
+          else setUploadProgress("Finalizing...");
 
-          // Check if analysis is complete
           if (artifact.status === "analyzed") {
             setProgressPercentage(100);
-            setCanCancel(false);
             return artifact;
           } else if (artifact.status === "failed") {
-            setCanCancel(false);
             throw new Error("Analysis failed");
           }
         }
@@ -148,13 +214,11 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         // Poll error
       }
 
-      // Wait 1 second before next poll
       await new Promise((resolve) => setTimeout(resolve, 1000));
       attempts++;
     }
 
-    setCanCancel(false);
-    return null; // Timeout
+    return null;
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -189,8 +253,8 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         // Upload successful
         setLastArtifactId(artifactId);
 
-        // Poll for analysis completion
-        const analyzedData = await pollArtifactStatus(artifactId);
+        // Stream analysis status via SSE
+        const analyzedData = await streamArtifactStatus(artifactId);
 
         if (analyzedData) {
           setUploadProgress("Analysis complete");
@@ -210,7 +274,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
 
           // Notify parent to refresh project state
           if (onUploadComplete) {
-            onUploadComplete(analyzedData);
+            onUploadComplete();
           }
 
           // Clear progress after modal is shown
@@ -256,7 +320,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
     setCancelRequested(false);
 
     try {
-      const analyzedData = await pollArtifactStatus(lastArtifactId);
+      const analyzedData = await streamArtifactStatus(lastArtifactId);
 
       if (analyzedData) {
         setUploadProgress("Analysis complete");
@@ -274,7 +338,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         }
 
         if (onUploadComplete) {
-          onUploadComplete(analyzedData);
+          onUploadComplete();
         }
 
         setTimeout(() => {

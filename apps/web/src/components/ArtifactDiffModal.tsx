@@ -52,7 +52,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   const [warningDismissed, setWarningDismissed] = useState(false);
   const [acceptingRollback, setAcceptingRollback] = useState(false);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   const completeCount = completedSubsteps.filter(
     (s) => s.status === "complete",

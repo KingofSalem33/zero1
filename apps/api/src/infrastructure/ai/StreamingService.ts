@@ -84,6 +84,13 @@ export class StreamingService {
   }
 
   /**
+   * Send artifact analysis status update with both status and message
+   */
+  sendArtifactStatus(res: Response, status: string, message: string): void {
+    this.sendEvent(res, "status", { status, message });
+  }
+
+  /**
    * Send tool call start
    */
   sendToolCall(res: Response, toolCall: ToolCall): void {

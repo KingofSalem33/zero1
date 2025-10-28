@@ -27,8 +27,13 @@ import {
 import { generateCelebrationAndBriefing } from "../services/celebrationBriefing";
 import { celebrationBriefingHelper } from "../services/celebrationBriefingHelper";
 import { orchestrator } from "./projects";
+import { streamingService } from "../infrastructure/ai/StreamingService";
+import type { Response } from "express";
 
 const router = Router();
+
+// Store active SSE connections for artifact analysis status
+const artifactStreamResponses = new Map<string, Response>();
 
 // Configure upload directory
 const UPLOAD_DIR = path.join(__dirname, "../../uploads");
@@ -259,6 +264,18 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               .update({ status: "analyzing" })
               .eq("id", artifact.id);
 
+            // Broadcast status change via SSE
+            const analysisStreamResponse = artifactStreamResponses.get(
+              artifact.id,
+            );
+            if (analysisStreamResponse) {
+              streamingService.sendArtifactStatus(
+                analysisStreamResponse,
+                "analyzing",
+                "Analyzing your artifact with AI...",
+              );
+            }
+
             // Get project context for analysis
             const { data: project } = await supabase
               .from("projects")
@@ -376,76 +393,13 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               }
             }
 
-            // Format analysis message for frontend display
-            let analysisMessage = "";
-            if (llmAnalysis) {
-              analysisMessage = `## Artifact Analysis Report\n\n`;
-              analysisMessage += `**Quality Score:** ${llmAnalysis.quality_score}/10\n`;
-              analysisMessage += `**Decision:** ${llmAnalysis.decision}\n`;
-              analysisMessage += `**Phase:** ${llmAnalysis.actual_phase}\n\n`;
-
-              if (llmAnalysis.substep_completion_percentage) {
-                analysisMessage += `**Progress:** ${llmAnalysis.substep_completion_percentage}% complete\n\n`;
-              }
-
-              if (llmAnalysis.detailed_analysis) {
-                analysisMessage += `### Expert Review\n${llmAnalysis.detailed_analysis}\n\n`;
-              }
-
-              if (
-                llmAnalysis.substep_requirements &&
-                llmAnalysis.substep_requirements.length > 0
-              ) {
-                analysisMessage += `### Substep Requirements\n`;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                llmAnalysis.substep_requirements.forEach((req: any) => {
-                  const icon = req.is_met ? "✅" : "❌";
-                  analysisMessage += `${icon} **${req.requirement}**\n`;
-                  if (req.evidence) {
-                    analysisMessage += `   ${req.evidence}\n`;
-                  }
-                });
-                analysisMessage += `\n`;
-              }
-
-              if (
-                llmAnalysis.missing_elements &&
-                llmAnalysis.missing_elements.length > 0
-              ) {
-                analysisMessage += `### Missing Elements\n`;
-                llmAnalysis.missing_elements.forEach((element: string) => {
-                  analysisMessage += `- ${element}\n`;
-                });
-                analysisMessage += `\n`;
-              }
-
-              if (
-                llmAnalysis.bugs_or_errors &&
-                llmAnalysis.bugs_or_errors.length > 0
-              ) {
-                analysisMessage += `### Bugs & Errors\n`;
-                llmAnalysis.bugs_or_errors.forEach((bug: string) => {
-                  analysisMessage += `- ${bug}\n`;
-                });
-                analysisMessage += `\n`;
-              }
-
-              if (llmAnalysis.next_steps && llmAnalysis.next_steps.length > 0) {
-                analysisMessage += `### Next Steps\n`;
-                llmAnalysis.next_steps.forEach((step: string, idx: number) => {
-                  analysisMessage += `${idx + 1}. ${step}\n`;
-                });
-              }
-            }
-
-            // Save LLM analysis results + roadmap diff + formatted message
+            // Save LLM analysis results + roadmap diff
             await supabase
               .from("artifacts")
               .update({
                 status: "analyzed",
                 analyzed_at: new Date().toISOString(),
                 analysis: llmAnalysis,
-                analysis_message: analysisMessage,
                 completed_substeps: roadmapDiff?.completed_substeps || [],
                 roadmap_diff: roadmapDiff?.changes_summary || null,
                 progress_percentage: roadmapDiff?.progress_percentage || 0,
@@ -453,6 +407,21 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               .eq("id", artifact.id);
 
             console.log("✅ [Artifacts] LLM analysis complete");
+
+            // Broadcast completion via SSE
+            const completionStreamResponse = artifactStreamResponses.get(
+              artifact.id,
+            );
+            if (completionStreamResponse) {
+              const progressMsg = roadmapDiff?.progress_percentage
+                ? `${roadmapDiff.progress_percentage}% complete`
+                : "Analysis complete";
+              streamingService.sendArtifactStatus(
+                completionStreamResponse,
+                "analyzed",
+                progressMsg,
+              );
+            }
 
             // ROLLBACK DETECTION: Check if user is stuck and needs to rollback
             const rollbackRecommendation = detectRollbackNeed(
@@ -580,6 +549,18 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 console.log(
                   `✅ [Rollback] Successfully executed rollback to ${rollbackRecommendation.rollback_to_phase}`,
                 );
+
+                // Broadcast rollback completion via SSE
+                const rollbackStreamResponse = artifactStreamResponses.get(
+                  artifact.id,
+                );
+                if (rollbackStreamResponse) {
+                  streamingService.sendArtifactStatus(
+                    rollbackStreamResponse,
+                    "analyzed",
+                    `Rollback to ${rollbackRecommendation.rollback_to_phase}`,
+                  );
+                }
                 // Note: Response already sent before IIFE started
                 return; // Exit early since we rolled back
               } else {
@@ -711,184 +692,12 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               console.log(
                 `📊 [Artifacts] Substep ${llmAnalysis.substep_completion_percentage}% complete - iteration continues`,
               );
-
-              // Send analysis report to thread so user can see feedback
-              if (threadId) {
-                console.log(
-                  `💬 [Artifacts] Sending analysis report to thread ${threadId}`,
-                );
-                try {
-                  // Format analysis report message
-                  let reportMessage = `## Artifact Analysis Report\n\n`;
-                  reportMessage += `**Progress:** ${llmAnalysis.substep_completion_percentage}% complete\n`;
-                  reportMessage += `**Quality Score:** ${llmAnalysis.quality_score}/10\n\n`;
-
-                  if (
-                    llmAnalysis.substep_requirements &&
-                    llmAnalysis.substep_requirements.length > 0
-                  ) {
-                    reportMessage += `### Substep Requirements\n`;
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    llmAnalysis.substep_requirements.forEach((req: any) => {
-                      const icon = req.is_met ? "✅" : "❌";
-                      reportMessage += `${icon} **${req.requirement}**\n`;
-                      if (req.evidence) {
-                        reportMessage += `   ${req.evidence}\n`;
-                      }
-                    });
-                    reportMessage += `\n`;
-                  }
-
-                  if (
-                    llmAnalysis.missing_elements &&
-                    llmAnalysis.missing_elements.length > 0
-                  ) {
-                    reportMessage += `### Missing Elements\n`;
-                    llmAnalysis.missing_elements.forEach((element: string) => {
-                      reportMessage += `- ${element}\n`;
-                    });
-                    reportMessage += `\n`;
-                  }
-
-                  if (
-                    llmAnalysis.bugs_or_errors &&
-                    llmAnalysis.bugs_or_errors.length > 0
-                  ) {
-                    reportMessage += `### Bugs & Errors\n`;
-                    llmAnalysis.bugs_or_errors.forEach((bug: string) => {
-                      reportMessage += `- ${bug}\n`;
-                    });
-                    reportMessage += `\n`;
-                  }
-
-                  if (
-                    llmAnalysis.next_steps &&
-                    llmAnalysis.next_steps.length > 0
-                  ) {
-                    reportMessage += `### Next Steps\n`;
-                    llmAnalysis.next_steps.forEach(
-                      (step: string, idx: number) => {
-                        reportMessage += `${idx + 1}. ${step}\n`;
-                      },
-                    );
-                    reportMessage += `\n`;
-                  }
-
-                  if (llmAnalysis.detailed_analysis) {
-                    reportMessage += `### Expert Review\n${llmAnalysis.detailed_analysis}\n\n`;
-                  }
-
-                  // Insert into thread
-                  const { error: insertError } = await supabase
-                    .from("messages")
-                    .insert({
-                      thread_id: threadId,
-                      role: "assistant",
-                      content: reportMessage,
-                      created_at: new Date().toISOString(),
-                    });
-
-                  if (insertError) {
-                    console.error(
-                      "❌ [Artifacts] Failed to insert analysis report:",
-                      insertError,
-                    );
-                  } else {
-                    console.log(
-                      "✅ [Artifacts] Analysis report sent to thread",
-                    );
-                  }
-                } catch (reportError) {
-                  console.error(
-                    "❌ [Artifacts] Error formatting/sending analysis report:",
-                    reportError,
-                  );
-                }
-              } else {
-                console.warn(
-                  "⚠️ [Artifacts] No thread_id - cannot send analysis report",
-                );
-              }
+              // Analysis complete - results will be shown in modal
             } else {
-              // No completion percentage - still send analysis if we have it
               console.log(
-                "⚠️ [Artifacts] No substep_completion_percentage found - sending basic analysis report",
+                "⚠️ [Artifacts] No substep_completion_percentage found",
               );
-
-              if (threadId && llmAnalysis) {
-                console.log(
-                  `💬 [Artifacts] Sending basic analysis report to thread ${threadId}`,
-                );
-                try {
-                  let reportMessage = `## Artifact Analysis Report\n\n`;
-                  reportMessage += `**Quality Score:** ${llmAnalysis.quality_score}/10\n`;
-                  reportMessage += `**Decision:** ${llmAnalysis.decision}\n`;
-                  reportMessage += `**Phase:** ${llmAnalysis.actual_phase}\n\n`;
-
-                  if (llmAnalysis.detailed_analysis) {
-                    reportMessage += `### Expert Review\n${llmAnalysis.detailed_analysis}\n\n`;
-                  }
-
-                  if (
-                    llmAnalysis.missing_elements &&
-                    llmAnalysis.missing_elements.length > 0
-                  ) {
-                    reportMessage += `### Missing Elements\n`;
-                    llmAnalysis.missing_elements.forEach((element: string) => {
-                      reportMessage += `- ${element}\n`;
-                    });
-                    reportMessage += `\n`;
-                  }
-
-                  if (
-                    llmAnalysis.bugs_or_errors &&
-                    llmAnalysis.bugs_or_errors.length > 0
-                  ) {
-                    reportMessage += `### Bugs & Errors\n`;
-                    llmAnalysis.bugs_or_errors.forEach((bug: string) => {
-                      reportMessage += `- ${bug}\n`;
-                    });
-                    reportMessage += `\n`;
-                  }
-
-                  if (
-                    llmAnalysis.next_steps &&
-                    llmAnalysis.next_steps.length > 0
-                  ) {
-                    reportMessage += `### Next Steps\n`;
-                    llmAnalysis.next_steps.forEach(
-                      (step: string, idx: number) => {
-                        reportMessage += `${idx + 1}. ${step}\n`;
-                      },
-                    );
-                  }
-
-                  const { error: insertError } = await supabase
-                    .from("messages")
-                    .insert({
-                      thread_id: threadId,
-                      role: "assistant",
-                      content: reportMessage,
-                      created_at: new Date().toISOString(),
-                    });
-
-                  if (insertError) {
-                    console.error(
-                      "❌ [Artifacts] Failed to insert basic analysis report:",
-                      insertError,
-                    );
-                  } else {
-                    console.log(
-                      "✅ [Artifacts] Basic analysis report sent to thread",
-                    );
-                  }
-                } catch (reportError) {
-                  console.error(
-                    "❌ [Artifacts] Error sending basic analysis report:",
-                    reportError,
-                  );
-                }
-              }
+              // Analysis complete - results will be shown in modal
             }
           } catch (llmError) {
             console.error("❌ [Artifacts] LLM analysis failed:", llmError);
@@ -899,6 +708,18 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 error_message: "LLM analysis failed",
               })
               .eq("id", artifact.id);
+
+            // Broadcast failure via SSE
+            const errorStreamResponse = artifactStreamResponses.get(
+              artifact.id,
+            );
+            if (errorStreamResponse) {
+              streamingService.sendArtifactStatus(
+                errorStreamResponse,
+                "failed",
+                "Analysis failed - please try again",
+              );
+            }
           } finally {
             // Cleanup extracted ZIP directory if it exists
             if (extractedPath && fs.existsSync(extractedPath)) {
@@ -1093,6 +914,42 @@ router.post("/repo", uploadLimiter, async (req, res) => {
     console.error("❌ [Artifacts] Repo error:", error);
     return res.status(500).json({ error: "Failed to process repository" });
   }
+});
+
+/**
+ * GET /api/artifacts/stream/:artifactId
+ * Open SSE connection for real-time artifact analysis status updates
+ */
+router.get("/stream/:artifactId", (req, res) => {
+  const { artifactId } = req.params;
+
+  console.log(
+    `📡 [Artifacts] Client connecting to artifact stream: ${artifactId}`,
+  );
+
+  // Set SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  // Store connection for broadcasting
+  artifactStreamResponses.set(artifactId, res);
+
+  // Send initial connected event
+  streamingService.sendArtifactStatus(
+    res,
+    "connected",
+    "Connected to artifact analysis stream",
+  );
+
+  // Cleanup on disconnect
+  req.on("close", () => {
+    console.log(
+      `🔌 [Artifacts] Client disconnected from stream: ${artifactId}`,
+    );
+    artifactStreamResponses.delete(artifactId);
+  });
 });
 
 /**

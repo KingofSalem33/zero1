@@ -916,27 +916,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   <div className="px-2">
                     <ArtifactUploadButton
                       projectId={project?.id || null}
-                      onUploadComplete={(artifact) => {
+                      onUploadComplete={() => {
                         onRefreshProject();
-                        setShowUploadButton(false);
-
-                        // Add analysis message to conversation if available
-                        if (artifact.analysis_message) {
-                          const analysisMsg = {
-                            id: `analysis-${Date.now()}`,
-                            type: "ai" as const,
-                            content: artifact.analysis_message,
-                            timestamp: new Date(),
-                          };
-                          setMessages((prev) => [...prev, analysisMsg]);
-
-                          // Scroll to bottom after adding message
-                          setTimeout(() => {
-                            messagesEndRef.current?.scrollIntoView({
-                              behavior: "smooth",
-                            });
-                          }, 100);
-                        }
+                        // Don't close the dropdown - let user close modal first
                       }}
                     />
                   </div>

@@ -82,17 +82,76 @@ Great work! You've successfully completed this substep.`;
   }
 
   /**
-   * Generate a simplified acknowledgment when artifact is uploaded
+   * Generate an actionable acknowledgment when artifact is uploaded
+   * Sets momentum by outlining what happens next
    */
   generateArtifactAcknowledgment(
     artifactName: string,
     substep: ProjectSubstep,
   ): string {
-    return `✅ **Received:** ${artifactName}
+    // Extract key requirements from substep prompt
+    const requirements = this.extractRequirements(substep);
 
-I've analyzed your work on "${substep.label}".
+    const message = `✅ **Received:** ${artifactName}
 
-When you're ready to mark this substep as complete and move to the next one, just let me know by saying something like "mark complete" or "next substep".`;
+**Current Focus:** ${substep.label}
+
+🔍 **Analyzing now...**
+I'm checking your work against these criteria:
+${requirements.map((req) => `- ${req}`).join("\n")}
+
+⏳ **What happens next:**
+1. I'll validate your deliverable meets the requirements above
+2. You'll see a detailed analysis report with feedback
+3. If everything looks good (100% complete), I'll automatically advance you to the next substep
+4. If we need refinements, I'll tell you exactly what's missing
+
+**While you wait:** Feel free to continue the conversation or upload another iteration. I'm working on this in the background!`;
+
+    return message;
+  }
+
+  /**
+   * Extract key requirements from substep prompt
+   */
+  private extractRequirements(substep: ProjectSubstep): string[] {
+    const prompt = substep.prompt_to_send || "";
+
+    // Try to extract bullet points or numbered requirements from the prompt
+    const bulletPattern = /^[\s]*[-•*]\s+(.+)$/gm;
+    const numberedPattern = /^[\s]*\d+\.\s+(.+)$/gm;
+
+    const requirements: string[] = [];
+
+    // Extract bullet points
+    let match;
+    while ((match = bulletPattern.exec(prompt)) !== null) {
+      if (match[1] && match[1].length < 200) {
+        // Only include concise points
+        requirements.push(match[1].trim());
+      }
+    }
+
+    // Extract numbered items if no bullets found
+    if (requirements.length === 0) {
+      while ((match = numberedPattern.exec(prompt)) !== null) {
+        if (match[1] && match[1].length < 200) {
+          requirements.push(match[1].trim());
+        }
+      }
+    }
+
+    // Default requirements if none found
+    if (requirements.length === 0) {
+      return [
+        "Deliverable matches the substep objectives",
+        "Quality meets professional standards",
+        "All critical elements are present",
+      ];
+    }
+
+    // Limit to first 5 requirements for clarity
+    return requirements.slice(0, 5);
   }
 
   /**
