@@ -76,8 +76,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-gradient-surface border border-neutral-700/50 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-gradient-to-br from-neutral-900 to-neutral-950 border border-neutral-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700/50 bg-gradient-brand-muted">
           <div className="flex items-center gap-3">
@@ -491,10 +491,10 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-neutral-700/50 bg-neutral-800/40">
+        <div className="px-6 py-4 border-t border-neutral-700 bg-neutral-800">
           <button
             onClick={onClose}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-brand hover:bg-gradient-brand-hover text-white font-semibold transition-all shadow-lg"
+            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-semibold transition-all duration-200 shadow-lg shadow-blue-500/20"
           >
             {llmAnalysis?.next_steps && llmAnalysis.next_steps.length > 0
               ? "Got it - Let's keep building 🚀"
