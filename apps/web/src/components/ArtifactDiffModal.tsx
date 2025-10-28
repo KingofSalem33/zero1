@@ -280,7 +280,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-brand-secondary-400 flex items-center gap-2">
                     <svg
-                      className="w-4 h-4"
+                      className="w-4 h-4 text-brand-secondary-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -358,7 +358,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
             <div className="p-4 rounded-xl bg-gradient-success-subtle border border-success-500/30">
               <h3 className="text-sm font-semibold text-success-400 mb-3 flex items-center gap-2">
                 <svg
-                  className="w-4 h-4"
+                  className="w-4 h-4 text-success-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -392,7 +392,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               <div className="p-4 rounded-xl bg-gradient-warning-subtle border border-warning-500/30">
                 <h3 className="text-sm font-semibold text-warning-400 mb-3 flex items-center gap-2">
                   <svg
-                    className="w-4 h-4"
+                    className="w-4 h-4 text-warning-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -426,7 +426,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               <div className="p-4 rounded-xl bg-gradient-error-subtle border border-error-500/30">
                 <h3 className="text-sm font-semibold text-error-400 mb-3 flex items-center gap-2">
                   <svg
-                    className="w-4 h-4"
+                    className="w-4 h-4 text-error-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -459,7 +459,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
             <div className="p-4 rounded-xl bg-gradient-brand-subtle border border-brand-primary-500/30">
               <h3 className="text-sm font-semibold text-brand-primary-400 mb-3 flex items-center gap-2">
                 <svg
-                  className="w-4 h-4"
+                  className="w-4 h-4 text-brand-primary-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
