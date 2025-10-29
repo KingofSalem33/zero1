@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import CircularProgress from "./CircularProgress";
 import PhaseButton from "./PhaseButton";
+import { ArtifactUploadButton } from "./ArtifactUploadButton";
 
 // Mobile drawer overlay component
 interface MobileDrawerProps {
@@ -71,6 +72,7 @@ interface RoadmapSidebarProps {
   onAskAI: () => void;
   onCompleteSubstep: (substepId: string) => void;
   pendingSubstepId: string | null;
+  onRefreshProject?: () => void;
 }
 
 // Helper to convert phase format: "P1" -> 1, or pass through if already number
@@ -87,6 +89,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
   onAskAI,
   onCompleteSubstep,
   pendingSubstepId,
+  onRefreshProject,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     // Load collapse state from localStorage (desktop only)
@@ -233,7 +236,6 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
             className="w-full flex items-center justify-between p-3 rounded-lg bg-neutral-800/50 hover:bg-neutral-800/70 transition-colors"
           >
             <div className="flex items-center gap-2">
-              <span className="text-sm">📋</span>
               <span className="text-xs font-bold text-brand-primary-400 tracking-wider">
                 ROADMAP
               </span>
@@ -468,22 +470,16 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           </button>
         </div>
 
-        <button onClick={onOpenNewWorkspace} className="btn-secondary w-full">
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          <span>New Project</span>
-        </button>
+        {/* Load Artifact for Review */}
+        <div className="w-full">
+          <ArtifactUploadButton
+            projectId={project?.id || null}
+            onUploadComplete={() => onRefreshProject?.()}
+            variant="button"
+            label="AI Review"
+            showIcon={false}
+          />
+        </div>
       </div>
     </div>
   );
@@ -524,10 +520,10 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           <div className="flex-1 flex flex-col items-center space-y-2 overflow-y-auto py-2">
             {project.phases.map((phase) => {
               const isActive = phase.phase_number === currentPhaseNumber;
-              let statusIcon = "⚪";
-              if (phase.completed) statusIcon = "✅";
-              else if (isActive) statusIcon = "🔄";
-              else if (phase.locked) statusIcon = "🔒";
+              let statusIcon = "âšª";
+              if (phase.completed) statusIcon = "âœ…";
+              else if (isActive) statusIcon = "ðŸ”„";
+              else if (phase.locked) statusIcon = "ðŸ”’";
 
               return (
                 <button
@@ -553,7 +549,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
               className="w-10 h-10 flex items-center justify-center text-xl hover:bg-gray-800/50 rounded-lg transition-colors"
               title="View Full Roadmap"
             >
-              📋
+              ðŸ“‹
             </button>
             <button
               onClick={onOpenFileManager}
@@ -596,7 +592,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
             <button
               onClick={onOpenNewWorkspace}
               className="w-10 h-10 flex items-center justify-center hover:bg-gray-800/50 rounded-lg transition-colors"
-              title="New Project"
+              title="Add Workspace"
             >
               <svg
                 className="w-5 h-5 text-neutral-400"

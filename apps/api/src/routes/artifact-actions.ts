@@ -1,6 +1,7 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { supabase } from "../db";
 import type { ArtifactAnalysis } from "../services/llm-artifact-analyzer";
+import { detectIterationChanges } from "../services/llm-artifact-analyzer";
 
 const router = Router();
 
@@ -11,10 +12,6 @@ const router = Router();
 router.post("/apply-analysis/:artifactId", async (req, res) => {
   try {
     const { artifactId } = req.params;
-
-    console.log(
-      `📋 [Artifact Actions] Applying analysis for artifact: ${artifactId}`,
-    );
 
     // Get artifact with analysis
     const { data: artifact, error: artifactError } = await supabase
@@ -75,18 +72,13 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
       });
     }
 
-    console.log(`📊 [Artifact Actions] Decision: ${analysis.decision}`);
-    console.log(`📊 [Artifact Actions] Actual phase: ${analysis.actual_phase}`);
-
-    // Apply roadmap adjustments based on decision type
+    // Apply roadmap adjustments based on decision
     const currentRoadmap = (project.roadmap as any) || {};
     const completedPhases = (project.completed_phases as string[]) || [];
     const completedSubsteps = (project.completed_substeps as string[]) || [];
 
-    for (const adjustment of analysis.roadmap_adjustments) {
-      const { phase_id, action, details } = adjustment;
-
-      console.log(`   ⚙️ Applying: ${action} on ${phase_id} - ${details}`);
+    for (const adjustment of analysis.roadmap_adjustments || []) {
+      const { phase_id, action, details } = adjustment as any;
 
       switch (action) {
         case "complete":
@@ -94,13 +86,10 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
             completedPhases.push(phase_id);
           }
           break;
-
         case "unlock":
-          // Phase unlocking is handled by removing from locked list
+          // no-op for now
           break;
-
-        case "add_substep":
-          // Add new substep to roadmap
+        case "add_substep": {
           if (currentRoadmap.phases) {
             const phase = currentRoadmap.phases.find(
               (p: any) => p.phase_id === phase_id,
@@ -117,9 +106,8 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
             }
           }
           break;
-
-        case "update_substep":
-          // Update existing substep
+        }
+        case "update_substep": {
           if (currentRoadmap.phases) {
             const phase = currentRoadmap.phases.find(
               (p: any) => p.phase_id === phase_id,
@@ -131,10 +119,10 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
             }
           }
           break;
+        }
       }
     }
 
-    // Determine new current phase based on analysis
     const phaseNumberMap: Record<string, number> = {
       P0: 0,
       P1: 1,
@@ -147,9 +135,8 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
     };
 
     const newCurrentPhase =
-      phaseNumberMap[analysis.actual_phase] || project.current_phase;
+      phaseNumberMap[(analysis as any).actual_phase] || project.current_phase;
 
-    // Update project with adjusted roadmap
     const { error: updateError } = await supabase
       .from("projects")
       .update({
@@ -161,7 +148,6 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
       .eq("id", project.id);
 
     if (updateError) {
-      console.error("❌ [Artifact Actions] Update error:", updateError);
       return res.status(500).json({
         error: {
           message: "Failed to update project",
@@ -171,21 +157,18 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
       });
     }
 
-    console.log("✅ [Artifact Actions] Roadmap adjusted successfully");
-
     return res.json({
       id: artifactId,
       object: "artifact.analysis_applied",
-      decision: analysis.decision,
-      actual_phase: analysis.actual_phase,
-      adjustments_applied: analysis.roadmap_adjustments.length,
-      next_steps: analysis.next_steps,
-      quality_score: analysis.quality_score,
-      missing_elements: analysis.missing_elements,
-      bugs_or_errors: analysis.bugs_or_errors,
+      decision: (analysis as any).decision,
+      actual_phase: (analysis as any).actual_phase,
+      adjustments_applied: (analysis as any).roadmap_adjustments?.length || 0,
+      next_steps: (analysis as any).next_steps,
+      quality_score: (analysis as any).quality_score,
+      missing_elements: (analysis as any).missing_elements,
+      bugs_or_errors: (analysis as any).bugs_or_errors,
     });
-  } catch (error) {
-    console.error("❌ [Artifact Actions] Error:", error);
+  } catch {
     return res.status(500).json({
       error: {
         message: "Failed to apply analysis",
@@ -198,7 +181,6 @@ router.post("/apply-analysis/:artifactId", async (req, res) => {
 
 /**
  * GET /api/artifact-actions/status/:artifactId
- * Check artifact analysis status
  */
 router.get("/status/:artifactId", async (req, res) => {
   try {
@@ -230,8 +212,7 @@ router.get("/status/:artifactId", async (req, res) => {
       error_message: artifact.error_message,
       analysis: artifact.analysis,
     });
-  } catch (error) {
-    console.error("❌ [Artifact Actions] Status check error:", error);
+  } catch {
     return res.status(500).json({
       error: {
         message: "Failed to check status",
@@ -239,6 +220,114 @@ router.get("/status/:artifactId", async (req, res) => {
         code: "status_check_failed",
       },
     });
+  }
+});
+
+/**
+ * GET /api/artifact-actions/timeline/:projectId
+ * Aggregate prior analyzed artifacts into an iteration timeline
+ */
+router.get("/timeline/:projectId", async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const { data: artifacts, error } = await supabase
+      .from("artifacts")
+      .select(
+        `
+        id,
+        project_id,
+        type,
+        file_name,
+        repo_url,
+        analyzed_at,
+        status,
+        analysis,
+        completed_substeps,
+        progress_percentage,
+        artifact_signals (*)
+      `,
+      )
+      .eq("project_id", projectId)
+      .eq("status", "analyzed")
+      .order("analyzed_at", { ascending: true });
+
+    if (error) {
+      return res.status(500).json({ error: "Failed to fetch artifacts" });
+    }
+
+    const items: any[] = [];
+    let prevSignals: any | null = null;
+    let prevAnalysis: any | null = null;
+
+    (artifacts || []).forEach((a: any, idx: number) => {
+      const signals = Array.isArray(a.artifact_signals)
+        ? a.artifact_signals[0]
+        : a.artifact_signals;
+      const analysis = a.analysis as ArtifactAnalysis | null;
+
+      let changed_summary = "";
+      try {
+        if (prevSignals) {
+          const diff = detectIterationChanges(
+            prevAnalysis as any,
+            prevSignals as any,
+            signals,
+          );
+          const bullets: string[] = [];
+          if (diff.content_hash_changed) bullets.push("Content changed");
+          if (diff.improvements_made.length)
+            bullets.push(`Improvements: ${diff.improvements_made.join(", ")}`);
+          if (diff.issues_fixed.length)
+            bullets.push(`Fixes: ${diff.issues_fixed.join(", ")}`);
+          if (diff.new_issues.length)
+            bullets.push(`New issues: ${diff.new_issues.join(", ")}`);
+          if (!bullets.length && diff.changes_detected.length)
+            bullets.push(diff.changes_detected.join("; "));
+          changed_summary = bullets.join(" Â· ");
+        } else {
+          changed_summary = "Initial upload";
+        }
+      } catch {
+        changed_summary = "Changes unknown";
+      }
+
+      const doneReq = analysis?.substep_requirements
+        ?.filter((r) => r.status === "DONE")
+        .map((r) => r.requirement);
+      const partialReq = analysis?.substep_requirements
+        ?.filter((r) => r.status === "PARTIAL")
+        .map((r) => r.requirement);
+      const missingReq = analysis?.substep_requirements
+        ?.filter((r) => r.status === "NOT_STARTED")
+        .map((r) => r.requirement);
+
+      items.push({
+        iteration_number: idx + 1,
+        artifact_id: a.id,
+        analyzed_at: a.analyzed_at,
+        name: a.file_name || a.repo_url || a.type || "artifact",
+        artifact_type: signals?.artifact_type || a.type || "artifact",
+        content_hash: signals?.content_hash || null,
+        changed_summary,
+        quality_score: (analysis as any)?.quality_score ?? null,
+        completion_percentage:
+          (analysis as any)?.substep_completion_percentage ??
+          a.progress_percentage ??
+          null,
+        done_requirements: doneReq || [],
+        partial_requirements: partialReq || [],
+        missing_requirements: missingReq || [],
+        completed_substeps: a.completed_substeps || [],
+      });
+
+      prevSignals = signals || null;
+      prevAnalysis = analysis || null;
+    });
+
+    return res.json({ project_id: projectId, count: items.length, items });
+  } catch {
+    return res.status(500).json({ error: "Failed to build timeline" });
   }
 });
 

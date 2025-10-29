@@ -28,6 +28,8 @@ import { generateCelebrationAndBriefing } from "../services/celebrationBriefing"
 import { celebrationBriefingHelper } from "../services/celebrationBriefingHelper";
 import { orchestrator } from "./projects";
 import { streamingService } from "../infrastructure/ai/StreamingService";
+import { detectIterationChanges } from "../services/llm-artifact-analyzer";
+import { buildMomentumSummary } from "../services/momentum-summary";
 import type { Response } from "express";
 
 const router = Router();
@@ -393,6 +395,40 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               }
             }
 
+            // Build momentum summary (iteration diff + roadmap) before saving
+            try {
+              const previousAnalysis = currentSubstepAnalyses?.length
+                ? currentSubstepAnalyses[currentSubstepAnalyses.length - 1]
+                : null;
+              const prevSignals = previousSignals?.length
+                ? previousSignals[previousSignals.length - 1]
+                : null;
+
+              const iteration = prevSignals
+                ? detectIterationChanges(
+                    previousAnalysis as any,
+                    prevSignals as any,
+                    signals,
+                  )
+                : null;
+
+              const momentumSummary = buildMomentumSummary({
+                workType: signals.artifact_type || "artifact",
+                iteration,
+                roadmap: roadmapDiff,
+                rollback: (llmAnalysis as any)?.rollback_warning
+                  ? {
+                      severity: (llmAnalysis as any).rollback_warning.severity,
+                      reason: (llmAnalysis as any).rollback_warning.reason,
+                    }
+                  : null,
+              });
+
+              (llmAnalysis as any).momentum_summary = momentumSummary;
+            } catch (e) {
+              console.warn("[Artifacts] Momentum summary build failed:", e);
+            }
+
             // Save LLM analysis results + roadmap diff
             await supabase
               .from("artifacts")
@@ -421,6 +457,27 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 "analyzed",
                 progressMsg,
               );
+              const ms = (llmAnalysis as any)?.momentum_summary;
+              if (ms) {
+                streamingService.sendMomentumSummary(completionStreamResponse, {
+                  summary: ms,
+                });
+                if (threadId) {
+                  try {
+                    await supabase.from("messages").insert({
+                      thread_id: threadId,
+                      role: "assistant",
+                      content: ms,
+                      created_at: new Date().toISOString(),
+                    });
+                  } catch (e) {
+                    console.warn(
+                      "[Artifacts] Failed to insert momentum summary message:",
+                      e,
+                    );
+                  }
+                }
+              }
             }
 
             // ROLLBACK DETECTION: Check if user is stuck and needs to rollback
@@ -440,6 +497,31 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 `   Evidence: ${rollbackRecommendation.evidence.join(", ")}`,
               );
 
+              // Notify via SSE + thread about rollback recommendation
+              {
+                const rStream = artifactStreamResponses.get(artifact.id);
+                if (rStream) {
+                  streamingService.sendRollbackNotice(rStream, {
+                    severity: rollbackRecommendation.severity,
+                    reason: rollbackRecommendation.reason,
+                  });
+                }
+                if (threadId) {
+                  try {
+                    await supabase.from("messages").insert({
+                      thread_id: threadId,
+                      role: "assistant",
+                      content: `Rollback recommended: ${rollbackRecommendation.reason}`,
+                      created_at: new Date().toISOString(),
+                    });
+                  } catch (e) {
+                    console.warn(
+                      "[Artifacts] Failed to insert rollback notice:",
+                      e,
+                    );
+                  }
+                }
+              }
               // Auto-rollback if conditions are met
               if (
                 shouldAutoRollback(

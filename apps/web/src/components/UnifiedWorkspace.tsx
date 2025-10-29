@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
-import { ArtifactUploadButton } from "./ArtifactUploadButton";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -71,6 +70,7 @@ interface UnifiedWorkspaceProps {
   onRefreshProject: () => void;
   onAskAIRef?: React.MutableRefObject<(() => void) | null>;
   pendingSubstepId: string | null;
+  onOpenNewWorkspace?: () => void;
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -88,6 +88,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   onRefreshProject,
   onAskAIRef,
   pendingSubstepId: _pendingSubstepId,
+  onOpenNewWorkspace,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentInput, setCurrentInput] = useState("");
@@ -910,18 +911,31 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
             {/* Options Menu */}
             {showUploadButton && (
-              <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10">
+              <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
                 <div className="py-1">
-                  {/* Upload Option */}
-                  <div className="px-2">
-                    <ArtifactUploadButton
-                      projectId={project?.id || null}
-                      onUploadComplete={() => {
-                        onRefreshProject();
-                        // Don't close the dropdown - let user close modal first
-                      }}
-                    />
-                  </div>
+                  {/* Add Workspace Option */}
+                  <button
+                    onClick={() => {
+                      onOpenNewWorkspace?.();
+                      setShowUploadButton(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    <span>Add Workspace</span>
+                  </button>
 
                   {/* Placeholder for future options */}
                   <div className="border-t border-gray-700 mt-1 pt-1">

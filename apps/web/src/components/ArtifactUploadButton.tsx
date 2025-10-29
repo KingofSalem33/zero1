@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+﻿import React, { useRef, useState } from "react";
 import { ArtifactDiffModal } from "./ArtifactDiffModal";
+import { Toast } from "./Toast";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -49,11 +50,17 @@ interface ArtifactData {
 interface ArtifactUploadButtonProps {
   projectId: string | null;
   onUploadComplete?: () => void;
+  variant?: "icon" | "button";
+  label?: string;
+  showIcon?: boolean;
 }
 
 export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   projectId,
   onUploadComplete,
+  variant = "icon",
+  label = "Upload",
+  showIcon = true,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -67,6 +74,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   const [cancelRequested, setCancelRequested] = useState(false);
   const [lastArtifactId, setLastArtifactId] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
+  const [momentumMessage, setMomentumMessage] = useState<string>("");
 
   // Apply analysis to update roadmap
   const applyAnalysis = async (artifactId: string): Promise<boolean> => {
@@ -159,6 +167,19 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
           setCanCancel(false);
           setUploadProgress("Analysis failed");
           resolve(null);
+        }
+      });
+
+      // Handle momentum summary events
+      eventSource.addEventListener("momentum", (event) => {
+        try {
+          const data = JSON.parse((event as any).data);
+          if (data?.summary) {
+            setMomentumMessage(data.summary);
+            // Auto-clear after a few seconds (toast handles its own timeout)
+          }
+        } catch {
+          // Ignore parse errors
         }
       });
 
@@ -369,30 +390,60 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
   return (
     <>
       <div className="relative">
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={!projectId || isUploading}
-          className="w-8 h-8 rounded-lg bg-gray-700/60 hover:bg-gray-600/80 disabled:bg-gray-800/40 flex items-center justify-center transition-colors relative group"
-          title="Upload artifact"
-        >
-          {isUploading ? (
-            <div className="w-3 h-3 border-2 border-gray-400/30 border-t-gray-300 rounded-full animate-spin" />
-          ) : (
-            <svg
-              className="w-4 h-4 text-gray-300 group-hover:text-white transition-colors"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-          )}
-        </button>
+        {variant === "icon" ? (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!projectId || isUploading}
+            className="w-8 h-8 rounded-lg bg-gray-700/60 hover:bg-gray-600/80 disabled:bg-gray-800/40 flex items-center justify-center transition-colors relative group"
+            title={label}
+          >
+            {isUploading ? (
+              <div className="w-3 h-3 border-2 border-gray-400/30 border-t-gray-300 rounded-full animate-spin" />
+            ) : (
+              <svg
+                className="w-4 h-4 text-gray-300 group-hover:text-white transition-colors"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!projectId || isUploading}
+            className="btn-secondary w-full flex items-center justify-center gap-2"
+            title={label}
+          >
+            {isUploading ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              showIcon && (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
+                </svg>
+              )
+            )}
+            <span>{label}</span>
+          </button>
+        )}
 
         {showRetry && !isUploading && (
           <button
@@ -494,7 +545,18 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
         completedSubsteps={analyzedArtifact?.completed_substeps || []}
         llmAnalysis={analyzedArtifact?.analysis || null}
         progressPercentage={analyzedArtifact?.progress_percentage}
+        projectId={analyzedArtifact?.project_id || null}
       />
+
+      {/* Momentum Toast */}
+      {momentumMessage && (
+        <Toast
+          message={momentumMessage}
+          type="success"
+          duration={6000}
+          onClose={() => setMomentumMessage("")}
+        />
+      )}
     </>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
 import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
 import { CheckpointsModal } from "./components/CheckpointsModal";
@@ -235,7 +235,7 @@ User question: ${userMessage}
           const errorData = await response.json().catch(() => ({}));
           const retryAfter = errorData.retryAfter || "1 minute";
           throw new Error(
-            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `ΓÅ▒∩╕Å Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
         throw new Error(`HTTP ${response.status}`);
@@ -659,12 +659,12 @@ const MasterControl: React.FC<MasterControlProps> = ({
 
   const getPhaseStatus = (phase: ProjectPhase) => {
     if (phase.completed)
-      return { icon: "✅", label: "Complete", color: "text-green-400" };
+      return { icon: "Γ£à", label: "Complete", color: "text-green-400" };
     if (phase.phase_number === getPhaseNumber(project.current_phase))
-      return { icon: "🔄", label: "Active", color: "text-blue-400" };
+      return { icon: "≡ƒöä", label: "Active", color: "text-blue-400" };
     if (phase.locked)
-      return { icon: "🔒", label: "Locked", color: "text-gray-500" };
-    return { icon: "⏳", label: "Ready", color: "text-yellow-400" };
+      return { icon: "≡ƒöÆ", label: "Locked", color: "text-gray-500" };
+    return { icon: "ΓÅ│", label: "Ready", color: "text-yellow-400" };
   };
 
   // Helper function to check if substep is complete
@@ -713,7 +713,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 {project.goal}
               </h2>
               <p className="text-blue-400 font-medium">
-                {progress}% Complete • {project.phases.length} Phases
+                {progress}% Complete ΓÇó {project.phases.length} Phases
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -721,14 +721,14 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 onClick={() => setShowExport(true)}
                 className="px-4 py-2 rounded-xl bg-green-600/60 hover:bg-green-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <span>📤</span>
+                <span>≡ƒôñ</span>
                 <span>Export</span>
               </button>
               <button
                 onClick={() => setShowCheckpoints(true)}
                 className="px-4 py-2 rounded-xl bg-purple-600/60 hover:bg-purple-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <span>💾</span>
+                <span>≡ƒÆ╛</span>
                 <span>Checkpoints</span>
               </button>
               <button
@@ -798,7 +798,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                               : "bg-yellow-500 border-yellow-400 text-white",
                       )}
                     >
-                      {phase.completed ? "✓" : phase.phase_number}
+                      {phase.completed ? "Γ£ô" : phase.phase_number}
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -898,7 +898,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                                     : "bg-gray-600 text-gray-300",
                                 )}
                               >
-                                {isComplete ? "✓" : index + 1}
+                                {isComplete ? "Γ£ô" : index + 1}
                               </div>
                               <span
                                 className={cls(
@@ -1139,13 +1139,13 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 onClick={onOpenFileManager}
                 className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium"
               >
-                📁 Manage Files
+                ≡ƒôü Manage Files
               </button>
               <button
                 onClick={onOpenMemoryManager}
                 className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
               >
-                🧠 My Memory
+                ≡ƒºá My Memory
               </button>
             </div>
           )}
@@ -1363,10 +1363,10 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                             <span className="ml-auto text-xs text-gray-400">
                               Confidence:{" "}
                               {completionNudge.confidence === "high"
-                                ? "🟢 High"
+                                ? "≡ƒƒó High"
                                 : completionNudge.confidence === "medium"
-                                  ? "🟡 Medium"
-                                  : "🔴 Low"}
+                                  ? "≡ƒƒí Medium"
+                                  : "≡ƒö┤ Low"}
                             </span>
                           </div>
                         </div>
@@ -1403,7 +1403,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                                 : "bg-gray-600 text-gray-300",
                           )}
                         >
-                          {substep.completed ? "✓" : substep.step_number}
+                          {substep.completed ? "Γ£ô" : substep.step_number}
                         </div>
                         <span
                           className={cls(
@@ -1507,7 +1507,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                       {nextPhase.why_it_matters}
                     </p>
                     <div className="mt-3 text-xs text-yellow-400/80 font-medium">
-                      🔒 Complete current phase to unlock
+                      ≡ƒöÆ Complete current phase to unlock
                     </div>
                   </div>
                 )}
@@ -1611,7 +1611,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
 
       {copiedText && (
         <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-10">
-          ✓ {copiedText} copied!
+          Γ£ô {copiedText} copied!
         </div>
       )}
     </div>
@@ -1742,7 +1742,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
           const errorData = await response.json().catch(() => ({}));
           const retryAfter = errorData.retryAfter || "1 minute";
           throw new Error(
-            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `ΓÅ▒∩╕Å Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
         throw new Error(`HTTP ${response.status}`);
@@ -1931,7 +1931,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
               }}
               className="text-sm text-gray-400 hover:text-gray-300 transition-colors"
             >
-              ← Back to Ideation
+              ΓåÉ Back to Ideation
             </button>
           </div>
         </div>
@@ -1954,7 +1954,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                         className="absolute -left-10 top-2 opacity-0 group-hover/user:opacity-100 p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-400 hover:text-white transition-all text-xs"
                         title="Edit message"
                       >
-                        ✏️
+                        Γ£Å∩╕Å
                       </button>
                     )}
                     <div className="rounded-2xl p-4 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
@@ -2357,16 +2357,16 @@ function App() {
           if (response.ok && data.project) {
             const normalizedProject = normalizeProject(data.project);
             setProject(normalizedProject);
-            setGuidance("✅ Shared project loaded successfully!");
+            setGuidance("Γ£à Shared project loaded successfully!");
             setTimeout(() => setGuidance(""), 3000);
           } else {
             setGuidance(
-              "❌ Failed to load shared project. It may not exist or be accessible.",
+              "Γ¥î Failed to load shared project. It may not exist or be accessible.",
             );
           }
         } catch {
           // Failed to load shared project
-          setGuidance("🔌 Network error loading shared project.");
+          setGuidance("≡ƒöî Network error loading shared project.");
         }
       };
 
@@ -2467,7 +2467,7 @@ function App() {
     if (!goal.trim() || creatingProject) return;
 
     setCreatingProject(true);
-    setGuidance("🚀 Creating your project workspace...");
+    setGuidance("≡ƒÜÇ Creating your project workspace...");
 
     try {
       const response = await fetch(`${API_URL}/api/projects`, {
@@ -2662,13 +2662,13 @@ function App() {
           setCreatingProject(false);
         };
       } else {
-        setGuidance(`❌ Error: ${data?.error || "Failed to create project"}`);
+        setGuidance(`Γ¥î Error: ${data?.error || "Failed to create project"}`);
         setCreatingProject(false);
       }
     } catch {
       // Create project error
       setGuidance(
-        "🔌 Network error. Please check your connection and try again.",
+        "≡ƒöî Network error. Please check your connection and try again.",
       );
       setCreatingProject(false);
     }
@@ -2813,7 +2813,7 @@ Return only the refined vision statement using the format "I want to build _____
       }
     } catch {
       // Inspire error occurred
-      setGuidance("🔌 Network error. Please try again.");
+      setGuidance("≡ƒöî Network error. Please try again.");
       setTimeout(() => setGuidance(""), 3000);
     } finally {
       setInspiring(false);
@@ -2867,7 +2867,7 @@ Return only the refined vision statement using the format "I want to build _____
       if (!match) {
         // Invalid substep ID format
         setGuidance(
-          `❌ Error: Invalid substep format (received: ${substepId})`,
+          `Γ¥î Error: Invalid substep format (received: ${substepId})`,
         );
         setPendingSubstepId(null);
         return;
@@ -2930,16 +2930,18 @@ Return only the refined vision statement using the format "I want to build _____
         });
 
         // Show brief success feedback
-        setGuidance("✅ Substep completed!");
+        setGuidance("Γ£à Substep completed!");
         setTimeout(() => setGuidance(""), 2000);
       } else {
-        setGuidance(`❌ Error: ${data?.error || "Failed to complete substep"}`);
+        setGuidance(
+          `Γ¥î Error: ${data?.error || "Failed to complete substep"}`,
+        );
         setTimeout(() => setGuidance(""), 4000);
       }
     } catch (err) {
       // Manual completion error
       console.error("[Frontend] Completion error:", err);
-      setGuidance("🔌 Network error. Please try again.");
+      setGuidance("≡ƒöî Network error. Please try again.");
       setTimeout(() => setGuidance(""), 4000);
     } finally {
       // Clear pending state
@@ -3002,9 +3004,9 @@ Return only the refined vision statement using the format "I want to build _____
           duration={4000}
           onClose={() => setGuidance("")}
           type={
-            guidance.includes("✅") || guidance.includes("🎯")
+            guidance.includes("Γ£à") || guidance.includes("≡ƒÄ»")
               ? "success"
-              : guidance.includes("❌") || guidance.includes("⚠")
+              : guidance.includes("Γ¥î") || guidance.includes("ΓÜá")
                 ? "error"
                 : "info"
           }

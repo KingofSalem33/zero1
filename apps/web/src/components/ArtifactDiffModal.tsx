@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import IterationTimeline from "./IterationTimeline";
 
 interface SubstepCompletion {
   phase_number: number;
@@ -32,6 +33,7 @@ interface LLMAnalysis {
   };
   rollback_executed?: boolean;
   rollback_guidance?: string[];
+  momentum_summary?: string;
 }
 
 interface ArtifactDiffModalProps {
@@ -40,6 +42,7 @@ interface ArtifactDiffModalProps {
   completedSubsteps: SubstepCompletion[];
   llmAnalysis?: LLMAnalysis | null;
   progressPercentage?: number;
+  projectId?: string | null;
 }
 
 export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
@@ -48,9 +51,29 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   completedSubsteps,
   llmAnalysis,
   progressPercentage,
+  projectId,
 }) => {
   const [warningDismissed, setWarningDismissed] = useState(false);
   const [acceptingRollback, setAcceptingRollback] = useState(false);
+  const [timeline, setTimeline] = useState<any[] | null>(null);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
+  useEffect(() => {
+    const API_URL =
+      (import.meta as any).env?.VITE_API_URL || "http://localhost:3001";
+    if (!isOpen || !projectId) {
+      setTimeline(null);
+      return;
+    }
+    setLoadingTimeline(true);
+    fetch(`${API_URL}/api/artifact-actions/timeline/${projectId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setTimeline(data?.items || []);
+      })
+      .catch(() => setTimeline([]))
+      .finally(() => setLoadingTimeline(false));
+  }, [isOpen, projectId]);
 
   if (!isOpen) {
     return null;
@@ -147,6 +170,28 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* Iteration Timeline */}
+          {loadingTimeline ? (
+            <div className="text-sm text-neutral-400">Loading timeline…</div>
+          ) : timeline && timeline.length > 0 ? (
+            <div>
+              <h3 className="text-sm font-semibold text-white mb-2">
+                Iteration Timeline
+              </h3>
+              <IterationTimeline items={timeline} />
+            </div>
+          ) : null}
+          {/* Since Last Upload Summary */}
+          {llmAnalysis?.momentum_summary && (
+            <div className="p-4 rounded-xl bg-neutral-800/60 border border-neutral-600">
+              <h3 className="text-sm font-semibold text-white mb-2">
+                Since Last Upload
+              </h3>
+              <div className="text-sm text-neutral-300 whitespace-pre-wrap">
+                {llmAnalysis.momentum_summary}
+              </div>
+            </div>
+          )}
           {/* Rollback Executed Warning */}
           {llmAnalysis?.rollback_executed && (
             <div className="p-4 rounded-xl bg-gradient-warning-subtle border-2 border-warning-500/50 animate-pulse">
