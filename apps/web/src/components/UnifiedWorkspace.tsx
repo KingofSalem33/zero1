@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
 
@@ -96,8 +96,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [showUploadButton, setShowUploadButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<number | null>(null);
-  const lastScrollTimeRef = useRef<number>(0);
 
   // Helper function to send a message directly with a specific prompt
   const sendMessageWithPrompt = useCallback(
@@ -165,7 +163,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             const errorData = await response.json().catch(() => ({}));
             const retryAfter = errorData.retryAfter || "1 minute";
             throw new Error(
-              `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+              `â±ï¸ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
             );
           }
           throw new Error(`HTTP ${response.status}`);
@@ -262,7 +260,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             msg.id === aiMessageId
               ? {
                   ...msg,
-                  content: `❌ Error: ${errorMessage}`,
+                  content: `âŒ Error: ${errorMessage}`,
                 }
               : msg,
           ),
@@ -286,14 +284,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     if (!currentSubstep || !currentSubstep.prompt_to_send.trim()) return;
 
-    // Log for threading
-    console.log("Ask AI triggered:", {
-      substep_id: currentSubstep.substep_id,
-      phase_id: currentPhase?.phase_id,
-      phase_number: project.current_phase,
-      substep_number: project.current_substep,
-    });
-
     // Send the message directly without relying on state
     sendMessageWithPrompt(currentSubstep.prompt_to_send);
   }, [project, isProcessing, sendMessageWithPrompt]);
@@ -305,42 +295,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
   }, [onAskAIRef, handleAskAI]);
 
-  // Smooth, throttled auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    const now = Date.now();
-    const timeSinceLastScroll = now - lastScrollTimeRef.current;
-
-    // Clear any pending scroll timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-
-    // Throttle scrolls to max once every 150ms during streaming
-    if (timeSinceLastScroll < 150 && isProcessing) {
-      // Schedule a scroll for later
-      scrollTimeoutRef.current = setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "end",
-        });
-        lastScrollTimeRef.current = Date.now();
-      }, 150 - timeSinceLastScroll);
-    } else {
-      // Scroll immediately
-      messagesEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
-      lastScrollTimeRef.current = now;
-    }
-
-    // Cleanup timeout on unmount
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, [messages, isProcessing]);
+  // Disable auto-scroll; user controls scroll position manually
 
   const getContextualPlaceholder = (): string => {
     return "What's on your mind?";
@@ -418,7 +373,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           const errorData = await response.json().catch(() => ({}));
           const retryAfter = errorData.retryAfter || "1 minute";
           throw new Error(
-            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `â±ï¸ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
         throw new Error(`HTTP ${response.status}`);
@@ -574,7 +529,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               Ship your first version
             </h1>
             <p className="text-neutral-400 text-base max-w-md mx-auto">
-              AI guides you through 7 phases—from vision to live product
+              AI guides you through 7 phasesâ€”from vision to live product
             </p>
           </div>
 
@@ -766,10 +721,131 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   return (
     <div className="flex flex-col h-full">
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto px-6 py-8">
+      <div className="flex-1 overflow-y-auto px-6 py-8 pb-28">
+        {/* Centered composer when no messages (ChatGPT-style start) */}
+        {messages.length === 0 ? (
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="w-full max-w-3xl">
+              <h1 className="text-4xl md:text-6xl font-extrabold text-white text-center mb-8">
+                Let's Build
+              </h1>
+              <div className="relative flex gap-2 items-center bg-neutral-800/60 border border-neutral-700/50 rounded-2xl px-4 py-3 shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all">
+                <button
+                  onClick={() => setShowUploadButton(!showUploadButton)}
+                  className="btn-icon-ghost w-8 h-8"
+                  title="Add options"
+                >
+                  <svg
+                    className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                </button>
+
+                {/* Options dropdown (extensible) */}
+                {showUploadButton && (
+                  <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          onOpenNewWorkspace?.();
+                          setShowUploadButton(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 4v16m8-8H4"
+                          />
+                        </svg>
+                        <span>Add Workspace</span>
+                      </button>
+
+                      <div className="border-t border-gray-700 mt-1 pt-1">
+                        <button
+                          disabled
+                          className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                            />
+                          </svg>
+                          <span>More options coming soon...</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <textarea
+                  value={currentInput}
+                  onChange={(e) => setCurrentInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={getContextualPlaceholder()}
+                  className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[44px] max-h-[200px] leading-relaxed"
+                  rows={1}
+                  disabled={isProcessing}
+                />
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!currentInput.trim() || isProcessing}
+                  className="btn-icon-primary"
+                  title={isProcessing ? "Sending..." : "Send message"}
+                >
+                  {isProcessing ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="max-w-4xl mx-auto space-y-6">
-          {messages.map((message) => (
+          {messages.map((message, idx) => (
             <div key={message.id}>
+              {idx > 0 && (
+                <div className="h-px w-full bg-gradient-to-r from-blue-500/30 via-purple-500/30 to-blue-500/30" />
+              )}
               {message.type === "user" ? (
                 <div className="flex justify-end">
                   <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-gradient-brand text-white shadow-sm">
@@ -841,7 +917,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         />
                       </svg>
                       <span>
-                        {completionNudge.confidence} confidence ·{" "}
+                        {completionNudge.confidence} confidence Â·{" "}
                         {completionNudge.score}% match
                       </span>
                     </div>
@@ -883,65 +959,45 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       </div>
 
       {/* Input Composer (sticky bottom) */}
-      <div
-        ref={composerRef}
-        className="border-t border-neutral-800/50 bg-neutral-950/30 backdrop-blur-sm px-6 py-4"
-      >
-        <div className="max-w-4xl mx-auto">
-          <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all shadow-lg">
-            <button
-              onClick={() => setShowUploadButton(!showUploadButton)}
-              className="btn-icon-ghost w-8 h-8"
-              title="Add options"
-            >
-              <svg
-                className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+      {/* Bottom composer (shown only after first message) */}
+      {messages.length > 0 && (
+        <div
+          ref={composerRef}
+          className="sticky bottom-0 px-6 py-4 bg-neutral-950/40 backdrop-blur-sm"
+        >
+          <div className="max-w-4xl mx-auto">
+            <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all shadow-lg">
+              <button
+                onClick={() => setShowUploadButton(!showUploadButton)}
+                className="btn-icon-ghost w-8 h-8"
+                title="Add options"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-            </button>
+                <svg
+                  className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+              </button>
 
-            {/* Options Menu */}
-            {showUploadButton && (
-              <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
-                <div className="py-1">
-                  {/* Add Workspace Option */}
-                  <button
-                    onClick={() => {
-                      onOpenNewWorkspace?.();
-                      setShowUploadButton(false);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
-                    </svg>
-                    <span>Add Workspace</span>
-                  </button>
-
-                  {/* Placeholder for future options */}
-                  <div className="border-t border-gray-700 mt-1 pt-1">
+              {/* Options Menu */}
+              {showUploadButton && (
+                <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
+                  <div className="py-1">
+                    {/* Add Workspace Option */}
                     <button
-                      disabled
-                      className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
+                      onClick={() => {
+                        onOpenNewWorkspace?.();
+                        setShowUploadButton(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
                     >
                       <svg
                         className="w-4 h-4"
@@ -953,51 +1009,74 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                          d="M12 4v16m8-8H4"
                         />
                       </svg>
-                      <span>More options coming soon...</span>
+                      <span>Add Workspace</span>
                     </button>
+
+                    {/* Placeholder for future options */}
+                    <div className="border-t border-gray-700 mt-1 pt-1">
+                      <button
+                        disabled
+                        className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                          />
+                        </svg>
+                        <span>More options coming soon...</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-            <textarea
-              value={currentInput}
-              onChange={(e) => setCurrentInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={getContextualPlaceholder()}
-              className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
-              rows={1}
-              disabled={isProcessing}
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={!currentInput.trim() || isProcessing}
-              className="btn-icon-primary"
-              title={isProcessing ? "Sending..." : "Send message"}
-            >
-              {isProcessing ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                  />
-                </svg>
               )}
-            </button>
+              <textarea
+                value={currentInput}
+                onChange={(e) => setCurrentInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={getContextualPlaceholder()}
+                className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
+                rows={1}
+                disabled={isProcessing}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!currentInput.trim() || isProcessing}
+                className="btn-icon-primary"
+                title={isProcessing ? "Sending..." : "Send message"}
+              >
+                {isProcessing ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
