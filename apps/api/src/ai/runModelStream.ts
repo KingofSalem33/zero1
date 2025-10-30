@@ -614,3 +614,37 @@ export async function runModelStream(
     cleanup();
   }
 }
+
+/**
+ * Domain SSE helpers for roadmap completion wiring
+ * These allow callers to emit completion-related events over the same
+ * streaming Response channel used by runModelStream.
+ */
+export function sendCompletionDetectedEvent(
+  res: Response,
+  detection: { message: string; confidence: string; score: number },
+): void {
+  try {
+    res.write(`event: completion_detected\n`);
+    res.write(`data: ${JSON.stringify(detection)}\n\n`);
+  } catch (err) {
+    logger.warn({ err }, "Failed to emit completion_detected SSE");
+  }
+}
+
+export function sendCompletionNudgeEvent(
+  res: Response,
+  nudge: {
+    message: string;
+    confidence: string;
+    score: number;
+    substep_id: string;
+  },
+): void {
+  try {
+    res.write(`event: completion_nudge\n`);
+    res.write(`data: ${JSON.stringify(nudge)}\n\n`);
+  } catch (err) {
+    logger.warn({ err }, "Failed to emit completion_nudge SSE");
+  }
+}

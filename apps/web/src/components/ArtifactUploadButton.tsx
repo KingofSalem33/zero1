@@ -1,4 +1,5 @@
-﻿import React, { useRef, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useRef, useState } from "react";
 import { ArtifactDiffModal } from "./ArtifactDiffModal";
 import { Toast } from "./Toast";
 
@@ -109,7 +110,7 @@ export const ArtifactUploadButton: React.FC<ArtifactUploadButtonProps> = ({
       setProgressPercentage(10); // Start at 10% after upload
 
       // Open SSE connection
-      // eslint-disable-next-line no-undef
+       
       const eventSource = new EventSource(
         `${API_URL}/api/artifacts/stream/${artifactId}`,
       );

@@ -3,6 +3,7 @@ import typescript from "@typescript-eslint/eslint-plugin";
 import typescriptParser from "@typescript-eslint/parser";
 import prettier from "eslint-config-prettier";
 import importPlugin from "eslint-plugin-import";
+import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
   {
@@ -79,11 +80,15 @@ export default [
         navigator: "readonly",
         HTMLInputElement: "readonly",
         HTMLDivElement: "readonly",
+        Event: "readonly",
+        MessageEvent: "readonly",
+        EventSource: "readonly",
       },
     },
     plugins: {
       "@typescript-eslint": typescript,
       import: importPlugin,
+      "react-refresh": reactRefresh,
     },
     rules: {
       ...typescript.configs.recommended.rules,
@@ -96,6 +101,7 @@ export default [
       "@typescript-eslint/no-explicit-any": "warn",
       "no-console": "warn",
       "prefer-const": "error",
+      "react-refresh/only-export-components": "off",
     },
   },
   prettier,

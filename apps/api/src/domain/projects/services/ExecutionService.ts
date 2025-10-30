@@ -252,6 +252,15 @@ export class ExecutionService {
           "📌 [ExecutionService] Sending completion nudge to frontend",
         );
 
+        // Informational event for UI hooks/telemetry
+        streamingService.sendCompletionDetected(res, {
+          message:
+            completionResult.nudge!.message ||
+            "High confidence completion detected",
+          confidence: completionResult.nudge!.confidence,
+          score: completionResult.nudge!.score,
+        } as any);
+
         streamingService.sendCompletionNudge(res, {
           message: completionResult.nudge!.message,
           confidence: completionResult.nudge!.confidence,

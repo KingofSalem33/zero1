@@ -1,66 +1,112 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useState, useEffect, useCallback, useRef } from "react";
+
 import "./App.css";
+
 import { ArtifactUploadButton } from "./components/ArtifactUploadButton";
+
 import { CheckpointsModal } from "./components/CheckpointsModal";
+
 import { ExportRoadmapModal } from "./components/ExportRoadmapModal";
+
 import { ToolBadges } from "./components/ToolBadges";
+
 import { StreamingChatDemo } from "./components/StreamingChatDemo";
+
 import { MarkdownMessage } from "./components/MarkdownMessage";
+
 import { FileManager } from "./components/FileManager";
+
 import { UserMemoryManager } from "./components/UserMemoryManager";
+
 import RoadmapSidebar from "./components/RoadmapSidebar";
+
 import UnifiedWorkspace from "./components/UnifiedWorkspace";
+
 import { Toast } from "./components/Toast";
 
 // ---- Utility helpers ----
+
 const cls = (...arr: (string | boolean | undefined)[]) =>
   arr.filter(Boolean).join(" ");
 
 // Helper to convert phase format: "P1" -> 1, or pass through if already number
+
 const getPhaseNumber = (phase: string | number): number => {
   return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
 };
 
 // Convert markdown to plain text (currently unused but kept for future use)
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const markdownToPlainText = (markdown: string): string => {
   return (
     markdown
+
       // Remove headers (# ## ###)
+
       .replace(/^#{1,6}\s+/gm, "")
+
       // Remove bold/italic (*text* **text** _text_ __text__)
+
       .replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1")
+
       .replace(/_{1,2}([^_]+)_{1,2}/g, "$1")
+
       // Remove code blocks (```text```)
+
       .replace(/```[\s\S]*?```/g, "")
+
       // Remove inline code (`text`)
+
       .replace(/`([^`]+)`/g, "$1")
+
       // Remove links [text](url)
+
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+
       // Remove strikethrough (~~text~~)
+
       .replace(/~~([^~]+)~~/g, "$1")
+
       // Clean up extra whitespace
+
       .replace(/\n\s*\n/g, "\n\n")
+
       .trim()
   );
 };
 
 // Get API URL from environment or default to localhost
+
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
 // ---- Project Normalization ----
+
 /**
+
  * Normalize project data to ensure progressive disclosure.
+
  * This transformation ensures that:
+
  * - Only Phase 1 is unlocked and expanded with substeps
+
  * - Phases 2-7 are locked with empty substeps array
+
  * - All phases have phase_number set correctly
+
  *
+
  * This must be applied consistently:
+
  * - When loading shared projects (URL parameters)
+
  * - When receiving roadmap_complete (fallback)
+
  * - When refreshing project data
+
  */
+
 const normalizeProject = (rawProject: any): any => {
   if (!rawProject || !rawProject.phases) {
     return rawProject;
@@ -70,21 +116,30 @@ const normalizeProject = (rawProject: any): any => {
 
   return {
     ...rawProject,
+
     current_phase:
       typeof rawProject.current_phase === "string"
         ? getPhaseNumber(rawProject.current_phase)
         : rawProject.current_phase || 1,
+
     current_substep: rawProject.current_substep || 1,
+
     phases: phases.map((phase: any, index: number) => ({
       ...phase,
+
       phase_number: index + 1,
+
       expanded: index === 0,
+
       locked: index > 0,
+
       substeps:
         index === 0
           ? (phase.substeps || []).map((substep: any, subIndex: number) => ({
               ...substep,
+
               step_number: subIndex + 1,
+
               completed: false,
             }))
           : [],
@@ -93,23 +148,30 @@ const normalizeProject = (rawProject: any): any => {
 };
 
 // ---- Enhanced Animation Components ----
+
 interface AnimatedCardProps {
   children: React.ReactNode;
+
   delay?: number;
+
   className?: string;
 }
 
 // AnimatedCard component - kept for reference but not currently used
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const AnimatedCard: React.FC<AnimatedCardProps> = ({
   children,
+
   delay = 0,
+
   className = "",
 }) => {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), delay);
+
     return () => clearTimeout(timer);
   }, [delay]);
 
@@ -117,7 +179,9 @@ const AnimatedCard: React.FC<AnimatedCardProps> = ({
     <div
       className={cls(
         "transition-all duration-700 ease-out",
+
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
+
         className,
       )}
     >
@@ -139,45 +203,67 @@ const PulseLoader = () => (
 );
 
 // ---- Popup Workspace Component ----
+
 interface PopupWorkspaceProps {
   workspace: PopupWorkspace;
+
   project: Project | null;
+
   onClose: () => void;
+
   onUpdateMessages: (workspaceId: string, messages: ChatMessage[]) => void;
 }
 
 const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
   workspace,
+
   project,
+
   onClose,
+
   onUpdateMessages,
 }) => {
   const [currentInput, setCurrentInput] = useState("");
+
   const [isProcessing, setIsProcessing] = useState(false);
+
   const [position, setPosition] = useState(workspace.position);
+
   const [isDragging, setIsDragging] = useState(false);
+
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  const [popupToast, setPopupToast] = useState<string>("");
 
   const handleSendMessage = async () => {
     if (!currentInput.trim() || !project || isProcessing) return;
 
     setIsProcessing(true);
+
     const userMessage = currentInput.trim();
+
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
+
       type: "user",
+
       content: userMessage,
+
       timestamp: new Date(),
     };
 
     const updatedMessages = [...workspace.messages, newMessage];
+
     onUpdateMessages(workspace.id, updatedMessages);
+
     setCurrentInput("");
 
     // Get current substep's master prompt
+
     const currentPhase = project.phases?.find(
       (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
+
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
     );
@@ -185,45 +271,70 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
     if (!currentSubstep) {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
+
         type: "ai",
+
         content:
           "No active substep found. Please make sure you have an active project with substeps.",
+
         timestamp: new Date(),
       };
+
       onUpdateMessages(workspace.id, [...updatedMessages, errorMessage]);
+
       setIsProcessing(false);
+
       return;
     }
 
     // Create AI message placeholder
+
     const aiMessageId = (Date.now() + 1).toString();
+
     const aiMessage: ChatMessage = {
       id: aiMessageId,
+
       type: "ai",
+
       content: "Thinking...",
+
       timestamp: new Date(),
     };
+
     // Maintain a local copy that we mutate during streaming
+
     let streamMessages: ChatMessage[] = [...updatedMessages, aiMessage];
+
     onUpdateMessages(workspace.id, streamMessages);
 
     try {
       const contextPrompt = `
+
 Context: Deep dive workspace for ${workspace.title}
+
+
 
 ${currentSubstep.prompt_to_send}
 
+
+
 User question: ${userMessage}
+
 `;
 
       const response = await fetch(
         `${API_URL}/api/projects/${project.id}/execute-step/stream`,
+
         {
           method: "POST",
+
           headers: { "Content-Type": "application/json" },
+
           body: JSON.stringify({
             master_prompt: contextPrompt,
+
             user_message: userMessage,
+
             thread_id: workspace.threadId, // Include thread ID for persistence
           }),
         },
@@ -232,96 +343,190 @@ User question: ${userMessage}
       if (!response.ok) {
         if (response.status === 429) {
           // Rate limit exceeded
+
           const errorData = await response.json().catch(() => ({}));
+
           const retryAfter = errorData.retryAfter || "1 minute";
+
           throw new Error(
-            `ΓÅ▒∩╕Å Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `GŦn+� Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
+
         throw new Error(`HTTP ${response.status}`);
       }
 
       const reader = response.body?.getReader();
+
       if (!reader) {
         throw new Error("No response body");
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decoder = new (window as any).TextDecoder();
+
       let buffer = "";
+
       let accumulatedContent = "";
+
       let receivedDone = false;
+
       let currentEvent = ""; // persist across chunks
 
       while (true) {
         const { done, value } = await reader.read();
+
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
+
         const lines = buffer.split("\n");
+
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           if (line === "") {
             currentEvent = "";
+
             continue;
           }
+
           if (line.startsWith(":")) {
             // heartbeat
+
             continue;
           }
+
           if (line.startsWith("event:")) {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith("data:")) {
             const data = line.slice(5).trim();
+
             if (!data) continue;
 
             try {
               const parsed = JSON.parse(data);
+
               switch (currentEvent) {
                 case "content": {
                   accumulatedContent += parsed.delta || "";
+
                   // Update AI message in our local streamMessages and push
+
                   streamMessages = streamMessages.map((msg) =>
                     msg.id === aiMessageId
                       ? { ...msg, content: accumulatedContent }
                       : msg,
                   );
+
                   onUpdateMessages(workspace.id, streamMessages);
+
                   break;
                 }
+
                 case "status": {
                   const status = parsed.message || "Working...";
+
                   // Show status while waiting for content
+
                   const display = accumulatedContent
                     ? accumulatedContent
                     : status;
+
                   streamMessages = streamMessages.map((msg) =>
                     msg.id === aiMessageId ? { ...msg, content: display } : msg,
                   );
+
                   onUpdateMessages(workspace.id, streamMessages);
+
                   break;
                 }
+
                 case "tool_call": {
                   const tool = parsed.tool || "tool";
+
                   const status = `Using ${tool}...`;
+
                   if (!accumulatedContent) {
                     streamMessages = streamMessages.map((msg) =>
                       msg.id === aiMessageId
                         ? { ...msg, content: status }
                         : msg,
                     );
+
                     onUpdateMessages(workspace.id, streamMessages);
                   }
+
                   break;
                 }
+
+                case "completion_nudge": {
+                  // Surface high-confidence prompt inline in the popup workspace
+
+                  const nudgeText = parsed.message
+                    ? `?? ${parsed.message}`
+                    : "?? Ready to mark this substep complete?";
+
+                  const nudgeMsg: ChatMessage = {
+                    id: `${aiMessageId}-nudge-${Date.now()}`,
+
+                    type: "ai",
+
+                    content: nudgeText,
+
+                    timestamp: new Date(),
+                  };
+
+                  streamMessages = [...streamMessages, nudgeMsg];
+
+                  onUpdateMessages(workspace.id, streamMessages);
+
+                  break;
+                }
+
+                case "substep_completed": {
+                  // Append briefing to popup thread if provided
+
+                  if (parsed?.briefing) {
+                    const briefMsg: ChatMessage = {
+                      id: `${aiMessageId}-briefing-${Date.now()}`,
+
+                      type: "ai",
+
+                      content: `? ${parsed.briefing}`,
+
+                      timestamp: new Date(),
+                    };
+
+                    streamMessages = [...streamMessages, briefMsg];
+
+                    onUpdateMessages(workspace.id, streamMessages);
+                  }
+
+                  // Show a transient toast inside the popup
+
+                  setPopupToast("? Substep completed!");
+
+                  setTimeout(() => setPopupToast(""), 2000);
+
+                  break;
+                }
+
+                case "completion_detected": {
+                  // Optional: no-op for popup
+
+                  break;
+                }
+
                 case "done": {
                   receivedDone = true;
+
                   break;
                 }
+
                 case "error": {
                   throw new Error(parsed.message || "Streaming error");
                 }
+
                 default: {
                   // Ignore other events
                 }
@@ -338,16 +543,21 @@ User question: ${userMessage}
           } catch {
             // Ignore cancel errors
           }
+
           break;
         }
       }
     } catch {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 2).toString(),
+
         type: "ai",
+
         content: "Network error. Please check your connection and try again.",
+
         timestamp: new Date(),
       };
+
       onUpdateMessages(workspace.id, [...updatedMessages, errorMessage]);
     } finally {
       setIsProcessing(false);
@@ -356,8 +566,10 @@ User question: ${userMessage}
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
+
     setDragOffset({
       x: e.clientX - position.x,
+
       y: e.clientY - position.y,
     });
   };
@@ -367,10 +579,12 @@ User question: ${userMessage}
       if (isDragging) {
         setPosition({
           x: e.clientX - dragOffset.x,
+
           y: e.clientY - dragOffset.y,
         });
       }
     },
+
     [isDragging, dragOffset],
   );
 
@@ -381,9 +595,12 @@ User question: ${userMessage}
   useEffect(() => {
     if (isDragging) {
       document.addEventListener("mousemove", handleMouseMove);
+
       document.addEventListener("mouseup", handleMouseUp);
+
       return () => {
         document.removeEventListener("mousemove", handleMouseMove);
+
         document.removeEventListener("mouseup", handleMouseUp);
       };
     }
@@ -396,12 +613,16 @@ User question: ${userMessage}
       className="fixed z-40 bg-gradient-to-br from-gray-900/98 to-black/95 backdrop-blur-xl rounded-2xl border border-gray-700/50 shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
       style={{
         left: `${position.x}px`,
+
         top: `${position.y}px`,
+
         width: "400px",
+
         height: "500px",
       }}
     >
       {/* Header */}
+
       <div
         className="p-4 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/50 to-purple-950/50 cursor-move"
         onMouseDown={handleMouseDown}
@@ -423,15 +644,18 @@ User question: ${userMessage}
                 />
               </svg>
             </div>
+
             <div>
               <h3 className="text-sm font-semibold text-white">
                 Deep Dive Workspace
               </h3>
+
               <p className="text-xs text-blue-400 truncate max-w-48">
                 {workspace.title}
               </p>
             </div>
           </div>
+
           <button
             onClick={onClose}
             className="w-6 h-6 rounded-lg bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors"
@@ -454,6 +678,7 @@ User question: ${userMessage}
       </div>
 
       {/* Messages */}
+
       <div className="flex-1 p-4 overflow-y-auto space-y-4">
         {workspace.messages.length === 0 && (
           <div className="text-center text-gray-400 text-sm mt-8">
@@ -472,6 +697,7 @@ User question: ${userMessage}
                 />
               </svg>
             </div>
+
             <p>Ask questions to dive deeper into this topic.</p>
           </div>
         )}
@@ -502,10 +728,12 @@ User question: ${userMessage}
                       />
                     </svg>
                   </div>
+
                   <span className="text-xs text-emerald-400 font-medium">
                     AI Assistant
                   </span>
                 </div>
+
                 <div className="pl-7">
                   <div className="text-gray-200 leading-relaxed whitespace-pre-wrap text-sm">
                     {message.content}
@@ -518,6 +746,7 @@ User question: ${userMessage}
       </div>
 
       {/* Input Area */}
+
       <div className="p-3 border-t border-gray-700/50">
         <div className="flex gap-2">
           <input
@@ -529,10 +758,12 @@ User question: ${userMessage}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+
                 handleSendMessage();
               }
             }}
           />
+
           <button
             onClick={handleSendMessage}
             disabled={!currentInput.trim() || isProcessing}
@@ -558,121 +789,190 @@ User question: ${userMessage}
           </button>
         </div>
       </div>
+
+      {popupToast && (
+        <div class="absolute top-3 right-3">
+          <Toast
+            message={popupToast}
+            duration={2000}
+            onClose={() => setPopupToast("")}
+            type="success"
+          />
+        </div>
+      )}
     </div>
   );
 };
 
 // ---- Types ----
+
 interface ProjectSubstep {
   substep_id: string;
+
   step_number: number;
+
   label: string;
+
   prompt_to_send: string;
+
   commands?: string;
+
   completed: boolean;
+
   created_at: string;
 }
 
 interface PopupWorkspace {
   id: string;
+
   title: string;
+
   position: { x: number; y: number };
+
   messages: ChatMessage[];
+
   isVisible: boolean;
+
   threadId?: string; // Track thread for persistence
 }
 
 interface ProjectPhase {
   phase_id: string;
+
   phase_number: number;
+
   goal: string;
+
   why_it_matters: string;
+
   master_prompt: string;
+
   substeps: ProjectSubstep[];
+
   acceptance_criteria: string[];
+
   rollback_plan: string[];
+
   expanded: boolean;
+
   completed: boolean;
+
   locked: boolean;
+
   created_at: string;
 }
 
 interface SubstepCompletion {
   phase_number: number;
+
   substep_number: number;
+
   status: "complete" | "partial" | "incomplete";
+
   evidence: string;
+
   confidence: number;
+
   timestamp: string;
 }
 
 interface Project {
   id: string;
+
   goal: string;
+
   status: "clarifying" | "active" | "completed" | "paused";
+
   current_phase: number;
+
   current_substep: number;
+
   phases: ProjectPhase[];
+
   history: unknown[];
+
   clarification_context?: string;
+
   created_at: string;
+
   updated_at: string;
+
   completed_substeps?: SubstepCompletion[];
 }
 
 interface ChatMessage {
   id: string;
+
   type: "user" | "ai";
+
   content: string;
+
   timestamp: Date;
 }
 
 // ---- Master Control Modal with Progressive Revelation ----
+
 interface MasterControlProps {
   project: Project;
+
   isOpen: boolean;
+
   onClose: () => void;
+
   onProjectUpdate: () => void;
 }
 
 const MasterControl: React.FC<MasterControlProps> = ({
   project,
+
   isOpen,
+
   onClose,
+
   onProjectUpdate,
 }) => {
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
+
   const [showCheckpoints, setShowCheckpoints] = useState(false);
+
   const [showExport, setShowExport] = useState(false);
 
   if (!isOpen) return null;
 
   const togglePhaseExpansion = (phaseId: string) => {
     const newExpanded = new Set(expandedPhases);
+
     if (newExpanded.has(phaseId)) {
       newExpanded.delete(phaseId);
     } else {
       newExpanded.add(phaseId);
     }
+
     setExpandedPhases(newExpanded);
   };
 
   const getPhaseStatus = (phase: ProjectPhase) => {
     if (phase.completed)
-      return { icon: "Γ£à", label: "Complete", color: "text-green-400" };
+      return { icon: "G��", label: "Complete", color: "text-green-400" };
+
     if (phase.phase_number === getPhaseNumber(project.current_phase))
-      return { icon: "≡ƒöä", label: "Active", color: "text-blue-400" };
+      return { icon: "=���", label: "Active", color: "text-blue-400" };
+
     if (phase.locked)
-      return { icon: "≡ƒöÆ", label: "Locked", color: "text-gray-500" };
-    return { icon: "ΓÅ│", label: "Ready", color: "text-yellow-400" };
+      return { icon: "=���", label: "Locked", color: "text-gray-500" };
+
+    return { icon: "GŦ", label: "Ready", color: "text-yellow-400" };
   };
 
   // Helper function to check if substep is complete
+
   const isSubstepComplete = (
     phaseNumber: number,
+
     substepNumber: number,
   ): boolean => {
     if (!project.completed_substeps) return false;
+
     return project.completed_substeps.some(
       (c) =>
         c.phase_number === phaseNumber &&
@@ -682,8 +982,10 @@ const MasterControl: React.FC<MasterControlProps> = ({
   };
 
   // Calculate phase progress based on completed substeps
+
   const getPhaseProgress = (phase: ProjectPhase): number => {
     if (phase.completed) return 100;
+
     if (!phase.substeps || phase.substeps.length === 0) return 0;
 
     const completedCount = phase.substeps.filter((_, index) =>
@@ -706,31 +1008,38 @@ const MasterControl: React.FC<MasterControlProps> = ({
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-gradient-to-br from-gray-900 to-black border border-gray-700/50 rounded-3xl max-w-5xl w-full max-h-[85vh] overflow-hidden shadow-2xl">
         {/* Header */}
+
         <div className="p-8 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/30 to-purple-950/30">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-white mb-2">
                 {project.goal}
               </h2>
+
               <p className="text-blue-400 font-medium">
-                {progress}% Complete ΓÇó {project.phases.length} Phases
+                {progress}% Complete G�� {project.phases.length} Phases
               </p>
             </div>
+
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowExport(true)}
                 className="px-4 py-2 rounded-xl bg-green-600/60 hover:bg-green-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <span>≡ƒôñ</span>
+                <span>=���</span>
+
                 <span>Export</span>
               </button>
+
               <button
                 onClick={() => setShowCheckpoints(true)}
                 className="px-4 py-2 rounded-xl bg-purple-600/60 hover:bg-purple-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <span>≡ƒÆ╛</span>
+                <span>=��+</span>
+
                 <span>Checkpoints</span>
               </button>
+
               <button
                 onClick={onClose}
                 className="w-10 h-10 rounded-xl bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors backdrop-blur-sm"
@@ -753,6 +1062,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
           </div>
 
           {/* Progress bar */}
+
           <div className="mt-6 bg-gray-800/60 rounded-full h-2 overflow-hidden backdrop-blur-sm">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-700 shadow-lg shadow-blue-500/30"
@@ -762,9 +1072,11 @@ const MasterControl: React.FC<MasterControlProps> = ({
         </div>
 
         {/* Phases */}
+
         <div className="p-8 space-y-6 max-h-96 overflow-y-auto">
           {project.phases.map((phase) => {
             const status = getPhaseStatus(phase);
+
             const isExpanded = expandedPhases.has(phase.phase_id);
 
             return (
@@ -772,6 +1084,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 key={phase.phase_id}
                 className={cls(
                   "border rounded-2xl overflow-hidden transition-all duration-300",
+
                   phase.completed
                     ? "border-green-500/40 bg-gradient-to-br from-green-950/20 to-emerald-950/20"
                     : phase.phase_number ===
@@ -783,11 +1096,13 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 )}
               >
                 {/* Phase Header */}
+
                 <div className="p-6">
                   <div className="flex items-start gap-4">
                     <div
                       className={cls(
                         "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold border-2",
+
                         phase.completed
                           ? "bg-green-500 border-green-400 text-white"
                           : phase.phase_number ===
@@ -798,7 +1113,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                               : "bg-yellow-500 border-yellow-400 text-white",
                       )}
                     >
-                      {phase.completed ? "Γ£ô" : phase.phase_number}
+                      {phase.completed ? "G��" : phase.phase_number}
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -806,12 +1121,14 @@ const MasterControl: React.FC<MasterControlProps> = ({
                         <h3 className="text-xl font-bold text-white">
                           {phase.goal}
                         </h3>
+
                         <div className="flex items-center gap-3">
                           <span
                             className={cls("text-sm font-medium", status.color)}
                           >
                             {status.icon} {status.label}
                           </span>
+
                           <button
                             onClick={() => togglePhaseExpansion(phase.phase_id)}
                             className="w-8 h-8 rounded-lg bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors"
@@ -819,6 +1136,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                             <svg
                               className={cls(
                                 "w-4 h-4 text-gray-400 transition-transform duration-200",
+
                                 isExpanded && "rotate-180",
                               )}
                               fill="none"
@@ -835,11 +1153,13 @@ const MasterControl: React.FC<MasterControlProps> = ({
                           </button>
                         </div>
                       </div>
+
                       <p className="text-gray-400 leading-relaxed">
                         {phase.why_it_matters}
                       </p>
 
                       {/* Phase Progress Bar */}
+
                       {phase.substeps && phase.substeps.length > 0 && (
                         <div className="mt-4">
                           <div className="flex items-center justify-between mb-2">
@@ -847,10 +1167,12 @@ const MasterControl: React.FC<MasterControlProps> = ({
                               {getPhaseProgress(phase)}% Complete
                             </span>
                           </div>
+
                           <div className="bg-gray-800/60 rounded-full h-1.5 overflow-hidden">
                             <div
                               className={cls(
                                 "h-full transition-all duration-500",
+
                                 phase.completed
                                   ? "bg-green-500"
                                   : phase.phase_number ===
@@ -868,23 +1190,28 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 </div>
 
                 {/* Substeps (when expanded) */}
+
                 {isExpanded && phase.substeps && phase.substeps.length > 0 && (
                   <div className="px-6 pb-6">
                     <div className="bg-black/20 border border-gray-700/30 rounded-xl p-4 backdrop-blur-sm">
                       <h4 className="text-gray-300 font-semibold mb-3 text-sm uppercase tracking-wide">
                         Substeps
                       </h4>
+
                       <div className="space-y-2">
                         {phase.substeps.map((substep, index) => {
                           const isComplete = isSubstepComplete(
                             phase.phase_number,
+
                             index + 1,
                           );
+
                           return (
                             <div
                               key={substep.substep_id}
                               className={cls(
                                 "flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
+
                                 isComplete
                                   ? "bg-green-950/30 border border-green-500/20"
                                   : "bg-gray-800/40 border border-gray-600/20",
@@ -893,16 +1220,19 @@ const MasterControl: React.FC<MasterControlProps> = ({
                               <div
                                 className={cls(
                                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
+
                                   isComplete
                                     ? "bg-green-500 text-white"
                                     : "bg-gray-600 text-gray-300",
                                 )}
                               >
-                                {isComplete ? "Γ£ô" : index + 1}
+                                {isComplete ? "G��" : index + 1}
                               </div>
+
                               <span
                                 className={cls(
                                   "font-medium",
+
                                   isComplete ? "text-green-400" : "text-white",
                                 )}
                               >
@@ -922,17 +1252,20 @@ const MasterControl: React.FC<MasterControlProps> = ({
       </div>
 
       {/* Checkpoints Modal */}
+
       <CheckpointsModal
         projectId={project.id}
         isOpen={showCheckpoints}
         onClose={() => setShowCheckpoints(false)}
         onRestoreSuccess={() => {
           setShowCheckpoints(false);
+
           onProjectUpdate();
         }}
       />
 
       {/* Export Roadmap Modal */}
+
       <ExportRoadmapModal
         project={project}
         isOpen={showExport}
@@ -943,46 +1276,73 @@ const MasterControl: React.FC<MasterControlProps> = ({
 };
 
 // ---- Execution Engine (Right Panel) ----
+
 interface ExecutionEngineProps {
   project: Project | null;
+
   onViewRoadmap: () => void;
+
   onOpenNewWorkspace: () => void;
+
   onSubstepComplete: (substepId: string) => void;
+
   onOpenFileManager: () => void;
+
   onOpenMemoryManager: () => void;
+
   completionNudge: {
     message: string;
+
     confidence: string;
+
     score: number;
+
     substep_id: string;
   } | null;
+
   onDismissNudge: () => void;
+
   onToggleSubstep: (substepId: string) => void;
 }
 
 // ExecutionEngine component - kept for reference but not currently used
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   project,
+
   onViewRoadmap,
+
   onOpenNewWorkspace,
+
   onSubstepComplete,
+
   onOpenFileManager,
+
   onOpenMemoryManager,
+
   completionNudge,
+
   onDismissNudge,
+
   onToggleSubstep,
 }) => {
   const [copiedText, setCopiedText] = useState("");
+
   const [isFlipped, setIsFlipped] = useState(false);
+
   const [currentInput, setCurrentInput] = useState("");
+
   const [isProcessing, setIsProcessing] = useState(false);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const copyToClipboard = async (text: string, label: string = "Text") => {
     try {
       await navigator.clipboard.writeText(text);
+
       setCopiedText(label);
+
       setTimeout(() => setCopiedText(""), 2000);
     } catch {
       // Failed to copy - ignore
@@ -993,22 +1353,31 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
     if (!currentInput.trim() || !project || isProcessing) return;
 
     setIsProcessing(true);
+
     const userMessage = currentInput.trim();
+
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
+
       type: "user",
+
       content: userMessage,
+
       timestamp: new Date(),
     };
 
     const updatedMessages = [...messages, newMessage];
+
     setMessages(updatedMessages);
+
     setCurrentInput("");
 
     // Get current substep's master prompt
+
     const currentPhase = project.phases?.find(
       (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
+
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
     );
@@ -1016,24 +1385,34 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
     if (!currentSubstep) {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
+
         type: "ai",
+
         content:
           "No active substep found. Please make sure you have an active project with substeps.",
+
         timestamp: new Date(),
       };
+
       setMessages([...updatedMessages, errorMessage]);
+
       setIsProcessing(false);
+
       return;
     }
 
     try {
       const response = await fetch(
         `${API_URL}/api/projects/${project.id}/execute-step`,
+
         {
           method: "POST",
+
           headers: { "Content-Type": "application/json" },
+
           body: JSON.stringify({
             master_prompt: currentSubstep.prompt_to_send,
+
             user_message: userMessage,
           }),
         },
@@ -1044,27 +1423,39 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
       if (response.ok && data.response) {
         const aiMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
+
           type: "ai",
+
           content: data.response, // Keep full markdown for MarkdownMessage component
+
           timestamp: new Date(),
         };
+
         setMessages([...updatedMessages, aiMessage]);
       } else {
         const errorMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
+
           type: "ai",
+
           content: `Sorry, I encountered an error: ${data.error || "Unable to process your request"}`,
+
           timestamp: new Date(),
         };
+
         setMessages([...updatedMessages, errorMessage]);
       }
     } catch {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
+
         type: "ai",
+
         content: "Network error. Please check your connection and try again.",
+
         timestamp: new Date(),
       };
+
       setMessages([...updatedMessages, errorMessage]);
     } finally {
       setIsProcessing(false);
@@ -1074,9 +1465,11 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   const currentPhase = project?.phases?.find(
     (p) => p.phase_number === (project?.current_phase || 1),
   );
+
   const currentSubstep = currentPhase?.substeps?.find(
     (s) => s.step_number === (project?.current_substep || 1),
   );
+
   const nextPhase = project?.phases?.find(
     (p) => p.phase_number === (project?.current_phase || 1) + 1,
   );
@@ -1092,6 +1485,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
   return (
     <div className="h-full flex flex-col relative">
       {/* Header */}
+
       <div className="p-6 border-b border-gray-700/50 bg-gradient-to-r from-purple-950/50 to-indigo-950/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1110,10 +1504,12 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 />
               </svg>
             </div>
+
             <div>
               <h2 className="text-lg font-semibold text-white">
                 {isFlipped ? "Deep Dive Workspace" : "Execution Engine"}
               </h2>
+
               <p className="text-purple-400 text-sm font-medium">
                 {isFlipped
                   ? "AI-powered guidance & collaboration"
@@ -1121,6 +1517,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
               </p>
             </div>
           </div>
+
           {project && !isFlipped && (
             <div className="flex items-center gap-3">
               <button
@@ -1129,23 +1526,26 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
               >
                 + New Workspace
               </button>
+
               <button
                 onClick={onViewRoadmap}
                 className="text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium"
               >
                 View Roadmap
               </button>
+
               <button
                 onClick={onOpenFileManager}
                 className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium"
               >
-                ≡ƒôü Manage Files
+                =��� Manage Files
               </button>
+
               <button
                 onClick={onOpenMemoryManager}
                 className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
               >
-                ≡ƒºá My Memory
+                =��� My Memory
               </button>
             </div>
           )}
@@ -1153,11 +1553,14 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
       </div>
 
       {/* Content */}
+
       <div className="flex-1 overflow-y-auto">
         {isFlipped ? (
           // Workspace View
+
           <div className="h-full flex flex-col">
             {/* Messages */}
+
             <div className="flex-1 p-6 space-y-6">
               {messages.length === 0 && (
                 <div className="text-center text-gray-400 text-sm mt-8">
@@ -1176,9 +1579,11 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                       />
                     </svg>
                   </div>
+
                   <h3 className="text-xl font-bold text-white mb-3">
                     Deep Dive Mode
                   </h3>
+
                   <p className="text-gray-400 font-medium leading-relaxed max-w-md mx-auto">
                     Ask questions to dive deeper into your current substep with
                     AI-powered guidance.
@@ -1190,6 +1595,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 <div key={message.id}>
                   {message.type === "user" ? (
                     // User messages: Bubble style (right-aligned)
+
                     <div className="flex justify-end">
                       <div className="max-w-[80%] rounded-2xl p-4 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
                         <p className="leading-relaxed">{message.content}</p>
@@ -1197,6 +1603,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                     </div>
                   ) : (
                     // AI messages: Document style (left-aligned plain text)
+
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
@@ -1214,10 +1621,12 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                             />
                           </svg>
                         </div>
+
                         <span className="text-sm text-emerald-400 font-medium">
                           AI Assistant
                         </span>
                       </div>
+
                       <div className="pl-8 pr-4">
                         <div className="text-gray-200 leading-relaxed whitespace-pre-wrap font-normal text-base">
                           {message.content}
@@ -1231,24 +1640,29 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
           </div>
         ) : (
           // Roadmap View (existing content)
+
           <div className="p-6">
             {project && currentPhase ? (
               <div className="space-y-6">
                 {/* Current Phase Status */}
+
                 <div className="bg-gradient-to-br from-blue-950/30 to-indigo-950/30 border border-blue-500/30 rounded-2xl p-6 backdrop-blur-sm">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-blue-400 font-semibold text-sm uppercase tracking-wide">
                         Current Phase
                       </h3>
+
                       <h4 className="text-white font-bold text-lg">
                         {currentPhase.goal}
                       </h4>
                     </div>
+
                     <div className="text-right">
                       <div className="text-2xl font-bold text-blue-400">
                         {phaseProgress}%
                       </div>
+
                       <div className="text-blue-400 text-sm font-medium">
                         Complete
                       </div>
@@ -1260,6 +1674,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                   </p>
 
                   {/* Phase Progress Bar */}
+
                   <div className="bg-blue-950/40 rounded-full h-2 overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-700"
@@ -1269,6 +1684,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 </div>
 
                 {/* Current Substep */}
+
                 {currentSubstep && (
                   <div className="bg-gradient-to-br from-emerald-950/30 to-green-950/30 border border-emerald-500/30 rounded-2xl p-6 backdrop-blur-sm">
                     <div className="flex items-center justify-between mb-4">
@@ -1276,16 +1692,19 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                         <h3 className="text-emerald-400 font-semibold text-sm uppercase tracking-wide">
                           Active Substep
                         </h3>
+
                         <h4 className="text-white font-bold">
                           {currentSubstep.label}
                         </h4>
                       </div>
+
                       <button
                         onClick={() =>
                           onSubstepComplete(currentSubstep.substep_id)
                         }
                         className={cls(
                           "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105",
+
                           currentSubstep.completed
                             ? "bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/30"
                             : "border-2 border-gray-500 hover:border-green-500 bg-transparent hover:bg-green-600/20",
@@ -1317,6 +1736,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 )}
 
                 {/* Completion Nudge */}
+
                 {completionNudge &&
                   currentSubstep &&
                   completionNudge.substep_id === currentSubstep.substep_id && (
@@ -1337,36 +1757,42 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                             />
                           </svg>
                         </div>
+
                         <div className="flex-1">
                           <h4 className="text-amber-300 font-semibold text-sm mb-1">
                             Ready to complete?
                           </h4>
+
                           <p className="text-gray-300 text-sm mb-3">
                             {completionNudge.message}
                           </p>
+
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => {
                                 onSubstepComplete(completionNudge.substep_id);
+
                                 onDismissNudge();
                               }}
                               className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors"
                             >
                               Mark Complete
                             </button>
+
                             <button
                               onClick={onDismissNudge}
                               className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-medium transition-colors"
                             >
                               Dismiss
                             </button>
+
                             <span className="ml-auto text-xs text-gray-400">
                               Confidence:{" "}
                               {completionNudge.confidence === "high"
-                                ? "≡ƒƒó High"
+                                ? "=��� High"
                                 : completionNudge.confidence === "medium"
-                                  ? "≡ƒƒí Medium"
-                                  : "≡ƒö┤ Low"}
+                                  ? "=��� Medium"
+                                  : "=��� Low"}
                             </span>
                           </div>
                         </div>
@@ -1375,16 +1801,19 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                   )}
 
                 {/* Phase Substeps Overview */}
+
                 <div className="bg-gradient-to-br from-gray-900/50 to-black/50 border border-gray-600/30 rounded-2xl p-6 backdrop-blur-sm">
                   <h3 className="text-gray-400 font-semibold text-sm uppercase tracking-wide mb-4">
                     Phase Progress
                   </h3>
+
                   <div className="space-y-3">
                     {currentPhase.substeps.map((substep) => (
                       <div
                         key={substep.substep_id}
                         className={cls(
                           "flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group",
+
                           substep.completed
                             ? "bg-green-950/30 border border-green-500/20"
                             : substep.substep_id === currentSubstep?.substep_id
@@ -1395,6 +1824,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                         <div
                           className={cls(
                             "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold",
+
                             substep.completed
                               ? "bg-green-500 text-white"
                               : substep.substep_id ===
@@ -1403,11 +1833,13 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                                 : "bg-gray-600 text-gray-300",
                           )}
                         >
-                          {substep.completed ? "Γ£ô" : substep.step_number}
+                          {substep.completed ? "G��" : substep.step_number}
                         </div>
+
                         <span
                           className={cls(
                             "font-medium flex-1",
+
                             substep.completed
                               ? "text-green-400"
                               : substep.substep_id ===
@@ -1418,10 +1850,12 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                         >
                           {substep.label}
                         </span>
+
                         <button
                           onClick={() =>
                             copyToClipboard(
                               substep.prompt_to_send || "",
+
                               "Master Prompt",
                             )
                           }
@@ -1442,10 +1876,12 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                             />
                           </svg>
                         </button>
+
                         <button
                           onClick={() => onToggleSubstep(substep.substep_id)}
                           className={cls(
                             "w-6 h-6 rounded-md flex items-center justify-center transition-all duration-200",
+
                             substep.completed
                               ? "bg-green-600 hover:bg-green-700"
                               : "border-2 border-gray-500 hover:border-green-500 bg-transparent",
@@ -1478,6 +1914,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 </div>
 
                 {/* Next Phase Preview */}
+
                 {nextPhase && (
                   <div className="bg-gradient-to-br from-yellow-950/20 to-orange-950/20 border border-yellow-500/20 rounded-2xl p-6 backdrop-blur-sm">
                     <div className="flex items-center gap-3 mb-3">
@@ -1496,18 +1933,22 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                           />
                         </svg>
                       </div>
+
                       <h3 className="text-yellow-400 font-semibold text-sm uppercase tracking-wide">
                         Next Phase
                       </h3>
                     </div>
+
                     <h4 className="text-white font-bold mb-2">
                       {nextPhase.goal}
                     </h4>
+
                     <p className="text-yellow-200 text-sm leading-relaxed">
                       {nextPhase.why_it_matters}
                     </p>
+
                     <div className="mt-3 text-xs text-yellow-400/80 font-medium">
-                      ≡ƒöÆ Complete current phase to unlock
+                      =��� Complete current phase to unlock
                     </div>
                   </div>
                 )}
@@ -1529,9 +1970,11 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                     />
                   </svg>
                 </div>
+
                 <h3 className="text-xl font-bold text-white mb-3">
                   Ready to Execute
                 </h3>
+
                 <p className="text-gray-400 font-medium leading-relaxed max-w-md">
                   Create your project to see execution steps and start building
                   with AI-powered guidance.
@@ -1543,6 +1986,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
       </div>
 
       {/* Input Area - Only show when project exists */}
+
       {project && (
         <div className="p-6 border-t border-gray-700/50">
           <div className="flex gap-2">
@@ -1556,11 +2000,13 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
+
                     handleSendMessage();
                   }
                 }}
               />
             )}
+
             {isFlipped && (
               <button
                 onClick={handleSendMessage}
@@ -1586,6 +2032,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 )}
               </button>
             )}
+
             <button
               onClick={() => setIsFlipped(!isFlipped)}
               className="w-10 h-10 bg-gradient-to-br from-gray-600 to-gray-700 hover:from-gray-500 hover:to-gray-600 rounded-lg flex items-center justify-center transition-all duration-200"
@@ -1611,7 +2058,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
 
       {copiedText && (
         <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-10">
-          Γ£ô {copiedText} copied!
+          G�� {copiedText} copied!
         </div>
       )}
     </div>
@@ -1619,59 +2066,95 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
 };
 
 // ---- Ideation Hub (Left Panel) ----
+
 interface ToolActivity {
   type: "tool_start" | "tool_end" | "tool_error";
+
   tool: string;
+
   args?: unknown;
+
   result?: unknown;
+
   error?: string;
+
   timestamp: string;
 }
 
 interface IdeationHubProps {
   project: Project | null;
+
   onCreateProject: (goal: string) => void;
+
   onInspireMe: (goal: string, setThinking: (text: string) => void) => void;
+
   onRefreshProject: () => void;
+
   creating: boolean;
+
   inspiring: boolean;
+
   toolsUsed: ToolActivity[];
+
   setToolsUsed: (tools: ToolActivity[]) => void;
+
   onCompletionNudge: (nudge: {
     message: string;
+
     confidence: string;
+
     score: number;
+
     substep_id: string;
   }) => void;
+
   onSubstepCompleted: (projectId: string, briefing?: string) => void;
 }
 
 // IdeationHub component - kept for reference but not currently used
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const IdeationHub: React.FC<IdeationHubProps> = ({
   project,
+
   onCreateProject,
+
   onInspireMe,
+
   onRefreshProject,
+
   creating,
+
   inspiring,
+
   toolsUsed,
+
   setToolsUsed,
+
   onCompletionNudge,
+
   onSubstepCompleted,
 }) => {
   const [thinking, setThinking] = useState("");
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
   const [currentInput, setCurrentInput] = useState("");
+
   const [isWorkspace, setIsWorkspace] = useState(false);
+
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+
   const [editingContent, setEditingContent] = useState("");
+
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Switch to workspace mode when project is created
+
   useEffect(() => {
     if (project && !isWorkspace) {
       setIsWorkspace(true);
+
       // Start with empty messages - user will manually copy master prompt
     }
   }, [project, isWorkspace]);
@@ -1680,22 +2163,31 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
     if (!currentInput.trim() || !project || isProcessing) return;
 
     setIsProcessing(true);
+
     setToolsUsed([]); // Clear previous tools
+
     const userMessage = currentInput.trim();
+
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
+
       type: "user",
+
       content: userMessage,
+
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, newMessage]);
+
     setCurrentInput("");
 
     // Get current substep's master prompt
+
     const currentPhase = project.phases?.find(
       (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
+
     const currentSubstep = currentPhase?.substeps?.find(
       (s) => s.step_number === project.current_substep,
     );
@@ -1703,34 +2195,50 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
     if (!currentSubstep) {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
+
         type: "ai",
+
         content:
           "No active substep found. Please make sure you have an active project with substeps.",
+
         timestamp: new Date(),
       };
+
       setMessages((prev) => [...prev, errorMessage]);
+
       setIsProcessing(false);
+
       return;
     }
 
     // Create placeholder for AI message that will be streamed
+
     const aiMessageId = (Date.now() + 1).toString();
+
     const aiMessage: ChatMessage = {
       id: aiMessageId,
+
       type: "ai",
+
       content: "Thinking...",
+
       timestamp: new Date(),
     };
+
     setMessages((prev) => [...prev, aiMessage]);
 
     try {
       const response = await fetch(
         `${API_URL}/api/projects/${project.id}/execute-step/stream`,
+
         {
           method: "POST",
+
           headers: { "Content-Type": "application/json" },
+
           body: JSON.stringify({
             master_prompt: currentSubstep.prompt_to_send,
+
             user_message: userMessage,
           }),
         },
@@ -1739,127 +2247,178 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
       if (!response.ok) {
         if (response.status === 429) {
           // Rate limit exceeded
+
           const errorData = await response.json().catch(() => ({}));
+
           const retryAfter = errorData.retryAfter || "1 minute";
+
           throw new Error(
-            `ΓÅ▒∩╕Å Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `GŦn+� Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
+
         throw new Error(`HTTP ${response.status}`);
       }
 
       const reader = response.body?.getReader();
+
       if (!reader) {
         throw new Error("No response body");
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decoder = new (window as any).TextDecoder();
+
       let buffer = "";
+
       let accumulatedContent = "";
+
       const allTools: ToolActivity[] = [];
+
       let receivedDone = false;
+
       let currentEvent = ""; // persist across chunks
 
       while (true) {
         const { done, value } = await reader.read();
+
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
+
         const lines = buffer.split("\n");
+
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           if (line === "") {
             currentEvent = "";
+
             continue;
           }
+
           if (line.startsWith(":")) {
             // heartbeat
+
             continue;
           }
+
           if (line.startsWith("event:")) {
             currentEvent = line.slice(6).trim();
+
             // SSE event received
           } else if (line.startsWith("data:")) {
             const data = line.slice(5).trim();
+
             if (!data) continue;
 
             try {
               const parsed = JSON.parse(data);
+
               // SSE data parsed
 
               switch (currentEvent) {
                 case "content":
                   // Content delta received
+
                   accumulatedContent += parsed.delta;
+
                   // Content accumulated
+
                   // Update the AI message content
+
                   setMessages((prev) =>
                     prev.map((msg) =>
                       msg.id === aiMessageId
                         ? {
                             ...msg,
+
                             content: accumulatedContent, // Keep full markdown for MarkdownMessage component
                           }
                         : msg,
                     ),
                   );
+
                   break;
+
                 case "tool_call":
                   allTools.push({
                     type: "tool_start",
+
                     tool: parsed.tool,
+
                     args: parsed.args,
+
                     timestamp: new Date().toISOString(),
                   });
+
                   setToolsUsed([...allTools]);
+
                   break;
 
                 case "tool_result":
                   allTools.push({
                     type: "tool_end",
+
                     tool: parsed.tool,
+
                     result: parsed.result,
+
                     timestamp: new Date().toISOString(),
                   });
+
                   setToolsUsed([...allTools]);
+
                   break;
 
                 case "tool_error":
                   allTools.push({
                     type: "tool_error",
+
                     tool: parsed.tool,
+
                     error: parsed.error,
+
                     timestamp: new Date().toISOString(),
                   });
+
                   setToolsUsed([...allTools]);
+
                   break;
 
                 case "completion_nudge":
                   // AI suggests marking substep complete
+
                   onCompletionNudge({
                     message: parsed.message,
+
                     confidence: parsed.confidence,
+
                     score: parsed.score,
+
                     substep_id: parsed.substep_id,
                   });
+
                   break;
 
                 case "substep_completed":
                   // Substep was auto-completed by the system
+
                   if (project) {
                     onSubstepCompleted(project.id, parsed.briefing);
                   }
+
                   break;
 
                 case "completion_detected":
                   // System detected potential completion (informational only)
+
                   break;
 
                 case "done":
                   // Stream complete
+
                   receivedDone = true;
+
                   break;
 
                 case "error":
@@ -1870,23 +2429,30 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
             }
           }
         }
+
         if (receivedDone) {
           try {
             await reader.cancel();
           } catch {
             // Ignore cancel errors
           }
+
           break;
         }
       }
     } catch {
       // Chat error occurred
+
       const errorMessage: ChatMessage = {
         id: (Date.now() + 2).toString(),
+
         type: "ai",
+
         content: "Network error. Please check your connection and try again.",
+
         timestamp: new Date(),
       };
+
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsProcessing(false);
@@ -1897,6 +2463,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
     return (
       <div className="h-full flex flex-col">
         {/* Workspace Header */}
+
         <div className="p-6 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/50 to-purple-950/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -1915,48 +2482,57 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                   />
                 </svg>
               </div>
+
               <div>
                 <h2 className="text-lg font-semibold text-white">
                   Execution Workspace
                 </h2>
+
                 <p className="text-blue-400 text-sm font-medium">
                   AI-powered guidance & collaboration
                 </p>
               </div>
             </div>
+
             <button
               onClick={() => {
                 setIsWorkspace(false);
+
                 setMessages([]);
               }}
               className="text-sm text-gray-400 hover:text-gray-300 transition-colors"
             >
-              ΓåÉ Back to Ideation
+              G�� Back to Ideation
             </button>
           </div>
         </div>
 
         {/* Chat Messages */}
+
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {messages.map((message, idx) => (
             <div key={message.id}>
               {message.type === "user" ? (
                 // User messages: Bubble style (right-aligned)
+
                 <div className="flex justify-end group/user">
                   <div className="relative max-w-[80%]">
                     {/* Edit button */}
+
                     {idx === messages.length - 2 && !isProcessing && (
                       <button
                         onClick={() => {
                           setEditingMessageId(message.id);
+
                           setEditingContent(message.content);
                         }}
                         className="absolute -left-10 top-2 opacity-0 group-hover/user:opacity-100 p-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-400 hover:text-white transition-all text-xs"
                         title="Edit message"
                       >
-                        Γ£Å∩╕Å
+                        G��n+�
                       </button>
                     )}
+
                     <div className="rounded-2xl p-4 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
                       <p className="leading-relaxed">{message.content}</p>
                     </div>
@@ -1964,6 +2540,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                 </div>
               ) : (
                 // AI messages: Document style (left-aligned plain text)
+
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
@@ -1981,10 +2558,12 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                         />
                       </svg>
                     </div>
+
                     <span className="text-sm text-emerald-400 font-medium">
                       AI Assistant
                     </span>
                   </div>
+
                   <div className="pl-8 pr-4">
                     <MarkdownMessage
                       content={message.content}
@@ -1992,8 +2571,10 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                       onCopy={() => {}}
                       onRegenerate={() => {
                         // Regenerate last message
+
                         if (idx === messages.length - 1) {
                           setMessages((prev) => prev.slice(0, -1));
+
                           handleSendMessage();
                         }
                       }}
@@ -2007,52 +2588,69 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         </div>
 
         {/* Edit Message Modal */}
+
         {editingMessageId && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-2xl w-full mx-4">
               <h3 className="text-lg font-semibold text-white mb-4">
                 Edit Message
               </h3>
+
               <textarea
                 value={editingContent}
                 onChange={(e) => setEditingContent(e.target.value)}
                 className="w-full h-32 bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 autoFocus
               />
+
               <div className="flex gap-2 mt-4 justify-end">
                 <button
                   onClick={() => {
                     setEditingMessageId(null);
+
                     setEditingContent("");
                   }}
                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
+
                 <button
                   onClick={() => {
                     // Update message and regenerate
+
                     setMessages((prev) => {
                       const idx = prev.findIndex(
                         (m) => m.id === editingMessageId,
                       );
+
                       if (idx !== -1) {
                         const updated = [
                           ...prev.slice(0, idx),
+
                           {
                             ...prev[idx],
+
                             content: editingContent,
                           },
                         ];
+
                         return updated;
                       }
+
                       return prev;
                     });
+
                     setCurrentInput(editingContent);
+
                     setEditingMessageId(null);
+
                     setEditingContent("");
+
                     // Remove AI response and regenerate
+
                     setMessages((prev) => prev.slice(0, -1));
+
                     setTimeout(() => handleSendMessage(), 100);
                   }}
                   className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg transition-colors"
@@ -2065,6 +2663,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         )}
 
         {/* Input Area */}
+
         <div className="p-6 border-t border-gray-700/50">
           <div className="flex gap-2 relative">
             <ArtifactUploadButton
@@ -2073,6 +2672,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
                 onRefreshProject();
               }}
             />
+
             <input
               type="text"
               value={currentInput}
@@ -2082,10 +2682,12 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
+
                   handleSendMessage();
                 }
               }}
             />
+
             <button
               onClick={handleSendMessage}
               disabled={!currentInput.trim() || isProcessing}
@@ -2118,6 +2720,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
+
       <div className="p-6 border-b border-gray-700/50 bg-gradient-to-r from-emerald-950/50 to-green-950/50">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
@@ -2135,8 +2738,10 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
               />
             </svg>
           </div>
+
           <div>
             <h2 className="text-lg font-semibold text-white">Ideation Hub</h2>
+
             <p className="text-emerald-400 text-sm font-medium">
               Creative thinking & vision refinement
             </p>
@@ -2145,9 +2750,11 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
       </div>
 
       {/* Input Area */}
+
       <div className="flex-1 p-6 flex flex-col">
         <div className="flex-1 mb-6">
           {/* Tool Badges */}
+
           {toolsUsed.length > 0 && (
             <div className="mb-3">
               <ToolBadges tools={toolsUsed} />
@@ -2164,6 +2771,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
         </div>
 
         {/* Action Buttons */}
+
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -2174,6 +2782,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
               {inspiring ? (
                 <div className="flex items-center justify-center gap-2">
                   <PulseLoader />
+
                   <span>Inspiring...</span>
                 </div>
               ) : (
@@ -2189,6 +2798,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
               {creating ? (
                 <div className="flex items-center justify-center gap-2">
                   <PulseLoader />
+
                   <span>Creating...</span>
                 </div>
               ) : (
@@ -2204,6 +2814,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
             >
               Save Draft
             </button>
+
             <button
               className="bg-gray-800/60 hover:bg-gray-700/60 text-gray-300 py-2 px-4 rounded-lg text-sm font-medium transition-colors backdrop-blur-sm"
               disabled={creating || inspiring}
@@ -2219,8 +2830,10 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 };
 
 // ---- Navigation Component ----
+
 interface NavBarProps {
   onCreateProject?: () => void;
+
   hasProject?: boolean;
 }
 
@@ -2229,6 +2842,7 @@ const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
     <div className="mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between h-14">
         {/* Brand Lockup - Tightened spacing */}
+
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center shadow-lg shadow-glow">
             <svg
@@ -2245,12 +2859,14 @@ const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
               />
             </svg>
           </div>
+
           <h1 className="text-lg font-bold text-white tracking-tight">
             Zero<span className="text-brand-primary-400">1</span>
           </h1>
         </div>
 
         {/* Primary Actions - Right side */}
+
         <div className="flex items-center gap-3">
           {hasProject ? (
             <>
@@ -2271,9 +2887,12 @@ const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
+
                 <span className="hidden md:inline">New Project</span>
               </button>
+
               <div className="hidden sm:block w-px h-5 bg-neutral-700/50" />
+
               <span className="hidden lg:block text-neutral-500 text-xs font-medium uppercase tracking-wider">
                 Workspace
               </span>
@@ -2296,6 +2915,7 @@ const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
                   d="M12 4v16m8-8H4"
                 />
               </svg>
+
               <span>Create Project</span>
             </button>
           )}
@@ -2306,67 +2926,96 @@ const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
 );
 
 // ---- Main App Component ----
+
 function App() {
   // Check for demo mode via URL parameter
+
   const isDemoMode =
     new URLSearchParams(window.location.search).get("demo") === "streaming";
 
   const [project, setProject] = useState<Project | null>(null);
+
   const [guidance, setGuidance] = useState("");
+
   const [toolsUsed, setToolsUsed] = useState<ToolActivity[]>([]);
+
   const [creatingProject, setCreatingProject] = useState(false);
+
   const [inspiring, setInspiring] = useState(false);
+
   const [showMasterControl, setShowMasterControl] = useState(false);
+
   const [showFileManager, setShowFileManager] = useState(false);
+
   const [showMemoryManager, setShowMemoryManager] = useState(false);
 
   // Ref to connect RoadmapSidebar "Ask AI" to UnifiedWorkspace
+
   const askAIRef = useRef<(() => void) | null>(null);
+
   const [completionNudge, setCompletionNudge] = useState<{
     message: string;
+
     confidence: string;
+
     score: number;
+
     substep_id: string;
   } | null>(null);
+
   const [pendingSubstepId, setPendingSubstepId] = useState<string | null>(null);
 
   // User ID for memory system (could be from auth later)
+
   const [userId] = useState(() => {
     const stored = localStorage.getItem("zero1_userId");
+
     if (stored) return stored;
+
     const newId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
     localStorage.setItem("zero1_userId", newId);
+
     return newId;
   });
 
   // Popup workspace state
+
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
 
   // Load project from URL parameter on mount
+
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+
     const projectId = urlParams.get("project");
 
     if (projectId && !project) {
       // Load the shared project
+
       const loadSharedProject = async () => {
         try {
           const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+
           const data = await response.json();
 
           if (response.ok && data.project) {
             const normalizedProject = normalizeProject(data.project);
+
             setProject(normalizedProject);
-            setGuidance("Γ£à Shared project loaded successfully!");
+
+            setGuidance("G�� Shared project loaded successfully!");
+
             setTimeout(() => setGuidance(""), 3000);
           } else {
             setGuidance(
-              "Γ¥î Failed to load shared project. It may not exist or be accessible.",
+              "G�� Failed to load shared project. It may not exist or be accessible.",
             );
           }
         } catch {
           // Failed to load shared project
-          setGuidance("≡ƒöî Network error loading shared project.");
+
+          setGuidance("=��� Network error loading shared project.");
         }
       };
 
@@ -2375,6 +3024,7 @@ function App() {
   }, []); // Run only once on mount
 
   // Popup workspace management
+
   const createPopupWorkspace = async () => {
     if (!project) return;
 
@@ -2383,21 +3033,29 @@ function App() {
     );
 
     const workspaceId = Date.now().toString();
+
     const title = `${currentPhase?.goal || "Current Phase"}`;
 
     // Create a thread for this workspace
+
     let threadId: string | undefined;
+
     try {
       const response = await fetch(`${API_URL}/api/threads`, {
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({
           project_id: project.id,
+
           title,
         }),
       });
+
       if (response.ok) {
         const data = await response.json();
+
         threadId = data.thread?.id;
       }
     } catch {
@@ -2406,25 +3064,35 @@ function App() {
 
     const newWorkspace: PopupWorkspace = {
       id: workspaceId,
+
       title,
+
       position: {
         x: Math.random() * 200 + 100, // Random positioning
+
         y: Math.random() * 200 + 100,
       },
+
       messages: [],
+
       isVisible: true,
+
       threadId, // Store thread ID for persistence
     };
 
     setPopupWorkspaces((prev) => {
       const updated = [...prev, newWorkspace];
+
       // Save to localStorage
+
       if (project?.id) {
         localStorage.setItem(
           `workspaces_${project.id}`,
+
           JSON.stringify(updated),
         );
       }
+
       return updated;
     });
   };
@@ -2435,6 +3103,7 @@ function App() {
 
   const updateWorkspaceMessages = (
     workspaceId: string,
+
     messages: ChatMessage[],
   ) => {
     setPopupWorkspaces((prev) =>
@@ -2443,17 +3112,21 @@ function App() {
   };
 
   // Refresh project from API (fetches completed_substeps from Supabase)
+
   const refreshProject = async () => {
     if (!project?.id) return;
 
     try {
       const response = await fetch(`${API_URL}/api/projects/${project.id}`);
+
       const data = await response.json();
 
       if (response.ok && data.project) {
         setProject((prev) => ({
           ...prev!,
+
           completed_substeps: data.project.completed_substeps || [],
+
           current_substep:
             data.project.current_substep || prev!.current_substep,
         }));
@@ -2467,12 +3140,15 @@ function App() {
     if (!goal.trim() || creatingProject) return;
 
     setCreatingProject(true);
-    setGuidance("≡ƒÜÇ Creating your project workspace...");
+
+    setGuidance("=��� Creating your project workspace...");
 
     try {
       const response = await fetch(`${API_URL}/api/projects`, {
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({ goal: goal.trim() }),
       });
 
@@ -2480,12 +3156,15 @@ function App() {
 
       if (response.ok && data.project) {
         // Set initial project state
+
         setProject(data.project);
+
         setGuidance("Creating your project workspace...");
 
         // Connect to SSE stream for real-time roadmap generation progress
+
         const projectId = data.project.id;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const eventSource = new (window as any).EventSource(
           `${API_URL}/api/projects/stream/${projectId}`,
         );
@@ -2496,21 +3175,26 @@ function App() {
 
         eventSource.addEventListener(
           "phase_progress",
-          // eslint-disable-next-line no-undef
+
           (e: Event) => {
             const messageEvent = e as { data: string };
+
             const eventData = JSON.parse(messageEvent.data);
+
             console.log("[SSE] phase_progress received:", eventData);
+
             setGuidance(
               `Generating Phase ${eventData.phase}/${eventData.total}: ${eventData.title}`,
             );
 
             // Incrementally add phase to project state
+
             if (eventData.phaseData) {
               setProject((prev) => {
                 if (!prev) return prev;
 
                 const existingPhases = prev.phases || [];
+
                 const phaseExists = existingPhases.some(
                   (p: ProjectPhase) =>
                     p.phase_number === eventData.phaseData.phase_number,
@@ -2519,17 +3203,23 @@ function App() {
                 if (!phaseExists) {
                   console.log(
                     "[SSE] Adding phase to state:",
+
                     eventData.phaseData.phase_number,
                   );
+
                   return {
                     ...prev,
+
                     phases: [...existingPhases, eventData.phaseData],
                   };
                 }
+
                 console.log(
                   "[SSE] Phase already exists, skipping:",
+
                   eventData.phaseData.phase_number,
                 );
+
                 return prev;
               });
             }
@@ -2538,39 +3228,52 @@ function App() {
 
         eventSource.addEventListener(
           "substep_expansion",
-          // eslint-disable-next-line no-undef
+
           (e: Event) => {
             const messageEvent = e as { data: string };
+
             const eventData = JSON.parse(messageEvent.data);
+
             console.log("[SSE] substep_expansion received:", eventData);
+
             setGuidance(
               `Expanding Phase ${eventData.phase} with ${eventData.substepCount} substeps...`,
             );
 
             // Update Phase 1 with substeps
+
             if (eventData.phaseData && eventData.substeps) {
               console.log(
                 "[SSE] Updating P1 with substeps:",
+
                 eventData.substeps.length,
               );
+
               setProject((prev) => {
                 if (!prev || !prev.phases) {
                   console.log("[SSE] No prev project or phases, skipping");
+
                   return prev;
                 }
 
                 const updated = {
                   ...prev,
+
                   current_phase: 1,
+
                   current_substep: 1,
+
                   phases: prev.phases.map((phase: ProjectPhase) =>
                     phase.phase_number === 1
                       ? {
                           ...eventData.phaseData,
+
                           substeps: eventData.substeps.map(
                             (substep: ProjectSubstep, index: number) => ({
                               ...substep,
+
                               step_number: index + 1,
+
                               completed: false,
                             }),
                           ),
@@ -2578,10 +3281,13 @@ function App() {
                       : phase,
                   ),
                 };
+
                 console.log(
                   "[SSE] Project state updated with P1 substeps. New state:",
+
                   updated,
                 );
+
                 return updated;
               });
             }
@@ -2590,123 +3296,174 @@ function App() {
 
         eventSource.addEventListener(
           "roadmap_complete",
-          // eslint-disable-next-line no-undef
-          async (_e: Event) => {
+
+          async () => {
             console.log("[SSE] roadmap_complete received");
+
             eventSource.close();
 
             // Check if we already have phases from SSE stream
+
             setProject((prev) => {
               if (prev && prev.phases && prev.phases.length > 0) {
                 console.log(
                   "[SSE] We already have phases from stream, just marking complete",
                 );
+
                 // We already have the roadmap from SSE updates, just mark as done
+
                 setGuidance("Roadmap complete! Ready to start building.");
+
                 setCreatingProject(false);
+
                 setTimeout(() => setGuidance(""), 4000);
+
                 return prev; // Keep existing state
               }
+
               return prev;
             });
 
             // Only fetch as fallback if we somehow don't have phases
+
             setProject((prev) => {
               if (!prev || !prev.phases || prev.phases.length === 0) {
                 console.log("[SSE] No phases yet, fetching as fallback");
+
                 // Fallback: fetch from API
+
                 fetch(`${API_URL}/api/projects/${projectId}`)
                   .then((pollResponse) => pollResponse.json())
+
                   .then((pollData) => {
                     const phases =
                       pollData.project?.phases ||
                       pollData.project?.roadmap?.phases;
+
                     if (phases && Array.isArray(phases) && phases.length > 0) {
                       const normalizedProject = normalizeProject(
                         pollData.project,
                       );
 
                       setProject(normalizedProject);
+
                       setGuidance("Roadmap complete! Ready to start building.");
+
                       setCreatingProject(false);
+
                       setTimeout(() => setGuidance(""), 4000);
                     }
                   })
+
                   .catch((error) => {
                     console.error("Error fetching completed project:", error);
+
                     setGuidance(
                       "Roadmap complete, but failed to load details.",
                     );
+
                     setCreatingProject(false);
                   });
               }
+
               return prev;
             });
           },
         );
 
-        // eslint-disable-next-line no-undef
         eventSource.addEventListener("roadmap_error", (e: Event) => {
           const messageEvent = e as { data: string };
+
           const data = JSON.parse(messageEvent.data);
+
           eventSource.close();
+
           setGuidance(`Error: ${data.message}`);
+
           setCreatingProject(false);
         });
 
         eventSource.onerror = () => {
           eventSource.close();
+
           setGuidance(
             "Connection lost. Roadmap may still be generating. Refresh to check status.",
           );
+
           setCreatingProject(false);
         };
       } else {
-        setGuidance(`Γ¥î Error: ${data?.error || "Failed to create project"}`);
+        setGuidance(`G�� Error: ${data?.error || "Failed to create project"}`);
+
         setCreatingProject(false);
       }
     } catch {
       // Create project error
+
       setGuidance(
-        "≡ƒöî Network error. Please check your connection and try again.",
+        "=��� Network error. Please check your connection and try again.",
       );
+
       setCreatingProject(false);
     }
   };
 
   const handleInspireMe = async (
     currentGoal: string,
+
     setThinking: (text: string) => void,
   ) => {
     if (!currentGoal.trim() || inspiring) return;
 
     setInspiring(true);
+
     setToolsUsed([]); // Clear previous tools
 
     try {
       const response = await fetch(`${API_URL}/api/chat/stream`, {
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({
           message: `A crystal-clear vision sentence is the foundation of any successful project. Here's how to refine your idea:
 
+
+
 **Original idea:** "${currentGoal}"
+
+
 
 **The Vision Formula:** "I want to build ______ so that ______"
 
+
+
 **Refinement principles:**
+
 1. **First blank**: Be specific and concrete (not "an app" but "a mobile app for busy parents")
+
 2. **Second blank**: Focus on user benefit, not features (not "has GPS" but "parents never lose track of pickup times")
+
 3. **Clarity test**: Could someone else explain your project after hearing this once?
 
+
+
 **Common mistakes to avoid:**
+
 - Too vague ("productivity app")
+
 - Feature-focused ("app with notifications")
+
 - Multiple audiences in one sentence
+
+
 
 **Your refined vision statement should use the exact format above and be specific enough that someone could understand your project's value in 5 seconds.**
 
+
+
 Return only the refined vision statement using the format "I want to build ______ so that ______."`,
+
           userId: "vision-generator",
         }),
       });
@@ -2716,39 +3473,52 @@ Return only the refined vision statement using the format "I want to build _____
       }
 
       const reader = response.body?.getReader();
+
       if (!reader) {
         throw new Error("No response body");
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const decoder = new (window as any).TextDecoder();
+
       let buffer = "";
+
       let accumulatedContent = "";
+
       const allTools: ToolActivity[] = [];
+
       let receivedDone = false;
+
       let currentEvent = ""; // persist across chunks
 
       while (true) {
         const { done, value } = await reader.read();
+
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
+
         const lines = buffer.split("\n");
+
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           if (line === "") {
             currentEvent = "";
+
             continue;
           }
+
           if (line.startsWith(":")) {
             // heartbeat
+
             continue;
           }
+
           if (line.startsWith("event:")) {
             currentEvent = line.slice(6).trim();
           } else if (line.startsWith("data:")) {
             const data = line.slice(5).trim();
+
             if (!data) continue;
 
             try {
@@ -2757,41 +3527,61 @@ Return only the refined vision statement using the format "I want to build _____
               switch (currentEvent) {
                 case "content":
                   accumulatedContent += parsed.delta;
+
                   setThinking(accumulatedContent);
+
                   break;
+
                 case "tool_call":
                   allTools.push({
                     type: "tool_start",
+
                     tool: parsed.tool,
+
                     args: parsed.args,
+
                     timestamp: new Date().toISOString(),
                   });
+
                   setToolsUsed([...allTools]);
+
                   break;
 
                 case "tool_result":
                   allTools.push({
                     type: "tool_end",
+
                     tool: parsed.tool,
+
                     result: parsed.result,
+
                     timestamp: new Date().toISOString(),
                   });
+
                   setToolsUsed([...allTools]);
+
                   break;
 
                 case "tool_error":
                   allTools.push({
                     type: "tool_error",
+
                     tool: parsed.tool,
+
                     error: parsed.error,
+
                     timestamp: new Date().toISOString(),
                   });
+
                   setToolsUsed([...allTools]);
+
                   break;
 
                 case "done":
                   // Inspire stream complete
+
                   receivedDone = true;
+
                   break;
 
                 case "error":
@@ -2802,18 +3592,22 @@ Return only the refined vision statement using the format "I want to build _____
             }
           }
         }
+
         if (receivedDone) {
           try {
             await reader.cancel();
           } catch {
             // Ignore cancel errors
           }
+
           break;
         }
       }
     } catch {
       // Inspire error occurred
-      setGuidance("≡ƒöî Network error. Please try again.");
+
+      setGuidance("=��� Network error. Please try again.");
+
       setTimeout(() => setGuidance(""), 3000);
     } finally {
       setInspiring(false);
@@ -2824,30 +3618,38 @@ Return only the refined vision statement using the format "I want to build _____
     if (!project) return;
 
     // Prevent duplicate requests
+
     if (pendingSubstepId === substepId) {
       console.log("[Frontend] Request already pending for:", substepId);
+
       return;
     }
 
     // Check if this substep is already completed
+
     const phaseIndex = project.phases?.findIndex(
       (p) => p.phase_number === getPhaseNumber(project.current_phase),
     );
 
     if (phaseIndex !== undefined && phaseIndex >= 0 && project.phases) {
       const phase = project.phases[phaseIndex];
+
       const substep = phase.substeps?.find((s) => s.substep_id === substepId);
 
       if (substep) {
         if (!substep.completed) {
           // Substep is not complete - call backend to complete it
+
           console.log(
             "[Frontend] Checkbox clicked, calling backend:",
+
             substepId,
           );
+
           handleSubstepComplete(substepId);
         } else {
           // Substep is already complete - optionally could allow unchecking
+
           console.log("[Frontend] Substep already completed:", substepId);
         }
       }
@@ -2858,33 +3660,47 @@ Return only the refined vision statement using the format "I want to build _____
     if (!project) return;
 
     // Set pending state to prevent duplicate requests
+
     setPendingSubstepId(substepId);
 
     try {
       // Parse substepId to get phase_id and substep_number
+
       // substepId format: "P1-1", "P2-3", or "P1-S1", "P2-S3", etc.
+
       const match = substepId.match(/^P(\d+)-S?(\d+)$/);
+
       if (!match) {
         // Invalid substep ID format
+
         setGuidance(
-          `Γ¥î Error: Invalid substep format (received: ${substepId})`,
+          `G�� Error: Invalid substep format (received: ${substepId})`,
         );
+
         setPendingSubstepId(null);
+
         return;
       }
 
       const phaseNumber = parseInt(match[1]);
+
       const substepNumber = parseInt(match[2]);
+
       const phase_id = `P${phaseNumber}`;
 
       // Use the updated complete-substep API endpoint
+
       const response = await fetch(
         `${API_URL}/api/projects/${project.id}/complete-substep`,
+
         {
           method: "POST",
+
           headers: { "Content-Type": "application/json" },
+
           body: JSON.stringify({
             phase_id,
+
             substep_number: substepNumber,
           }),
         },
@@ -2896,28 +3712,40 @@ Return only the refined vision statement using the format "I want to build _____
 
       if (response.ok && data.ok) {
         // Manual completion successful - use returned state instead of refetching
+
         console.log(
           `[Frontend] Substep completed: ${phase_id}/${substepNumber}`,
         );
+
         console.log("[Frontend] Updated state from server:", {
           current_phase: data.current_phase,
+
           current_substep: data.current_substep,
+
           completed_substeps: data.completed_substeps?.length,
         });
 
         // Update local project state with server response (no refetch needed!)
+
         setProject((prev) => {
           if (!prev) return prev;
+
           return {
             ...prev,
+
             current_phase: data.current_phase,
+
             current_substep: data.current_substep,
+
             completed_substeps: data.completed_substeps,
+
             // Mark the substep as completed in the phases array
+
             phases: prev.phases.map((phase) =>
               phase.phase_number === phaseNumber
                 ? {
                     ...phase,
+
                     substeps: phase.substeps.map((substep) =>
                       substep.step_number === substepNumber
                         ? { ...substep, completed: true }
@@ -2930,30 +3758,39 @@ Return only the refined vision statement using the format "I want to build _____
         });
 
         // Show brief success feedback
-        setGuidance("Γ£à Substep completed!");
+
+        setGuidance("G�� Substep completed!");
+
         setTimeout(() => setGuidance(""), 2000);
       } else {
         setGuidance(
-          `Γ¥î Error: ${data?.error || "Failed to complete substep"}`,
+          `G�� Error: ${data?.error || "Failed to complete substep"}`,
         );
+
         setTimeout(() => setGuidance(""), 4000);
       }
     } catch (err) {
       // Manual completion error
+
       console.error("[Frontend] Completion error:", err);
-      setGuidance("≡ƒöî Network error. Please try again.");
+
+      setGuidance("=��� Network error. Please try again.");
+
       setTimeout(() => setGuidance(""), 4000);
     } finally {
       // Clear pending state
+
       setPendingSubstepId(null);
     }
   };
 
   // Render demo mode if requested
+
   if (isDemoMode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
         <NavBar hasProject={false} />
+
         <StreamingChatDemo />
       </div>
     );
@@ -2965,6 +3802,7 @@ Return only the refined vision statement using the format "I want to build _____
 
       <div className="flex">
         {/* Collapsible Roadmap Sidebar */}
+
         <RoadmapSidebar
           project={project}
           onViewFullRoadmap={() => setShowMasterControl(true)}
@@ -2977,6 +3815,7 @@ Return only the refined vision statement using the format "I want to build _____
         />
 
         {/* Main Workspace - Full Width */}
+
         <main className="flex-1 min-h-[calc(100vh-64px)]">
           <UnifiedWorkspace
             project={project}
@@ -2998,15 +3837,16 @@ Return only the refined vision statement using the format "I want to build _____
       </div>
 
       {/* Guidance Toast */}
+
       {guidance && (
         <Toast
           message={guidance}
           duration={4000}
           onClose={() => setGuidance("")}
           type={
-            guidance.includes("Γ£à") || guidance.includes("≡ƒÄ»")
+            guidance.includes("G��") || guidance.includes("=�Ļ")
               ? "success"
-              : guidance.includes("Γ¥î") || guidance.includes("ΓÜá")
+              : guidance.includes("G��") || guidance.includes("G��")
                 ? "error"
                 : "info"
           }
@@ -3014,6 +3854,7 @@ Return only the refined vision statement using the format "I want to build _____
       )}
 
       {/* Popup Workspaces */}
+
       {popupWorkspaces.map((workspace) => (
         <PopupWorkspaceComponent
           key={workspace.id}
@@ -3025,6 +3866,7 @@ Return only the refined vision statement using the format "I want to build _____
       ))}
 
       {/* Master Control Modal */}
+
       {project && (
         <MasterControl
           project={project}
@@ -3035,12 +3877,14 @@ Return only the refined vision statement using the format "I want to build _____
       )}
 
       {/* File Manager Modal */}
+
       <FileManager
         isOpen={showFileManager}
         onClose={() => setShowFileManager(false)}
       />
 
       {/* User Memory Manager Modal */}
+
       <UserMemoryManager
         isOpen={showMemoryManager}
         userId={userId}

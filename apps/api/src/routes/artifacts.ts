@@ -296,6 +296,25 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
 
             const threadId = thread?.id;
             console.log(
+              'dY"? [Artifacts] Thread lookup: ' + (threadId || "not found"),
+            );
+            // Insert acknowledgment into thread to preserve narrative
+            if (threadId && acknowledgmentMessage) {
+              try {
+                await supabase.from("messages").insert({
+                  thread_id: threadId,
+                  role: "assistant",
+                  content: acknowledgmentMessage,
+                  created_at: new Date().toISOString(),
+                });
+              } catch (e) {
+                console.warn(
+                  "[Artifacts] Failed to insert acknowledgment message:",
+                  e,
+                );
+              }
+            }
+            console.log(
               `🔍 [Artifacts] Thread lookup: ${threadId || "not found"}`,
             );
 
@@ -443,6 +462,53 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               .eq("id", artifact.id);
 
             console.log("✅ [Artifacts] LLM analysis complete");
+
+            // Store artifact feedback in the conversation thread for a cumulative narrative
+            if (threadId) {
+              try {
+                const percent =
+                  (llmAnalysis as any)?.substep_completion_percentage ?? 0;
+                const missing = (llmAnalysis as any)?.missing_elements || [];
+                const next = (llmAnalysis as any)?.next_steps || [];
+                const detail = (llmAnalysis as any)?.detailed_analysis || "";
+
+                const feedbackMessage = [
+                  `🧪 Artifact Review — ${
+                    signals.artifact_type?.toUpperCase?.() || "ARTIFACT"
+                  } (${percent}% complete)`,
+                  detail ? `\n${detail}` : "",
+                  missing.length
+                    ? `\n• Still Missing:\n${missing
+                        .slice(0, 5)
+                        .map((m: string) => `- ${m}`)
+                        .join("\n")}`
+                    : "",
+                  next.length
+                    ? `\n• Next Steps:\n${next
+                        .slice(0, 5)
+                        .map((n: string) => `- ${n}`)
+                        .join("\n")}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+
+                await supabase.from("messages").insert({
+                  thread_id: threadId,
+                  role: "assistant",
+                  content: feedbackMessage,
+                  created_at: new Date().toISOString(),
+                });
+                console.log(
+                  "✅ [Artifacts] Artifact feedback stored in conversation thread",
+                );
+              } catch (e) {
+                console.warn(
+                  "[Artifacts] Failed to insert artifact feedback message:",
+                  e,
+                );
+              }
+            }
 
             // Broadcast completion via SSE
             const completionStreamResponse = artifactStreamResponses.get(

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
 
@@ -72,12 +72,13 @@ interface UnifiedWorkspaceProps {
   pendingSubstepId: string | null;
   onOpenNewWorkspace?: () => void;
 }
-
+ 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
   onCreateProject,
   onInspireMe,
   onSubstepComplete,
+   
   onToggleSubstep: _onToggleSubstep,
   toolsUsed,
   setToolsUsed,
@@ -87,6 +88,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   inspiring,
   onRefreshProject,
   onAskAIRef,
+   
   pendingSubstepId: _pendingSubstepId,
   onOpenNewWorkspace,
 }) => {
@@ -163,7 +165,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             const errorData = await response.json().catch(() => ({}));
             const retryAfter = errorData.retryAfter || "1 minute";
             throw new Error(
-              `â±ï¸ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+              `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
             );
           }
           throw new Error(`HTTP ${response.status}`);
@@ -260,7 +262,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             msg.id === aiMessageId
               ? {
                   ...msg,
-                  content: `âŒ Error: ${errorMessage}`,
+                  content: `❌ Error: ${errorMessage}`,
                 }
               : msg,
           ),
@@ -373,7 +375,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           const errorData = await response.json().catch(() => ({}));
           const retryAfter = errorData.retryAfter || "1 minute";
           throw new Error(
-            `â±ï¸ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
         throw new Error(`HTTP ${response.status}`);
@@ -459,6 +461,51 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   setToolsUsed([...allTools]);
                   break;
 
+                case "completion_nudge": {
+                  // Surface high-confidence prompt inline in the chat
+                  const nudgeText = parsed.message
+                    ? `?? ${parsed.message}`
+                    : "?? Ready to mark this substep complete?";
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: `${aiMessageId}-nudge-${Date.now()}`,
+                      type: "ai",
+                      content: nudgeText,
+                      timestamp: new Date(),
+                    },
+                  ]);
+                  break;
+                }
+
+                case "substep_completed": {
+                  // Auto-completion detected; refresh project and append briefing
+                  try {
+                    if (project && parsed?.briefing) {
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          id: `${aiMessageId}-briefing-${Date.now()}`,
+                          type: "ai",
+                          content: `? ${parsed.briefing}`,
+                          timestamp: new Date(),
+                        },
+                      ]);
+                    }
+                  } catch {
+                    // ignore parse/append errors for briefing augmentation
+                  }
+                  // Trigger parent handlers to sync roadmap
+                  onSubstepComplete(currentSubstep.substep_id);
+                  onRefreshProject();
+                  break;
+                }
+
+                case "completion_detected": {
+                  // Optional: add a lightweight signal in the chat
+                  break;
+                }
+
                 case "done":
                   receivedDone = true;
                   break;
@@ -529,7 +576,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               Ship your first version
             </h1>
             <p className="text-neutral-400 text-base max-w-md mx-auto">
-              AI guides you through 7 phasesâ€”from vision to live product
+              AI guides you through 7 phases—from vision to live product
             </p>
           </div>
 
@@ -917,7 +964,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         />
                       </svg>
                       <span>
-                        {completionNudge.confidence} confidence Â·{" "}
+                        {completionNudge.confidence} confidence ·{" "}
                         {completionNudge.score}% match
                       </span>
                     </div>

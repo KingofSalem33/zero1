@@ -146,6 +146,10 @@ export class CompletionService {
       return { action: "none" };
     }
 
+    if (!currentPhase) {
+      return { action: "none" };
+    }
+
     // Check for explicit completion requests ("I'm done", "mark complete", etc.)
     const hasExplicitRequest = recentMessages.some((msg) =>
       completionDetector.isExplicitCompletionRequest(msg.content),
@@ -175,26 +179,29 @@ export class CompletionService {
       recentMessages,
     );
 
+    // Auto-complete immediately on high-confidence recommendation
+    if (confidence.recommendation === "ready_to_complete") {
+      console.log(
+        'dYZ_ [CompletionService] High confidence "ready_to_complete" - auto-completing substep',
+      );
+
+      const result = await this.completeSubstep({
+        project_id: project.id,
+        phase_id: currentPhase.phase_id,
+        substep_number: currentSubstep.step_number,
+      });
+
+      return {
+        action: "completed",
+        result,
+      };
+    }
+
     console.log(
       `🔍 [CompletionService] Completion confidence: ${confidence.confidence} (${confidence.score}%)`,
     );
 
-    if (confidence.recommendation === "ready_to_complete") {
-      // High confidence - show nudge (don't auto-complete without explicit request)
-      console.log(
-        "📌 [CompletionService] High confidence - sending nudge to user",
-      );
-
-      return {
-        action: "nudge",
-        nudge: {
-          message: confidence.nudge_message || "Ready to mark this complete?",
-          confidence: confidence.confidence,
-          score: confidence.score,
-          substep_id: currentSubstep.substep_id,
-        },
-      };
-    } else if (confidence.recommendation === "suggest_complete") {
+    if (confidence.recommendation === "suggest_complete") {
       // Medium confidence - gentle nudge
       return {
         action: "nudge",
