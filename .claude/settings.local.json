@@ -42,7 +42,9 @@
       "Bash(npm run dev:web:*)",
       "Bash(dir \"C:\\Users\\coryh\\zero1\\apps\\web\\src\")",
       "Bash(dir:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(node:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

@@ -349,7 +349,7 @@ User question: ${userMessage}
           const retryAfter = errorData.retryAfter || "1 minute";
 
           throw new Error(
-            `GŦn+� Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `⚠️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
 
@@ -463,8 +463,8 @@ User question: ${userMessage}
                   // Surface high-confidence prompt inline in the popup workspace
 
                   const nudgeText = parsed.message
-                    ? `?? ${parsed.message}`
-                    : "?? Ready to mark this substep complete?";
+                    ? `✨ ${parsed.message}`
+                    : "✨ Ready to mark this substep complete?";
 
                   const nudgeMsg: ChatMessage = {
                     id: `${aiMessageId}-nudge-${Date.now()}`,
@@ -953,15 +953,15 @@ const MasterControl: React.FC<MasterControlProps> = ({
 
   const getPhaseStatus = (phase: ProjectPhase) => {
     if (phase.completed)
-      return { icon: "G��", label: "Complete", color: "text-green-400" };
+      return { icon: "✅", label: "Complete", color: "text-green-400" };
 
     if (phase.phase_number === getPhaseNumber(project.current_phase))
-      return { icon: "=���", label: "Active", color: "text-blue-400" };
+      return { icon: "🔄", label: "Active", color: "text-blue-400" };
 
     if (phase.locked)
-      return { icon: "=���", label: "Locked", color: "text-gray-500" };
+      return { icon: "🔒", label: "Locked", color: "text-gray-500" };
 
-    return { icon: "GŦ", label: "Ready", color: "text-yellow-400" };
+    return { icon: "⚡", label: "Ready", color: "text-yellow-400" };
   };
 
   // Helper function to check if substep is complete
@@ -1026,7 +1026,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 onClick={() => setShowExport(true)}
                 className="px-4 py-2 rounded-xl bg-green-600/60 hover:bg-green-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <span>=���</span>
+                <span>📤</span>
 
                 <span>Export</span>
               </button>
@@ -1035,7 +1035,7 @@ const MasterControl: React.FC<MasterControlProps> = ({
                 onClick={() => setShowCheckpoints(true)}
                 className="px-4 py-2 rounded-xl bg-purple-600/60 hover:bg-purple-500/60 flex items-center gap-2 transition-colors backdrop-blur-sm text-white font-medium"
               >
-                <span>=��+</span>
+                <span>💾</span>
 
                 <span>Checkpoints</span>
               </button>
@@ -1538,14 +1538,14 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                 onClick={onOpenFileManager}
                 className="text-sm text-purple-400 hover:text-purple-300 transition-colors font-medium"
               >
-                =��� Manage Files
+                📁 Manage Files
               </button>
 
               <button
                 onClick={onOpenMemoryManager}
                 className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
               >
-                =��� My Memory
+                🧠 My Memory
               </button>
             </div>
           )}
@@ -1789,10 +1789,10 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                             <span className="ml-auto text-xs text-gray-400">
                               Confidence:{" "}
                               {completionNudge.confidence === "high"
-                                ? "=��� High"
+                                ? "🔥 High"
                                 : completionNudge.confidence === "medium"
-                                  ? "=��� Medium"
-                                  : "=��� Low"}
+                                  ? "⚡ Medium"
+                                  : "💡 Low"}
                             </span>
                           </div>
                         </div>
@@ -1948,7 +1948,7 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                     </p>
 
                     <div className="mt-3 text-xs text-yellow-400/80 font-medium">
-                      =��� Complete current phase to unlock
+                      🔒 Complete current phase to unlock
                     </div>
                   </div>
                 )}
@@ -2253,7 +2253,7 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
           const retryAfter = errorData.retryAfter || "1 minute";
 
           throw new Error(
-            `GŦn+� Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+            `⚠️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
           );
         }
 
@@ -3015,7 +3015,7 @@ function App() {
         } catch {
           // Failed to load shared project
 
-          setGuidance("=��� Network error loading shared project.");
+          setGuidance("⚠️ Network error loading shared project.");
         }
       };
 
@@ -3141,7 +3141,7 @@ function App() {
 
     setCreatingProject(true);
 
-    setGuidance("=��� Creating your project workspace...");
+    setGuidance("✨ Creating your project workspace...");
 
     try {
       const response = await fetch(`${API_URL}/api/projects`, {
@@ -3401,7 +3401,7 @@ function App() {
       // Create project error
 
       setGuidance(
-        "=��� Network error. Please check your connection and try again.",
+        "⚠️ Network error. Please check your connection and try again.",
       );
 
       setCreatingProject(false);
@@ -3606,7 +3606,7 @@ Return only the refined vision statement using the format "I want to build _____
     } catch {
       // Inspire error occurred
 
-      setGuidance("=��� Network error. Please try again.");
+      setGuidance("⚠️ Network error. Please try again.");
 
       setTimeout(() => setGuidance(""), 3000);
     } finally {
@@ -3774,7 +3774,7 @@ Return only the refined vision statement using the format "I want to build _____
 
       console.error("[Frontend] Completion error:", err);
 
-      setGuidance("=��� Network error. Please try again.");
+      setGuidance("⚠️ Network error. Please try again.");
 
       setTimeout(() => setGuidance(""), 4000);
     } finally {

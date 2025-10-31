@@ -34,27 +34,27 @@ const PhaseButton: React.FC<PhaseButtonProps> = ({
   const getPhaseStatus = () => {
     if (phase.completed) {
       return {
-        icon: "✅",
+        icon: "✓",
         color: "bg-green-600/20 border-green-500/50 text-green-400",
         glow: "shadow-green-500/20",
       };
     }
     if (isActive) {
       return {
-        icon: "🔄",
+        icon: "◉",
         color: "bg-blue-600/20 border-blue-500/50 text-blue-400",
         glow: "shadow-blue-500/30 shadow-lg",
       };
     }
     if (phase.locked) {
       return {
-        icon: "🔒",
+        icon: "●",
         color: "bg-gray-600/20 border-gray-500/50 text-gray-500",
         glow: "",
       };
     }
     return {
-      icon: "⏳",
+      icon: "○",
       color: "bg-yellow-600/20 border-yellow-500/50 text-yellow-400",
       glow: "",
     };

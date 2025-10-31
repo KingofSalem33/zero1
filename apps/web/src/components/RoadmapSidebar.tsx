@@ -520,10 +520,10 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
           <div className="flex-1 flex flex-col items-center space-y-2 overflow-y-auto py-2">
             {project.phases.map((phase) => {
               const isActive = phase.phase_number === currentPhaseNumber;
-              let statusIcon = "âšª";
-              if (phase.completed) statusIcon = "âœ…";
-              else if (isActive) statusIcon = "ðŸ”„";
-              else if (phase.locked) statusIcon = "ðŸ”’";
+              let statusIcon = "○";
+              if (phase.completed) statusIcon = "✓";
+              else if (isActive) statusIcon = "◉";
+              else if (phase.locked) statusIcon = "●";
 
               return (
                 <button
@@ -549,7 +549,7 @@ const RoadmapSidebar: React.FC<RoadmapSidebarProps> = ({
               className="w-10 h-10 flex items-center justify-center text-xl hover:bg-gray-800/50 rounded-lg transition-colors"
               title="View Full Roadmap"
             >
-              ðŸ“‹
+              📋
             </button>
             <button
               onClick={onOpenFileManager}

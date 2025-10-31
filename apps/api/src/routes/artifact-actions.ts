@@ -284,7 +284,7 @@ router.get("/timeline/:projectId", async (req, res) => {
             bullets.push(`New issues: ${diff.new_issues.join(", ")}`);
           if (!bullets.length && diff.changes_detected.length)
             bullets.push(diff.changes_detected.join("; "));
-          changed_summary = bullets.join(" Â· ");
+          changed_summary = bullets.join(" · ");
         } else {
           changed_summary = "Initial upload";
         }

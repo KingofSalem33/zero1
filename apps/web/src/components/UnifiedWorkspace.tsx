@@ -72,13 +72,13 @@ interface UnifiedWorkspaceProps {
   pendingSubstepId: string | null;
   onOpenNewWorkspace?: () => void;
 }
- 
+
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
   onCreateProject,
   onInspireMe,
   onSubstepComplete,
-   
+
   onToggleSubstep: _onToggleSubstep,
   toolsUsed,
   setToolsUsed,
@@ -88,7 +88,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   inspiring,
   onRefreshProject,
   onAskAIRef,
-   
+
   pendingSubstepId: _pendingSubstepId,
   onOpenNewWorkspace,
 }) => {
@@ -464,8 +464,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 case "completion_nudge": {
                   // Surface high-confidence prompt inline in the chat
                   const nudgeText = parsed.message
-                    ? `?? ${parsed.message}`
-                    : "?? Ready to mark this substep complete?";
+                    ? `✨ ${parsed.message}`
+                    : "✨ Ready to mark this substep complete?";
                   setMessages((prev) => [
                     ...prev,
                     {

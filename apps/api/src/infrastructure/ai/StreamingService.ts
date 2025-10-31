@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Streaming Service
  *
  * Handles Server-Sent Events (SSE) for real-time AI responses.
@@ -144,7 +144,7 @@ export class StreamingService {
    */
   sendCompletionNudge(res: Response, nudge: CompletionNudge): void {
     console.log(
-      `ðŸ“Œ [StreamingService] Sending completion nudge: ${nudge.message}`,
+      `📌 [StreamingService] Sending completion nudge: ${nudge.message}`,
     );
     this.sendEvent(res, "completion_nudge", nudge);
   }
@@ -162,7 +162,7 @@ export class StreamingService {
    */
   sendSubstepCompleted(res: Response, completion: SubstepCompletion): void {
     console.log(
-      `âœ… [StreamingService] Sending substep completed: ${completion.phase_id}/${completion.substep_number}`,
+      `✅ [StreamingService] Sending substep completed: ${completion.phase_id}/${completion.substep_number}`,
     );
     this.sendEvent(res, "substep_completed", completion);
   }
@@ -178,7 +178,7 @@ export class StreamingService {
     detection: { confidence: string; score: number; message: string },
   ): void {
     console.log(
-      `ðŸ” [StreamingService] Sending completion detected: ${detection.confidence} (${detection.score}%)`,
+      `🔍 [StreamingService] Sending completion detected: ${detection.confidence} (${detection.score}%)`,
     );
     this.sendEvent(res, "completion_detected", detection);
   }
@@ -214,7 +214,7 @@ export class StreamingService {
     data: { projectId: string; goal: string },
   ): void {
     console.log(
-      `ðŸš€ [StreamingService] Starting roadmap generation for project: ${data.projectId}`,
+      `🚀 [StreamingService] Starting roadmap generation for project: ${data.projectId}`,
     );
     this.sendEvent(res, "roadmap_start", data);
   }
@@ -227,7 +227,7 @@ export class StreamingService {
     data: { phase: number; total: number; title: string; phaseData?: any },
   ): void {
     console.log(
-      `ðŸ“‹ [StreamingService] Phase ${data.phase}/${data.total}: ${data.title}`,
+      `📋 [StreamingService] Phase ${data.phase}/${data.total}: ${data.title}`,
     );
     this.sendEvent(res, "phase_progress", data);
   }
@@ -245,7 +245,7 @@ export class StreamingService {
     },
   ): void {
     console.log(
-      `ðŸ” [StreamingService] Expanding Phase ${data.phase} with ${data.substepCount} substeps`,
+      `🔍 [StreamingService] Expanding Phase ${data.phase} with ${data.substepCount} substeps`,
     );
     this.sendEvent(res, "substep_expansion", data);
   }
@@ -258,7 +258,7 @@ export class StreamingService {
     data: { projectId: string; phaseCount: number },
   ): void {
     console.log(
-      `âœ… [StreamingService] Roadmap complete for project: ${data.projectId} (${data.phaseCount} phases)`,
+      `✅ [StreamingService] Roadmap complete for project: ${data.projectId} (${data.phaseCount} phases)`,
     );
     this.sendEvent(res, "roadmap_complete", data);
   }
@@ -268,7 +268,7 @@ export class StreamingService {
    */
   sendRoadmapError(res: Response, error: { message: string }): void {
     console.log(
-      `âŒ [StreamingService] Roadmap generation error: ${error.message}`,
+      `❌ [StreamingService] Roadmap generation error: ${error.message}`,
     );
     this.sendEvent(res, "roadmap_error", error);
   }

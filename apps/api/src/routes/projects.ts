@@ -1,7 +1,8 @@
 import { Router } from "express";
 import type { Response } from "express";
-import { StepOrchestrator } from "../engine/orchestrator";
 import { supabase, withRetry, DatabaseError } from "../db";
+import { StepOrchestrator } from "../engine/orchestrator";
+import { services } from "../domain/projects/services/ServiceFactory";
 import { aiLimiter } from "../middleware/rateLimit";
 import { streamingService } from "../infrastructure/ai/StreamingService";
 
@@ -79,7 +80,7 @@ router.post("/", async (req, res) => {
           }
         } else {
           console.warn(
-            `[Projects] ⚠️ SSE stream NOT connected for project ${supabaseProject.id} - events will not be sent!`,
+            `[Projects] Warning: SSE stream NOT connected for project ${supabaseProject.id} - events will not be sent!`,
           );
         }
       })
@@ -229,107 +230,33 @@ router.post("/:projectId/complete-substep", async (req, res) => {
       });
     }
 
-    // Get substep details for briefing
-    // Check both project.roadmap.phases and project.phases for compatibility
-    const phases =
-      project.roadmap?.phases && project.roadmap.phases.length > 0
-        ? project.roadmap.phases
-        : project.phases || [];
-
-    const completedPhase = phases.find((p: any) => p.phase_id === phase_id);
-    const completedSubstep = completedPhase?.substeps?.find(
-      (s: any) => s.step_number === substep_number,
+    // Delegate to CompletionService for consistent advancement + briefing
+    console.log(
+      "[Projects] Manual completion via service: " +
+        phase_id +
+        "/" +
+        substep_number,
     );
-
-    if (!completedSubstep) {
-      console.error(
-        `[Projects] Substep not found: ${phase_id}/${substep_number}`,
-      );
-      console.error(
-        `[Projects] Available phases:`,
-        phases.map((p: any) => p.phase_id),
-      );
-      return res.status(404).json({
-        error: "Substep not found",
-      });
-    }
-
-    // Simple manual completion: mark complete, increment substep, save
-    console.log(`[Projects] Manual completion: ${phase_id}/${substep_number}`);
-
-    // Mark substep as complete in roadmap
-    completedSubstep.completed = true;
-
-    // Add to completed_substeps array
-    const completedSubstepsArray = project.completed_substeps || [];
-    const phaseNum = parseInt(phase_id.replace("P", ""));
-    const completionRecord = {
-      phase_number: phaseNum,
+    const result = await services.completion.completeSubstep({
+      project_id: projectId,
+      phase_id,
       substep_number,
-      completed_at: new Date().toISOString(),
-    };
-
-    // Avoid duplicates
-    if (
-      !completedSubstepsArray.some(
-        (cs: any) =>
-          cs.phase_number === phaseNum && cs.substep_number === substep_number,
-      )
-    ) {
-      completedSubstepsArray.push(completionRecord);
-    }
-
-    // Advance to next substep
-    const nextSubstepNumber = substep_number + 1;
-    const nextSubstep = completedPhase?.substeps?.find(
-      (s: any) => s.step_number === nextSubstepNumber,
-    );
-
-    if (nextSubstep) {
-      project.current_substep = nextSubstepNumber;
-      console.log(`[Projects] Advanced to substep ${nextSubstepNumber}`);
-    } else {
-      console.log(`[Projects] No more substeps in ${phase_id}`);
-    }
-
-    // Update in-memory project object
-    project.completed_substeps = completedSubstepsArray;
-
-    // Save to Supabase
-    await withRetry(async () => {
-      const result = await supabase
-        .from("projects")
-        .update({
-          current_substep: project.current_substep,
-          roadmap: { phases: project.phases || project.roadmap?.phases },
-          completed_substeps: completedSubstepsArray,
-        })
-        .eq("id", projectId)
-        .select()
-        .single();
-      return result;
     });
 
-    // Clear the cache so the next GET request fetches fresh data
+    // Refresh project state
     orchestrator.clearProjectCache(projectId);
-    console.log("[Projects] Cache cleared for project:", projectId);
+    const updated = await orchestrator.getProjectAsync(projectId);
 
-    console.log(
-      `✅ [Projects] Completion saved: ${phase_id}/${substep_number} → current: ${project.current_phase}/${project.current_substep}`,
-    );
-
-    // Return updated state so client doesn't need to refetch
     return res.json({
       ok: true,
       completed: {
         phase: phase_id,
         substep: substep_number,
-        label: completedSubstep.label,
       },
-      // Include updated state for tighter feedback loop
-      current_phase: project.current_phase,
-      current_substep: project.current_substep,
-      completed_substeps: completedSubstepsArray,
+      current_phase: updated?.current_phase,
+      current_substep: updated?.current_substep,
+      completed_substeps: updated?.completed_substeps || [],
+      briefing: result.briefing,
     });
   } catch (error) {
     console.error("Error completing substep:", error);
@@ -482,14 +409,14 @@ router.post("/:projectId/execute-step/stream", aiLimiter, async (req, res) => {
     const { master_prompt, user_message } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
-      console.error("❌ [API] Invalid project ID:", projectId);
+      console.error("âŒ [API] Invalid project ID:", projectId);
       return res.status(400).json({
         error: "Valid project ID is required",
       });
     }
 
     if (!master_prompt || typeof master_prompt !== "string") {
-      console.error("❌ [API] Missing master prompt");
+      console.error("âŒ [API] Missing master prompt");
       return res.status(400).json({
         error: "Master prompt is required",
       });
@@ -497,7 +424,7 @@ router.post("/:projectId/execute-step/stream", aiLimiter, async (req, res) => {
 
     const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
-      console.error("❌ [API] Project not found:", projectId);
+      console.error("âŒ [API] Project not found:", projectId);
       return res.status(404).json({
         error: "Project not found",
       });
@@ -516,11 +443,11 @@ router.post("/:projectId/execute-step/stream", aiLimiter, async (req, res) => {
       res,
     });
 
-    console.log("✅ [API] Streaming step executed successfully");
+    console.log("âœ… [API] Streaming step executed successfully");
     // Response already sent via streaming
     return;
   } catch (error) {
-    console.error("❌ [API] Error executing streaming step:", error);
+    console.error("âŒ [API] Error executing streaming step:", error);
     res.write(`event: error\n`);
     res.write(
       `data: ${JSON.stringify({ error: "Failed to execute step" })}\n\n`,
@@ -542,14 +469,14 @@ router.post("/:projectId/execute-step", aiLimiter, async (req, res) => {
     const { master_prompt, user_message } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
-      console.error("❌ [API] Invalid project ID:", projectId);
+      console.error("âŒ [API] Invalid project ID:", projectId);
       return res.status(400).json({
         error: "Valid project ID is required",
       });
     }
 
     if (!master_prompt || typeof master_prompt !== "string") {
-      console.error("❌ [API] Missing master prompt");
+      console.error("âŒ [API] Missing master prompt");
       return res.status(400).json({
         error: "Master prompt is required",
       });
@@ -557,7 +484,7 @@ router.post("/:projectId/execute-step", aiLimiter, async (req, res) => {
 
     const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
-      console.error("❌ [API] Project not found:", projectId);
+      console.error("âŒ [API] Project not found:", projectId);
       return res.status(404).json({
         error: "Project not found",
       });
@@ -569,10 +496,10 @@ router.post("/:projectId/execute-step", aiLimiter, async (req, res) => {
       user_message,
     });
 
-    console.log("✅ [API] Step executed successfully");
+    console.log("âœ… [API] Step executed successfully");
     return res.json(result);
   } catch (error) {
-    console.error("❌ [API] Error executing step:", error);
+    console.error("âŒ [API] Error executing step:", error);
 
     if (error instanceof Error && error.message === "Project not found") {
       return res.status(404).json({
@@ -599,20 +526,20 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
       "🎯 [API] Phase expansion request for project:",
       req.params.projectId,
     );
-    console.log("📝 [API] Input length:", req.body.thinking_input?.length || 0);
+    console.log("🔍 [API] Input length:", req.body.thinking_input?.length || 0);
 
     const { projectId } = req.params;
     const { thinking_input } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
-      console.error("❌ [API] Invalid project ID:", projectId);
+      console.error("âŒ [API] Invalid project ID:", projectId);
       return res.status(400).json({
         error: "Valid project ID is required",
       });
     }
 
     if (!thinking_input || typeof thinking_input !== "string") {
-      console.error("❌ [API] Missing thinking input");
+      console.error("âŒ [API] Missing thinking input");
       return res.status(400).json({
         error: "Thinking input is required",
       });
@@ -620,7 +547,7 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
 
     const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
-      console.error("❌ [API] Project not found:", projectId);
+      console.error("âŒ [API] Project not found:", projectId);
       return res.status(404).json({
         error: "Project not found",
       });
@@ -635,7 +562,7 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
 
     if (detectedPhaseId) {
       console.log(
-        "✅ [API] Master prompt detected, expanding phase:",
+        "âœ… [API] Master prompt detected, expanding phase:",
         detectedPhaseId,
       );
       const result = await orchestrator.expandPhase({
@@ -650,7 +577,7 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
         ...result,
       });
     } else {
-      console.log("❌ [API] No master prompt detected");
+      console.log("âŒ [API] No master prompt detected");
       return res.json({
         ok: true,
         phase_expanded: false,
@@ -659,7 +586,7 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("❌ [API] Error expanding phase:", error);
+    console.error("âŒ [API] Error expanding phase:", error);
     return res.status(500).json({
       error: "Failed to expand phase",
     });
@@ -724,7 +651,7 @@ router.get("/:projectId/checkpoints", async (req, res) => {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("❌ [Projects] Checkpoint fetch error:", error);
+      console.error("âŒ [Projects] Checkpoint fetch error:", error);
       return res.status(500).json({
         error: {
           message: "Failed to fetch checkpoints",
@@ -778,7 +705,7 @@ router.get("/:projectId/artifacts", async (req, res) => {
       .order("uploaded_at", { ascending: false });
 
     if (error) {
-      console.error("❌ [Projects] Artifact fetch error:", error);
+      console.error("âŒ [Projects] Artifact fetch error:", error);
       return res.status(500).json({
         error: {
           message: "Failed to fetch artifacts",
