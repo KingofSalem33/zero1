@@ -126,6 +126,8 @@ export const substepGenerationJsonSchema = {
             step_number: { type: "number" },
             label: { type: "string" },
             prompt_to_send: { type: "string" },
+            rationale: { type: "string" },
+            why_next_step_matters: { type: "string" },
           },
           required: ["substep_id", "step_number", "label", "prompt_to_send"],
           additionalProperties: false,

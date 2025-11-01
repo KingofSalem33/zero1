@@ -6,6 +6,8 @@ export interface ProjectSubstep {
   label: string; // "1A: Check Current Setup"
   prompt_to_send: string; // Exact prompt user should send to AI
   commands?: string; // CLI commands or code snippets mentioned in prompt
+  rationale?: string; // Short reason for this step
+  why_next_step_matters?: string; // Motivational framing for what's next
   completed: boolean;
   created_at: string;
 }

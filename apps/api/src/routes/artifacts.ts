@@ -752,7 +752,7 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 );
 
                 // Use ProjectStateManager to atomically update state
-                const newState =
+                const { state: newState, summary } =
                   await orchestrator.stateManager.applyProjectUpdate(
                     projectId,
                     {
@@ -765,7 +765,7 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                   );
 
                 console.log(
-                  `✅ [Artifacts] State updated: ${newState.current_phase}/${newState.current_substep}`,
+                  `ARTIFACTS [State] ${newState.current_phase}/${newState.current_substep} | ${summary}`,
                 );
 
                 // Get next substep details for briefing

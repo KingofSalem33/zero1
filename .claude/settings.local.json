@@ -44,7 +44,9 @@
       "Bash(dir:*)",
       "Bash(npm install:*)",
       "Bash(node:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(ANALYSIS_STATUS.txt)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

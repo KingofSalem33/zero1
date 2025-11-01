@@ -91,8 +91,16 @@ export class StepOrchestrator {
   /**
    * Expand a phase with substeps
    */
-  async expandPhaseWithSubsteps(phase: any, goal: string): Promise<any> {
-    return services.substepGeneration.expandPhaseWithSubsteps(phase, goal);
+  async expandPhaseWithSubsteps(
+    phase: any,
+    goal: string,
+    stateSnapshot?: unknown,
+  ): Promise<any> {
+    return services.substepGeneration.expandPhaseWithSubsteps(
+      phase,
+      goal,
+      stateSnapshot,
+    );
   }
 
   // ========================================

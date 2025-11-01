@@ -75,7 +75,7 @@ export class ProjectStateManager {
   async applyProjectUpdate(
     projectId: string,
     update: ProjectStateUpdate,
-  ): Promise<NormalizedProjectState> {
+  ): Promise<{ state: NormalizedProjectState; summary: string }> {
     console.log(
       `[ProjectStateManager] Applying update to project ${projectId}:`,
       JSON.stringify(update, null, 2),
@@ -105,11 +105,29 @@ export class ProjectStateManager {
     const changes = this.detectChanges(previousState, newState, update);
     await this.emitStateChange(projectId, previousState, newState, changes);
 
+    // 6. Build a compact summary string for downstream prompts
+    const summaryParts: string[] = [];
+    if (changes.substepCompleted) {
+      summaryParts.push(
+        `Completed ${changes.substepCompleted.phase}.${changes.substepCompleted.substep}`,
+      );
+    }
+    if (changes.phaseCompleted) {
+      summaryParts.push(`Phase ${changes.phaseCompleted} completed`);
+    }
+    if (changes.phaseUnlocked) {
+      summaryParts.push(`Unlocked ${changes.phaseUnlocked}`);
+    }
+    summaryParts.push(
+      `Now at ${String(newState.current_phase)}.${newState.current_substep}`,
+    );
+    const summary = summaryParts.join(" | ");
+
     console.log(
       `[ProjectStateManager] Update complete. New state: ${newState.current_phase}/${newState.current_substep}`,
     );
 
-    return newState;
+    return { state: newState, summary };
   }
 
   /**
@@ -177,6 +195,21 @@ export class ProjectStateManager {
 
     // Auto-unlock next phase if current phase complete
     this.checkPhaseUnlock(normalized);
+
+    // Auto-advance into next phase's first substep when current phase completes
+    // Determine if the (pre-advance) current phase is completed
+    const normalizeToNumber = (val: string | number): number =>
+      typeof val === "string" ? parseInt(val.replace("P", "")) : val;
+    const currentPhaseNum = normalizeToNumber(normalized.current_phase);
+    const currentPhaseObj = normalized.roadmap.phases.find((p) => {
+      const phaseNum = normalizeToNumber(p.phase_number);
+      return (
+        p.phase_id === normalized.current_phase || phaseNum === currentPhaseNum
+      );
+    });
+    if (currentPhaseObj?.completed) {
+      this.advanceToNextPhase(normalized);
+    }
 
     // Validate current_phase and current_substep are valid
     this.validateCurrentPointer(normalized);
@@ -383,9 +416,14 @@ export class ProjectStateManager {
    * If yes, mark phase as complete
    */
   private checkPhaseCompletion(state: NormalizedProjectState): void {
-    const currentPhase = state.roadmap.phases.find(
-      (p) => p.phase_id === state.current_phase,
-    );
+    const normalizeToNumber = (val: string | number): number =>
+      typeof val === "string" ? parseInt(val.replace("P", "")) : val;
+
+    const currentPhaseNum = normalizeToNumber(state.current_phase);
+    const currentPhase = state.roadmap.phases.find((p) => {
+      const phaseNum = normalizeToNumber(p.phase_number);
+      return p.phase_id === state.current_phase || phaseNum === currentPhaseNum;
+    });
 
     if (!currentPhase || !currentPhase.substeps) return;
 
@@ -404,17 +442,18 @@ export class ProjectStateManager {
    * If current phase is complete, unlock next phase
    */
   private checkPhaseUnlock(state: NormalizedProjectState): void {
-    const currentPhase = state.roadmap.phases.find(
-      (p) => p.phase_id === state.current_phase,
-    );
+    const normalizeToNumber = (val: string | number): number =>
+      typeof val === "string" ? parseInt(val.replace("P", "")) : val;
+
+    const currentPhaseNum = normalizeToNumber(state.current_phase);
+    const currentPhase = state.roadmap.phases.find((p) => {
+      const phaseNum = normalizeToNumber(p.phase_number);
+      return p.phase_id === state.current_phase || phaseNum === currentPhaseNum;
+    });
 
     if (!currentPhase || !currentPhase.completed) return;
 
     // Unlock next phase
-    const currentPhaseNum =
-      typeof state.current_phase === "string"
-        ? parseInt(state.current_phase.replace("P", ""))
-        : state.current_phase;
     const nextPhaseId = `P${currentPhaseNum + 1}`;
     const nextPhase = state.roadmap.phases.find(
       (p) => p.phase_id === nextPhaseId,
@@ -555,9 +594,15 @@ export class ProjectStateManager {
       changes.substepCompleted = update.completeSubstep;
     }
 
-    const prevPhase = newState.roadmap.phases.find(
-      (p) => p.phase_id === previousState.current_phase,
-    );
+    const normalizeToNumber = (val: string | number): number =>
+      typeof val === "string" ? parseInt(val.replace("P", "")) : val;
+    const prevPhaseNum = normalizeToNumber(previousState.current_phase);
+    const prevPhase = newState.roadmap.phases.find((p) => {
+      const phaseNum = normalizeToNumber(p.phase_number);
+      return (
+        p.phase_id === previousState.current_phase || phaseNum === prevPhaseNum
+      );
+    });
     if (prevPhase?.completed) {
       changes.phaseCompleted = previousState.current_phase;
     }

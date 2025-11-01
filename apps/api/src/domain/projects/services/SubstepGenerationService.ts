@@ -17,6 +17,8 @@ export interface Substep {
   label: string;
   prompt_to_send: string;
   commands?: string;
+  rationale?: string;
+  why_next_step_matters?: string;
   completed: boolean;
   created_at: string;
 }
@@ -46,6 +48,7 @@ export class SubstepGenerationService {
   async expandPhaseWithSubsteps(
     phase: any,
     projectGoal: string,
+    stateSnapshot?: unknown,
   ): Promise<ExpandedPhase> {
     console.log(`🔍 [SubstepGenerationService] Expanding phase: ${phase.goal}`);
 
@@ -68,6 +71,23 @@ export class SubstepGenerationService {
         phase.phase_id,
       );
 
+      // Format optional state snapshot for inclusion in prompt
+      const formattedSnapshot = (() => {
+        if (stateSnapshot == null) return "No additional context provided.";
+        try {
+          const text =
+            typeof stateSnapshot === "string"
+              ? stateSnapshot
+              : JSON.stringify(stateSnapshot, null, 2);
+          // Truncate overly long context to avoid prompt bloat
+          return text.length > 4000
+            ? text.slice(0, 4000) + "\n…(truncated)"
+            : text;
+        } catch {
+          return "[Unserializable snapshot provided]";
+        }
+      })();
+
       const systemPrompt = `You are a Master Builder AI designing substeps for a Zero-to-One project builder.
 
 PHASE: ${phase.phase_id} - ${phase.goal}
@@ -78,6 +98,9 @@ PHASE PURPOSE: ${phase.why_it_matters}
 You MUST respect the phase boundaries. Each phase has a specific purpose in the Zero-to-One journey:
 
 ${phaseConstraints}
+
+dY"x CURRENT PROJECT CONTEXT (STATE SNAPSHOT):
+${formattedSnapshot}
 
 Your substeps MUST ONLY address activities within this phase's scope.
 
@@ -104,7 +127,8 @@ RULES:
 2. Each prompt is written TO the AI, not AS the AI
 3. Focus on generating copy-paste-ready deliverables
 4. Always end with upload/review instruction
-5. Keep substeps small and actionable`;
+5. Keep substeps small and actionable
+6. When possible, include a short 'rationale' and 'why_next_step_matters' for each substep`;
 
       const result = await client.responses.create({
         model: ENV.OPENAI_MODEL_NAME,
@@ -149,15 +173,33 @@ RULES:
         `✅ [SubstepGenerationService] Generated ${parsed.substeps.length} substeps`,
       );
 
-      return {
-        ...phase,
-        master_prompt: masterPrompt,
-        substeps: parsed.substeps.map((substep: any, index: number) => ({
+      const mapped: Substep[] = parsed.substeps.map(
+        (substep: any, index: number) => ({
           ...substep,
           step_number: index + 1,
           completed: false,
           created_at: new Date().toISOString(),
-        })),
+        }),
+      );
+
+      const labels = mapped.map((s) => s.label || `Substep ${s.step_number}`);
+      const enriched = mapped.map((s, i) => {
+        const rationale = s.rationale?.trim()
+          ? s.rationale.trim()
+          : `This step advances the phase goal: ${phase.goal}.`;
+        const nextLabel = labels[i + 1];
+        const whyNext = s.why_next_step_matters?.trim()
+          ? s.why_next_step_matters.trim()
+          : nextLabel
+            ? `Prepares you for “${nextLabel}” by ensuring the right groundwork is in place.`
+            : `Completes this phase’s critical path and aligns with the acceptance criteria.`;
+        return { ...s, rationale, why_next_step_matters: whyNext };
+      });
+
+      return {
+        ...phase,
+        master_prompt: masterPrompt,
+        substeps: enriched,
       };
     } catch (error) {
       console.error(
@@ -250,6 +292,9 @@ RULES:
           label: "Set up version control",
           prompt_to_send:
             "You are a senior DevOps engineer. Guide the user to initialize a Git repository and make their first commit. Provide step-by-step commands.",
+          rationale: "Establishes a safe, reversible history for all work.",
+          why_next_step_matters:
+            "Prepares your environment setup to be tracked and reproducible.",
           completed: false,
           created_at: new Date().toISOString(),
         },
@@ -259,6 +304,10 @@ RULES:
           label: "Configure development environment",
           prompt_to_send:
             "You are a senior developer. Help the user set up their development tools and dependencies. Provide installation commands and verification steps.",
+          rationale:
+            "Ensures tools and dependencies are consistent across machines.",
+          why_next_step_matters:
+            "Sets up a smooth path to deploy a working Hello World.",
           completed: false,
           created_at: new Date().toISOString(),
         },
@@ -268,6 +317,10 @@ RULES:
           label: "Deploy Hello World",
           prompt_to_send:
             "You are a deployment specialist. Guide the user to deploy a minimal 'Hello World' to verify the full pipeline works end-to-end.",
+          rationale:
+            "Validates end-to-end flow early to reduce integration risk.",
+          why_next_step_matters:
+            "Confirms the baseline so future changes focus on product value.",
           completed: false,
           created_at: new Date().toISOString(),
         },
@@ -297,6 +350,9 @@ RULES:
           label: "Test with real data",
           prompt_to_send:
             "You are a QA specialist. Help the user test the core loop with real, concrete examples. Verify it delivers value.",
+          rationale: "Surfaces issues and confirms the loop delivers value.",
+          why_next_step_matters:
+            "Informs what to refine or scale next with evidence.",
           completed: false,
           created_at: new Date().toISOString(),
         },
@@ -310,6 +366,9 @@ RULES:
           step_number: 1,
           label: "Complete this phase",
           prompt_to_send: `You are a senior expert. Guide the user to complete ${phaseId} for their project.`,
+          rationale: "Moves the phase forward toward its acceptance criteria.",
+          why_next_step_matters:
+            "Builds momentum and unlocks subsequent work with clarity.",
           completed: false,
           created_at: new Date().toISOString(),
         },

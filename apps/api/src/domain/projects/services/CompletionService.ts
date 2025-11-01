@@ -81,19 +81,17 @@ export class CompletionService {
     }
 
     // Use ProjectStateManager to atomically update state
-    const newState = await this.stateManager.applyProjectUpdate(
-      request.project_id,
-      {
+    const { state: newState, summary } =
+      await this.stateManager.applyProjectUpdate(request.project_id, {
         completeSubstep: {
           phase: request.phase_id,
           substep: request.substep_number,
         },
         advanceSubstep: true,
-      },
-    );
+      });
 
     console.log(
-      `✅ [CompletionService] Completion successful: ${request.phase_id}/${request.substep_number} → ${newState.current_phase}/${newState.current_substep}`,
+      `COMPLETE [CompletionService] ${request.phase_id}/${request.substep_number} -> ${newState.current_phase}.${newState.current_substep} | ${summary}`,
     );
 
     // Get next substep for briefing

@@ -817,6 +817,10 @@ interface ProjectSubstep {
 
   commands?: string;
 
+  rationale?: string;
+
+  why_next_step_matters?: string;
+
   completed: boolean;
 
   created_at: string;
@@ -1229,15 +1233,29 @@ const MasterControl: React.FC<MasterControlProps> = ({
                                 {isComplete ? "G��" : index + 1}
                               </div>
 
-                              <span
-                                className={cls(
-                                  "font-medium",
+                              <div className="flex flex-col">
+                                <span
+                                  className={cls(
+                                    "font-medium",
 
-                                  isComplete ? "text-green-400" : "text-white",
+                                    isComplete
+                                      ? "text-green-400"
+                                      : "text-white",
+                                  )}
+                                >
+                                  {substep.label}
+                                </span>
+                                {substep.rationale && (
+                                  <span className="text-xs text-gray-400 mt-0.5">
+                                    {substep.rationale}
+                                  </span>
                                 )}
-                              >
-                                {substep.label}
-                              </span>
+                                {substep.why_next_step_matters && (
+                                  <span className="text-[11px] text-gray-500 mt-0.5 italic">
+                                    Why next: {substep.why_next_step_matters}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -1696,6 +1714,17 @@ const ExecutionEngine: React.FC<ExecutionEngineProps> = ({
                         <h4 className="text-white font-bold">
                           {currentSubstep.label}
                         </h4>
+                        {currentSubstep.rationale && (
+                          <p className="text-emerald-200/80 text-sm mt-1">
+                            {currentSubstep.rationale}
+                          </p>
+                        )}
+                        {currentSubstep.why_next_step_matters && (
+                          <p className="text-emerald-300/70 text-xs mt-2 italic">
+                            Why next step matters: {""}
+                            {currentSubstep.why_next_step_matters}
+                          </p>
+                        )}
                       </div>
 
                       <button

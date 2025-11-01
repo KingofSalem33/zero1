@@ -30,6 +30,8 @@ interface ProjectSubstep {
   step_number: number;
   label: string;
   prompt_to_send: string;
+  rationale?: string;
+  why_next_step_matters?: string;
 }
 
 interface ChatMessage {
@@ -573,7 +575,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               </svg>
             </div>
             <h1 className="text-3xl font-bold text-white">
-              Ship your first version
+              Dream it. Build it. Ship it.
             </h1>
             <p className="text-neutral-400 text-base max-w-md mx-auto">
               AI guides you through 7 phases—from vision to live product
