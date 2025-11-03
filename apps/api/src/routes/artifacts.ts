@@ -145,13 +145,15 @@ router.post("/upload", uploadLimiter, (req, res) => {
         }
       }
 
-      // Save artifact to database (minimal fields only)
+      // Save artifact to database
       const { data: artifact, error: dbError } = await supabase
         .from("artifacts")
         .insert({
           project_id: projectId,
+          type: filename.endsWith(".zip") ? "zip" : "single",
           file_path: extractedPath || filePath,
-          created_at: new Date().toISOString(),
+          file_name: filename,
+          status: "uploaded",
         })
         .select()
         .single();
@@ -223,13 +225,16 @@ router.post("/repo", uploadLimiter, async (req, res) => {
 
     console.log(`✅ [Artifacts] Cloned repo to: ${repoDir}`);
 
-    // Save artifact to database (minimal fields only)
+    // Save artifact to database
     const { data: artifact, error: dbError } = await supabase
       .from("artifacts")
       .insert({
         project_id,
+        type: "repo",
         file_path: repoDir,
-        created_at: new Date().toISOString(),
+        repo_url: sanitizedUrl,
+        repo_branch: sanitizedBranch,
+        status: "uploaded",
       })
       .select()
       .single();

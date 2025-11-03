@@ -46,7 +46,8 @@
       "Bash(node:*)",
       "Bash(python:*)",
       "Bash(ANALYSIS_STATUS.txt)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
