@@ -104,9 +104,6 @@ router.post("/upload", uploadLimiter, (req, res) => {
       const projectId = Array.isArray(fields.project_id)
         ? fields.project_id[0]
         : fields.project_id;
-      const threadId = Array.isArray(fields.thread_id)
-        ? fields.thread_id[0]
-        : fields.thread_id;
 
       if (!projectId) {
         return res.status(400).json({ error: "project_id is required" });
@@ -165,27 +162,20 @@ router.post("/upload", uploadLimiter, (req, res) => {
       }
 
       console.log(`✅ [Artifacts] Saved artifact: ${artifact.id}`);
-      console.log(
-        `[Artifacts] threadId = ${threadId}, will ${threadId ? "analyze" : "skip analysis"}`,
-      );
 
       // Analyze artifact against current step (async, don't block response)
-      if (threadId) {
-        console.log(
-          `[Artifacts] Triggering analysis for artifact ${artifact.id}`,
-        );
-        analyzeAndPostFeedback(
-          artifact.id,
-          projectId,
-          threadId,
-          extractedPath || filePath,
-          filename,
-        ).catch((error) => {
-          console.error("❌ [Artifacts] Analysis failed:", error);
-        });
-      } else {
-        console.warn("[Artifacts] No threadId provided, skipping analysis");
-      }
+      // Get or create thread for this project
+      console.log(
+        `[Artifacts] Triggering analysis for artifact ${artifact.id}`,
+      );
+      analyzeAndPostFeedback(
+        artifact.id,
+        projectId,
+        extractedPath || filePath,
+        filename,
+      ).catch((error) => {
+        console.error("❌ [Artifacts] Analysis failed:", error);
+      });
 
       return res.status(200).json({
         artifact_id: artifact.id,
@@ -319,12 +309,24 @@ router.get("/:artifactId", async (req, res) => {
 async function analyzeAndPostFeedback(
   artifactId: string,
   projectId: string,
-  threadId: string,
   filePath: string,
   fileName: string,
 ) {
   try {
     console.log(`[Artifacts] Starting analysis for artifact ${artifactId}`);
+
+    // Get or create thread for this project (same as ExecutionService)
+    const { threadService } = await import("../services/threadService.js");
+    const thread = await threadService.getOrCreateThread(projectId);
+
+    if (!thread) {
+      console.error("[Artifacts] Failed to get/create thread");
+      return;
+    }
+
+    console.log(
+      `[Artifacts] Using thread ${thread.id} for project ${projectId}`,
+    );
 
     // Get current step from project
     const { data: project, error: projectError } = await supabase
@@ -398,7 +400,7 @@ ${analysis.suggest_completion && analysis.confidence >= 60 ? `\n🎉 **This look
 
     // Post to thread
     const { error: messageError } = await supabase.from("messages").insert({
-      thread_id: threadId,
+      thread_id: thread.id,
       role: "assistant",
       content: feedbackMessage,
     });
@@ -406,7 +408,7 @@ ${analysis.suggest_completion && analysis.confidence >= 60 ? `\n🎉 **This look
     if (messageError) {
       console.error("[Artifacts] Failed to post analysis:", messageError);
     } else {
-      console.log(`✅ [Artifacts] Posted analysis to thread ${threadId}`);
+      console.log(`✅ [Artifacts] Posted analysis to thread ${thread.id}`);
     }
 
     // Store analysis in artifact record
