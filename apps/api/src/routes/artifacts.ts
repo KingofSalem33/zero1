@@ -14,6 +14,7 @@ import { promisify } from "util";
 import { supabase } from "../db";
 import { uploadLimiter } from "../middleware/rateLimit";
 import { analyzeArtifact } from "../services/artifactAnalyzer";
+import { threadService } from "../services/threadService";
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -316,7 +317,6 @@ async function analyzeAndPostFeedback(
     console.log(`[Artifacts] Starting analysis for artifact ${artifactId}`);
 
     // Get or create thread for this project (same as ExecutionService)
-    const { threadService } = await import("../services/threadService.js");
     const thread = await threadService.getOrCreateThread(projectId);
 
     if (!thread) {
