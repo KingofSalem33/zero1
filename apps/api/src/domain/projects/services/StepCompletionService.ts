@@ -163,16 +163,29 @@ ${conversation
 
     prompt += `\n\nYOUR MINDSET:
 This is ZERO-TO-ONE building. Momentum matters more than perfection.
-- PASS them if the core work is done and they can build on it
-- PASS them if they've shown working progress (even if rough)
-- PASS them if 70%+ of criteria are met and nothing critical is missing
-- Only BLOCK if there's a critical gap that will cause problems in next steps
+**BIAS TOWARD PASSING**: If in doubt, PASS THEM.
 
-EVALUATION CRITERIA:
-1. What core work has been completed? (Look for evidence of progress, working code, real artifacts)
-2. Is the foundation solid enough for the NEXT step? (Not perfect - just sufficient)
-3. Are there any CRITICAL blockers? (Major architectural issues, complete lack of progress)
-4. Overall: Can they move forward, or do they need to address something first?
+WHEN TO PASS (say should_complete: true):
+✓ 2+ criteria are DONE (even if 1 is partial)
+✓ All criteria are PARTIAL or better (none completely missing)
+✓ Core foundation exists (rough is fine!)
+✓ They can build on what they have
+✓ No CRITICAL blockers for next step
+
+WHEN TO BLOCK (say should_complete: false):
+✗ Zero progress on multiple criteria
+✗ Critical architectural flaw that breaks future steps
+✗ Completely wrong direction
+
+CRITERIA EVALUATION RULES:
+- SATISFIED = criterion is addressed, even if rough/incomplete
+- MISSING = criterion was not addressed at all
+
+**IMPORTANT:** "Outlined but lacks detail" = SATISFIED (not missing!)
+**IMPORTANT:** "Could be better/clearer" = SATISFIED (not missing!)
+**IMPORTANT:** "Needs refinement" = SATISFIED (not missing!)
+
+Only mark as MISSING if they literally didn't do it at all.
 
 CONVERSATION SIGNALS TO RECOGNIZE:
 ✓ User shows code/screenshots/working examples
@@ -182,13 +195,13 @@ CONVERSATION SIGNALS TO RECOGNIZE:
 ✓ Files/artifacts uploaded
 ✓ User asks "what's next" or seems ready to move on
 
-CONFIDENCE SCORING:
-- 80-100: Strong evidence of completion, definitely ready to advance
-- 60-79: Good progress, sufficient to move forward even if not perfect
-- 40-59: Some progress but likely needs more work
-- 0-39: Little evidence of completion
+CONFIDENCE SCORING (be generous):
+- 80-100: Strong evidence - definitely pass
+- 60-79: Good enough progress - pass them!
+- 40-59: Some work done - if 2+ criteria met, still pass
+- 0-39: Very little done - probably block
 
-**REMEMBER:** We're building MOMENTUM. If they've done the work and can build on it, PASS THEM. Don't nitpick polish.
+**REMEMBER:** You're a COACH not a CRITIC. Default to YES unless there's a real blocker.
 
 Output your analysis as JSON.`;
 
@@ -204,26 +217,31 @@ Output your analysis as JSON.`;
       properties: {
         should_complete: {
           type: "boolean",
-          description: "Whether this step should be marked complete",
+          description:
+            "Whether this step should be marked complete. BIAS TOWARD TRUE - pass if 2+ criteria done or all are partial/better.",
         },
         confidence_score: {
           type: "number",
-          description: "Confidence that step is complete (0-100)",
+          description:
+            "Confidence that step is complete (0-100). Be generous: 60+ if decent progress, 80+ if strong work.",
           minimum: 0,
           maximum: 100,
         },
         reasoning: {
           type: "string",
-          description: "Detailed explanation of the analysis",
+          description:
+            "Brief explanation focusing on what IS done (not what could be better). Supportive tone.",
         },
         satisfied_criteria: {
           type: "array",
-          description: "Acceptance criteria that are met",
+          description:
+            "Criteria that are addressed (even if rough/partial). 'Outlined but needs detail' counts as SATISFIED.",
           items: { type: "string" },
         },
         missing_criteria: {
           type: "array",
-          description: "Acceptance criteria that are not yet met",
+          description:
+            "Criteria that were NOT addressed at all (empty list if all were at least attempted).",
           items: { type: "string" },
         },
         conversation_signals: {
