@@ -6,7 +6,6 @@ import morgan from "morgan";
 import { ENV } from "./env";
 import threadsRouter from "./routes/threads";
 import artifactsRouter from "./routes/artifacts";
-import artifactActionsRouter from "./routes/artifact-actions";
 import checkpointsRouter from "./routes/checkpoints";
 import roadmapV2Router from "./routes/roadmap-v2";
 import { runModel } from "./ai/runModel";
@@ -95,7 +94,6 @@ app.use("/api/threads", optionalAuth, threadsRouter);
 
 // Mount artifact routes (temporarily optional auth for testing)
 app.use("/api/artifacts", optionalAuth, artifactsRouter);
-app.use("/api/artifact-actions", optionalAuth, artifactActionsRouter);
 
 // Mount checkpoint routes (temporarily optional auth for testing)
 app.use("/api/checkpoints", optionalAuth, checkpointsRouter);

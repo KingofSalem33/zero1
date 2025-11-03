@@ -9,13 +9,50 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../db";
 import { RoadmapGenerationService } from "../domain/projects/services/RoadmapGenerationService";
 import { StepCompletionService } from "../domain/projects/services/StepCompletionService";
+import { ExecutionService } from "../domain/projects/services/ExecutionService";
 import { randomUUID } from "crypto";
-import { orchestrator } from "./projects";
 import { aiLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 const roadmapService = new RoadmapGenerationService();
 const completionService = new StepCompletionService();
+
+// Helper function to fetch V2 project for ExecutionService
+async function getV2Project(projectId: string) {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .single();
+
+  if (projectError || !project) {
+    return undefined;
+  }
+
+  const { data: steps, error: stepsError } = await supabase
+    .from("roadmap_steps")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("step_number", { ascending: true });
+
+  if (stepsError || !steps) {
+    return undefined;
+  }
+
+  return {
+    id: project.id,
+    goal: project.goal,
+    current_step: project.current_step || 1,
+    steps: steps.map((s) => ({
+      step_number: s.step_number,
+      title: s.title,
+      description: s.description,
+      status: s.status,
+    })),
+  };
+}
+
+const executionService = new ExecutionService(getV2Project);
 
 // Helper to check if a string is a valid UUID
 function isValidUUID(str: string): boolean {
@@ -469,11 +506,13 @@ router.post(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      console.log(`🚀 [Roadmap V2] SSE headers set, calling orchestrator...`);
+      console.log(
+        `🚀 [Roadmap V2] SSE headers set, calling execution service...`,
+      );
 
-      // Use the orchestrator's streaming execution
+      // Use the execution service's streaming execution
       // This has the expert builder logic that executes FOR the user
-      await orchestrator.executeStepStreaming({
+      await executionService.executeStepStreaming({
         project_id: id,
         master_prompt,
         user_message: user_message || "",
