@@ -168,12 +168,24 @@ router.post("/upload", uploadLimiter, (req, res) => {
       // Send simple acknowledgment to thread
       if (threadId) {
         try {
-          await supabase.from("messages").insert({
-            thread_id: threadId,
-            role: "assistant",
-            content: `✅ **Artifact received:** ${filename}\n\nI've saved your upload. You can reference it in our conversation.`,
-            created_at: new Date().toISOString(),
-          });
+          const { error: messageError } = await supabase
+            .from("messages")
+            .insert({
+              thread_id: threadId,
+              role: "assistant",
+              content: `✅ **Artifact received:** ${filename}\n\nI've saved your upload. You can reference it in our conversation.`,
+            });
+
+          if (messageError) {
+            console.error(
+              "❌ [Artifacts] Failed to post message:",
+              messageError,
+            );
+          } else {
+            console.log(
+              `✅ [Artifacts] Posted acknowledgment to thread ${threadId}`,
+            );
+          }
         } catch (error) {
           console.error("❌ [Artifacts] Failed to post message:", error);
         }
@@ -247,12 +259,19 @@ router.post("/repo", uploadLimiter, async (req, res) => {
     // Send acknowledgment to thread
     if (thread_id) {
       try {
-        await supabase.from("messages").insert({
+        const { error: messageError } = await supabase.from("messages").insert({
           thread_id: thread_id,
           role: "assistant",
           content: `✅ **Repository cloned:** ${repo_url}\n\nBranch: ${sanitizedBranch}\n\nI've saved the repository. You can reference it in our conversation.`,
-          created_at: new Date().toISOString(),
         });
+
+        if (messageError) {
+          console.error("❌ [Artifacts] Failed to post message:", messageError);
+        } else {
+          console.log(
+            `✅ [Artifacts] Posted acknowledgment to thread ${thread_id}`,
+          );
+        }
       } catch (error) {
         console.error("❌ [Artifacts] Failed to post message:", error);
       }
