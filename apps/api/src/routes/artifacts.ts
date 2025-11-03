@@ -13,6 +13,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { supabase } from "../db";
 import { uploadLimiter } from "../middleware/rateLimit";
+import { analyzeArtifact } from "../services/artifactAnalyzer";
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -165,30 +166,17 @@ router.post("/upload", uploadLimiter, (req, res) => {
 
       console.log(`✅ [Artifacts] Saved artifact: ${artifact.id}`);
 
-      // Send simple acknowledgment to thread
+      // Analyze artifact against current step (async, don't block response)
       if (threadId) {
-        try {
-          const { error: messageError } = await supabase
-            .from("messages")
-            .insert({
-              thread_id: threadId,
-              role: "assistant",
-              content: `✅ **Artifact received:** ${filename}\n\nI've saved your upload. You can reference it in our conversation.`,
-            });
-
-          if (messageError) {
-            console.error(
-              "❌ [Artifacts] Failed to post message:",
-              messageError,
-            );
-          } else {
-            console.log(
-              `✅ [Artifacts] Posted acknowledgment to thread ${threadId}`,
-            );
-          }
-        } catch (error) {
-          console.error("❌ [Artifacts] Failed to post message:", error);
-        }
+        analyzeAndPostFeedback(
+          artifact.id,
+          projectId,
+          threadId,
+          extractedPath || filePath,
+          filename,
+        ).catch((error) => {
+          console.error("❌ [Artifacts] Analysis failed:", error);
+        });
       }
 
       return res.status(200).json({
@@ -316,5 +304,124 @@ router.get("/:artifactId", async (req, res) => {
     return res.status(500).json({ error: "Failed to fetch artifact" });
   }
 });
+
+/**
+ * Helper: Analyze artifact and post feedback to thread
+ */
+async function analyzeAndPostFeedback(
+  artifactId: string,
+  projectId: string,
+  threadId: string,
+  filePath: string,
+  fileName: string,
+) {
+  try {
+    console.log(`[Artifacts] Starting analysis for artifact ${artifactId}`);
+
+    // Get current step from project
+    const { data: project, error: projectError } = await supabase
+      .from("projects")
+      .select("current_step")
+      .eq("id", projectId)
+      .single();
+
+    if (projectError || !project) {
+      console.error("[Artifacts] Project not found:", projectError);
+      return;
+    }
+
+    // Get current step details
+    const { data: step, error: stepError } = await supabase
+      .from("roadmap_steps")
+      .select("step_number, title, description, acceptance_criteria")
+      .eq("project_id", projectId)
+      .eq("step_number", project.current_step)
+      .single();
+
+    if (stepError || !step) {
+      console.error("[Artifacts] Current step not found:", stepError);
+      return;
+    }
+
+    // Analyze artifact
+    const analysis = await analyzeArtifact({
+      filePath,
+      fileName,
+      projectId,
+      currentStep: step,
+    });
+
+    console.log(
+      `[Artifacts] Analysis complete: quality=${analysis.quality_score}, suggest_completion=${analysis.suggest_completion}`,
+    );
+
+    // Format criteria status
+    const criteriaStatus = [];
+    if (analysis.satisfied_criteria.length > 0) {
+      criteriaStatus.push(
+        `✅ **Satisfied (${analysis.satisfied_criteria.length}):**\n${analysis.satisfied_criteria.map((c) => `  • ${c}`).join("\n")}`,
+      );
+    }
+    if (analysis.partial_criteria.length > 0) {
+      criteriaStatus.push(
+        `◐ **Partial (${analysis.partial_criteria.length}):**\n${analysis.partial_criteria.map((c) => `  • ${c}`).join("\n")}`,
+      );
+    }
+    if (analysis.missing_criteria.length > 0) {
+      criteriaStatus.push(
+        `○ **Not Yet (${analysis.missing_criteria.length}):**\n${analysis.missing_criteria.map((c) => `  • ${c}`).join("\n")}`,
+      );
+    }
+
+    // Build feedback message
+    const feedbackMessage = `📊 **Artifact Analysis**
+
+${analysis.feedback}
+
+**Progress on Step ${step.step_number}: ${step.title}**
+${criteriaStatus.join("\n\n")}
+
+${analysis.tech_stack.length > 0 ? `\n**Tech Stack:** ${analysis.tech_stack.join(", ")}` : ""}
+${analysis.has_tests ? "\n✅ Tests detected" : ""}
+
+**Quality Score:** ${analysis.quality_score}/100
+
+${analysis.suggest_completion && analysis.confidence >= 60 ? `\n🎉 **This looks good enough to move forward!** Your work satisfies the key criteria. Ready to mark this step complete?` : ""}`;
+
+    // Post to thread
+    const { error: messageError } = await supabase.from("messages").insert({
+      thread_id: threadId,
+      role: "assistant",
+      content: feedbackMessage,
+    });
+
+    if (messageError) {
+      console.error("[Artifacts] Failed to post analysis:", messageError);
+    } else {
+      console.log(`✅ [Artifacts] Posted analysis to thread ${threadId}`);
+    }
+
+    // Store analysis in artifact record
+    await supabase
+      .from("artifacts")
+      .update({
+        analysis: {
+          quality_score: analysis.quality_score,
+          satisfied_criteria: analysis.satisfied_criteria,
+          partial_criteria: analysis.partial_criteria,
+          missing_criteria: analysis.missing_criteria,
+          tech_stack: analysis.tech_stack,
+          has_tests: analysis.has_tests,
+          suggest_completion: analysis.suggest_completion,
+          confidence: analysis.confidence,
+        },
+        status: "analyzed",
+        analyzed_at: new Date().toISOString(),
+      })
+      .eq("id", artifactId);
+  } catch (error) {
+    console.error("[Artifacts] Error in analyzeAndPostFeedback:", error);
+  }
+}
 
 export default router;
