@@ -233,7 +233,8 @@ router.post(
       });
 
       // Store suggestion if completion is recommended
-      if (suggestion.should_complete && suggestion.confidence_score >= 70) {
+      // Lower threshold to 60 to align with momentum-focused approach
+      if (suggestion.should_complete && suggestion.confidence_score >= 60) {
         await supabase.from("completion_suggestions").insert({
           project_id: id,
           step_id: currentStep.id,

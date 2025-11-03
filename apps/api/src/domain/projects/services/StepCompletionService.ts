@@ -73,10 +73,10 @@ export class StepCompletionService {
           {
             role: "user",
             content:
-              "Analyze if this step is complete based on the conversation and criteria provided.",
+              "Analyze if this step is complete based on the conversation and criteria provided. Focus on whether they can move forward, not perfection.",
           },
         ],
-        temperature: 0.3, // Low temperature for consistent analysis
+        temperature: 0.4, // Balanced temperature for fair but consistent analysis
         max_output_tokens: 1500,
         text: {
           format: {
@@ -132,7 +132,9 @@ export class StepCompletionService {
   private buildAnalysisPrompt(request: AnalyzeCompletionRequest): string {
     const { step, conversation, artifacts } = request;
 
-    let prompt = `You are an expert project manager analyzing if a development step is complete.
+    let prompt = `You are a supportive senior developer helping a builder make progress from zero to one.
+
+Your job is to recognize when work is "GOOD ENOUGH TO MOVE FORWARD" - not perfect, but solid enough to build on.
 
 STEP DETAILS:
 Title: ${step.title}
@@ -159,18 +161,34 @@ ${conversation
         prompt += `\n- Quality Score: ${artifacts.quality_score}/10`;
     }
 
-    prompt += `\n\nTASK:
-Analyze the conversation and evidence to determine:
-1. Which acceptance criteria are satisfied?
-2. Which criteria are still missing?
-3. What signals from the conversation indicate completion?
-4. Should this step be marked complete?
+    prompt += `\n\nYOUR MINDSET:
+This is ZERO-TO-ONE building. Momentum matters more than perfection.
+- PASS them if the core work is done and they can build on it
+- PASS them if they've shown working progress (even if rough)
+- PASS them if 70%+ of criteria are met and nothing critical is missing
+- Only BLOCK if there's a critical gap that will cause problems in next steps
 
-RULES:
-- Be strict: All criteria must be substantially met
-- Conversation signals: User mentions completing tasks, shows working code, describes testing
-- Don't assume - only mark satisfied if there's clear evidence
-- Confidence score: 0-100, where 90+ means very confident it's complete
+EVALUATION CRITERIA:
+1. What core work has been completed? (Look for evidence of progress, working code, real artifacts)
+2. Is the foundation solid enough for the NEXT step? (Not perfect - just sufficient)
+3. Are there any CRITICAL blockers? (Major architectural issues, complete lack of progress)
+4. Overall: Can they move forward, or do they need to address something first?
+
+CONVERSATION SIGNALS TO RECOGNIZE:
+✓ User shows code/screenshots/working examples
+✓ User describes testing or seeing results
+✓ User mentions specific implementation details
+✓ AI confirms completion of work
+✓ Files/artifacts uploaded
+✓ User asks "what's next" or seems ready to move on
+
+CONFIDENCE SCORING:
+- 80-100: Strong evidence of completion, definitely ready to advance
+- 60-79: Good progress, sufficient to move forward even if not perfect
+- 40-59: Some progress but likely needs more work
+- 0-39: Little evidence of completion
+
+**REMEMBER:** We're building MOMENTUM. If they've done the work and can build on it, PASS THEM. Don't nitpick polish.
 
 Output your analysis as JSON.`;
 
@@ -235,14 +253,14 @@ Output your analysis as JSON.`;
    */
   private formatSuggestionMessage(analysis: any): string {
     if (!analysis.should_complete) {
-      return "Keep working - some criteria still need to be completed.";
+      return "Keep working - you're making progress! Focus on the core criteria to move forward.";
     }
 
     const messages = [
-      "Great work! This step looks complete.",
-      "Excellent progress! You've met all the criteria.",
-      "Step complete! Nice job.",
-      "All criteria satisfied - ready to move forward!",
+      "Solid progress! You've got enough to build on - ready to move forward!",
+      "Great work! The foundation is solid - let's keep the momentum going!",
+      "Excellent! You've done what's needed for this step - onward!",
+      "Outstanding work! All the key pieces are in place - time to level up!",
     ];
 
     // Pick message based on confidence
@@ -303,13 +321,22 @@ Output your analysis as JSON.`;
       }
     }
 
-    // Simple scoring
-    const score = Math.min(
+    // Generous scoring for momentum - if ANY progress signals, bump the score
+    let baseScore = Math.min(
       (satisfied.length / Math.max(step.acceptance_criteria.length, 1)) * 100,
       100,
     );
 
-    const shouldComplete = score >= 70;
+    // Bonus for showing any tangible work
+    if (satisfied.length > 0) {
+      baseScore = Math.max(baseScore, 60); // Minimum 60 if ANY criteria satisfied
+    }
+    if (artifacts && artifacts.file_count && artifacts.file_count > 0) {
+      baseScore += 15; // Big bonus for actual artifacts
+    }
+
+    const score = Math.min(baseScore, 100);
+    const shouldComplete = score >= 60; // Lower threshold - 60% is good enough!
 
     return {
       should_complete: shouldComplete,
@@ -326,8 +353,8 @@ Output your analysis as JSON.`;
           : [],
       },
       suggestion_message: shouldComplete
-        ? "This step looks complete! Ready to continue?"
-        : "Keep working on the remaining acceptance criteria.",
+        ? "You've got what you need! The foundation is solid - let's build on it!"
+        : "Keep going - you're making progress! Focus on getting the core work done.",
     };
   }
 
@@ -343,6 +370,7 @@ Output your analysis as JSON.`;
       conversation: recentMessages,
     });
 
-    return analysis.should_complete && analysis.confidence_score >= 75;
+    // Lower threshold for quick check - 60% confidence is enough to move forward
+    return analysis.should_complete && analysis.confidence_score >= 60;
   }
 }
