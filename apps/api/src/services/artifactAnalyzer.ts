@@ -93,9 +93,12 @@ export async function analyzeArtifact(
       throw new Error("No assistant message in response");
     }
 
-    const responseText = assistantMessage.content.find(
-      (c: any) => c.type === "text",
-    )?.text;
+    // Handle both "text" and "output_text" types (Responses API format for structured outputs)
+    const responseText =
+      assistantMessage.content
+        ?.filter((c: any) => c.type === "text" || c.type === "output_text")
+        .map((c: any) => c.text)
+        .join("") || "";
 
     if (!responseText) {
       throw new Error("No text content in assistant message");
