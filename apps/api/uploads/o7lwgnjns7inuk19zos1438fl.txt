@@ -1,0 +1,21 @@
+﻿Combined Vision Document for Selling Scented Lotion at the Farmers Market
+Problem Statement
+The current market lacks a diverse range of high-quality, natural scented lotions that cater to health-conscious consumers seeking eco-friendly and locally sourced skincare products. This gap presents an opportunity to introduce a unique line of scented lotions that not only enhance personal care but also align with the values of sustainability and local community support.
+Target Audience
+The primary target audience includes:
+* Health-Conscious Consumers: Individuals aged 25-45 who prioritize natural ingredients and eco-friendly products.
+* Farmers Market Shoppers: Local residents and visitors who frequent farmers markets, looking for unique, artisanal products.
+* Gift Buyers: People seeking thoughtful, locally made gifts for friends and family.
+Success Metrics
+1. Sales Volume
+   * Target: Achieve sales of at least 500 units of scented lotion within the first three months of launch at the farmers market.
+   * Tracking Method: Sales will be tracked through a point-of-sale system that records each transaction. Weekly sales reports will be generated to monitor progress and adjust inventory as needed.
+2. Customer Feedback
+   * Target: Attain an average customer satisfaction rating of 4.5 out of 5 based on feedback collected through surveys and direct interactions.
+   * Collection Method:
+      * Surveys: Distribute short surveys (3-5 questions) to customers at the point of sale, offering a small discount on their next purchase as an incentive for completion.
+      * Direct Feedback: Engage with customers during the market to gather verbal feedback and encourage them to share their experiences on social media.
+   * Analysis Method: Compile survey results weekly to calculate the average rating, and categorize feedback to identify common themes and areas for improvement.
+3. Repeat Customers
+   * Target: Secure at least 30% of customers as repeat buyers by the end of the first market season.
+   * Tracking Method: Implement a loyalty program where customers receive a stamp for each purchase. After a certain number of stamps, they receive a free product or discount. Track the number of loyalty program participants and their purchase frequency.

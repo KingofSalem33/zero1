@@ -353,26 +353,41 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                 })
                 .filter((s) => s) || [];
 
-            const llmAnalysis = await analyzeArtifactWithLLM(
-              extractedPath || filePath, // Use extracted directory if ZIP was uploaded
-              signals,
-              project
-                ? {
-                    vision_sentence: project.goal,
-                    current_phase: project.current_phase,
-                    current_substep: project.current_substep,
-                    roadmap: project.roadmap,
-                    previous_artifact_analyses: currentSubstepAnalyses,
-                    previous_signals: previousSignals,
-                  }
-                : undefined,
-            );
+            // Check if this is a V2 project (uses steps instead of roadmap)
+            const isV2Project = project?.steps && !project?.roadmap;
+
+            let llmAnalysis;
+            if (isV2Project) {
+              // V2: Skip artifact analyzer - it's V1-specific
+              // For now, just acknowledge the upload without analysis
+              console.log(
+                "📋 [Artifacts] V2 project detected - skipping V1 artifact analysis",
+              );
+              llmAnalysis = null;
+            } else {
+              // V1: Run full artifact analysis
+              llmAnalysis = await analyzeArtifactWithLLM(
+                extractedPath || filePath, // Use extracted directory if ZIP was uploaded
+                signals,
+                project
+                  ? {
+                      vision_sentence: project.goal,
+                      current_phase: project.current_phase,
+                      current_substep: project.current_substep,
+                      roadmap: project.roadmap,
+                      previous_artifact_analyses: currentSubstepAnalyses,
+                      previous_signals: previousSignals,
+                    }
+                  : undefined,
+              );
+            }
 
             // NEW: Match artifact to roadmap to detect completed substeps
             console.log("🎯 [Artifacts] Matching artifact to roadmap...");
             let roadmapDiff: RoadmapDiff | null = null;
 
-            if (project && project.roadmap) {
+            // Skip V1-specific roadmap matching for V2 projects
+            if (project && project.roadmap && !isV2Project) {
               try {
                 roadmapDiff = matchArtifactToRoadmap(
                   signals,
@@ -415,37 +430,41 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
             }
 
             // Build momentum summary (iteration diff + roadmap) before saving
-            try {
-              const previousAnalysis = currentSubstepAnalyses?.length
-                ? currentSubstepAnalyses[currentSubstepAnalyses.length - 1]
-                : null;
-              const prevSignals = previousSignals?.length
-                ? previousSignals[previousSignals.length - 1]
-                : null;
+            // Only for V1 projects with LLM analysis
+            if (!isV2Project && llmAnalysis) {
+              try {
+                const previousAnalysis = currentSubstepAnalyses?.length
+                  ? currentSubstepAnalyses[currentSubstepAnalyses.length - 1]
+                  : null;
+                const prevSignals = previousSignals?.length
+                  ? previousSignals[previousSignals.length - 1]
+                  : null;
 
-              const iteration = prevSignals
-                ? detectIterationChanges(
-                    previousAnalysis as any,
-                    prevSignals as any,
-                    signals,
-                  )
-                : null;
+                const iteration = prevSignals
+                  ? detectIterationChanges(
+                      previousAnalysis as any,
+                      prevSignals as any,
+                      signals,
+                    )
+                  : null;
 
-              const momentumSummary = buildMomentumSummary({
-                workType: signals.artifact_type || "artifact",
-                iteration,
-                roadmap: roadmapDiff,
-                rollback: (llmAnalysis as any)?.rollback_warning
-                  ? {
-                      severity: (llmAnalysis as any).rollback_warning.severity,
-                      reason: (llmAnalysis as any).rollback_warning.reason,
-                    }
-                  : null,
-              });
+                const momentumSummary = buildMomentumSummary({
+                  workType: signals.artifact_type || "artifact",
+                  iteration,
+                  roadmap: roadmapDiff,
+                  rollback: (llmAnalysis as any)?.rollback_warning
+                    ? {
+                        severity: (llmAnalysis as any).rollback_warning
+                          .severity,
+                        reason: (llmAnalysis as any).rollback_warning.reason,
+                      }
+                    : null,
+                });
 
-              (llmAnalysis as any).momentum_summary = momentumSummary;
-            } catch (e) {
-              console.warn("[Artifacts] Momentum summary build failed:", e);
+                (llmAnalysis as any).momentum_summary = momentumSummary;
+              } catch (e) {
+                console.warn("[Artifacts] Momentum summary build failed:", e);
+              }
             }
 
             // Save LLM analysis results + roadmap diff
@@ -464,7 +483,8 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
             console.log("✅ [Artifacts] LLM analysis complete");
 
             // Store artifact feedback in the conversation thread for a cumulative narrative
-            if (threadId) {
+            // Only for V1 projects with LLM analysis
+            if (threadId && !isV2Project && llmAnalysis) {
               try {
                 const percent =
                   (llmAnalysis as any)?.substep_completion_percentage ?? 0;
@@ -505,6 +525,21 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               } catch (e) {
                 console.warn(
                   "[Artifacts] Failed to insert artifact feedback message:",
+                  e,
+                );
+              }
+            } else if (threadId && isV2Project) {
+              // V2: Just acknowledge the upload without detailed analysis
+              try {
+                await supabase.from("messages").insert({
+                  thread_id: threadId,
+                  role: "assistant",
+                  content: `✅ **Artifact received:** ${filename}\n\nI've saved your upload. You can reference it in our conversation.`,
+                  created_at: new Date().toISOString(),
+                });
+              } catch (e) {
+                console.warn(
+                  "[Artifacts] Failed to insert V2 acknowledgment:",
                   e,
                 );
               }
@@ -581,15 +616,19 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
             }
 
             // ROLLBACK DETECTION: Check if user is stuck and needs to rollback
-            const rollbackRecommendation = detectRollbackNeed(
-              llmAnalysis,
-              currentSubstepAnalyses,
-              project.current_phase,
-              project.current_substep,
-              project.roadmap,
-            );
+            // Skip for V2 projects (V1-specific feature)
+            const rollbackRecommendation =
+              !isV2Project && llmAnalysis
+                ? detectRollbackNeed(
+                    llmAnalysis,
+                    currentSubstepAnalyses,
+                    project.current_phase,
+                    project.current_substep,
+                    project.roadmap,
+                  )
+                : { should_rollback: false };
 
-            if (rollbackRecommendation.should_rollback) {
+            if (!isV2Project && rollbackRecommendation.should_rollback) {
               console.log(
                 `⚠️ [Rollback] Detected need for rollback: ${rollbackRecommendation.reason}`,
               );
@@ -759,19 +798,21 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
               }
             }
 
-            // Debug: Log completion percentage value
-            console.log(
-              `🔍 [Artifacts] Completion percentage value: ${llmAnalysis.substep_completion_percentage} (type: ${typeof llmAnalysis.substep_completion_percentage})`,
-            );
+            // Debug: Log completion percentage value (V1 only)
+            if (!isV2Project && llmAnalysis) {
+              console.log(
+                `🔍 [Artifacts] Completion percentage value: ${llmAnalysis.substep_completion_percentage} (type: ${typeof llmAnalysis.substep_completion_percentage})`,
+              );
+            }
             console.log(`🔍 [Artifacts] Has thread_id: ${!!threadId}`);
 
             // AUTO-COMPLETION: Check if substep requirements are 100% complete
             // Skip for V2 projects (they use different step structure)
-            const isV2Project = project?.steps && !project?.roadmap;
             if (
+              !isV2Project &&
+              llmAnalysis &&
               llmAnalysis.substep_completion_percentage === 100 &&
-              project?.roadmap &&
-              !isV2Project
+              project?.roadmap
             ) {
               console.log(
                 "🎉 [Artifacts] Substep 100% complete - auto-advancing with celebration",
