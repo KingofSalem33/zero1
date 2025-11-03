@@ -106,9 +106,6 @@ router.post("/upload", uploadLimiter, (req, res) => {
       const threadId = Array.isArray(fields.thread_id)
         ? fields.thread_id[0]
         : fields.thread_id;
-      const artifactType = Array.isArray(fields.artifact_type)
-        ? fields.artifact_type[0]
-        : fields.artifact_type || "file";
 
       if (!projectId) {
         return res.status(400).json({ error: "project_id is required" });
@@ -148,16 +145,12 @@ router.post("/upload", uploadLimiter, (req, res) => {
         }
       }
 
-      // Save artifact to database
+      // Save artifact to database (minimal fields only)
       const { data: artifact, error: dbError } = await supabase
         .from("artifacts")
         .insert({
           project_id: projectId,
-          artifact_type: artifactType,
           file_path: extractedPath || filePath,
-          original_filename: filename,
-          file_size: file.size,
-          mime_type: file.mimetype || "application/octet-stream",
           created_at: new Date().toISOString(),
         })
         .select()
@@ -230,14 +223,12 @@ router.post("/repo", uploadLimiter, async (req, res) => {
 
     console.log(`✅ [Artifacts] Cloned repo to: ${repoDir}`);
 
-    // Save artifact to database
+    // Save artifact to database (minimal fields only)
     const { data: artifact, error: dbError } = await supabase
       .from("artifacts")
       .insert({
         project_id,
-        artifact_type: "repository",
         file_path: repoDir,
-        original_filename: `repo_${sanitizedBranch}`,
         created_at: new Date().toISOString(),
       })
       .select()
