@@ -165,9 +165,15 @@ router.post("/upload", uploadLimiter, (req, res) => {
       }
 
       console.log(`✅ [Artifacts] Saved artifact: ${artifact.id}`);
+      console.log(
+        `[Artifacts] threadId = ${threadId}, will ${threadId ? "analyze" : "skip analysis"}`,
+      );
 
       // Analyze artifact against current step (async, don't block response)
       if (threadId) {
+        console.log(
+          `[Artifacts] Triggering analysis for artifact ${artifact.id}`,
+        );
         analyzeAndPostFeedback(
           artifact.id,
           projectId,
@@ -177,6 +183,8 @@ router.post("/upload", uploadLimiter, (req, res) => {
         ).catch((error) => {
           console.error("❌ [Artifacts] Analysis failed:", error);
         });
+      } else {
+        console.warn("[Artifacts] No threadId provided, skipping analysis");
       }
 
       return res.status(200).json({
