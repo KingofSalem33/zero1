@@ -766,9 +766,12 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
             console.log(`🔍 [Artifacts] Has thread_id: ${!!threadId}`);
 
             // AUTO-COMPLETION: Check if substep requirements are 100% complete
+            // Skip for V2 projects (they use different step structure)
+            const isV2Project = project?.steps && !project?.roadmap;
             if (
               llmAnalysis.substep_completion_percentage === 100 &&
-              project?.roadmap
+              project?.roadmap &&
+              !isV2Project
             ) {
               console.log(
                 "🎉 [Artifacts] Substep 100% complete - auto-advancing with celebration",
