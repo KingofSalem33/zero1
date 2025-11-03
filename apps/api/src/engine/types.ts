@@ -17,6 +17,7 @@ export interface ProjectPhase {
   phase_number: number; // 1, 2, 3
   goal: string;
   why_it_matters: string;
+  master_prompt?: string; // Expert guidance prompt for this phase (generated when expanded)
   substeps: ProjectSubstep[];
   acceptance_criteria: string[];
   rollback_plan: string[];

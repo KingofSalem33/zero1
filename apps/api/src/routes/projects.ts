@@ -12,6 +12,40 @@ export const orchestrator = new StepOrchestrator();
 // Map to store active SSE connections for roadmap generation
 const projectStreamResponses = new Map<string, Response>();
 
+// Broadcast state changes over SSE so the UI can refresh without polling
+orchestrator.stateManager.onStateChange(async (event) => {
+  try {
+    const res = projectStreamResponses.get(event.projectId);
+    if (!res) return;
+
+    // Notify frontend to refresh current pointers/state
+    streamingService.sendProjectRefreshRequest(res, {
+      project_id: event.projectId,
+      trigger: "state_updated",
+      new_phase: event.newState.current_phase,
+      new_substep: event.newState.current_substep,
+      completed_count: event.newState.completed_substeps?.length || 0,
+    });
+
+    // If a phase unlocked, announce it with details
+    if (event.changes.phaseUnlocked) {
+      const unlocked = event.newState.roadmap.phases.find(
+        (p) => p.phase_id === event.changes.phaseUnlocked,
+      );
+      if (unlocked) {
+        streamingService.sendPhaseUnlocked(res, {
+          phase_id: unlocked.phase_id,
+          phase_number: Number(unlocked.phase_number),
+          phase_goal: unlocked.goal || `Phase ${unlocked.phase_number}`,
+          unlocked_by: "completion",
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[Projects] SSE stateChange broadcast error:", err);
+  }
+});
+
 // POST /api/projects - Create a new project
 router.post("/", async (req, res) => {
   try {
@@ -257,6 +291,9 @@ router.post("/:projectId/complete-substep", async (req, res) => {
       current_substep: updated?.current_substep,
       completed_substeps: updated?.completed_substeps || [],
       briefing: result.briefing,
+      // Include latest phases so client can detect next-phase expansion without extra fetch
+      phases:
+        (updated as any)?.phases || (updated as any)?.roadmap?.phases || [],
     });
   } catch (error) {
     console.error("Error completing substep:", error);
@@ -527,9 +564,10 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
       req.params.projectId,
     );
     console.log("🔍 [API] Input length:", req.body.thinking_input?.length || 0);
+    console.log("🔍 [API] Explicit phase_id:", req.body.phase_id || "none");
 
     const { projectId } = req.params;
-    const { thinking_input } = req.body;
+    const { thinking_input, phase_id } = req.body;
 
     if (!projectId || typeof projectId !== "string") {
       console.error("âŒ [API] Invalid project ID:", projectId);
@@ -538,22 +576,39 @@ router.post("/:projectId/expand", aiLimiter, async (req, res) => {
       });
     }
 
-    if (!thinking_input || typeof thinking_input !== "string") {
-      console.error("âŒ [API] Missing thinking input");
-      return res.status(400).json({
-        error: "Thinking input is required",
-      });
-    }
-
     const project = await orchestrator.getProjectAsync(projectId);
     if (!project) {
-      console.error("âŒ [API] Project not found:", projectId);
+      console.error("Project not found:", projectId);
       return res.status(404).json({
         error: "Project not found",
       });
     }
 
-    console.log("📋 [API] Project has", project.phases?.length || 0, "phases");
+    console.log("Project has", project.phases?.length || 0, "phases");
+
+    // Option 1: Explicit phase_id provided (auto-expansion)
+    if (phase_id && typeof phase_id === "string") {
+      console.log("[API] Explicit phase_id provided, expanding:", phase_id);
+      const result = await orchestrator.expandPhase({
+        project_id: projectId,
+        phase_id: phase_id,
+        master_prompt_input: thinking_input || "Auto-expanding phase",
+      });
+
+      return res.json({
+        ok: true,
+        phase_expanded: true,
+        ...result,
+      });
+    }
+
+    // Option 2: Detect phase from thinking_input (manual expansion)
+    if (!thinking_input || typeof thinking_input !== "string") {
+      console.error("âŒ [API] Missing thinking input");
+      return res.status(400).json({
+        error: "Either thinking_input or phase_id is required",
+      });
+    }
 
     const detectedPhaseId = orchestrator.detectMasterPrompt(
       thinking_input,

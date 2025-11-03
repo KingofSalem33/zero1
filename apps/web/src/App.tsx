@@ -19,7 +19,7 @@ import { FileManager } from "./components/FileManager";
 
 import { UserMemoryManager } from "./components/UserMemoryManager";
 
-import RoadmapSidebar from "./components/RoadmapSidebar";
+import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
 
 import UnifiedWorkspace from "./components/UnifiedWorkspace";
 
@@ -146,6 +146,9 @@ const normalizeProject = (rawProject: any): any => {
     })),
   };
 };
+
+// Keep a single SSE connection per project id for live updates (phase unlocks, refreshes)
+let projectEventSource: EventSource | null = null;
 
 // ---- Enhanced Animation Components ----
 
@@ -2979,20 +2982,11 @@ function App() {
   const [showMemoryManager, setShowMemoryManager] = useState(false);
 
   // Ref to connect RoadmapSidebar "Ask AI" to UnifiedWorkspace
-
   const askAIRef = useRef<(() => void) | null>(null);
 
-  const [completionNudge, setCompletionNudge] = useState<{
-    message: string;
-
-    confidence: string;
-
-    score: number;
-
-    substep_id: string;
-  } | null>(null);
-
-  const [pendingSubstepId, setPendingSubstepId] = useState<string | null>(null);
+  // V2: Completion suggestion state
+  const [, setCompletionSuggestionV2] = useState<any>(null);
+  const [isCompletingStep, setIsCompletingStep] = useState(false);
 
   // User ID for memory system (could be from auth later)
 
@@ -3173,30 +3167,53 @@ function App() {
     setGuidance("✨ Creating your project workspace...");
 
     try {
-      const response = await fetch(`${API_URL}/api/projects`, {
+      const response = await fetch(`${API_URL}/api/v2/projects`, {
         method: "POST",
 
         headers: { "Content-Type": "application/json" },
 
-        body: JSON.stringify({ goal: goal.trim() }),
+        body: JSON.stringify({ vision: goal.trim(), user_id: userId }),
       });
 
       const data = await response.json();
 
-      if (response.ok && data.project) {
-        // Set initial project state
+      if (response.ok && data) {
+        // V2: Project is returned with full roadmap already generated
+        setProject(data);
+        setGuidance("🎉 Roadmap generated! Ready to start building.");
+        setTimeout(() => setGuidance(""), 3000);
+        setCreatingProject(false);
+        return; // V2 doesn't need SSE streaming
 
-        setProject(data.project);
-
-        setGuidance("Creating your project workspace...");
-
-        // Connect to SSE stream for real-time roadmap generation progress
-
-        const projectId = data.project.id;
+        // Legacy SSE code (disabled for V2)
+        /* eslint-disable no-unreachable */
+        const projectId = data.id;
 
         const eventSource = new (window as any).EventSource(
           `${API_URL}/api/projects/stream/${projectId}`,
         );
+        // Safety timeout: if roadmap doesn't finish in 60s, fall back to fetch
+        let roadmapTimeout = window.setTimeout(() => {
+          fetch(`${API_URL}/api/projects/${projectId}`)
+            .then((r) => r.json())
+            .then((p) => {
+              const phases = p.project?.phases || p.project?.roadmap?.phases;
+              if (phases && phases.length > 0) {
+                setProject(normalizeProject(p.project));
+                setGuidance("Roadmap ready.");
+                setTimeout(() => setGuidance(""), 3000);
+                setCreatingProject(false);
+                try {
+                  eventSource.close();
+                } catch {
+                  // Ignore close errors
+                }
+              }
+            })
+            .catch(() => {
+              // Ignore fetch errors
+            });
+        }, 60000);
 
         eventSource.addEventListener("roadmap_start", () => {
           setGuidance("Generating your roadmap...");
@@ -3211,6 +3228,33 @@ function App() {
             const eventData = JSON.parse(messageEvent.data);
 
             console.log("[SSE] phase_progress received:", eventData);
+
+            // Refresh timeout on progress
+            if (roadmapTimeout) {
+              clearTimeout(roadmapTimeout);
+              roadmapTimeout = window.setTimeout(() => {
+                fetch(`${API_URL}/api/projects/${projectId}`)
+                  .then((r) => r.json())
+                  .then((p) => {
+                    const phases =
+                      p.project?.phases || p.project?.roadmap?.phases;
+                    if (phases && phases.length > 0) {
+                      setProject(normalizeProject(p.project));
+                      setGuidance("Roadmap ready.");
+                      setTimeout(() => setGuidance(""), 3000);
+                      setCreatingProject(false);
+                      try {
+                        eventSource.close();
+                      } catch {
+                        // Ignore close errors
+                      }
+                    }
+                  })
+                  .catch(() => {
+                    // Ignore fetch errors
+                  });
+              }, 60000);
+            }
 
             setGuidance(
               `Generating Phase ${eventData.phase}/${eventData.total}: ${eventData.title}`,
@@ -3264,6 +3308,33 @@ function App() {
             const eventData = JSON.parse(messageEvent.data);
 
             console.log("[SSE] substep_expansion received:", eventData);
+
+            // Refresh timeout on substep expansion
+            if (roadmapTimeout) {
+              clearTimeout(roadmapTimeout);
+              roadmapTimeout = window.setTimeout(() => {
+                fetch(`${API_URL}/api/projects/${projectId}`)
+                  .then((r) => r.json())
+                  .then((p) => {
+                    const phases =
+                      p.project?.phases || p.project?.roadmap?.phases;
+                    if (phases && phases.length > 0) {
+                      setProject(normalizeProject(p.project));
+                      setGuidance("Roadmap ready.");
+                      setTimeout(() => setGuidance(""), 3000);
+                      setCreatingProject(false);
+                      try {
+                        eventSource.close();
+                      } catch {
+                        // Ignore close errors
+                      }
+                    }
+                  })
+                  .catch(() => {
+                    // Ignore fetch errors
+                  });
+              }, 60000);
+            }
 
             setGuidance(
               `Expanding Phase ${eventData.phase} with ${eventData.substepCount} substeps...`,
@@ -3330,6 +3401,7 @@ function App() {
             console.log("[SSE] roadmap_complete received");
 
             eventSource.close();
+            if (roadmapTimeout) clearTimeout(roadmapTimeout);
 
             // Check if we already have phases from SSE stream
 
@@ -3410,6 +3482,7 @@ function App() {
           setGuidance(`Error: ${data.message}`);
 
           setCreatingProject(false);
+          if (roadmapTimeout) clearTimeout(roadmapTimeout);
         });
 
         eventSource.onerror = () => {
@@ -3420,7 +3493,9 @@ function App() {
           );
 
           setCreatingProject(false);
+          if (roadmapTimeout) clearTimeout(roadmapTimeout);
         };
+        /* eslint-enable no-unreachable */
       } else {
         setGuidance(`G�� Error: ${data?.error || "Failed to create project"}`);
 
@@ -3643,173 +3718,131 @@ Return only the refined vision statement using the format "I want to build _____
     }
   };
 
-  const handleToggleSubstep = (substepId: string) => {
-    if (!project) return;
-
-    // Prevent duplicate requests
-
-    if (pendingSubstepId === substepId) {
-      console.log("[Frontend] Request already pending for:", substepId);
-
+  // Maintain SSE subscription for the active project to receive unlock/refresh events
+  useEffect(() => {
+    if (!project?.id) {
+      if (projectEventSource) {
+        projectEventSource.close();
+        projectEventSource = null;
+      }
       return;
     }
 
-    // Check if this substep is already completed
-
-    const phaseIndex = project.phases?.findIndex(
-      (p) => p.phase_number === getPhaseNumber(project.current_phase),
-    );
-
-    if (phaseIndex !== undefined && phaseIndex >= 0 && project.phases) {
-      const phase = project.phases[phaseIndex];
-
-      const substep = phase.substeps?.find((s) => s.substep_id === substepId);
-
-      if (substep) {
-        if (!substep.completed) {
-          // Substep is not complete - call backend to complete it
-
-          console.log(
-            "[Frontend] Checkbox clicked, calling backend:",
-
-            substepId,
-          );
-
-          handleSubstepComplete(substepId);
-        } else {
-          // Substep is already complete - optionally could allow unchecking
-
-          console.log("[Frontend] Substep already completed:", substepId);
-        }
-      }
+    // V2 projects don't use SSE subscriptions
+    // @ts-expect-error - steps property may exist on project
+    if (project.steps) {
+      return;
     }
-  };
 
-  const handleSubstepComplete = async (substepId: string) => {
-    if (!project) return;
-
-    // Set pending state to prevent duplicate requests
-
-    setPendingSubstepId(substepId);
+    // If an EventSource is already open for this project, keep it
+    if (projectEventSource) return;
 
     try {
-      // Parse substepId to get phase_id and substep_number
+      const es = new (window as any).EventSource(
+        `${API_URL}/api/projects/stream/${project.id}`,
+      );
+      projectEventSource = es;
 
-      // substepId format: "P1-1", "P2-3", or "P1-S1", "P2-S3", etc.
+      es.addEventListener("phase_unlocked", (e: Event) => {
+        try {
+          const { data } = e as any;
+          const payload = JSON.parse(data);
+          // eslint-disable-next-line no-undef
+          setPopupToast(
+            `Phase ${payload.phase_number} unlocked: ${payload.phase_goal}`,
+          );
+          // eslint-disable-next-line no-undef
+          setTimeout(() => setPopupToast(""), 2500);
+        } catch {
+          // Ignore parsing errors
+        }
+      });
 
-      const match = substepId.match(/^P(\d+)-S?(\d+)$/);
+      es.addEventListener("project_refresh_request", () => {
+        // Refresh project from API to pick up latest roadmap/pointers
+        fetch(`${API_URL}/api/projects/${project.id}`)
+          .then((r) => r.json())
+          .then((p) => {
+            if (p?.project) setProject(normalizeProject(p.project));
+          })
+          .catch(() => {
+            // Ignore fetch errors
+          });
+      });
 
-      if (!match) {
-        // Invalid substep ID format
+      es.onerror = () => {
+        try {
+          es.close();
+        } catch {
+          // Ignore close errors
+        }
+        projectEventSource = null;
+      };
+    } catch {
+      // Ignore SSE setup errors
+    }
 
-        setGuidance(
-          `G�� Error: Invalid substep format (received: ${substepId})`,
-        );
-
-        setPendingSubstepId(null);
-
-        return;
+    return () => {
+      if (projectEventSource) {
+        try {
+          projectEventSource.close();
+        } catch {
+          // Ignore close errors
+        }
+        projectEventSource = null;
       }
+    };
+  }, [project?.id]);
 
-      const phaseNumber = parseInt(match[1]);
+  // V2: Handle step completion
+  const handleCompleteStepV2 = async () => {
+    if (!project || isCompletingStep) return;
 
-      const substepNumber = parseInt(match[2]);
+    setIsCompletingStep(true);
+    setGuidance("Completing step...");
 
-      const phase_id = `P${phaseNumber}`;
-
-      // Use the updated complete-substep API endpoint
-
-      const response = await fetch(
-        `${API_URL}/api/projects/${project.id}/complete-substep`,
-
-        {
-          method: "POST",
-
-          headers: { "Content-Type": "application/json" },
-
-          body: JSON.stringify({
-            phase_id,
-
-            substep_number: substepNumber,
-          }),
-        },
+    try {
+      // Step 1: Mark current step complete
+      const completeResponse = await fetch(
+        `${API_URL}/api/v2/projects/${project.id}/complete-step`,
+        { method: "POST" },
       );
 
-      const data = await response.json();
-
-      console.log("[Frontend] Completion response:", response.status, data);
-
-      if (response.ok && data.ok) {
-        // Manual completion successful - use returned state instead of refetching
-
-        console.log(
-          `[Frontend] Substep completed: ${phase_id}/${substepNumber}`,
-        );
-
-        console.log("[Frontend] Updated state from server:", {
-          current_phase: data.current_phase,
-
-          current_substep: data.current_substep,
-
-          completed_substeps: data.completed_substeps?.length,
-        });
-
-        // Update local project state with server response (no refetch needed!)
-
-        setProject((prev) => {
-          if (!prev) return prev;
-
-          return {
-            ...prev,
-
-            current_phase: data.current_phase,
-
-            current_substep: data.current_substep,
-
-            completed_substeps: data.completed_substeps,
-
-            // Mark the substep as completed in the phases array
-
-            phases: prev.phases.map((phase) =>
-              phase.phase_number === phaseNumber
-                ? {
-                    ...phase,
-
-                    substeps: phase.substeps.map((substep) =>
-                      substep.step_number === substepNumber
-                        ? { ...substep, completed: true }
-                        : substep,
-                    ),
-                  }
-                : phase,
-            ),
-          };
-        });
-
-        // Show brief success feedback
-
-        setGuidance("G�� Substep completed!");
-
-        setTimeout(() => setGuidance(""), 2000);
-      } else {
-        setGuidance(
-          `G�� Error: ${data?.error || "Failed to complete substep"}`,
-        );
-
-        setTimeout(() => setGuidance(""), 4000);
+      if (!completeResponse.ok) {
+        throw new Error("Failed to complete step");
       }
-    } catch (err) {
-      // Manual completion error
 
-      console.error("[Frontend] Completion error:", err);
+      // Step 2: Continue to next step
+      const continueResponse = await fetch(
+        `${API_URL}/api/v2/projects/${project.id}/continue`,
+        { method: "POST" },
+      );
 
-      setGuidance("⚠️ Network error. Please try again.");
+      const data = await continueResponse.json();
 
-      setTimeout(() => setGuidance(""), 4000);
+      if (data.project_complete) {
+        setGuidance("🎉 Project Complete! Congratulations!");
+        setTimeout(() => setGuidance(""), 5000);
+      } else {
+        setGuidance(`Step complete! Now on Step ${data.current_step}`);
+        setTimeout(() => setGuidance(""), 3000);
+      }
+
+      // Refresh project
+      const refreshResponse = await fetch(
+        `${API_URL}/api/v2/projects/${project.id}`,
+      );
+      const refreshedProject = await refreshResponse.json();
+      setProject(refreshedProject);
+
+      // Clear completion suggestion
+      setCompletionSuggestionV2(null);
+    } catch (error) {
+      console.error("Error completing step:", error);
+      setGuidance("⚠️ Error completing step. Please try again.");
+      setTimeout(() => setGuidance(""), 3000);
     } finally {
-      // Clear pending state
-
-      setPendingSubstepId(null);
+      setIsCompletingStep(false);
     }
   };
 
@@ -3832,15 +3865,14 @@ Return only the refined vision statement using the format "I want to build _____
       <div className="flex">
         {/* Collapsible Roadmap Sidebar */}
 
-        <RoadmapSidebar
+        <RoadmapSidebarV2
           project={project}
-          onViewFullRoadmap={() => setShowMasterControl(true)}
           onOpenFileManager={() => setShowFileManager(true)}
           onOpenMemoryManager={() => setShowMemoryManager(true)}
-          onOpenNewWorkspace={createPopupWorkspace}
           onAskAI={() => askAIRef.current?.()}
-          onCompleteSubstep={handleSubstepComplete}
-          pendingSubstepId={pendingSubstepId}
+          onCompleteStep={handleCompleteStepV2}
+          onRefreshProject={refreshProject}
+          isCompletingStep={isCompletingStep}
         />
 
         {/* Main Workspace - Full Width */}
@@ -3850,14 +3882,9 @@ Return only the refined vision statement using the format "I want to build _____
             project={project}
             onCreateProject={handleCreateProject}
             onInspireMe={handleInspireMe}
-            onSubstepComplete={handleSubstepComplete}
-            onToggleSubstep={handleToggleSubstep}
             toolsUsed={toolsUsed}
             setToolsUsed={setToolsUsed}
-            completionNudge={completionNudge}
-            onDismissNudge={() => setCompletionNudge(null)}
             creating={creatingProject}
-            pendingSubstepId={pendingSubstepId}
             inspiring={inspiring}
             onRefreshProject={refreshProject}
             onAskAIRef={askAIRef}

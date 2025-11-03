@@ -4,11 +4,11 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { ENV } from "./env";
-import projectsRouter from "./routes/projects";
 import threadsRouter from "./routes/threads";
 import artifactsRouter from "./routes/artifacts";
 import artifactActionsRouter from "./routes/artifact-actions";
 import checkpointsRouter from "./routes/checkpoints";
+import roadmapV2Router from "./routes/roadmap-v2";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream";
 import { selectRelevantTools } from "./ai/tools/selectTools";
@@ -87,8 +87,8 @@ app.use(express.json());
 // Apply global API rate limiting
 app.use("/api/", apiLimiter);
 
-// Mount project routes (temporarily optional auth for testing)
-app.use("/api/projects", optionalAuth, projectsRouter);
+// V1 Project routes (DEPRECATED - Use V2 routes at /api/v2/projects instead)
+// app.use("/api/projects", optionalAuth, projectsRouter);
 
 // Mount thread routes (temporarily optional auth for testing)
 app.use("/api/threads", optionalAuth, threadsRouter);
@@ -99,6 +99,10 @@ app.use("/api/artifact-actions", optionalAuth, artifactActionsRouter);
 
 // Mount checkpoint routes (temporarily optional auth for testing)
 app.use("/api/checkpoints", optionalAuth, checkpointsRouter);
+
+// Mount V2 dynamic roadmap routes
+console.log("🔧 [Server] Mounting V2 routes at /api/v2");
+app.use("/api/v2", roadmapV2Router);
 
 // File endpoints (temporarily optional auth for testing)
 app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);

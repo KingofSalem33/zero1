@@ -544,6 +544,40 @@ I've analyzed your upload and it's being processed. I'll let you know when the a
                   }
                 }
               }
+
+              // ✅ NEW: Gap #2 Fix - Send artifact completions to frontend
+              if (roadmapDiff && roadmapDiff.completed_substeps.length > 0) {
+                streamingService.sendArtifactCompletions(
+                  completionStreamResponse,
+                  {
+                    artifact_id: artifact.id,
+                    completed_substeps: roadmapDiff.completed_substeps.map(
+                      (r: any) => ({
+                        phase_number: r.phase_number,
+                        substep_number: r.substep_number,
+                        status: r.status || "complete",
+                        confidence: r.confidence || 100,
+                        evidence: r.evidence,
+                      }),
+                    ),
+                    new_phase: roadmapDiff.recommended_phase,
+                    new_substep: roadmapDiff.recommended_substep,
+                    progress: roadmapDiff.progress_percentage || 0,
+                  },
+                );
+
+                // ✅ NEW: Tell frontend to refresh project state
+                streamingService.sendProjectRefreshRequest(
+                  completionStreamResponse,
+                  {
+                    project_id: projectId,
+                    trigger: "artifact_analyzed",
+                    new_phase: roadmapDiff.recommended_phase,
+                    new_substep: roadmapDiff.recommended_substep,
+                    completed_count: roadmapDiff.completed_substeps.length,
+                  },
+                );
+              }
             }
 
             // ROLLBACK DETECTION: Check if user is stuck and needs to rollback

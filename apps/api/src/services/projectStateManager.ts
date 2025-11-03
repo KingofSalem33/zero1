@@ -105,7 +105,10 @@ export class ProjectStateManager {
     const changes = this.detectChanges(previousState, newState, update);
     await this.emitStateChange(projectId, previousState, newState, changes);
 
-    // 6. Build a compact summary string for downstream prompts
+    // 6. If we just completed a phase, ensure the next phase is expanded before advancing
+    await this.maybeExpandNextPhase(projectId, newState);
+
+    // 7. Build a compact summary string for downstream prompts
     const summaryParts: string[] = [];
     if (changes.substepCompleted) {
       summaryParts.push(
@@ -128,6 +131,74 @@ export class ProjectStateManager {
     );
 
     return { state: newState, summary };
+  }
+
+  /**
+   * Expand the next phase if current phase finished and next is unlocked but empty.
+   * After expansion, auto-advance to next phase's first substep.
+   */
+  private async maybeExpandNextPhase(
+    projectId: string,
+    state: NormalizedProjectState,
+  ): Promise<void> {
+    const normalizeToNumber = (val: string | number): number =>
+      typeof val === "string" ? parseInt(val.replace("P", "")) : val;
+
+    const currentPhaseNum = normalizeToNumber(state.current_phase);
+    const currentPhase = state.roadmap.phases.find((p) => {
+      const phaseNum = normalizeToNumber(p.phase_number);
+      return p.phase_id === state.current_phase || phaseNum === currentPhaseNum;
+    });
+
+    if (!currentPhase || !currentPhase.completed) return;
+
+    const nextPhaseId = `P${currentPhaseNum + 1}`;
+    const nextPhase = state.roadmap.phases.find(
+      (p) => p.phase_id === nextPhaseId,
+    );
+    if (!nextPhase || nextPhase.locked) return;
+
+    // If next phase has no substeps yet, expand it using orchestrator
+    if (!Array.isArray(nextPhase.substeps) || nextPhase.substeps.length === 0) {
+      try {
+        const project = await this.orchestrator.getProjectAsync(projectId);
+        if (!project) return;
+
+        // Use orchestrator to expand and persist the phase
+        await this.orchestrator.expandPhase({
+          project_id: projectId,
+          phase_id: nextPhaseId,
+          master_prompt_input: "",
+        });
+
+        // Refresh roadmap from orchestrator cache
+        const updated = await this.orchestrator.getProjectAsync(projectId);
+        if (updated?.roadmap?.phases?.length) {
+          state.roadmap = updated.roadmap;
+        } else if (updated?.phases?.length) {
+          state.roadmap = { phases: updated.phases } as any;
+        }
+
+        // Advance to first substep of next phase now that it exists
+        const recheckNext = state.roadmap.phases.find(
+          (p) => p.phase_id === nextPhaseId,
+        );
+        if (
+          recheckNext &&
+          Array.isArray(recheckNext.substeps) &&
+          recheckNext.substeps.length > 0
+        ) {
+          state.current_phase = nextPhaseId;
+          state.current_substep = 1;
+          await this.persistState(projectId, state);
+          console.log(
+            `[ProjectStateManager] Auto-advanced to ${nextPhaseId}.1 after expansion`,
+          );
+        }
+      } catch (err) {
+        console.warn("[ProjectStateManager] Failed to expand next phase:", err);
+      }
+    }
   }
 
   /**
@@ -190,6 +261,10 @@ export class ProjectStateManager {
       this.unlockPhase(normalized, update.unlockPhase);
     }
 
+    console.log(
+      `📍 [normalizeProjectState] Before phase checks: ${normalized.current_phase}.${normalized.current_substep}`,
+    );
+
     // Auto-complete phase if all substeps done
     this.checkPhaseCompletion(normalized);
 
@@ -207,9 +282,37 @@ export class ProjectStateManager {
         p.phase_id === normalized.current_phase || phaseNum === currentPhaseNum
       );
     });
-    if (currentPhaseObj?.completed) {
+
+    console.log(
+      `🔍 [normalizeProjectState] Current phase ${normalized.current_phase} completed: ${currentPhaseObj?.completed}`,
+    );
+    console.log(
+      `🔍 [normalizeProjectState] Current substep: ${normalized.current_substep}`,
+    );
+
+    // CRITICAL: Only auto-advance to next phase if:
+    // 1. Current phase is complete AND
+    // 2. There are no more substeps in current phase (current_substep is beyond the last substep)
+    const shouldAutoAdvancePhase =
+      currentPhaseObj?.completed &&
+      (!currentPhaseObj?.substeps ||
+        currentPhaseObj.substeps.length === 0 ||
+        normalized.current_substep > currentPhaseObj.substeps.length);
+
+    if (shouldAutoAdvancePhase) {
+      console.log(
+        `⚡ [normalizeProjectState] Phase complete AND no more substeps, advancing to next phase...`,
+      );
       this.advanceToNextPhase(normalized);
+    } else if (currentPhaseObj?.completed) {
+      console.log(
+        `⏸️ [normalizeProjectState] Phase complete but still on valid substep ${normalized.current_substep}, NOT auto-advancing`,
+      );
     }
+
+    console.log(
+      `📍 [normalizeProjectState] After phase checks: ${normalized.current_phase}.${normalized.current_substep}`,
+    );
 
     // Validate current_phase and current_substep are valid
     this.validateCurrentPointer(normalized);
@@ -280,7 +383,7 @@ export class ProjectStateManager {
 
   /**
    * Advance to the next substep sequentially (for manual checkbox completion)
-   * Simply increments substep number by 1, regardless of completion status
+   * Only advances if currently on a valid substep (prevents double-completion jumps)
    */
   private advanceToNextSubstepSequential(state: NormalizedProjectState): void {
     const currentPhaseNum =
@@ -298,6 +401,15 @@ export class ProjectStateManager {
       return;
     }
 
+    // CRITICAL: Only advance if current_substep is valid (not already beyond the last one)
+    const totalSubsteps = currentPhase.substeps?.length || 0;
+    if (state.current_substep > totalSubsteps) {
+      console.log(
+        `[ProjectStateManager] ⏸️ Already beyond last substep (${state.current_substep} > ${totalSubsteps}), not advancing`,
+      );
+      return;
+    }
+
     // Find the next substep by step_number (just increment by 1)
     const nextSubstep = currentPhase.substeps?.find(
       (s) => s.step_number === state.current_substep + 1,
@@ -309,9 +421,10 @@ export class ProjectStateManager {
         `[ProjectStateManager] ✅ Advanced sequentially to substep ${nextSubstep.step_number}`,
       );
     } else {
-      // No more substeps in this phase
+      // No more substeps in this phase - increment anyway to trigger phase advancement
+      state.current_substep = totalSubsteps + 1;
       console.log(
-        `[ProjectStateManager] ⚠️ No more substeps in phase ${state.current_phase}`,
+        `[ProjectStateManager] ⚠️ No more substeps in phase ${state.current_phase} (advanced to ${state.current_substep} to trigger phase transition)`,
       );
     }
   }
@@ -377,25 +490,55 @@ export class ProjectStateManager {
 
   /**
    * Advance to the next phase
+   * Advances even if next phase has no substeps (sets current_substep = 0)
    */
   private advanceToNextPhase(state: NormalizedProjectState): void {
+    const beforePhase = state.current_phase;
+    const beforeSubstep = state.current_substep;
+
     const currentPhaseNum =
       typeof state.current_phase === "string"
         ? parseInt(state.current_phase.replace("P", ""))
         : state.current_phase;
     const nextPhaseId = `P${currentPhaseNum + 1}`;
 
+    console.log(
+      `🚀 [advanceToNextPhase] Attempting to advance from ${beforePhase}.${beforeSubstep} to ${nextPhaseId}`,
+    );
+
     const nextPhase = state.roadmap.phases.find(
       (p) => p.phase_id === nextPhaseId,
     );
 
-    if (nextPhase && !nextPhase.locked) {
-      state.current_phase = nextPhaseId;
-      state.current_substep = 1;
-      console.log(`[ProjectStateManager] Advanced to phase ${nextPhaseId}`);
-    } else {
+    if (!nextPhase) {
       console.log(
-        `[ProjectStateManager] Cannot advance to phase ${nextPhaseId} (locked or not found)`,
+        `[ProjectStateManager] ⚠️ No next phase found (might be last phase)`,
+      );
+      return;
+    }
+
+    if (nextPhase.locked) {
+      console.log(
+        `[ProjectStateManager] ❌ Cannot advance to phase ${nextPhaseId} (still locked)`,
+      );
+      return;
+    }
+
+    // CRITICAL: Advance to next phase even if it has no substeps yet
+    // Set current_substep = 0 to indicate "needs expansion"
+    const hasSubsteps = nextPhase.substeps && nextPhase.substeps.length > 0;
+
+    state.current_phase = nextPhaseId;
+
+    if (hasSubsteps) {
+      state.current_substep = 1;
+      console.log(
+        `[ProjectStateManager] ✅ Advanced from ${beforePhase}.${beforeSubstep} → ${nextPhaseId}.1`,
+      );
+    } else {
+      state.current_substep = 0; // Special value: "needs expansion"
+      console.log(
+        `[ProjectStateManager] ✅ Advanced from ${beforePhase}.${beforeSubstep} → ${nextPhaseId}.0 (needs expansion)`,
       );
     }
   }
@@ -425,15 +568,49 @@ export class ProjectStateManager {
       return p.phase_id === state.current_phase || phaseNum === currentPhaseNum;
     });
 
-    if (!currentPhase || !currentPhase.substeps) return;
+    console.log(
+      `🔍 [checkPhaseCompletion] Checking phase ${state.current_phase}`,
+    );
+    console.log(`   Phase found: ${!!currentPhase}`);
+    console.log(`   Has substeps: ${!!currentPhase?.substeps}`);
+    console.log(`   Substep count: ${currentPhase?.substeps?.length || 0}`);
+
+    if (
+      !currentPhase ||
+      !currentPhase.substeps ||
+      currentPhase.substeps.length === 0
+    ) {
+      console.log(
+        `   ❌ Cannot check - no phase or no substeps (phase not expanded yet)`,
+      );
+      return;
+    }
+
+    const substepStatuses = currentPhase.substeps.map((s) => ({
+      step: s.step_number,
+      label: s.label,
+      completed: s.completed,
+    }));
+    console.log(
+      `   Substep statuses:`,
+      JSON.stringify(substepStatuses, null, 2),
+    );
 
     const allSubstepsComplete = currentPhase.substeps.every((s) => s.completed);
+    console.log(`   All substeps complete: ${allSubstepsComplete}`);
+    console.log(`   Phase already marked complete: ${currentPhase.completed}`);
 
     if (allSubstepsComplete && !currentPhase.completed) {
       currentPhase.completed = true;
       console.log(
-        `[ProjectStateManager] Phase ${state.current_phase} is now complete`,
+        `   ✅✅✅ [checkPhaseCompletion] Phase ${state.current_phase} is now COMPLETE!`,
       );
+    } else if (allSubstepsComplete && currentPhase.completed) {
+      console.log(
+        `   ℹ️ Phase ${state.current_phase} was already marked complete`,
+      );
+    } else {
+      console.log(`   ⏳ Phase ${state.current_phase} not yet complete`);
     }
   }
 
@@ -451,7 +628,15 @@ export class ProjectStateManager {
       return p.phase_id === state.current_phase || phaseNum === currentPhaseNum;
     });
 
-    if (!currentPhase || !currentPhase.completed) return;
+    console.log(`🔓 [checkPhaseUnlock] Checking if next phase should unlock`);
+    console.log(`   Current phase: ${state.current_phase}`);
+    console.log(`   Phase found: ${!!currentPhase}`);
+    console.log(`   Phase completed: ${currentPhase?.completed}`);
+
+    if (!currentPhase || !currentPhase.completed) {
+      console.log(`   ❌ Cannot unlock - phase not found or not complete`);
+      return;
+    }
 
     // Unlock next phase
     const nextPhaseId = `P${currentPhaseNum + 1}`;
@@ -459,11 +644,23 @@ export class ProjectStateManager {
       (p) => p.phase_id === nextPhaseId,
     );
 
+    console.log(`   Next phase ID: ${nextPhaseId}`);
+    console.log(`   Next phase found: ${!!nextPhase}`);
+    console.log(`   Next phase locked: ${nextPhase?.locked}`);
+    console.log(
+      `   Next phase has master_prompt: ${!!nextPhase?.master_prompt}`,
+    );
+
     if (nextPhase && nextPhase.locked) {
       nextPhase.locked = false;
       console.log(
-        `[ProjectStateManager] Auto-unlocked phase ${nextPhaseId} (previous phase complete)`,
+        `   🔓🔓🔓 [checkPhaseUnlock] Auto-unlocked phase ${nextPhaseId}! (previous phase complete)`,
       );
+      console.log(`   Next phase now accessible for master prompt generation`);
+    } else if (nextPhase && !nextPhase.locked) {
+      console.log(`   ℹ️ Phase ${nextPhaseId} was already unlocked`);
+    } else if (!nextPhase) {
+      console.log(`   ℹ️ No next phase found (might be last phase)`);
     }
   }
 
@@ -506,13 +703,41 @@ export class ProjectStateManager {
       );
     }
 
-    const currentSubstep = currentPhase.substeps?.find(
-      (s) => s.step_number === state.current_substep,
-    );
+    // CRITICAL: Allow current_substep = 0 for unexpanded phases
+    if (state.current_substep === 0) {
+      console.log(
+        `[ProjectStateManager] ℹ️ Phase ${state.current_phase} at substep 0 (needs expansion with master prompt)`,
+      );
+      return; // Valid state - phase needs expansion
+    }
 
-    if (!currentSubstep) {
-      throw new Error(
-        `Invalid state: current_substep ${state.current_substep} not found in phase ${state.current_phase}`,
+    // Validate substep if phase has been expanded with substeps
+    const hasSubsteps =
+      currentPhase.substeps && currentPhase.substeps.length > 0;
+
+    if (hasSubsteps) {
+      // Allow current_substep to be beyond last substep (triggers phase advancement)
+      const totalSubsteps = currentPhase.substeps.length;
+      if (state.current_substep > totalSubsteps) {
+        console.log(
+          `[ProjectStateManager] ℹ️ Phase ${state.current_phase} at substep ${state.current_substep} (beyond last substep ${totalSubsteps}, phase advancement pending)`,
+        );
+        return; // Valid intermediate state
+      }
+
+      const currentSubstep = currentPhase.substeps?.find(
+        (s) => s.step_number === state.current_substep,
+      );
+
+      if (!currentSubstep) {
+        throw new Error(
+          `Invalid state: current_substep ${state.current_substep} not found in phase ${state.current_phase}. Phase has ${totalSubsteps} substeps.`,
+        );
+      }
+    } else {
+      // Phase has no substeps but current_substep is not 0
+      console.warn(
+        `[ProjectStateManager] ⚠️ Phase ${state.current_phase} has no substeps yet, but current_substep is ${state.current_substep}. This should be 0.`,
       );
     }
   }
@@ -553,13 +778,31 @@ export class ProjectStateManager {
     projectId: string,
     state: NormalizedProjectState,
   ): Promise<void> {
+    console.log(`💾 [persistState] Saving state to database and cache`);
+    console.log(`   Current phase: ${state.current_phase}`);
+    console.log(`   Current substep: ${state.current_substep}`);
+
+    // Log phase lock states being persisted
+    const lockStates = state.roadmap.phases.map((p) => ({
+      id: p.phase_id,
+      locked: p.locked,
+      completed: p.completed,
+      has_master_prompt: !!p.master_prompt,
+    }));
+    console.log(`   Phase lock states:`, JSON.stringify(lockStates, null, 2));
+
     // Update in-memory cache (orchestrator)
     const project = await this.orchestrator.getProjectAsync(projectId);
     if (project) {
       project.current_phase = state.current_phase;
       project.current_substep = state.current_substep;
       project.roadmap = state.roadmap;
+      // CRITICAL: Also update project.phases to keep both structures in sync
+      project.phases = state.roadmap.phases;
       project.completed_substeps = state.completed_substeps;
+      console.log(`   ✅ Updated in-memory cache (both roadmap and phases)`);
+    } else {
+      console.log(`   ⚠️ Project not found in cache, cannot update`);
     }
 
     // Update database
@@ -574,10 +817,14 @@ export class ProjectStateManager {
       .eq("id", projectId);
 
     if (error) {
+      console.log(`   ❌ Database update failed:`, error);
       throw new Error(`Failed to persist state: ${error.message}`);
     }
 
-    console.log(`[ProjectStateManager] State persisted to DB and cache`);
+    console.log(`   ✅ Database update successful`);
+    console.log(
+      `💾 [persistState] State persisted to DB and cache successfully`,
+    );
   }
 
   /**

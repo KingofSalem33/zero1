@@ -90,16 +90,20 @@ export class StepOrchestrator {
 
   /**
    * Expand a phase with substeps
+   *
+   * ✅ Gap #1 Fix: Now passes allPhases for context building
    */
   async expandPhaseWithSubsteps(
     phase: any,
     goal: string,
     stateSnapshot?: unknown,
+    allPhases?: any[],
   ): Promise<any> {
     return services.substepGeneration.expandPhaseWithSubsteps(
       phase,
       goal,
       stateSnapshot,
+      allPhases,
     );
   }
 
@@ -206,45 +210,80 @@ export class StepOrchestrator {
     phase_id: string;
     master_prompt_input: string;
   }): Promise<any> {
-    console.log(`🎯 [Orchestrator] Expanding phase ${request.phase_id}`);
+    console.log(
+      `🎯 [Orchestrator] Expanding phase ${request.phase_id} for project ${request.project_id}`,
+    );
 
     const project = await this.getProjectAsync(request.project_id);
     if (!project) {
       throw new Error("Project not found");
     }
+    console.log(`✅ [Orchestrator] Project loaded: ${project.goal}`);
 
     const phase = project.phases?.find(
       (p: any) => p.phase_id === request.phase_id,
     );
     if (!phase) {
-      throw new Error("Phase not found");
+      throw new Error(`Phase ${request.phase_id} not found`);
     }
+    console.log(`✅ [Orchestrator] Phase found: ${phase.goal}`);
+    console.log(
+      `📊 [Orchestrator] Phase currently has ${phase.substeps?.length || 0} substeps`,
+    );
 
     // Expand the phase
+    // ✅ Gap #1 Fix: Pass all phases for context building
+    console.log(`🔧 [Orchestrator] Starting expandPhaseWithSubsteps...`);
     const expandedPhase = await this.expandPhaseWithSubsteps(
       phase,
       project.goal,
+      undefined,
+      project.phases,
+    );
+    console.log(
+      `✅ [Orchestrator] expandPhaseWithSubsteps completed. Generated ${expandedPhase.substeps?.length || 0} substeps`,
     );
 
     // Update project
     const phaseIndex = project.phases!.findIndex(
       (p: any) => p.phase_id === request.phase_id,
     );
-    project.phases![phaseIndex] = {
+    const updatedPhase = {
       ...expandedPhase,
       expanded: true,
       locked: false,
     };
 
+    project.phases![phaseIndex] = updatedPhase;
+    // CRITICAL: Also update roadmap to keep both structures in sync
+    if (project.roadmap?.phases) {
+      project.roadmap.phases[phaseIndex] = updatedPhase;
+    }
+
+    // CRITICAL: If this is the current phase and current_substep is 0 (needs expansion),
+    // advance to substep 1 now that phase is expanded
+    if (
+      project.current_phase === request.phase_id &&
+      project.current_substep === 0
+    ) {
+      project.current_substep = 1;
+      console.log(
+        `✅ [Orchestrator] Advanced current_substep from 0 to 1 after expansion`,
+      );
+    }
+
     projects.set(request.project_id, project);
+    console.log(`✅ [Orchestrator] Updated in-memory cache`);
 
     // Persist to Supabase
+    console.log(`💾 [Orchestrator] Persisting to Supabase...`);
     try {
       await withRetry(async () => {
         const result = await supabase
           .from("projects")
           .update({
-            roadmap: project.phases,
+            roadmap: { phases: project.phases }, // CRITICAL: Wrap in { phases: ... }
+            current_substep: project.current_substep, // Save updated current_substep
             updated_at: new Date().toISOString(),
           })
           .eq("id", request.project_id)
@@ -252,10 +291,14 @@ export class StepOrchestrator {
           .single();
         return result;
       });
+      console.log(`✅ [Orchestrator] Supabase update successful`);
     } catch (err) {
-      console.error("[Orchestrator] Error persisting phase expansion:", err);
+      console.error("❌ [Orchestrator] Error persisting phase expansion:", err);
     }
 
+    console.log(
+      `🎉 [Orchestrator] Phase expansion complete! Returning result.`,
+    );
     return {
       phase: expandedPhase,
       project,
@@ -308,18 +351,40 @@ export class StepOrchestrator {
         return undefined;
       }
 
+      // ✅ V2 Project Support: Check if this project has roadmap_steps
+      console.log(
+        `[Orchestrator] Checking for V2 steps for project: ${projectId}`,
+      );
+      const { data: v2Steps } = await supabase
+        .from("roadmap_steps")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("step_number", { ascending: true });
+
+      const isV2 = v2Steps && v2Steps.length > 0;
+      console.log(
+        `[Orchestrator] Project is ${isV2 ? "V2 (has " + v2Steps.length + " steps)" : "V1 (phases)"}`,
+      );
+
       // Map Supabase project to our Project type
+      const phases = result.roadmap?.phases || result.roadmap || [];
       const project: Project = {
         id: result.id,
         goal: result.goal,
         status: result.status || "active",
         current_phase: result.current_phase || 1,
         current_substep: result.current_substep || 1,
-        phases: result.roadmap?.phases || result.roadmap || [],
+        phases: phases,
+        roadmap: { phases: phases }, // CRITICAL: Keep both structures in sync
         history: [],
         created_at: result.created_at,
         updated_at: result.updated_at,
-      };
+        completed_substeps: result.completed_substeps || [],
+        // ✅ V2: Add steps and current_step if this is a V2 project
+        ...(isV2
+          ? { steps: v2Steps, current_step: result.current_step || 1 }
+          : {}),
+      } as any;
 
       // Cache in memory
       projects.set(projectId, project);

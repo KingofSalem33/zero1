@@ -83,8 +83,14 @@ export class ProjectCreationService {
 
     console.log("🔍 [ProjectCreationService] Starting P1 substep expansion...");
     // EXPAND P1 IMMEDIATELY (before sending P2-P7)
+    // ✅ Gap #1 Fix: Pass allPhases (empty for P1, but consistent API)
     const expandedPhase1 =
-      await this.substepGenerationService.expandPhaseWithSubsteps(phase1, goal);
+      await this.substepGenerationService.expandPhaseWithSubsteps(
+        phase1,
+        goal,
+        undefined,
+        phaseResponse.phases, // Pass all phases for future-proofing
+      );
 
     // SEND P1 SUBSTEPS - User sees P1.1, P1.2, etc. right away
     if (onProgress && expandedPhase1.substeps) {

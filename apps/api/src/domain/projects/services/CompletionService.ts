@@ -87,7 +87,7 @@ export class CompletionService {
           phase: request.phase_id,
           substep: request.substep_number,
         },
-        advanceSubstep: true,
+        advanceSubstepSequential: true, // CRITICAL: Use sequential for manual completion
       });
 
     console.log(
@@ -172,9 +172,12 @@ export class CompletionService {
     }
 
     // Analyze conversation for completion signals
+    // ✅ Gap #3 Fix: Pass phase for acceptance criteria
     const confidence = completionDetector.analyzeCompletion(
       currentSubstep,
       recentMessages,
+      undefined,
+      currentPhase,
     );
 
     // Auto-complete immediately on high-confidence recommendation

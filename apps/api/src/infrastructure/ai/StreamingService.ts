@@ -272,6 +272,85 @@ export class StreamingService {
     );
     this.sendEvent(res, "roadmap_error", error);
   }
+
+  // ========================================
+  // NEW: Gap #2 Fix - Real-Time Sync Events
+  // ========================================
+
+  /**
+   * Send project refresh request - tells frontend to refresh project state
+   *
+   * This is the KEY fix for Gap #2. When backend updates state (completion,
+   * artifact analysis, phase unlock), frontend needs to know to refresh.
+   */
+  sendProjectRefreshRequest(
+    res: Response,
+    data: {
+      project_id: string;
+      trigger:
+        | "substep_completed"
+        | "artifact_analyzed"
+        | "phase_unlocked"
+        | "state_updated";
+      new_phase?: string | number;
+      new_substep?: number;
+      completed_count?: number;
+    },
+  ): void {
+    console.log(
+      `🔄 [StreamingService] Sending project refresh request: ${data.trigger}`,
+    );
+    this.sendEvent(res, "project_refresh_request", data);
+  }
+
+  /**
+   * Send phase unlocked notification
+   *
+   * Tells frontend that a new phase has been unlocked and should show
+   * celebration/notification to user.
+   */
+  sendPhaseUnlocked(
+    res: Response,
+    data: {
+      phase_id: string;
+      phase_number: number;
+      phase_goal: string;
+      unlocked_by: "completion" | "manual";
+    },
+  ): void {
+    console.log(
+      `🔓 [StreamingService] Phase unlocked: ${data.phase_id} - ${data.phase_goal}`,
+    );
+    this.sendEvent(res, "phase_unlocked", data);
+  }
+
+  /**
+   * Send artifact completions - tells frontend which substeps artifact completed
+   *
+   * After artifact analysis detects completed substeps, this tells the
+   * frontend exactly which ones were marked complete and with what confidence.
+   */
+  sendArtifactCompletions(
+    res: Response,
+    data: {
+      artifact_id: string;
+      completed_substeps: Array<{
+        phase_number: number;
+        substep_number: number;
+        status: "complete" | "partial" | "incomplete";
+        confidence: number;
+        evidence?: string;
+      }>;
+      new_phase: number;
+      new_substep: number;
+      progress: number;
+    },
+  ): void {
+    console.log(
+      `🧪 [StreamingService] Artifact completions: ${data.completed_substeps.length} substeps affected`,
+    );
+    this.sendEvent(res, "artifact_completions", data);
+  }
 }
 
 /**

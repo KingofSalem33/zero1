@@ -59,23 +59,31 @@ Return 7 phases (P1-P7) with customized content for this project.`;
 
   /**
    * Substep Generation - Expand a phase into actionable substeps
+   *
+   * ✅ Gap #1 Fix: Now includes previous phase context for continuity
    */
   static substepGeneration(
     phaseGoal: string,
     phaseId: string,
     projectGoal: string,
+    previousPhasesContext?: string,
   ): string {
+    const contextSection = previousPhasesContext
+      ? `\n## PREVIOUS PHASE ACCOMPLISHMENTS:\n${previousPhasesContext}\n\nIMPORTANT: Your substeps should build on this work. Reference specific tools, tech stack, and decisions from previous phases.\n`
+      : "\nNote: This is the first phase.\n";
+
     return `You are breaking down a Zero-to-One project phase into actionable substeps.
 
 PROJECT GOAL: "${projectGoal}"
 PHASE: ${phaseId} - "${phaseGoal}"
-
+${contextSection}
 Generate 3-5 substeps that:
 1. Are concrete, actionable tasks
 2. Build sequentially (each substep enables the next)
 3. Have clear completion criteria
 4. Are appropriately scoped for a beginner
 5. Include specific technical guidance
+6. ${previousPhasesContext ? "**REFERENCE WORK FROM PREVIOUS PHASES** (don't ask user to repeat info)" : "Establish the foundation"}
 
 Each substep should have:
 - step_number: Sequential number (1, 2, 3, etc.)
@@ -84,53 +92,60 @@ Each substep should have:
   * Explain WHY this step matters
   * Provide step-by-step guidance
   * Include specific examples for THIS project type
-  * Reference previous substeps when relevant
+  * ${previousPhasesContext ? "**Reference the tech stack, tools, and setup from previous phases**" : "Reference previous substeps when relevant"}
   * End with concrete completion criteria
 
 Make the substeps HYPER-SPECIFIC to "${projectGoal}" - not generic.
-
-Example for a SaaS app's "Build Environment" phase:
-- Substep 1: "Set up Git repository and version control"
-- Substep 2: "Configure Node.js development environment"
-- Substep 3: "Deploy Hello World to production"
+${previousPhasesContext ? "\n**Example**: If previous phases set up Node.js + PostgreSQL, substeps should reference: 'Now that you have Node.js and PostgreSQL configured...' NOT 'Set up your database...'" : '\nExample for a SaaS app\'s "Build Environment" phase:\n- Substep 1: "Set up Git repository and version control"\n- Substep 2: "Configure Node.js development environment"\n- Substep 3: "Deploy Hello World to production"'}
 
 Return only the substeps array in JSON format.`;
   }
 
   /**
    * Master Prompt Generation - Generate expert guidance for a phase
+   *
+   * ✅ Gap #1 Fix: Now includes previous phase context for continuity
    */
   static masterPromptGeneration(
     phaseId: string,
     phaseGoal: string,
     userVision: string,
+    previousPhasesContext?: string,
   ): string {
+    const contextSection = previousPhasesContext
+      ? `\n## WHAT WAS ACCOMPLISHED IN PREVIOUS PHASES:\n${previousPhasesContext}\n\nIMPORTANT: Reference these accomplishments in your master prompt. Build upon this foundation - don't ignore what was already done.\n`
+      : "\nNote: This is the first phase, so there are no previous accomplishments to reference.\n";
+
     return `You are a senior architect condensing 20+ years of experience into a master prompt.
 
 USER'S VISION: "${userVision}"
 PHASE: ${phaseId} - "${phaseGoal}"
-
+${contextSection}
 Create a comprehensive master prompt that:
 1. Captures expert-level thinking for this phase
 2. Includes domain-specific best practices
 3. Anticipates common pitfalls
 4. Provides decision frameworks
 5. Balances thoroughness with beginner-friendliness
+6. ${previousPhasesContext ? "**BUILDS ON THE PREVIOUS PHASE WORK** (reference specific deliverables)" : "Establishes the foundation for future phases"}
 
 The prompt should be 500-800 words and include:
-- Strategic context (WHY this phase matters)
-- Step-by-step guidance
+- Strategic context (WHY this phase matters IN THE JOURNEY SO FAR)
+- Step-by-step guidance (that references previous work when relevant)
 - Common mistakes to avoid
 - Success criteria
 - Next steps preview
 
 Make it HYPER-SPECIFIC to "${userVision}" - reference the actual project type throughout.
+${previousPhasesContext ? "\n**CRITICAL**: Reference the tech stack, tools, and decisions made in previous phases. Don't ask the user to repeat information." : ""}
 
 Return only the master prompt text.`;
   }
 
   /**
    * Step Execution System Message - Contextual guidance for LLM during step execution
+   *
+   * ✅ Gap #4 Fix: Now includes cumulative journey context
    */
   static executionSystem(
     projectGoal: string,
@@ -138,7 +153,12 @@ Return only the master prompt text.`;
     substepLabel: string,
     completedSubsteps: string,
     masterPrompt: string,
+    cumulativeContext?: string,
   ): string {
+    const journeySection = cumulativeContext
+      ? `\n## 🎯 YOUR JOURNEY SO FAR:\n\n${cumulativeContext}\n\n**CRITICAL**: Build upon ALL this previous work. Reference specific tech stacks, tools, decisions, and deliverables from previous phases. DO NOT ask the user to repeat information they already provided.\n`
+      : "";
+
     return `You are helping with project execution.
 
 Tool usage rules (strict):
@@ -154,19 +174,21 @@ When using web_search or http_fetch tools:
 Provide comprehensive, helpful responses using the tools when appropriate. Be conversational and thorough like ChatGPT.
 
 After providing your response, ask the immediate next logical question to aid the user in completing the task. Be direct and specific - focus on the exact next action needed.
-
-PROJECT CONTEXT:
+${journeySection}
+## 📍 CURRENT LOCATION:
 - Goal: ${projectGoal}
 - Current Phase: ${phaseGoal}
 - Current Step: ${substepLabel}
 
-COMPLETED SUBSTEPS IN THIS PHASE:
+## ✅ COMPLETED IN THIS PHASE:
 ${completedSubsteps}
 
-IMPORTANT: Build upon the work completed in previous substeps. Reference their outputs when relevant. Ensure continuity and avoid asking for information that was already provided in earlier substeps.
+## 🧠 EXPERT GUIDANCE FOR THIS PHASE:
+${masterPrompt}
 
-MASTER PROMPT FROM SYSTEM:
-${masterPrompt}`;
+---
+
+IMPORTANT: ${cumulativeContext ? "You have access to the FULL journey above. Reference previous work. Don't ask users to repeat tech stack, tools, or decisions." : "Build upon the work completed in previous substeps. Reference their outputs when relevant. Ensure continuity."}`;
   }
 
   /**

@@ -9,29 +9,39 @@ const getPhaseNumber = (phase: string | number): number => {
   return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
 };
 
+// V2 Roadmap Step
+interface RoadmapStep {
+  id: string;
+  project_id: string;
+  step_number: number;
+  title: string;
+  description: string;
+  master_prompt: string;
+  context: any;
+  acceptance_criteria: string[];
+  estimated_complexity: number;
+  status: "pending" | "active" | "completed" | "skipped";
+  created_at: string;
+  completed_at?: string;
+}
+
+// V2 Project structure
 interface Project {
   id: string;
+  user_id: string;
   goal: string;
   status: "clarifying" | "active" | "completed" | "paused";
-  current_phase: number;
-  current_substep: number;
-  phases: ProjectPhase[];
-}
-
-interface ProjectPhase {
-  phase_id: string;
-  phase_number: number;
-  goal: string;
-  substeps: ProjectSubstep[];
-}
-
-interface ProjectSubstep {
-  substep_id: string;
-  step_number: number;
-  label: string;
-  prompt_to_send: string;
-  rationale?: string;
-  why_next_step_matters?: string;
+  current_step: number;
+  roadmap_status: string;
+  steps: RoadmapStep[];
+  metadata: {
+    total_steps: number;
+    current_step: number;
+    completion_percentage: number;
+    roadmap_version: number;
+    generated_by?: string;
+    generation_prompt?: string;
+  };
 }
 
 interface ChatMessage {
@@ -50,28 +60,16 @@ interface ToolActivity {
   timestamp: string;
 }
 
-interface CompletionNudge {
-  message: string;
-  confidence: string;
-  score: number;
-  substep_id: string;
-}
-
 interface UnifiedWorkspaceProps {
   project: Project | null;
   onCreateProject: (goal: string) => void;
   onInspireMe: (goal: string, callback: () => void) => void;
-  onSubstepComplete: (substepId: string) => void;
-  onToggleSubstep: (substepId: string) => void;
   toolsUsed: ToolActivity[];
   setToolsUsed: (tools: ToolActivity[]) => void;
-  completionNudge: CompletionNudge | null;
-  onDismissNudge: () => void;
   creating: boolean;
   inspiring: boolean;
   onRefreshProject: () => void;
   onAskAIRef?: React.MutableRefObject<(() => void) | null>;
-  pendingSubstepId: string | null;
   onOpenNewWorkspace?: () => void;
 }
 
@@ -79,19 +77,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
   onCreateProject,
   onInspireMe,
-  onSubstepComplete,
-
-  onToggleSubstep: _onToggleSubstep,
   toolsUsed,
   setToolsUsed,
-  completionNudge,
-  onDismissNudge,
   creating,
   inspiring,
   onRefreshProject,
   onAskAIRef,
-
-  pendingSubstepId: _pendingSubstepId,
   onOpenNewWorkspace,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -100,6 +91,70 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [showUploadButton, setShowUploadButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const isExpandingPhase = useRef(false);
+
+  // Auto-expand phase when current_substep === 0 (needs expansion) - V1 only
+  useEffect(() => {
+    // Skip for V2 projects (they have pre-generated steps)
+    if (
+      !project ||
+      project.steps ||
+      project.current_substep !== 0 ||
+      isExpandingPhase.current
+    ) {
+      return;
+    }
+
+    // Get current phase that needs expansion
+    const currentPhase = project.phases?.find(
+      (p) => p.phase_number === getPhaseNumber(project.current_phase!),
+    );
+
+    if (!currentPhase) {
+      console.log(
+        "[UnifiedWorkspace] No current phase found for auto-expansion",
+      );
+      return;
+    }
+
+    console.log(
+      `[UnifiedWorkspace] Auto-expanding phase ${currentPhase.phase_id} (current_substep === 0)`,
+    );
+
+    isExpandingPhase.current = true;
+
+    // Call expand endpoint with explicit phase_id
+    fetch(`${API_URL}/api/projects/${project.id}/expand`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phase_id: currentPhase.phase_id,
+        thinking_input: `Auto-expanding ${currentPhase.goal}`,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        console.log(
+          "[UnifiedWorkspace] Phase expansion complete:",
+          data.phase_expanded ? "success" : "no expansion",
+        );
+        if (data.phase_expanded) {
+          // Refresh project to get new substeps
+          onRefreshProject();
+        }
+      })
+      .catch((error) => {
+        console.error("[UnifiedWorkspace] Error expanding phase:", error);
+      })
+      .finally(() => {
+        isExpandingPhase.current = false;
+      });
+  }, [
+    project?.id,
+    project?.current_phase,
+    project?.current_substep,
+    onRefreshProject,
+  ]);
 
   // Helper function to send a message directly with a specific prompt
   const sendMessageWithPrompt = useCallback(
@@ -118,26 +173,25 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
       setMessages((prev) => [...prev, newMessage]);
 
-      // Get current substep's master prompt
-      const currentPhase = project.phases?.find(
-        (p) => p.phase_number === getPhaseNumber(project.current_phase),
-      );
-      const currentSubstep = currentPhase?.substeps?.find(
-        (s) => s.step_number === project.current_substep,
+      // Get current step's master prompt
+      const currentStep = project.steps.find(
+        (s) => s.step_number === project.current_step,
       );
 
-      if (!currentSubstep) {
+      if (!currentStep) {
         const errorMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           type: "ai",
           content:
-            "No active substep found. Please make sure you have an active project with substeps.",
+            "No active step found. Please make sure you have an active project with steps.",
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, errorMessage]);
         setIsProcessing(false);
         return;
       }
+
+      const masterPrompt = currentStep.master_prompt;
 
       // Create placeholder for AI message that will be streamed
       const aiMessageId = (Date.now() + 1).toString();
@@ -151,12 +205,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
       try {
         const response = await fetch(
-          `${API_URL}/api/projects/${project.id}/execute-step/stream`,
+          `${API_URL}/api/v2/projects/${project.id}/execute-step`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              master_prompt: currentSubstep.prompt_to_send,
+              master_prompt: masterPrompt,
               user_message: userMessage,
             }),
           },
@@ -237,17 +291,86 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 }
               } else if (currentEvent === "done") {
                 receivedDone = true;
+                // V2: No special handling needed for done event
+              } else if (currentEvent === "error") {
+                throw new Error(data);
+              } else if (currentEvent === "project_refresh_request") {
+                // ✅ NEW: Gap #2 Fix - Auto-refresh when backend updates state
                 try {
-                  const doneData = JSON.parse(data);
-                  if (doneData.substepCompleted) {
-                    onSubstepComplete(currentSubstep.substep_id);
-                    onRefreshProject();
-                  }
+                  const refreshData = JSON.parse(data);
+                  console.log(
+                    "🔄 [UnifiedWorkspace] Received refresh request:",
+                    refreshData.trigger,
+                  );
+                  onRefreshProject();
                 } catch {
                   // Ignore JSON parse errors
                 }
-              } else if (currentEvent === "error") {
-                throw new Error(data);
+              } else if (currentEvent === "substep_completed") {
+                // ✅ NEW: Gap #2 Fix - Handle substep completion
+                try {
+                  const completionData = JSON.parse(data);
+                  console.log(
+                    "✅ [UnifiedWorkspace] Substep completed:",
+                    completionData.phase_id,
+                    "/",
+                    completionData.substep_number,
+                  );
+                  // Show celebration message if briefing exists
+                  if (completionData.briefing) {
+                    const celebrationMessage: ChatMessage = {
+                      id: (Date.now() + 2).toString(),
+                      type: "ai",
+                      content: completionData.briefing,
+                      timestamp: new Date(),
+                    };
+                    setMessages((prev) => [...prev, celebrationMessage]);
+                  }
+                  // Refresh will happen via project_refresh_request event
+                } catch {
+                  // Ignore JSON parse errors
+                }
+              } else if (currentEvent === "artifact_completions") {
+                // ✅ NEW: Gap #2 Fix - Handle artifact completions
+                try {
+                  const artifactData = JSON.parse(data);
+                  console.log(
+                    "🧪 [UnifiedWorkspace] Artifact completions:",
+                    artifactData.completed_substeps.length,
+                    "substeps",
+                  );
+                  // Show completion info in chat
+                  const completionMessage: ChatMessage = {
+                    id: (Date.now() + 3).toString(),
+                    type: "ai",
+                    content: `✅ **Artifact Analysis Complete**\n\nCompleted ${artifactData.completed_substeps.length} substep(s):\n${artifactData.completed_substeps.map((s: any) => `- P${s.phase_number}.${s.substep_number} (${s.status}, ${s.confidence}% confidence)`).join("\n")}\n\nProgress: ${artifactData.progress}%`,
+                    timestamp: new Date(),
+                  };
+                  setMessages((prev) => [...prev, completionMessage]);
+                  // Refresh will happen via project_refresh_request event
+                } catch {
+                  // Ignore JSON parse errors
+                }
+              } else if (currentEvent === "phase_unlocked") {
+                // ✅ NEW: Gap #2 Fix - Handle phase unlock
+                try {
+                  const phaseData = JSON.parse(data);
+                  console.log(
+                    "🔓 [UnifiedWorkspace] Phase unlocked:",
+                    phaseData.phase_id,
+                  );
+                  // Show celebration for phase unlock
+                  const unlockMessage: ChatMessage = {
+                    id: (Date.now() + 4).toString(),
+                    type: "ai",
+                    content: `🎉 **Phase ${phaseData.phase_id} Unlocked!**\n\n${phaseData.phase_goal}\n\nGreat progress! You've completed the previous phase and unlocked the next one.`,
+                    timestamp: new Date(),
+                  };
+                  setMessages((prev) => [...prev, unlockMessage]);
+                  // Refresh will happen via project_refresh_request event
+                } catch {
+                  // Ignore JSON parse errors
+                }
               }
             }
           }
@@ -273,23 +396,21 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         setIsProcessing(false);
       }
     },
-    [project, setToolsUsed, onSubstepComplete, onRefreshProject],
+    [project, setToolsUsed, onRefreshProject],
   );
 
   const handleAskAI = useCallback(() => {
     if (!project || isProcessing) return;
 
-    const currentPhase = project.phases?.find(
-      (p) => p.phase_number === getPhaseNumber(project.current_phase),
+    const currentStep = project.steps.find(
+      (s) => s.step_number === project.current_step,
     );
-    const currentSubstep = currentPhase?.substeps?.find(
-      (s) => s.step_number === project.current_substep,
-    );
+    const masterPrompt = currentStep?.master_prompt;
 
-    if (!currentSubstep || !currentSubstep.prompt_to_send.trim()) return;
+    if (!masterPrompt || !masterPrompt.trim()) return;
 
     // Send the message directly without relying on state
-    sendMessageWithPrompt(currentSubstep.prompt_to_send);
+    sendMessageWithPrompt(masterPrompt);
   }, [project, isProcessing, sendMessageWithPrompt]);
 
   // Expose handleAskAI to parent via ref
@@ -328,26 +449,25 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setMessages((prev) => [...prev, newMessage]);
     setCurrentInput("");
 
-    // Get current substep's master prompt
-    const currentPhase = project.phases?.find(
-      (p) => p.phase_number === getPhaseNumber(project.current_phase),
-    );
-    const currentSubstep = currentPhase?.substeps?.find(
-      (s) => s.step_number === project.current_substep,
+    // Get current step's master prompt
+    const currentStep = project.steps.find(
+      (s) => s.step_number === project.current_step,
     );
 
-    if (!currentSubstep) {
+    if (!currentStep) {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: "ai",
         content:
-          "No active substep found. Please make sure you have an active project with substeps.",
+          "No active step found. Please make sure you have an active project with steps.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
       setIsProcessing(false);
       return;
     }
+
+    const masterPrompt = currentStep.master_prompt;
 
     // Create placeholder for AI message that will be streamed
     const aiMessageId = (Date.now() + 1).toString();
@@ -361,12 +481,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     try {
       const response = await fetch(
-        `${API_URL}/api/projects/${project.id}/execute-step/stream`,
+        `${API_URL}/api/v2/projects/${project.id}/execute-step`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            master_prompt: currentSubstep.prompt_to_send,
+            master_prompt: masterPrompt,
             user_message: userMessage,
           }),
         },
@@ -462,51 +582,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   });
                   setToolsUsed([...allTools]);
                   break;
-
-                case "completion_nudge": {
-                  // Surface high-confidence prompt inline in the chat
-                  const nudgeText = parsed.message
-                    ? `✨ ${parsed.message}`
-                    : "✨ Ready to mark this substep complete?";
-                  setMessages((prev) => [
-                    ...prev,
-                    {
-                      id: `${aiMessageId}-nudge-${Date.now()}`,
-                      type: "ai",
-                      content: nudgeText,
-                      timestamp: new Date(),
-                    },
-                  ]);
-                  break;
-                }
-
-                case "substep_completed": {
-                  // Auto-completion detected; refresh project and append briefing
-                  try {
-                    if (project && parsed?.briefing) {
-                      setMessages((prev) => [
-                        ...prev,
-                        {
-                          id: `${aiMessageId}-briefing-${Date.now()}`,
-                          type: "ai",
-                          content: `? ${parsed.briefing}`,
-                          timestamp: new Date(),
-                        },
-                      ]);
-                    }
-                  } catch {
-                    // ignore parse/append errors for briefing augmentation
-                  }
-                  // Trigger parent handlers to sync roadmap
-                  onSubstepComplete(currentSubstep.substep_id);
-                  onRefreshProject();
-                  break;
-                }
-
-                case "completion_detected": {
-                  // Optional: add a lightweight signal in the chat
-                  break;
-                }
 
                 case "done":
                   receivedDone = true;
@@ -923,83 +998,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           {toolsUsed.length > 0 && (
             <div className="ml-[2.625rem]">
               <ToolBadges tools={toolsUsed} />
-            </div>
-          )}
-
-          {/* Completion Nudge Inline */}
-          {completionNudge && (
-            <div className="ml-[2.625rem]">
-              <div className="bg-green-600/20 border border-green-500/50 rounded-xl p-5 space-y-4 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-green-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold text-green-400">
-                      Step complete
-                    </div>
-                    <div className="text-sm text-neutral-300 mt-1">
-                      {completionNudge.message}
-                    </div>
-                    <div className="text-xs text-neutral-500 mt-1.5 flex items-center gap-1">
-                      <svg
-                        className="w-3 h-3"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <span>
-                        {completionNudge.confidence} confidence ·{" "}
-                        {completionNudge.score}% match
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      onSubstepComplete(completionNudge.substep_id);
-                      onDismissNudge();
-                    }}
-                    className="btn-success"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 7l5 5m0 0l-5 5m5-5H6"
-                      />
-                    </svg>
-                    <span>Continue to Next Step</span>
-                  </button>
-                  <button onClick={onDismissNudge} className="btn-ghost">
-                    Keep Working
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 

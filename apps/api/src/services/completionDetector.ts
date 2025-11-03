@@ -20,13 +20,16 @@ export interface CompletionConfidence {
 export class CompletionDetector {
   /**
    * Analyze if a substep appears complete based on conversation and artifacts
+   *
+   * ✅ Gap #3 Fix: Now accepts phase parameter for acceptance criteria
    */
   analyzeCompletion(
     substep: ProjectSubstep,
     recentMessages: Message[],
     artifactAnalysis?: ArtifactAnalysis,
+    phase?: any,
   ): CompletionConfidence {
-    const criteria = this.extractCriteria(substep);
+    const criteria = this.extractCriteria(substep, phase);
     const satisfiedCriteria: string[] = [];
     const missingCriteria: string[] = [];
 
@@ -101,11 +104,32 @@ export class CompletionDetector {
 
   /**
    * Extract criteria from substep prompt
+   *
+   * ✅ Gap #3 Fix: Now prioritizes phase acceptance criteria over extracted criteria
    */
-  private extractCriteria(substep: ProjectSubstep): string[] {
+  private extractCriteria(substep: ProjectSubstep, phase?: any): string[] {
     const criteria: string[] = [];
 
-    // Look for common patterns in prompt_to_send
+    // ✅ PRIORITY 1: Use official phase acceptance criteria
+    if (phase?.acceptance_criteria && phase.acceptance_criteria.length > 0) {
+      // Map phase criteria to substeps proportionally
+      const substepIndex = substep.step_number - 1;
+      const totalSubsteps = phase.substeps?.length || 3;
+      const criteriaPerSubstep = Math.ceil(
+        phase.acceptance_criteria.length / totalSubsteps,
+      );
+
+      const start = substepIndex * criteriaPerSubstep;
+      const end = start + criteriaPerSubstep;
+      const relevantCriteria = phase.acceptance_criteria.slice(start, end);
+
+      if (relevantCriteria.length > 0) {
+        criteria.push(...relevantCriteria);
+        return criteria; // Use phase criteria exclusively
+      }
+    }
+
+    // ✅ PRIORITY 2: Extract from substep prompt (fallback)
     const prompt = substep.prompt_to_send || "";
 
     // Look for bullet points
@@ -120,7 +144,12 @@ export class CompletionDetector {
       criteria.push(...numberedMatches.map((m) => m.replace(/^\d+\.\s+/, "")));
     }
 
-    // Fallback: at least expect upload/review
+    // ✅ PRIORITY 3: Use substep rationale (fallback)
+    if (criteria.length === 0 && substep.rationale) {
+      criteria.push(substep.rationale);
+    }
+
+    // ✅ PRIORITY 4: Generic fallback
     if (criteria.length === 0) {
       criteria.push("Complete the work described");
       criteria.push("Upload artifact for review");
