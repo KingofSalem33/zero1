@@ -1,0 +1,19 @@
+﻿Project Vision Document for Online Cookie Delivery Service
+1. Problem Statement
+Busy families often struggle to find the time to bake fresh, homemade cookies, which can lead to missed opportunities for family bonding and enjoyment of treats. The hassle of baking—gathering ingredients, preparation, and cleanup—can be overwhelming, especially for parents juggling multiple responsibilities. Our service aims to eliminate this barrier by providing fresh, homemade cookies delivered directly to their doorstep, allowing families to enjoy delicious treats without the hassle of baking.
+✅ Done → Now doing target audience definition...
+2. Target Audience
+The primary target audience for the online cookie delivery service includes:
+* Busy Families: Parents with children who have limited time for baking due to work, school, and extracurricular activities.
+* Health-Conscious Consumers: Families looking for homemade, quality ingredients in their treats, as opposed to mass-produced cookies.
+* Gift Givers: Individuals seeking unique, thoughtful gifts for birthdays, holidays, or special occasions that can be conveniently delivered.
+✅ Done → Now doing success metrics...
+3. Success Metrics
+To measure the success of the cookie delivery service, we will track the following metrics:
+1. Customer Acquisition Rate: Achieve a 20% increase in new customer sign-ups within the first three months of launch.
+2. Customer Retention Rate: Maintain a retention rate of at least 75% of customers who make a purchase within the first six months.
+3. Average Order Value: Increase the average order value to $30 within the first year by encouraging larger orders through promotions and bundling options.
+✅ Vision document created - here's what we defined...
+* Problem Statement: Busy families struggle to find time for baking, leading to missed enjoyment of homemade treats.
+* Target Audience: Busy families, health-conscious consumers, and gift givers.
+* Success Metrics: Customer acquisition rate, customer retention rate, and average order value.

@@ -10,6 +10,7 @@ import { supabase } from "../db";
 import { RoadmapGenerationService } from "../domain/projects/services/RoadmapGenerationService";
 import { StepCompletionService } from "../domain/projects/services/StepCompletionService";
 import { ExecutionService } from "../domain/projects/services/ExecutionService";
+import { threadService } from "../services/threadService";
 import { randomUUID } from "crypto";
 import { aiLimiter } from "../middleware/rateLimit";
 
@@ -187,6 +188,43 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
     return res.json(project);
   } catch (error) {
     console.error("[Roadmap V2] Error fetching project:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// GET /api/v2/projects/:id/thread - Get or create thread for project
+// ============================================================================
+router.get("/projects/:id/thread", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Verify project exists
+    const { data: project, error: projectError } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("id", id)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    // Get or create thread for this project
+    const thread = await threadService.getOrCreateThread(id);
+
+    if (!thread) {
+      return res.status(500).json({ error: "Failed to get or create thread" });
+    }
+
+    return res.json({
+      thread_id: thread.id,
+      project_id: thread.project_id,
+      title: thread.title,
+      created_at: thread.created_at,
+    });
+  } catch (error) {
+    console.error("[Roadmap V2] Error fetching thread:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

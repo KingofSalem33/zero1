@@ -89,9 +89,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [currentInput, setCurrentInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUploadButton, setShowUploadButton] = useState(false);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const isExpandingPhase = useRef(false);
+  const messagesFetchedRef = useRef(false);
 
   // Auto-expand phase when current_substep === 0 (needs expansion) - V1 only
   useEffect(() => {
@@ -155,6 +157,73 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     project?.current_substep,
     onRefreshProject,
   ]);
+
+  // Fetch thread for V2 projects
+  useEffect(() => {
+    if (!project || !project.steps) return; // Only for V2 projects
+
+    async function fetchThread() {
+      try {
+        const response = await fetch(
+          `${API_URL}/api/v2/projects/${project.id}/thread`,
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setThreadId(data.thread_id);
+          console.log(`[UnifiedWorkspace] Fetched thread: ${data.thread_id}`);
+        }
+      } catch (error) {
+        console.error("[UnifiedWorkspace] Error fetching thread:", error);
+      }
+    }
+
+    fetchThread();
+  }, [project?.id]);
+
+  // Fetch messages from thread
+  const fetchThreadMessages = useCallback(async () => {
+    if (!threadId) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/threads/${threadId}/messages`,
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const threadMessages: ChatMessage[] = data.data.map((msg: any) => ({
+          id: msg.id,
+          type: msg.role === "user" ? "user" : "ai",
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+        }));
+        setMessages(threadMessages);
+        console.log(
+          `[UnifiedWorkspace] Loaded ${threadMessages.length} messages from thread`,
+        );
+      }
+    } catch (error) {
+      console.error("[UnifiedWorkspace] Error fetching messages:", error);
+    }
+  }, [threadId]);
+
+  // Initial fetch of messages
+  useEffect(() => {
+    if (!threadId || messagesFetchedRef.current) return;
+
+    messagesFetchedRef.current = true;
+    fetchThreadMessages();
+  }, [threadId, fetchThreadMessages]);
+
+  // Poll for new messages every 5 seconds
+  useEffect(() => {
+    if (!threadId) return;
+
+    const interval = setInterval(() => {
+      fetchThreadMessages();
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [threadId, fetchThreadMessages]);
 
   // Helper function to send a message directly with a specific prompt
   const sendMessageWithPrompt = useCallback(
@@ -394,9 +463,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         );
       } finally {
         setIsProcessing(false);
+        // Refresh messages from thread to catch any async messages (like artifact analysis)
+        setTimeout(() => fetchThreadMessages(), 1000);
       }
     },
-    [project, setToolsUsed, onRefreshProject],
+    [project, setToolsUsed, onRefreshProject, fetchThreadMessages],
   );
 
   const handleAskAI = useCallback(() => {
@@ -617,6 +688,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsProcessing(false);
+      // Refresh messages from thread to catch any async messages (like artifact analysis)
+      setTimeout(() => fetchThreadMessages(), 1000);
     }
   };
 
