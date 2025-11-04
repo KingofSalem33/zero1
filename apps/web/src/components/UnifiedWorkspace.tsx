@@ -240,13 +240,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     fetchThreadMessages();
   }, [threadId, fetchThreadMessages]);
 
-  // Poll for new messages every 5 seconds
+  // Poll for new messages every 15 seconds
   useEffect(() => {
     if (!threadId) return;
 
     const interval = setInterval(() => {
       fetchThreadMessages();
-    }, 5000); // Poll every 5 seconds
+    }, 15000); // Poll every 15 seconds
 
     return () => clearInterval(interval);
   }, [threadId, fetchThreadMessages]);
@@ -287,10 +287,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     // Initial fetch
     fetchLatestArtifact();
 
-    // Poll every 5 seconds
+    // Poll every 10 seconds (less aggressive to avoid rate limits)
     const interval = setInterval(() => {
       fetchLatestArtifact();
-    }, 5000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [project?.id, fetchLatestArtifact]);

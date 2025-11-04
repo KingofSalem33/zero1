@@ -12,7 +12,7 @@ import { StepCompletionService } from "../domain/projects/services/StepCompletio
 import { ExecutionService } from "../domain/projects/services/ExecutionService";
 import { threadService } from "../services/threadService";
 import { randomUUID } from "crypto";
-import { aiLimiter } from "../middleware/rateLimit";
+import { aiLimiter, readOnlyLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 const roadmapService = new RoadmapGenerationService();
@@ -195,39 +195,45 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
 // ============================================================================
 // GET /api/v2/projects/:id/thread - Get or create thread for project
 // ============================================================================
-router.get("/projects/:id/thread", async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
+router.get(
+  "/projects/:id/thread",
+  readOnlyLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
 
-    // Verify project exists
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .select("id")
-      .eq("id", id)
-      .single();
+      // Verify project exists
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("id", id)
+        .single();
 
-    if (projectError || !project) {
-      return res.status(404).json({ error: "Project not found" });
+      if (projectError || !project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Get or create thread for this project
+      const thread = await threadService.getOrCreateThread(id);
+
+      if (!thread) {
+        return res
+          .status(500)
+          .json({ error: "Failed to get or create thread" });
+      }
+
+      return res.json({
+        thread_id: thread.id,
+        project_id: thread.project_id,
+        title: thread.title,
+        created_at: thread.created_at,
+      });
+    } catch (error) {
+      console.error("[Roadmap V2] Error fetching thread:", error);
+      return res.status(500).json({ error: "Internal server error" });
     }
-
-    // Get or create thread for this project
-    const thread = await threadService.getOrCreateThread(id);
-
-    if (!thread) {
-      return res.status(500).json({ error: "Failed to get or create thread" });
-    }
-
-    return res.json({
-      thread_id: thread.id,
-      project_id: thread.project_id,
-      title: thread.title,
-      created_at: thread.created_at,
-    });
-  } catch (error) {
-    console.error("[Roadmap V2] Error fetching thread:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+  },
+);
 
 // ============================================================================
 // GET /api/v2/projects/:id/current-step - Get current step with context

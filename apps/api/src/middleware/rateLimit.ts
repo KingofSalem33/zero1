@@ -17,6 +17,7 @@ const RATE_LIMIT_MAX_REQUESTS = {
   AI_ENDPOINTS: 50, // Increased from 10 to 50 for better dev/testing experience
   STRICT_ENDPOINTS: 20,
   FILE_UPLOADS: 30,
+  READ_ONLY: 300, // Higher limit for read-only endpoints (polling)
 } as const;
 
 /**
@@ -101,5 +102,27 @@ export const uploadLimiter = rateLimit({
   keyGenerator: (req) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     return `upload:${ipKeyGenerator(ip)}`;
+  },
+});
+
+/**
+ * Read-only endpoint rate limiter
+ * Applied to GET endpoints that are polled frequently
+ * Limits: 300 requests per 15 minutes per IP
+ * More permissive since these are lightweight read operations
+ */
+export const readOnlyLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOWS.FIFTEEN_MINUTES,
+  max: RATE_LIMIT_MAX_REQUESTS.READ_ONLY,
+  message: {
+    error: "Too many requests",
+    message: "You are polling too frequently. Please slow down.",
+    retryAfter: "15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    return `readonly:${ipKeyGenerator(ip)}`;
   },
 });

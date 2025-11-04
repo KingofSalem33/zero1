@@ -12,7 +12,7 @@ import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { supabase } from "../db";
-import { uploadLimiter } from "../middleware/rateLimit";
+import { uploadLimiter, readOnlyLimiter } from "../middleware/rateLimit";
 import { analyzeArtifact } from "../services/artifactAnalyzer";
 import { threadService } from "../services/threadService";
 
@@ -308,7 +308,7 @@ router.get("/:artifactId", async (req, res) => {
  * GET /artifacts/project/:projectId/latest
  * Get the latest analyzed artifact for a project
  */
-router.get("/project/:projectId/latest", async (req, res) => {
+router.get("/project/:projectId/latest", readOnlyLimiter, async (req, res) => {
   try {
     const { projectId } = req.params;
 

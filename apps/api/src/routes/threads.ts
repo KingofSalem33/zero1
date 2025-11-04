@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { threadService } from "../services/threadService";
+import { readOnlyLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.get("/:threadId", async (req, res) => {
 });
 
 // GET /api/threads/:threadId/messages - Get thread messages
-router.get("/:threadId/messages", async (req, res) => {
+router.get("/:threadId/messages", readOnlyLimiter, async (req, res) => {
   try {
     const { threadId } = req.params;
     const limit = req.query.limit
