@@ -1,8 +1,28 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
+import ArtifactAnalysisCard from "./ArtifactAnalysisCard";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+
+interface ArtifactAnalysis {
+  quality_score: number;
+  satisfied_criteria: string[];
+  partial_criteria: string[];
+  missing_criteria: string[];
+  tech_stack: string[];
+  has_tests: boolean;
+  feedback: string;
+  suggest_completion: boolean;
+  confidence: number;
+}
+
+interface LatestArtifact {
+  artifact_id: string;
+  file_name: string;
+  analysis: ArtifactAnalysis;
+  analyzed_at: string;
+}
 
 // Helper to convert phase format: "P1" -> 1, or pass through if already number
 const getPhaseNumber = (phase: string | number): number => {
@@ -90,6 +110,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUploadButton, setShowUploadButton] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [latestArtifact, setLatestArtifact] = useState<LatestArtifact | null>(
+    null,
+  );
+  const [dismissedArtifactId, setDismissedArtifactId] = useState<string | null>(
+    null,
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const isExpandingPhase = useRef(false);
@@ -224,6 +250,50 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     return () => clearInterval(interval);
   }, [threadId, fetchThreadMessages]);
+
+  // Fetch latest artifact analysis
+  const fetchLatestArtifact = useCallback(async () => {
+    if (!project) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/artifacts/project/${project.id}/latest`,
+      );
+      if (response.ok) {
+        const data: LatestArtifact = await response.json();
+        // Only update if it's a new artifact (different ID)
+        if (data.artifact_id !== latestArtifact?.artifact_id) {
+          setLatestArtifact(data);
+          console.log(
+            `[UnifiedWorkspace] New artifact analysis: ${data.file_name}`,
+          );
+        }
+      } else if (response.status === 404) {
+        // No analyzed artifacts yet
+        setLatestArtifact(null);
+      }
+    } catch (error) {
+      console.error(
+        "[UnifiedWorkspace] Error fetching latest artifact:",
+        error,
+      );
+    }
+  }, [project, latestArtifact?.artifact_id]);
+
+  // Initial fetch and poll for artifact analysis
+  useEffect(() => {
+    if (!project) return;
+
+    // Initial fetch
+    fetchLatestArtifact();
+
+    // Poll every 5 seconds
+    const interval = setInterval(() => {
+      fetchLatestArtifact();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [project?.id, fetchLatestArtifact]);
 
   // Helper function to send a message directly with a specific prompt
   const sendMessageWithPrompt = useCallback(
@@ -1073,6 +1143,25 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               <ToolBadges tools={toolsUsed} />
             </div>
           )}
+
+          {/* Artifact Analysis Card */}
+          {latestArtifact &&
+            latestArtifact.artifact_id !== dismissedArtifactId && (
+              <div className="mt-6">
+                <ArtifactAnalysisCard
+                  analysis={latestArtifact.analysis}
+                  fileName={latestArtifact.file_name}
+                  stepTitle={
+                    project?.steps.find(
+                      (s) => s.step_number === project.current_step,
+                    )?.title || "Current Step"
+                  }
+                  onDismiss={() =>
+                    setDismissedArtifactId(latestArtifact.artifact_id)
+                  }
+                />
+              </div>
+            )}
 
           <div ref={messagesEndRef} />
         </div>
