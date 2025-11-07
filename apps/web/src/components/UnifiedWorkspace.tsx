@@ -226,9 +226,17 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         console.log(
           `[UnifiedWorkspace] Loaded ${threadMessages.length} messages from thread`,
         );
+      } else if (response.status === 429) {
+        // Rate limited - skip this poll
+        console.warn(
+          "[UnifiedWorkspace] Rate limited on message fetch, skipping",
+        );
       }
     } catch (error) {
-      console.error("[UnifiedWorkspace] Error fetching messages:", error);
+      // Only log errors that aren't rate limits
+      if (error instanceof Error && !error.message.includes("429")) {
+        console.error("[UnifiedWorkspace] Error fetching messages:", error);
+      }
     }
   }, [threadId]);
 
@@ -240,16 +248,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     fetchThreadMessages();
   }, [threadId, fetchThreadMessages]);
 
-  // Poll for new messages every 15 seconds
-  useEffect(() => {
-    if (!threadId) return;
-
-    const interval = setInterval(() => {
-      fetchThreadMessages();
-    }, 15000); // Poll every 15 seconds
-
-    return () => clearInterval(interval);
-  }, [threadId, fetchThreadMessages]);
+  // No polling needed - SSE streams provide real-time updates
+  // Messages are fetched once on mount and updated via streaming responses
 
   // Fetch latest artifact analysis
   const fetchLatestArtifact = useCallback(async () => {
@@ -269,30 +269,29 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           );
         }
       } else if (response.status === 404) {
-        // No analyzed artifacts yet
+        // No analyzed artifacts yet - this is normal for new projects
         setLatestArtifact(null);
+      } else if (response.status === 429) {
+        // Rate limited - skip this poll, will try again next interval
+        console.warn(
+          "[UnifiedWorkspace] Rate limited on artifact fetch, skipping",
+        );
       }
     } catch (error) {
-      console.error(
-        "[UnifiedWorkspace] Error fetching latest artifact:",
-        error,
-      );
+      // Only log errors that aren't rate limits or 404s
+      if (error instanceof Error && !error.message.includes("429")) {
+        console.error(
+          "[UnifiedWorkspace] Error fetching latest artifact:",
+          error,
+        );
+      }
     }
   }, [project, latestArtifact?.artifact_id]);
 
-  // Initial fetch and poll for artifact analysis
+  // Fetch artifact analysis once on mount (no polling)
   useEffect(() => {
     if (!project) return;
-
-    // Initial fetch
     fetchLatestArtifact();
-
-    // Poll every 10 seconds (less aggressive to avoid rate limits)
-    const interval = setInterval(() => {
-      fetchLatestArtifact();
-    }, 10000);
-
-    return () => clearInterval(interval);
   }, [project?.id, fetchLatestArtifact]);
 
   // Helper function to send a message directly with a specific prompt
