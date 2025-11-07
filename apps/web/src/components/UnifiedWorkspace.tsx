@@ -1129,7 +1129,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     </span>
                   </div>
                   <div className="ml-[2.625rem]">
-                    <MarkdownMessage content={message.content} />
+                    {message.content === "Thinking..." ? (
+                      <div className="space-y-3 animate-pulse">
+                        <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
+                        <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
+                        <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                      </div>
+                    ) : (
+                      <MarkdownMessage content={message.content} />
+                    )}
                   </div>
                 </div>
               )}
