@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from "express";
 import { supabase } from "../db";
-import { RoadmapGenerationService } from "../domain/projects/services/RoadmapGenerationService";
+import { RoadmapGenerationServiceV3 } from "../domain/projects/services/RoadmapGenerationServiceV3";
 import { StepCompletionService } from "../domain/projects/services/StepCompletionService";
 import { ExecutionService } from "../domain/projects/services/ExecutionService";
 import { threadService } from "../services/threadService";
@@ -15,7 +15,7 @@ import { randomUUID } from "crypto";
 import { aiLimiter, readOnlyLimiter } from "../middleware/rateLimit";
 
 const router = Router();
-const roadmapService = new RoadmapGenerationService();
+const roadmapServiceV3 = new RoadmapGenerationServiceV3();
 const completionService = new StepCompletionService();
 
 // Helper function to fetch V2 project for ExecutionService
@@ -76,14 +76,16 @@ router.post("/projects", async (req: Request, res: Response) => {
 
     console.log("[Roadmap V2] Creating project with vision:", vision);
 
-    // Generate dynamic roadmap
-    const roadmapResponse = await roadmapService.generateRoadmap({
+    // Generate P0-P7 phase-based roadmap
+    const roadmapResponse = await roadmapServiceV3.generateRoadmap({
       vision,
       clarification_context,
       user_skill_level: skill_level || "beginner",
     });
 
-    console.log(`[Roadmap V2] Generated ${roadmapResponse.total_steps} steps`);
+    console.log(
+      `[Roadmap V3] Generated ${roadmapResponse.total_phases} phases with substeps`,
+    );
 
     // Ensure user_id is a valid UUID
     let validUserId: string;
@@ -99,14 +101,15 @@ router.post("/projects", async (req: Request, res: Response) => {
       }
     }
 
-    // Create project
+    // Create project (backward compatible - doesn't require migration)
     const { data: project, error: projectError } = await supabase
       .from("projects")
       .insert({
         user_id: validUserId,
-        goal: vision,
+        goal: vision, // Use goal field for now (vision_statement requires migration)
         status: "active",
         current_step: 1,
+        // current_phase: 0, // Requires migration - commented out for backward compatibility
         roadmap_status: "ready",
         created_at: new Date().toISOString(),
       })
@@ -114,55 +117,84 @@ router.post("/projects", async (req: Request, res: Response) => {
       .single();
 
     if (projectError || !project) {
-      console.error("[Roadmap V2] Error creating project:", projectError);
+      console.error("[Roadmap V3] Error creating project:", projectError);
       return res.status(500).json({ error: "Failed to create project" });
     }
 
-    // Create roadmap metadata
+    // Create roadmap metadata (backward compatible)
     const { error: metadataError } = await supabase
       .from("project_roadmap_metadata")
       .insert({
         project_id: project.id,
-        total_steps: roadmapResponse.total_steps,
+        total_steps: 0, // Will be calculated from substeps
+        // total_phases: roadmapResponse.total_phases, // Requires migration
         current_step: 1,
+        // current_phase: 0, // Requires migration
         completion_percentage: 0,
         roadmap_version: 1,
+        // roadmap_type: "phase_based", // Requires migration
         generated_by: roadmapResponse.generated_by,
         generation_prompt: vision,
+        // estimated_timeline: roadmapResponse.estimated_timeline, // Requires migration
         created_at: new Date().toISOString(),
       });
 
     if (metadataError) {
-      console.error("[Roadmap V2] Error creating metadata:", metadataError);
+      console.error("[Roadmap V3] Error creating metadata:", metadataError);
       return res
         .status(500)
         .json({ error: "Failed to create roadmap metadata" });
     }
 
-    // Insert roadmap steps
-    const stepsToInsert = roadmapResponse.steps.map((step) => ({
-      project_id: project.id,
-      step_number: step.step_number,
-      title: step.title,
-      description: step.description,
-      master_prompt: step.master_prompt,
-      context: step.context,
-      acceptance_criteria: step.acceptance_criteria,
-      estimated_complexity: step.estimated_complexity,
-      status: step.status,
-      created_at: new Date().toISOString(),
-    }));
+    // Insert steps (backward compatible - flatten all substeps into regular steps)
+    // NOTE: This is a fallback for when the migration hasn't been run yet
+    // Once migration is run, this will properly create phases and substeps
+    let stepNumber = 1;
+    const allSteps: any[] = [];
 
-    const { error: stepsError } = await supabase
-      .from("roadmap_steps")
-      .insert(stepsToInsert);
-
-    if (stepsError) {
-      console.error("[Roadmap V2] Error creating steps:", stepsError);
-      return res.status(500).json({ error: "Failed to create roadmap steps" });
+    for (const phase of roadmapResponse.phases) {
+      // Flatten all substeps from all phases into a single array of steps
+      for (const substep of phase.substeps) {
+        allSteps.push({
+          project_id: project.id,
+          step_number: stepNumber,
+          title: `${phase.phase_id}: ${substep.title}`,
+          description: substep.description,
+          // Use substep-specific master prompt if available, fallback to phase prompt
+          master_prompt: substep.master_prompt || phase.master_prompt,
+          acceptance_criteria: substep.acceptance_criteria,
+          estimated_complexity: substep.estimated_complexity,
+          status: stepNumber === 1 ? "active" : "pending", // First step is active
+          created_at: new Date().toISOString(),
+        });
+        stepNumber++;
+      }
     }
 
-    // Fetch complete project with steps
+    if (allSteps.length > 0) {
+      const { error: stepsError } = await supabase
+        .from("roadmap_steps")
+        .insert(allSteps);
+
+      if (stepsError) {
+        console.error(`[Roadmap V3] Error creating steps:`, stepsError);
+        return res
+          .status(500)
+          .json({ error: "Failed to create roadmap steps" });
+      }
+    }
+
+    // Update total_steps in metadata
+    await supabase
+      .from("project_roadmap_metadata")
+      .update({ total_steps: allSteps.length })
+      .eq("project_id", project.id);
+
+    console.log(
+      `✅ [Roadmap V3] Created project ${project.id} with ${allSteps.length} steps`,
+    );
+
+    // Fetch complete project (backward compatible - uses flat steps)
     const completeProject = await fetchProjectWithSteps(project.id);
 
     return res.status(201).json(completeProject);
@@ -179,7 +211,18 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const project = await fetchProjectWithSteps(id);
+    // Check if project uses phase-based roadmap
+    const { data: metadata } = await supabase
+      .from("project_roadmap_metadata")
+      .select("roadmap_type")
+      .eq("project_id", id)
+      .single();
+
+    const isPhaseBasedProject = metadata?.roadmap_type === "phase_based";
+
+    const project = isPhaseBasedProject
+      ? await fetchProjectWithPhases(id)
+      : await fetchProjectWithSteps(id);
 
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
@@ -377,7 +420,7 @@ router.post(
       }
 
       console.log(
-        `[Roadmap V2] Step ${currentStep.step_number} marked complete`,
+        `✅ [Roadmap V2] Step ${currentStep.step_number} "${currentStep.title}" marked complete`,
       );
 
       // Update suggestion as accepted
@@ -485,10 +528,17 @@ router.post("/projects/:id/continue", async (req: Request, res: Response) => {
     );
 
     if (nextStep) {
+      console.log(
+        `🔄 [Roadmap V2] Activating step ${nextStepNumber}: "${nextStep.title}"`,
+      );
       await supabase
         .from("roadmap_steps")
         .update({ status: "active" })
         .eq("id", nextStep.id);
+    } else {
+      console.error(
+        `❌ [Roadmap V2] Next step ${nextStepNumber} not found in steps array`,
+      );
     }
 
     // Update metadata
@@ -500,10 +550,16 @@ router.post("/projects/:id/continue", async (req: Request, res: Response) => {
       })
       .eq("project_id", id);
 
-    console.log(`[Roadmap V2] Advanced to step ${nextStepNumber}`);
+    console.log(
+      `✅ [Roadmap V2] Advanced to step ${nextStepNumber}: "${nextStep?.title}"`,
+    );
 
     // Return updated project
     const updatedProject = await fetchProjectWithSteps(id);
+
+    console.log(
+      `📊 [Roadmap V2] Updated project current_step: ${updatedProject?.current_step}`,
+    );
 
     return res.json({
       ...updatedProject,
@@ -545,6 +601,36 @@ router.post(
         return res.status(400).json({ error: "Master prompt is required" });
       }
 
+      // Get current step details for context
+      const project = await fetchProjectWithSteps(id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const currentStep = project.steps.find(
+        (s: any) => s.step_number === project.current_step,
+      );
+
+      if (!currentStep) {
+        return res.status(404).json({ error: "Current step not found" });
+      }
+
+      console.log(
+        `🚀 [Roadmap V2] ============================================`,
+      );
+      console.log(
+        `🚀 [Roadmap V2] Executing step #${currentStep.step_number}: "${currentStep.title}"`,
+      );
+      console.log(
+        `🚀 [Roadmap V2] Step description: ${currentStep.description?.substring(0, 100)}...`,
+      );
+      console.log(
+        `🚀 [Roadmap V2] Acceptance criteria count: ${currentStep.acceptance_criteria?.length || 0}`,
+      );
+      console.log(
+        `🚀 [Roadmap V2] ============================================`,
+      );
+
       // Set SSE headers for streaming
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -561,6 +647,12 @@ router.post(
         master_prompt,
         user_message: user_message || "",
         res,
+        current_step_context: {
+          step_number: currentStep.step_number,
+          title: currentStep.title,
+          description: currentStep.description,
+          acceptance_criteria: currentStep.acceptance_criteria || [],
+        },
       });
 
       console.log(
@@ -622,6 +714,62 @@ async function fetchProjectWithSteps(projectId: string) {
     ...project,
     metadata: metadata || {},
     steps: steps || [],
+  };
+}
+
+async function fetchProjectWithPhases(projectId: string) {
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", projectId)
+    .single();
+
+  if (projectError || !project) {
+    return null;
+  }
+
+  const { data: metadata, error: metadataError } = await supabase
+    .from("project_roadmap_metadata")
+    .select("*")
+    .eq("project_id", projectId)
+    .single();
+
+  // Fetch phases
+  const { data: phases, error: phasesError } = await supabase
+    .from("roadmap_phases")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("phase_number", { ascending: true });
+
+  if (metadataError || phasesError) {
+    console.error("[Roadmap V3] Error fetching project data:", {
+      metadataError,
+      phasesError,
+    });
+    return null;
+  }
+
+  // Fetch substeps for each phase
+  const phasesWithSubsteps = await Promise.all(
+    (phases || []).map(async (phase) => {
+      const { data: substeps } = await supabase
+        .from("roadmap_steps")
+        .select("*")
+        .eq("phase_id", phase.id)
+        .eq("is_substep", true)
+        .order("substep_number", { ascending: true });
+
+      return {
+        ...phase,
+        substeps: substeps || [],
+      };
+    }),
+  );
+
+  return {
+    ...project,
+    metadata: metadata || {},
+    phases: phasesWithSubsteps,
   };
 }
 

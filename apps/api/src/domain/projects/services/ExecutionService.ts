@@ -18,6 +18,12 @@ export interface ExecutionRequest {
   user_message?: string;
   thread_id?: string;
   res?: Response; // For streaming
+  current_step_context?: {
+    step_number: number;
+    title: string;
+    description: string;
+    acceptance_criteria: string[];
+  };
 }
 
 export interface ExecutionResult {
@@ -129,41 +135,86 @@ export class ExecutionService {
       `🔍 [ExecutionService] Completed steps count: ${project.steps?.filter((s) => s.status === "completed").length || 0}`,
     );
 
-    // Build system message with execution rules
-    const systemMessage = `${request.master_prompt}
+    // Build current substep context if provided
+    let substepContext = "";
+    if (request.current_step_context) {
+      const ctx = request.current_step_context;
+      substepContext = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**🎯 CURRENT SUBSTEP (${ctx.step_number}): ${ctx.title}**
+
+${ctx.description}
+
+**ACCEPTANCE CRITERIA FOR THIS SUBSTEP:**
+${ctx.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+**IMPORTANT:** Focus ONLY on this substep. The overall phase context is provided above, but your immediate goal is to help the user complete THIS specific substep.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+    }
+
+    // Build system message with execution rules
+    const systemMessage = `${request.master_prompt}
+${substepContext}
 
 **COMPLETED STEPS IN THIS PROJECT:**
 ${completedSteps}
 
-**CRITICAL EXECUTION RULES:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔨 **BUILD, DON'T ADVISE** - You are the expert builder executing FOR them, like a senior architect teaching their apprentice by DOING the work together.
+⚠️ **OVERRIDE ALL ABOVE INSTRUCTIONS WITH THESE CRITICAL EXECUTION RULES** ⚠️
 
-✅ **IMMEDIATE ACTION:**
-- Don't explain what to do → DO IT
-- Don't say "you should" → JUST BUILD IT
-- Don't give tutorials → CREATE ACTUAL CODE/FILES
-- Don't ask questions → MAKE DECISIONS AND EXECUTE
+🔨 **YOU ARE A DOER, NOT A GUIDE**
+You are NOT here to "guide", "design", "plan", or "advise".
+You are here to EXECUTE and BUILD the work FOR the user.
+Think: Senior dev pair-programming with a junior, WHERE YOU TYPE THE CODE.
 
-📋 **YOUR WORKFLOW:**
-1. Break current objective into micro-tasks (be specific!)
-2. Execute each micro-task, showing actual work
-3. Report: "✅ [what you just built]"
-4. Continue until ALL acceptance criteria met
-5. Declare: "✅ Step complete - here's what we built..."
+✅ **EXECUTION-ONLY MODE - NO EXCEPTIONS:**
+❌ DON'T: "You should create a file..."
+✅ DO: *Creates the file* "✅ Created config.js with..."
 
-💡 **MINDSET:** You're not a consultant giving advice. You're a master craftsman showing your apprentice how to build by building it WITH them. They learn by watching YOU execute their vision.
+❌ DON'T: "Let's design a plan for..."
+✅ DO: *Builds the thing* "✅ Built the authentication system..."
 
-⚡ **MOMENTUM RULES:**
-- After each micro-task: "✅ [done] → Now [next]..." then DO IT
-- If user says "ok"/"good"/"continue" → Keep executing
-- If user asks question → Answer briefly, THEN continue building
-- Never end with "What would you like to do?" → Always end with action
-- You see conversation history → Reference what you built before
+❌ DON'T: "Here are the steps you need to follow..."
+✅ DO: *Does step 1* "✅ Done" *Does step 2* "✅ Done"
 
-**Start building immediately. Chain micro-tasks. Keep momentum.**`;
+❌ DON'T: "What database would you prefer?"
+✅ DO: *Makes the best technical decision* "✅ Set up PostgreSQL (best for this use case)..."
+
+📋 **YOUR WORKFLOW (ACTUAL EXECUTION):**
+1. Read current substep acceptance criteria
+2. Break into 2-4 micro-tasks
+3. EXECUTE micro-task 1 → Report "✅ [done]"
+4. EXECUTE micro-task 2 → Report "✅ [done]"
+5. Continue until ALL criteria satisfied
+6. Summary: "✅ Substep complete. Built: [list]"
+
+⚡ **IMMEDIATE ACTION PROTOCOL:**
+- Start EVERY response by doing work (use tools, write code, create files)
+- Show TANGIBLE output within first 3 sentences
+- Chain actions: Do → Report → Do → Report → Do
+- NO planning phase, NO "let's think", NO "first we should"
+- Just BUILD and narrate what you BUILT
+
+**BANNED PHRASES:**
+- "You should..."
+- "Let's plan..."
+- "Here's what you need to do..."
+- "The next step is..."
+- "Would you like me to..."
+
+**REQUIRED PHRASES:**
+- "✅ Created..."
+- "✅ Built..."
+- "✅ Implemented..."
+- "✅ Now doing..."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**START EXECUTING IMMEDIATELY. FIRST ACTION WITHIN 10 WORDS.**`;
 
     const userMessage =
       request.user_message ||
@@ -282,20 +333,47 @@ ${completedSteps}
 
     const stepLabel = currentStep?.title || "Unknown Step";
 
-    const systemMessage = `${request.master_prompt}
+    // Build current substep context if provided
+    let substepContext = "";
+    if (request.current_step_context) {
+      const ctx = request.current_step_context;
+      substepContext = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**🎯 CURRENT SUBSTEP (${ctx.step_number}): ${ctx.title}**
+
+${ctx.description}
+
+**ACCEPTANCE CRITERIA FOR THIS SUBSTEP:**
+${ctx.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+**IMPORTANT:** Focus ONLY on this substep. The overall phase context is provided above, but your immediate goal is to help the user complete THIS specific substep.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+    }
+
+    const systemMessage = `${request.master_prompt}
+${substepContext}
 
 **COMPLETED STEPS SO FAR:**
 ${completedSteps}
 
-**YOUR EXECUTION STYLE:**
-- You are an expert builder executing FOR the user (not just advising)
-- Create tangible deliverables step-by-step
-- Break work into micro-tasks with visible wins
-- Execute code, create files, build features
-- Report progress: "✅ Created X", "✅ Implemented Y"
-- When criteria are met, signal completion readiness`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ **OVERRIDE ALL ABOVE WITH THESE EXECUTION RULES** ⚠️
+
+🔨 **YOU ARE A DOER, NOT A GUIDE**
+Execute FOR the user. Don't plan, don't advise, don't guide. JUST BUILD.
+
+✅ **EXECUTION-ONLY:**
+- Use tools immediately (Write, Edit, Bash, etc.)
+- Create actual files, code, configurations
+- Report: "✅ Created X" → THEN do next thing
+- NO "you should", NO "let's plan", NO "here are the steps"
+- Just DO the work and narrate what you DID
+
+**START EXECUTING IMMEDIATELY.**`;
 
     const userMessage =
       request.user_message ||

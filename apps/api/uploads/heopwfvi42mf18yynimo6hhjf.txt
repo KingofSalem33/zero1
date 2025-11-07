@@ -1,0 +1,46 @@
+﻿Customer Personas
+1. Busy Professional
+   * Demographics:
+      * Age: 30-45
+      * Gender: Male/Female
+      * Income: 
+      * 70,000−
+      * 70,000−120,000
+      * Location: Urban areas
+   * Interests: Gourmet food, convenience, gift-giving, corporate events.
+   * Buying Motivations:
+      * Looking for quick, high-quality gifts for clients or colleagues.
+      * Values customization to add a personal touch.
+      * Prefers online shopping due to a busy schedule.
+2. Millennial Parent
+   * Demographics:
+      * Age: 25-40
+      * Gender: Female
+      * Income: 
+      * 50,000−
+      * 50,000−90,000
+      * Location: Suburban areas
+   * Interests: Family activities, baking, health-conscious products.
+   * Buying Motivations:
+      * Seeks fun, customizable treats for children's parties or school events.
+      * Interested in healthier ingredient options.
+      * Enjoys gifting personalized items for holidays and celebrations.
+3. College Student
+   * Demographics:
+      * Age: 18-24
+      * Gender: Male/Female
+      * Income: 
+      * 15,000−
+      * 15,000−30,000 (part-time jobs)
+      * Location: College towns
+   * Interests: Social events, online shopping, snacks.
+   * Buying Motivations:
+      * Looking for affordable, fun gifts for friends or study groups.
+      * Enjoys unique flavors and customizable options.
+      * Prefers easy online ordering and delivery.
+✅ Now doing validation of personas through surveys.
+Customer Feedback Collection
+* Created a survey targeting 5 individuals to validate the personas and gather insights on preferences.
+✅ Substep complete. Built:
+* 3 customer personas
+* Customer feedback survey for validation.

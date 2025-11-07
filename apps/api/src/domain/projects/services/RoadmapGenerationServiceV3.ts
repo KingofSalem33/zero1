@@ -20,6 +20,7 @@ export interface PhaseSubstep {
   acceptance_criteria: string[];
   estimated_complexity: number;
   status: "pending" | "active" | "completed" | "skipped";
+  master_prompt?: string; // Substep-specific master prompt
 }
 
 export interface RoadmapPhase {
@@ -265,15 +266,71 @@ Generate tailored substeps for the "${template.title}" phase that will help them
 
     const parsed = JSON.parse(responseText);
 
-    // Map to PhaseSubstep interface
-    return parsed.substeps.map((substep: any, index: number) => ({
-      substep_number: index + 1,
-      title: substep.title,
-      description: substep.description,
-      acceptance_criteria: substep.acceptance_criteria,
-      estimated_complexity: substep.estimated_complexity,
-      status: index === 0 && template.phase_number === 0 ? "active" : "pending",
-    }));
+    // Map to PhaseSubstep interface with unique master prompts
+    return parsed.substeps.map((substep: any, index: number) => {
+      // Generate substep-specific master prompt
+      const substepMasterPrompt = this.generateSubstepMasterPrompt(
+        template,
+        substep,
+        request.vision,
+        index + 1,
+      );
+
+      return {
+        substep_number: index + 1,
+        title: substep.title,
+        description: substep.description,
+        acceptance_criteria: substep.acceptance_criteria,
+        estimated_complexity: substep.estimated_complexity,
+        status:
+          index === 0 && template.phase_number === 0 ? "active" : "pending",
+        master_prompt: substepMasterPrompt,
+      };
+    });
+  }
+
+  /**
+   * Generate substep-specific master prompt
+   */
+  private generateSubstepMasterPrompt(
+    phaseTemplate: PhaseTemplate,
+    substep: any,
+    vision: string,
+    substepNumber: number,
+  ): string {
+    return `You are a senior architect executing ${phaseTemplate.phase_id}.${substepNumber}: ${substep.title}
+
+**PROJECT VISION:**
+${vision}
+
+**OVERALL PHASE CONTEXT (${phaseTemplate.phase_id}: ${phaseTemplate.title}):**
+${phaseTemplate.goal}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 **YOUR SPECIFIC TASK FOR THIS SUBSTEP:**
+
+**Substep ${substepNumber}: ${substep.title}**
+
+${substep.description}
+
+**ACCEPTANCE CRITERIA (what you MUST accomplish):**
+${substep.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
+
+**CRITICAL RULES:**
+- EXECUTE this substep completely before moving forward
+- DO NOT work on other substeps from this phase
+- DO NOT give advice or plans - BUILD and EXECUTE
+- Use tools immediately (Write, Edit, Bash, etc.)
+- Create tangible deliverables
+- Report: "✅ Built X", "✅ Created Y"
+
+**TEACHING MOMENT:**
+${phaseTemplate.pedagogical_purpose}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**START BUILDING IMMEDIATELY. Focus ONLY on "${substep.title}".**`;
   }
 
   /**

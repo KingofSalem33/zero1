@@ -47,7 +47,10 @@
       "Bash(python:*)",
       "Bash(ANALYSIS_STATUS.txt)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(Select-String -Pattern \"Error creating project\" -Context 5)",
+      "Bash(Select-Object -First 20)"
     ],
     "deny": [],
     "ask": []
