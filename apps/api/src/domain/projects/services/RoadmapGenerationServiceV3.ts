@@ -39,6 +39,7 @@ export interface GenerateRoadmapRequest {
   vision: string;
   clarification_context?: string;
   user_skill_level?: "beginner" | "intermediate" | "advanced";
+  build_approach?: "code" | "platform" | "auto";
 }
 
 export interface GenerateRoadmapResponse {
@@ -221,9 +222,34 @@ Each substep should be specific to the user's project vision.
 
 Output ONLY the structured JSON. No commentary.`;
 
+    // Build approach guidance for LLM
+    let buildApproachGuidance = "";
+    if (request.build_approach === "platform") {
+      buildApproachGuidance = `\n**BUILD APPROACH: NO-CODE/LOW-CODE PLATFORMS**
+- User wants to use existing platforms (Shopify, Wix, Bubble, Ghost, Substack, etc.)
+- Substeps should focus on platform setup, configuration, and using platform features
+- DO NOT suggest writing code, installing development tools, or custom programming
+- Recommend appropriate platforms for this type of project
+- Focus on achieving goals through platform capabilities\n`;
+    } else if (request.build_approach === "code") {
+      buildApproachGuidance = `\n**BUILD APPROACH: CUSTOM CODE**
+- User wants to build with code (has technical skills or wants to learn)
+- Substeps should include development environment setup, coding tasks, and deployment
+- Suggest appropriate frameworks, languages, and tools for this project
+- Include steps for version control, testing, and best practices\n`;
+    } else {
+      // "auto" - let LLM decide based on project vision
+      buildApproachGuidance = `\n**BUILD APPROACH: FLEXIBLE**
+- Choose the best approach (platform vs code) based on the project vision
+- For simple e-commerce/content sites: prefer platforms (Shopify, Wix, Ghost)
+- For custom features, complex logic, or unique requirements: prefer code
+- Consider user skill level: ${request.user_skill_level || "beginner"}\n`;
+    }
+
     const userPrompt = `**USER'S PROJECT VISION:**
 "${request.vision}"
 
+${buildApproachGuidance}
 ${request.clarification_context ? `\n**ADDITIONAL CONTEXT:**\n${request.clarification_context}\n` : ""}
 Generate tailored substeps for the "${template.title}" phase that will help them achieve: ${template.goal}`;
 

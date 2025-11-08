@@ -82,7 +82,10 @@ interface ToolActivity {
 
 interface UnifiedWorkspaceProps {
   project: Project | null;
-  onCreateProject: (goal: string) => void;
+  onCreateProject: (
+    goal: string,
+    buildApproach?: "code" | "platform" | "auto",
+  ) => void;
   onInspireMe: (goal: string, callback: () => void) => void;
   toolsUsed: ToolActivity[];
   setToolsUsed: (tools: ToolActivity[]) => void;
@@ -116,10 +119,28 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [dismissedArtifactId, setDismissedArtifactId] = useState<string | null>(
     null,
   );
+  const [buildApproach, setBuildApproach] = useState<
+    "code" | "platform" | "auto" | null
+  >(null);
+  const [showBuildApproachQuestions, setShowBuildApproachQuestions] =
+    useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const isExpandingPhase = useRef(false);
   const messagesFetchedRef = useRef(false);
+  const previousInspiringRef = useRef(inspiring);
+
+  // Show build approach questions after "Refine Idea" completes
+  useEffect(() => {
+    // Detect when inspiring changes from true to false (refinement completed)
+    if (previousInspiringRef.current === true && inspiring === false) {
+      // Wait a moment for visual polish, then show questions
+      setTimeout(() => {
+        setShowBuildApproachQuestions(true);
+      }, 300);
+    }
+    previousInspiringRef.current = inspiring;
+  }, [inspiring]);
 
   // Auto-expand phase when current_substep === 0 (needs expansion) - V1 only
   useEffect(() => {
@@ -571,8 +592,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     // If no project, create one
     if (!project) {
-      onCreateProject(currentInput.trim());
+      onCreateProject(currentInput.trim(), buildApproach || "auto");
       setCurrentInput("");
+      // Reset build approach state for next project
+      setBuildApproach(null);
+      setShowBuildApproachQuestions(false);
       return;
     }
 
@@ -879,6 +903,123 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Build Approach Selection - appears after "Refine Idea" */}
+            {showBuildApproachQuestions && (
+              <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg animate-slideUpFade">
+                <h3 className="text-sm font-medium text-neutral-300 mb-4">
+                  One more thing - how do you want to build this?
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Code Option */}
+                  <button
+                    onClick={() => setBuildApproach("code")}
+                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      buildApproach === "code"
+                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                    }`}
+                  >
+                    {buildApproach === "code" && (
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-brand-primary-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="text-3xl">🧑‍💻</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">
+                        Write Code
+                      </div>
+                      <div className="text-xs opacity-80">
+                        Full control, custom features
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Platform Option */}
+                  <button
+                    onClick={() => setBuildApproach("platform")}
+                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      buildApproach === "platform"
+                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                    }`}
+                  >
+                    {buildApproach === "platform" && (
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-brand-primary-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="text-3xl">🛠️</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">
+                        Use a Platform
+                      </div>
+                      <div className="text-xs opacity-80">
+                        Faster, Shopify/Wix/Bubble
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Not Sure Option */}
+                  <button
+                    onClick={() => setBuildApproach("auto")}
+                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      buildApproach === "auto"
+                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                    }`}
+                  >
+                    {buildApproach === "auto" && (
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-brand-primary-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="text-3xl">🤷</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">Not Sure</div>
+                      <div className="text-xs opacity-80">AI picks for me</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Quick Start Examples */}
             <div className="space-y-3">

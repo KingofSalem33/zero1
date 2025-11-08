@@ -68,19 +68,27 @@ function isValidUUID(str: string): boolean {
 router.post("/projects", async (req: Request, res: Response) => {
   console.log("🚀 [Roadmap V2] POST /projects route hit!");
   try {
-    const { vision, user_id, clarification_context, skill_level } = req.body;
+    const {
+      vision,
+      user_id,
+      clarification_context,
+      skill_level,
+      build_approach,
+    } = req.body;
 
     if (!vision) {
       return res.status(400).json({ error: "Vision is required" });
     }
 
     console.log("[Roadmap V2] Creating project with vision:", vision);
+    console.log("[Roadmap V2] Build approach:", build_approach || "auto");
 
     // Generate P0-P7 phase-based roadmap
     const roadmapResponse = await roadmapServiceV3.generateRoadmap({
       vision,
       clarification_context,
       user_skill_level: skill_level || "beginner",
+      build_approach: build_approach || "auto",
     });
 
     console.log(

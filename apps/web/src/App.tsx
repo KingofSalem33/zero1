@@ -2864,12 +2864,10 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 // ---- Navigation Component ----
 
 interface NavBarProps {
-  onCreateProject?: () => void;
-
   hasProject?: boolean;
 }
 
-const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
+const NavBar: React.FC<NavBarProps> = ({ hasProject }) => (
   <nav className="sticky top-0 z-50 bg-neutral-900/98 backdrop-blur-xl border-b border-neutral-700/50 shadow-2xl">
     <div className="mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between h-14">
@@ -2900,56 +2898,10 @@ const NavBar: React.FC<NavBarProps> = ({ onCreateProject, hasProject }) => (
         {/* Primary Actions - Right side */}
 
         <div className="flex items-center gap-3">
-          {hasProject ? (
-            <>
-              <button
-                onClick={onCreateProject}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-700/30 hover:bg-neutral-700/50 border border-neutral-600/50 hover:border-neutral-500/70 text-neutral-300 text-sm font-medium transition-all"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-
-                <span className="hidden md:inline">New Project</span>
-              </button>
-
-              <div className="hidden sm:block w-px h-5 bg-neutral-700/50" />
-
-              <span className="hidden lg:block text-neutral-500 text-xs font-medium uppercase tracking-wider">
-                Workspace
-              </span>
-            </>
-          ) : (
-            <button
-              onClick={onCreateProject}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-brand hover:bg-gradient-brand-hover text-white text-sm font-semibold transition-all shadow-lg hover:shadow-xl"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-
-              <span>Create Project</span>
-            </button>
+          {hasProject && (
+            <span className="hidden lg:block text-neutral-500 text-xs font-medium uppercase tracking-wider">
+              Workspace
+            </span>
           )}
         </div>
       </div>
@@ -3159,7 +3111,10 @@ function App() {
     }
   };
 
-  const handleCreateProject = async (goal: string) => {
+  const handleCreateProject = async (
+    goal: string,
+    buildApproach?: "code" | "platform" | "auto",
+  ) => {
     if (!goal.trim() || creatingProject) return;
 
     setCreatingProject(true);
@@ -3172,7 +3127,11 @@ function App() {
 
         headers: { "Content-Type": "application/json" },
 
-        body: JSON.stringify({ vision: goal.trim(), user_id: userId }),
+        body: JSON.stringify({
+          vision: goal.trim(),
+          user_id: userId,
+          build_approach: buildApproach || "auto",
+        }),
       });
 
       const data = await response.json();
@@ -3860,7 +3819,7 @@ Return only the refined vision statement using the format "I want to build _____
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-      <NavBar hasProject={!!project} onCreateProject={createPopupWorkspace} />
+      <NavBar hasProject={!!project} />
 
       <div className="flex">
         {/* Collapsible Roadmap Sidebar */}
@@ -3888,6 +3847,7 @@ Return only the refined vision statement using the format "I want to build _____
             inspiring={inspiring}
             onRefreshProject={refreshProject}
             onAskAIRef={askAIRef}
+            onOpenNewWorkspace={createPopupWorkspace}
           />
         </main>
       </div>
