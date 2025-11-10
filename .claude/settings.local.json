@@ -50,7 +50,11 @@
       "Bash(find:*)",
       "Bash(npx ts-node:*)",
       "Bash(Select-String -Pattern \"Error creating project\" -Context 5)",
-      "Bash(Select-Object -First 20)"
+      "Bash(Select-Object -First 20)",
+      "Bash(npm run db:migrate:*)",
+      "Bash(if exist migrate-temp.cjs del migrate-temp.cjs)",
+      "Bash(if exist migrate-temp.js del migrate-temp.js)",
+      "Bash(if exist nul del nul)"
     ],
     "deny": [],
     "ask": []

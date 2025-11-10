@@ -233,7 +233,8 @@ router.get(
 
       console.log(`[Roadmap V2] Fetching projects for user: ${userId}`);
 
-      // Fetch all projects for this user, ordered by last accessed or created date
+      // Fetch all projects for this user, ordered by created date
+      // TODO: Add last_accessed_at column to database and use for sorting
       const { data: projects, error: projectsError } = await supabase
         .from("projects")
         .select(
@@ -242,12 +243,10 @@ router.get(
           goal,
           status,
           created_at,
-          current_step,
-          last_accessed_at
+          current_step
         `,
         )
         .eq("user_id", userId)
-        .order("last_accessed_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
 
       if (projectsError) {

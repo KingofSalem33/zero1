@@ -2962,13 +2962,13 @@ function App() {
   const [isCompletingStep, setIsCompletingStep] = useState(false);
 
   // Authentication
-  const { loading: authLoading } = useAuth();
+  const { user, loading: authLoading, getAccessToken } = useAuth();
 
   // View state management
   type AppView = "landing" | "workspace" | "library";
   const [currentView, setCurrentView] = useState<AppView>("landing");
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [userProjects] = useState<any[]>([]);
+  const [userProjects, setUserProjects] = useState<any[]>([]);
 
   // User ID for memory system (could be from auth later)
 
@@ -2988,6 +2988,34 @@ function App() {
 
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
 
+  // Load user projects when authenticated
+  useEffect(() => {
+    const loadUserProjects = async () => {
+      if (!user) {
+        setUserProjects([]);
+        return;
+      }
+
+      try {
+        const token = await getAccessToken();
+        const response = await fetch(`${API_URL}/api/v2/projects`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUserProjects(data.projects || []);
+        }
+      } catch (error) {
+        console.error("Error loading user projects:", error);
+      }
+    };
+
+    loadUserProjects();
+  }, [user, getAccessToken]);
+
   // Persist current project ID to localStorage whenever it changes
   useEffect(() => {
     if (project?.id) {
@@ -2998,6 +3026,12 @@ function App() {
   // Load project from URL parameter or localStorage on mount
 
   useEffect(() => {
+    // Wait for auth to finish loading
+    if (authLoading) return;
+
+    // Only restore projects for authenticated users
+    if (!user) return;
+
     const urlParams = new URLSearchParams(window.location.search);
 
     const projectIdFromUrl = urlParams.get("project");
@@ -3044,7 +3078,7 @@ function App() {
 
       loadProject();
     }
-  }, []); // Run only once on mount
+  }, [authLoading, user]); // Run when auth state changes
 
   // Popup workspace management
 
