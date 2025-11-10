@@ -2875,6 +2875,7 @@ interface NavBarProps {
   hasProject?: boolean;
   onShowAuthModal: () => void;
   onNavigateToLibrary: () => void;
+  onSignOut: () => void;
   projectCount: number;
 }
 
@@ -2882,6 +2883,7 @@ const NavBar: React.FC<NavBarProps> = ({
   hasProject,
   onShowAuthModal,
   onNavigateToLibrary,
+  onSignOut,
   projectCount,
 }) => (
   <nav className="sticky top-0 z-50 bg-neutral-900/98 backdrop-blur-xl border-b border-neutral-700/50 shadow-2xl">
@@ -2922,6 +2924,7 @@ const NavBar: React.FC<NavBarProps> = ({
           <AvatarMenu
             onShowAuthModal={onShowAuthModal}
             onNavigateToLibrary={onNavigateToLibrary}
+            onSignOut={onSignOut}
             projectCount={projectCount}
           />
         </div>
@@ -2970,18 +2973,11 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userProjects, setUserProjects] = useState<any[]>([]);
 
-  // User ID for memory system (could be from auth later)
-
+  // Legacy user ID for memory system (TODO: migrate to auth-based user ID)
   const [userId] = useState(() => {
-    const stored = localStorage.getItem("zero1_userId");
-
-    if (stored) return stored;
-
-    const newId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-    localStorage.setItem("zero1_userId", newId);
-
-    return newId;
+    // Generate a temporary ID for memory system
+    // This should be migrated to use the authenticated user's ID
+    return `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   });
 
   // Popup workspace state
@@ -3212,7 +3208,6 @@ function App() {
 
         body: JSON.stringify({
           vision: goal.trim(),
-          user_id: userId,
           build_approach: buildApproach || "auto",
           project_purpose: projectPurpose || "personal",
         }),
@@ -3897,6 +3892,17 @@ Return only the refined vision statement using the format "I want to build _____
     setCurrentView("library");
   };
 
+  const handleSignOut = () => {
+    // Clear project state
+    setProject(null);
+    setUserProjects([]);
+    // Clear localStorage
+    localStorage.removeItem("zero1_lastProjectId");
+    localStorage.removeItem("zero1_userId"); // Clean up legacy userId if it exists
+    // Navigate to landing
+    setCurrentView("landing");
+  };
+
   const handleSelectProject = async (projectId: string) => {
     // Load the selected project
     try {
@@ -3945,6 +3951,7 @@ Return only the refined vision statement using the format "I want to build _____
           hasProject={false}
           onShowAuthModal={handleShowAuthModal}
           onNavigateToLibrary={handleNavigateToLibrary}
+          onSignOut={handleSignOut}
           projectCount={userProjects.length}
         />
 
@@ -3983,6 +3990,7 @@ Return only the refined vision statement using the format "I want to build _____
         hasProject={!!project}
         onShowAuthModal={handleShowAuthModal}
         onNavigateToLibrary={handleNavigateToLibrary}
+        onSignOut={handleSignOut}
         projectCount={userProjects.length}
       />
 

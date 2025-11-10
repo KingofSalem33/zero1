@@ -293,6 +293,18 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    // Update last_accessed_at timestamp (silently fail if column doesn't exist yet)
+    await supabase
+      .from("projects")
+      .update({ last_accessed_at: new Date().toISOString() })
+      .eq("id", id)
+      .then(() => {
+        // Success - timestamp updated
+      })
+      .catch(() => {
+        // Silently fail if column doesn't exist yet
+      });
+
     // Check if project uses phase-based roadmap
     const { data: metadata } = await supabase
       .from("project_roadmap_metadata")

@@ -10,12 +10,14 @@ import { useAuth } from "../contexts/AuthContext";
 interface AvatarMenuProps {
   onShowAuthModal: () => void;
   onNavigateToLibrary: () => void;
+  onSignOut?: () => void;
   projectCount?: number;
 }
 
 export function AvatarMenu({
   onShowAuthModal,
   onNavigateToLibrary,
+  onSignOut,
   projectCount = 0,
 }: AvatarMenuProps) {
   const { user, signOut } = useAuth();
@@ -47,6 +49,7 @@ export function AvatarMenu({
   const handleSignOut = async () => {
     await signOut();
     setIsOpen(false);
+    onSignOut?.(); // Clear app state
   };
 
   // Not authenticated - show sign in button
