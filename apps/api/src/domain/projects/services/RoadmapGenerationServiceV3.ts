@@ -40,6 +40,7 @@ export interface GenerateRoadmapRequest {
   clarification_context?: string;
   user_skill_level?: "beginner" | "intermediate" | "advanced";
   build_approach?: "code" | "platform" | "auto";
+  project_purpose?: "personal" | "business" | "learning" | "creative";
 }
 
 export interface GenerateRoadmapResponse {
@@ -246,10 +247,47 @@ Output ONLY the structured JSON. No commentary.`;
 - Consider user skill level: ${request.user_skill_level || "beginner"}\n`;
     }
 
+    // Project purpose guidance for LLM
+    let projectPurposeGuidance = "";
+    if (request.project_purpose === "business") {
+      projectPurposeGuidance = `\n**PROJECT PURPOSE: BUSINESS/REVENUE**
+- User wants to generate revenue or build a sustainable business
+- Focus on revenue-generating features (payments, subscriptions, monetization)
+- Include customer acquisition, validation, and market testing steps
+- Prioritize features that drive conversions, sales, and business metrics
+- Consider scalability and professional polish from the start\n`;
+    } else if (request.project_purpose === "learning") {
+      projectPurposeGuidance = `\n**PROJECT PURPOSE: LEARNING/EDUCATION**
+- User is building this primarily to learn and develop skills
+- Provide detailed explanations and teaching moments in substeps
+- Include best practices and explain WHY decisions are made
+- Build from fundamentals to maximize learning opportunities
+- Focus on understanding core concepts, not just getting it working
+- Encourage experimentation and exploration\n`;
+    } else if (request.project_purpose === "creative") {
+      projectPurposeGuidance = `\n**PROJECT PURPOSE: CREATIVE/PORTFOLIO**
+- User wants to showcase their abilities and creative vision
+- Focus on polish, aesthetics, and impressive features
+- Include documentation, case study elements, and presentation
+- Prioritize unique, standout implementations that demonstrate skill
+- Consider how this will look in a portfolio or to potential clients
+- Quality and visual impact matter more than speed\n`;
+    } else {
+      // "personal" or default
+      projectPurposeGuidance = `\n**PROJECT PURPOSE: PERSONAL USE**
+- User is building for themselves or close friends/family
+- No need for public-facing polish or enterprise scale
+- Focus on solving the specific problem quickly and effectively
+- Can skip features like user accounts, analytics, marketing pages
+- Prioritize functionality over aesthetics
+- Keep it simple and maintainable\n`;
+    }
+
     const userPrompt = `**USER'S PROJECT VISION:**
 "${request.vision}"
 
 ${buildApproachGuidance}
+${projectPurposeGuidance}
 ${request.clarification_context ? `\n**ADDITIONAL CONTEXT:**\n${request.clarification_context}\n` : ""}
 Generate tailored substeps for the "${template.title}" phase that will help them achieve: ${template.goal}`;
 

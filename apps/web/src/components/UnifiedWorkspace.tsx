@@ -85,6 +85,7 @@ interface UnifiedWorkspaceProps {
   onCreateProject: (
     goal: string,
     buildApproach?: "code" | "platform" | "auto",
+    projectPurpose?: "personal" | "business" | "learning" | "creative",
   ) => void;
   onInspireMe: (goal: string, callback: () => void) => void;
   toolsUsed: ToolActivity[];
@@ -121,6 +122,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   );
   const [buildApproach, setBuildApproach] = useState<
     "code" | "platform" | "auto" | null
+  >(null);
+  const [projectPurpose, setProjectPurpose] = useState<
+    "personal" | "business" | "learning" | "creative" | null
   >(null);
   const [showBuildApproachQuestions, setShowBuildApproachQuestions] =
     useState(false);
@@ -592,10 +596,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     // If no project, create one
     if (!project) {
-      onCreateProject(currentInput.trim(), buildApproach || "auto");
+      onCreateProject(
+        currentInput.trim(),
+        buildApproach || "auto",
+        projectPurpose || "personal",
+      );
       setCurrentInput("");
-      // Reset build approach state for next project
+      // Reset state for next project
       setBuildApproach(null);
+      setProjectPurpose(null);
       setShowBuildApproachQuestions(false);
       return;
     }
@@ -907,116 +916,275 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             {/* Build Approach Selection - appears after "Refine Idea" */}
             {showBuildApproachQuestions && (
               <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg animate-slideUpFade">
-                <h3 className="text-sm font-medium text-neutral-300 mb-4">
-                  One more thing - how do you want to build this?
+                <h3 className="text-sm font-medium text-neutral-300 mb-6">
+                  A couple more things to personalize your roadmap:
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Code Option */}
-                  <button
-                    onClick={() => setBuildApproach("code")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      buildApproach === "code"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {buildApproach === "code" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">🧑‍💻</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Write Code
-                      </div>
-                      <div className="text-xs opacity-80">
-                        Full control, custom features
-                      </div>
-                    </div>
-                  </button>
 
-                  {/* Platform Option */}
-                  <button
-                    onClick={() => setBuildApproach("platform")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      buildApproach === "platform"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {buildApproach === "platform" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
+                {/* Question 1: Build Approach */}
+                <div className="mb-6">
+                  <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
+                    1. How do you want to build this?
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Code Option */}
+                    <button
+                      onClick={() => setBuildApproach("code")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        buildApproach === "code"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {buildApproach === "code" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">🧑‍💻</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Write Code
+                        </div>
+                        <div className="text-xs opacity-80">
+                          Full control, custom features
+                        </div>
                       </div>
-                    )}
-                    <div className="text-3xl">🛠️</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Use a Platform
-                      </div>
-                      <div className="text-xs opacity-80">
-                        Faster, Shopify/Wix/Bubble
-                      </div>
-                    </div>
-                  </button>
+                    </button>
 
-                  {/* Not Sure Option */}
-                  <button
-                    onClick={() => setBuildApproach("auto")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      buildApproach === "auto"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {buildApproach === "auto" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
+                    {/* Platform Option */}
+                    <button
+                      onClick={() => setBuildApproach("platform")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        buildApproach === "platform"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {buildApproach === "platform" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">🛠️</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Use a Platform
+                        </div>
+                        <div className="text-xs opacity-80">
+                          Faster, Shopify/Wix/Bubble
+                        </div>
                       </div>
-                    )}
-                    <div className="text-3xl">🤷</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">Not Sure</div>
-                      <div className="text-xs opacity-80">AI picks for me</div>
-                    </div>
-                  </button>
+                    </button>
+
+                    {/* Not Sure Option */}
+                    <button
+                      onClick={() => setBuildApproach("auto")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        buildApproach === "auto"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {buildApproach === "auto" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">🤷</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Not Sure
+                        </div>
+                        <div className="text-xs opacity-80">
+                          AI picks for me
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Question 2: Project Purpose */}
+                <div>
+                  <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
+                    2. Why are you building this?
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    {/* Personal Option */}
+                    <button
+                      onClick={() => setProjectPurpose("personal")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        projectPurpose === "personal"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {projectPurpose === "personal" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">🏠</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Personal
+                        </div>
+                        <div className="text-xs opacity-80">For me/friends</div>
+                      </div>
+                    </button>
+
+                    {/* Business Option */}
+                    <button
+                      onClick={() => setProjectPurpose("business")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        projectPurpose === "business"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {projectPurpose === "business" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">💼</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Business
+                        </div>
+                        <div className="text-xs opacity-80">Make money</div>
+                      </div>
+                    </button>
+
+                    {/* Learning Option */}
+                    <button
+                      onClick={() => setProjectPurpose("learning")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        projectPurpose === "learning"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {projectPurpose === "learning" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">📚</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Learning
+                        </div>
+                        <div className="text-xs opacity-80">Build skills</div>
+                      </div>
+                    </button>
+
+                    {/* Creative Option */}
+                    <button
+                      onClick={() => setProjectPurpose("creative")}
+                      className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                        projectPurpose === "creative"
+                          ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                          : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                      }`}
+                    >
+                      {projectPurpose === "creative" && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-3 h-3 text-brand-primary-500"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </div>
+                      )}
+                      <div className="text-3xl">🎨</div>
+                      <div className="text-center">
+                        <div className="font-semibold text-sm mb-1">
+                          Creative
+                        </div>
+                        <div className="text-xs opacity-80">Showcase work</div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

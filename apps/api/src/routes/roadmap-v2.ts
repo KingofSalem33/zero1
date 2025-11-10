@@ -13,6 +13,7 @@ import { ExecutionService } from "../domain/projects/services/ExecutionService";
 import { threadService } from "../services/threadService";
 import { randomUUID } from "crypto";
 import { aiLimiter, readOnlyLimiter } from "../middleware/rateLimit";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 const roadmapServiceV3 = new RoadmapGenerationServiceV3();
@@ -74,6 +75,7 @@ router.post("/projects", async (req: Request, res: Response) => {
       clarification_context,
       skill_level,
       build_approach,
+      project_purpose,
     } = req.body;
 
     if (!vision) {
@@ -82,6 +84,7 @@ router.post("/projects", async (req: Request, res: Response) => {
 
     console.log("[Roadmap V2] Creating project with vision:", vision);
     console.log("[Roadmap V2] Build approach:", build_approach || "auto");
+    console.log("[Roadmap V2] Project purpose:", project_purpose || "personal");
 
     // Generate P0-P7 phase-based roadmap
     const roadmapResponse = await roadmapServiceV3.generateRoadmap({
@@ -89,6 +92,7 @@ router.post("/projects", async (req: Request, res: Response) => {
       clarification_context,
       user_skill_level: skill_level || "beginner",
       build_approach: build_approach || "auto",
+      project_purpose: project_purpose || "personal",
     });
 
     console.log(
@@ -211,6 +215,77 @@ router.post("/projects", async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// ============================================================================
+// GET /api/v2/projects - List all projects for authenticated user
+// ============================================================================
+router.get(
+  "/projects",
+  requireAuth,
+  readOnlyLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log(`[Roadmap V2] Fetching projects for user: ${userId}`);
+
+      // Fetch all projects for this user, ordered by last accessed or created date
+      const { data: projects, error: projectsError } = await supabase
+        .from("projects")
+        .select(
+          `
+          id,
+          goal,
+          status,
+          created_at,
+          current_step,
+          last_accessed_at
+        `,
+        )
+        .eq("user_id", userId)
+        .order("last_accessed_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
+
+      if (projectsError) {
+        console.error("[Roadmap V2] Error fetching projects:", projectsError);
+        return res.status(500).json({ error: "Failed to fetch projects" });
+      }
+
+      // Fetch metadata for each project to get phase info and completion
+      const projectsWithMeta = await Promise.all(
+        (projects || []).map(async (project) => {
+          const { data: metadata } = await supabase
+            .from("project_roadmap_metadata")
+            .select("current_phase, completion_percentage")
+            .eq("project_id", project.id)
+            .single();
+
+          return {
+            ...project,
+            current_phase: metadata?.current_phase || 0,
+            completion_percentage: metadata?.completion_percentage || 0,
+          };
+        }),
+      );
+
+      console.log(
+        `[Roadmap V2] Found ${projectsWithMeta.length} projects for user`,
+      );
+
+      return res.json({
+        projects: projectsWithMeta,
+        total: projectsWithMeta.length,
+      });
+    } catch (error) {
+      console.error("[Roadmap V2] Error in GET /projects:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 // ============================================================================
 // GET /api/v2/projects/:id - Get project with roadmap

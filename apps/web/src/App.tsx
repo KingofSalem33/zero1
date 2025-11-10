@@ -25,6 +25,14 @@ import UnifiedWorkspace from "./components/UnifiedWorkspace";
 
 import { Toast } from "./components/Toast";
 
+import { AvatarMenu } from "./components/AvatarMenu";
+
+import { AuthModal } from "./components/AuthModal";
+
+import { ProjectLibrary } from "./components/ProjectLibrary";
+
+import { useAuth } from "./contexts/AuthContext";
+
 // ---- Utility helpers ----
 
 const cls = (...arr: (string | boolean | undefined)[]) =>
@@ -2865,9 +2873,17 @@ const IdeationHub: React.FC<IdeationHubProps> = ({
 
 interface NavBarProps {
   hasProject?: boolean;
+  onShowAuthModal: () => void;
+  onNavigateToLibrary: () => void;
+  projectCount: number;
 }
 
-const NavBar: React.FC<NavBarProps> = ({ hasProject }) => (
+const NavBar: React.FC<NavBarProps> = ({
+  hasProject,
+  onShowAuthModal,
+  onNavigateToLibrary,
+  projectCount,
+}) => (
   <nav className="sticky top-0 z-50 bg-neutral-900/98 backdrop-blur-xl border-b border-neutral-700/50 shadow-2xl">
     <div className="mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between h-14">
@@ -2903,6 +2919,11 @@ const NavBar: React.FC<NavBarProps> = ({ hasProject }) => (
               Workspace
             </span>
           )}
+          <AvatarMenu
+            onShowAuthModal={onShowAuthModal}
+            onNavigateToLibrary={onNavigateToLibrary}
+            projectCount={projectCount}
+          />
         </div>
       </div>
     </div>
@@ -2940,6 +2961,15 @@ function App() {
   const [, setCompletionSuggestionV2] = useState<any>(null);
   const [isCompletingStep, setIsCompletingStep] = useState(false);
 
+  // Authentication
+  const { loading: authLoading } = useAuth();
+
+  // View state management
+  type AppView = "landing" | "workspace" | "library";
+  const [currentView, setCurrentView] = useState<AppView>("landing");
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [userProjects] = useState<any[]>([]);
+
   // User ID for memory system (could be from auth later)
 
   const [userId] = useState(() => {
@@ -2958,17 +2988,28 @@ function App() {
 
   const [popupWorkspaces, setPopupWorkspaces] = useState<PopupWorkspace[]>([]);
 
-  // Load project from URL parameter on mount
+  // Persist current project ID to localStorage whenever it changes
+  useEffect(() => {
+    if (project?.id) {
+      localStorage.setItem("zero1_lastProjectId", project.id);
+    }
+  }, [project?.id]);
+
+  // Load project from URL parameter or localStorage on mount
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
 
-    const projectId = urlParams.get("project");
+    const projectIdFromUrl = urlParams.get("project");
+    const projectIdFromStorage = localStorage.getItem("zero1_lastProjectId");
+
+    // Prioritize URL param, then fall back to localStorage
+    const projectId = projectIdFromUrl || projectIdFromStorage;
 
     if (projectId && !project) {
-      // Load the shared project
+      // Load the project
 
-      const loadSharedProject = async () => {
+      const loadProject = async () => {
         try {
           const response = await fetch(`${API_URL}/api/projects/${projectId}`);
 
@@ -2979,22 +3020,29 @@ function App() {
 
             setProject(normalizedProject);
 
-            setGuidance("G�� Shared project loaded successfully!");
-
-            setTimeout(() => setGuidance(""), 3000);
+            if (projectIdFromUrl) {
+              setGuidance("✨ Shared project loaded successfully!");
+              setTimeout(() => setGuidance(""), 3000);
+            }
+            // Don't show guidance for restored projects to avoid disruption
           } else {
-            setGuidance(
-              "G�� Failed to load shared project. It may not exist or be accessible.",
-            );
+            // Project not found, clear localStorage
+            localStorage.removeItem("zero1_lastProjectId");
+            if (projectIdFromUrl) {
+              setGuidance(
+                "⚠️ Failed to load shared project. It may not exist or be accessible.",
+              );
+            }
           }
         } catch {
-          // Failed to load shared project
-
-          setGuidance("⚠️ Network error loading shared project.");
+          // Failed to load project
+          if (projectIdFromUrl) {
+            setGuidance("⚠️ Network error loading shared project.");
+          }
         }
       };
 
-      loadSharedProject();
+      loadProject();
     }
   }, []); // Run only once on mount
 
@@ -3114,6 +3162,7 @@ function App() {
   const handleCreateProject = async (
     goal: string,
     buildApproach?: "code" | "platform" | "auto",
+    projectPurpose?: "personal" | "business" | "learning" | "creative",
   ) => {
     if (!goal.trim() || creatingProject) return;
 
@@ -3131,6 +3180,7 @@ function App() {
           vision: goal.trim(),
           user_id: userId,
           build_approach: buildApproach || "auto",
+          project_purpose: projectPurpose || "personal",
         }),
       });
 
@@ -3805,21 +3855,102 @@ Return only the refined vision statement using the format "I want to build _____
     }
   };
 
+  // Navigation handlers
+  const handleShowAuthModal = () => setShowAuthModal(true);
+  const handleCloseAuthModal = () => setShowAuthModal(false);
+
+  const handleNavigateToLibrary = () => {
+    setCurrentView("library");
+  };
+
+  const handleSelectProject = async (projectId: string) => {
+    // Load the selected project
+    try {
+      const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+      const data = await response.json();
+      if (response.ok && data.project) {
+        const normalizedProject = normalizeProject(data.project);
+        setProject(normalizedProject);
+        setCurrentView("workspace");
+      }
+    } catch (error) {
+      console.error("Error loading project:", error);
+    }
+  };
+
+  const handleCreateNewFromLibrary = () => {
+    setProject(null);
+    setCurrentView("landing");
+  };
+
+  const handleCloseLibrary = () => {
+    if (project) {
+      setCurrentView("workspace");
+    } else {
+      setCurrentView("landing");
+    }
+  };
+
+  // Determine current view based on project state
+  useEffect(() => {
+    if (currentView === "library") return; // Don't auto-switch when in library
+
+    if (project) {
+      setCurrentView("workspace");
+    } else {
+      setCurrentView("landing");
+    }
+  }, [project]);
+
   // Render demo mode if requested
 
   if (isDemoMode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-        <NavBar hasProject={false} />
+        <NavBar
+          hasProject={false}
+          onShowAuthModal={handleShowAuthModal}
+          onNavigateToLibrary={handleNavigateToLibrary}
+          projectCount={userProjects.length}
+        />
 
         <StreamingChatDemo />
       </div>
     );
   }
 
+  // Show loading while auth initializes
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Render library view
+  if (currentView === "library") {
+    return (
+      <>
+        <ProjectLibrary
+          onSelectProject={handleSelectProject}
+          onCreateNew={handleCreateNewFromLibrary}
+          onClose={handleCloseLibrary}
+        />
+        {showAuthModal && <AuthModal onClose={handleCloseAuthModal} />}
+      </>
+    );
+  }
+
+  // Render workspace or landing view
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-      <NavBar hasProject={!!project} />
+      <NavBar
+        hasProject={!!project}
+        onShowAuthModal={handleShowAuthModal}
+        onNavigateToLibrary={handleNavigateToLibrary}
+        projectCount={userProjects.length}
+      />
 
       <div className="flex">
         {/* Collapsible Roadmap Sidebar */}
@@ -3906,6 +4037,10 @@ Return only the refined vision statement using the format "I want to build _____
         userId={userId}
         onClose={() => setShowMemoryManager(false)}
       />
+
+      {/* Auth Modal */}
+
+      {showAuthModal && <AuthModal onClose={handleCloseAuthModal} />}
     </div>
   );
 }
