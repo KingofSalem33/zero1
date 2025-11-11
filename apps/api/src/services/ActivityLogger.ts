@@ -3,7 +3,7 @@
  * Simple, non-blocking activity logging for analytics
  */
 
-import { supabase } from "../config/supabase";
+import { supabase } from "../db";
 
 interface ActivityContext {
   userId?: string;
