@@ -11,8 +11,6 @@ import { ExportRoadmapModal } from "./components/ExportRoadmapModal";
 
 import { ToolBadges } from "./components/ToolBadges";
 
-import { StreamingChatDemo } from "./components/StreamingChatDemo";
-
 import { MarkdownMessage } from "./components/MarkdownMessage";
 
 import { FileManager } from "./components/FileManager";
@@ -2936,11 +2934,6 @@ const NavBar: React.FC<NavBarProps> = ({
 // ---- Main App Component ----
 
 function App() {
-  // Check for demo mode via URL parameter
-
-  const isDemoMode =
-    new URLSearchParams(window.location.search).get("demo") === "streaming";
-
   const [project, setProject] = useState<Project | null>(null);
 
   const [guidance, setGuidance] = useState("");
@@ -3943,22 +3936,6 @@ Return only the refined vision statement using the format "I want to build _____
   }, [project]);
 
   // Render demo mode if requested
-
-  if (isDemoMode) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-        <NavBar
-          hasProject={false}
-          onShowAuthModal={handleShowAuthModal}
-          onNavigateToLibrary={handleNavigateToLibrary}
-          onSignOut={handleSignOut}
-          projectCount={userProjects.length}
-        />
-
-        <StreamingChatDemo />
-      </div>
-    );
-  }
 
   // Show loading while auth initializes
   if (authLoading) {

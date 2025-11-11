@@ -7,7 +7,16 @@
 
 import { makeOpenAI } from "../../../ai";
 import { ENV } from "../../../env";
-import type { RoadmapStep } from "./RoadmapGenerationService";
+
+// RoadmapStep interface (matches database schema)
+export interface RoadmapStep {
+  step_number: number;
+  title: string;
+  description: string;
+  acceptance_criteria: string[];
+  estimated_complexity: number;
+  status?: "pending" | "active" | "completed" | "skipped";
+}
 
 export interface Message {
   role: "user" | "assistant";
@@ -145,7 +154,7 @@ Description: ${step.description}
 Complexity: ${step.estimated_complexity}/10
 
 ACCEPTANCE CRITERIA:
-${step.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+${step.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
 
 CONVERSATION (last ${conversation.length} messages):
 ${conversation

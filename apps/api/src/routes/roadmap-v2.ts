@@ -77,7 +77,8 @@ router.post("/projects", async (req: Request, res: Response) => {
   const startTime = Date.now();
 
   // Declare outside try block for access in catch
-  let validUserId: string;
+  // Initialize with a default UUID to ensure it's always defined
+  let validUserId: string = randomUUID();
   let visionId: string | undefined;
 
   try {
@@ -365,16 +366,14 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // Update last_accessed_at timestamp (silently fail if column doesn't exist yet)
-    await supabase
-      .from("projects")
-      .update({ last_accessed_at: new Date().toISOString() })
-      .eq("id", id)
-      .then(() => {
-        // Success - timestamp updated
-      })
-      .catch(() => {
-        // Silently fail if column doesn't exist yet
-      });
+    try {
+      await supabase
+        .from("projects")
+        .update({ last_accessed_at: new Date().toISOString() })
+        .eq("id", id);
+    } catch {
+      // Silently fail if column doesn't exist yet
+    }
 
     // Check if project uses phase-based roadmap
     const { data: metadata } = await supabase
