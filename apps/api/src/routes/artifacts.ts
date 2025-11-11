@@ -15,6 +15,7 @@ import { supabase } from "../db";
 import { uploadLimiter, readOnlyLimiter } from "../middleware/rateLimit";
 import { analyzeArtifact } from "../services/artifactAnalyzer";
 import { threadService } from "../services/threadService";
+import { logActivity, ActivityActions } from "../services/ActivityLogger";
 
 const execAsync = promisify(exec);
 const router = Router();
@@ -164,6 +165,26 @@ router.post("/upload", uploadLimiter, (req, res) => {
 
       console.log(`✅ [Artifacts] Saved artifact: ${artifact.id}`);
 
+      // Log artifact upload activity
+      const { data: project } = await supabase
+        .from("projects")
+        .select("user_id")
+        .eq("id", projectId)
+        .single();
+
+      if (project?.user_id) {
+        await logActivity(
+          ActivityActions.ARTIFACT_UPLOADED,
+          { userId: project.user_id, projectId },
+          {
+            artifactId: artifact.id,
+            artifactType: filename.endsWith(".zip") ? "zip" : "single",
+            fileName: filename,
+            fileSize: file.size,
+          },
+        );
+      }
+
       // Analyze artifact against current step (async, don't block response)
       // Get or create thread for this project
       console.log(
@@ -241,6 +262,26 @@ router.post("/repo", uploadLimiter, async (req, res) => {
     if (dbError) {
       console.error("❌ [Artifacts] DB error:", dbError);
       return res.status(500).json({ error: "Failed to save artifact" });
+    }
+
+    // Log artifact upload activity
+    const { data: project } = await supabase
+      .from("projects")
+      .select("user_id")
+      .eq("id", project_id)
+      .single();
+
+    if (project?.user_id) {
+      await logActivity(
+        ActivityActions.ARTIFACT_UPLOADED,
+        { userId: project.user_id, projectId: project_id },
+        {
+          artifactId: artifact.id,
+          artifactType: "repo",
+          repoUrl: sanitizedUrl,
+          repoBranch: sanitizedBranch,
+        },
+      );
     }
 
     // Send acknowledgment to thread
@@ -421,6 +462,27 @@ async function analyzeAndPostFeedback(
         analyzed_at: new Date().toISOString(),
       })
       .eq("id", artifactId);
+
+    // Log artifact analysis activity
+    const { data: projectForLogging } = await supabase
+      .from("projects")
+      .select("user_id")
+      .eq("id", projectId)
+      .single();
+
+    if (projectForLogging?.user_id) {
+      await logActivity(
+        ActivityActions.ARTIFACT_ANALYZED,
+        { userId: projectForLogging.user_id, projectId },
+        {
+          artifactId,
+          qualityScore: analysis.quality_score,
+          suggestCompletion: analysis.suggest_completion,
+          confidence: analysis.confidence,
+          stepNumber: step.step_number,
+        },
+      );
+    }
   } catch (error) {
     console.error("[Artifacts] Error in analyzeAndPostFeedback:", error);
   }

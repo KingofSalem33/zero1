@@ -14,6 +14,12 @@ import { threadService } from "../services/threadService";
 import { randomUUID } from "crypto";
 import { aiLimiter, readOnlyLimiter } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/auth";
+import {
+  captureVision,
+  linkVisionToProject,
+  logActivity,
+  ActivityActions,
+} from "../services/ActivityLogger";
 
 const router = Router();
 const roadmapServiceV3 = new RoadmapGenerationServiceV3();
@@ -68,6 +74,12 @@ function isValidUUID(str: string): boolean {
 // ============================================================================
 router.post("/projects", async (req: Request, res: Response) => {
   console.log("🚀 [Roadmap V2] POST /projects route hit!");
+  const startTime = Date.now();
+
+  // Declare outside try block for access in catch
+  let validUserId: string;
+  let visionId: string | undefined;
+
   try {
     const {
       vision,
@@ -86,7 +98,36 @@ router.post("/projects", async (req: Request, res: Response) => {
     console.log("[Roadmap V2] Build approach:", build_approach || "auto");
     console.log("[Roadmap V2] Project purpose:", project_purpose || "personal");
 
-    // Generate P0-P7 phase-based roadmap
+    // Ensure user_id is valid for analytics
+    validUserId = user_id && isValidUUID(user_id) ? user_id : randomUUID();
+
+    // STEP 1: Capture vision BEFORE generating roadmap
+    // This is critical data - capture it even if roadmap generation fails
+    const visionRecord = await captureVision({
+      userId: validUserId,
+      rawVision: vision,
+      buildApproach: build_approach,
+      projectPurpose: project_purpose,
+      userAgent: req.headers["user-agent"],
+    });
+
+    visionId = visionRecord?.id;
+
+    // STEP 2: Log roadmap generation start
+    if (visionId) {
+      await logActivity(
+        ActivityActions.ROADMAP_GENERATION_STARTED,
+        { userId: validUserId },
+        {
+          visionId,
+          visionLength: vision.length,
+          buildApproach: build_approach || "auto",
+          projectPurpose: project_purpose || "personal",
+        },
+      );
+    }
+
+    // STEP 3: Generate P0-P7 phase-based roadmap
     const roadmapResponse = await roadmapServiceV3.generateRoadmap({
       vision,
       clarification_context,
@@ -98,20 +139,6 @@ router.post("/projects", async (req: Request, res: Response) => {
     console.log(
       `[Roadmap V3] Generated ${roadmapResponse.total_phases} phases with substeps`,
     );
-
-    // Ensure user_id is a valid UUID
-    let validUserId: string;
-    if (user_id && isValidUUID(user_id)) {
-      validUserId = user_id;
-    } else {
-      // Generate a new UUID if user_id is missing or invalid
-      validUserId = randomUUID();
-      if (user_id) {
-        console.log(
-          `[Roadmap V2] Invalid UUID "${user_id}", generated new UUID: ${validUserId}`,
-        );
-      }
-    }
 
     // Create project (backward compatible - doesn't require migration)
     const { data: project, error: projectError } = await supabase
@@ -206,12 +233,56 @@ router.post("/projects", async (req: Request, res: Response) => {
       `✅ [Roadmap V3] Created project ${project.id} with ${allSteps.length} steps`,
     );
 
+    // STEP 4: Link vision to project (if vision was captured)
+    if (visionId) {
+      await linkVisionToProject(visionId, project.id);
+      console.log(
+        `📊 [Analytics] Linked vision ${visionId} to project ${project.id}`,
+      );
+    }
+
+    // STEP 5: Log successful roadmap generation
+    if (visionId) {
+      await logActivity(
+        ActivityActions.ROADMAP_GENERATED,
+        { userId: validUserId, projectId: project.id },
+        {
+          visionId,
+          phaseCount: roadmapResponse.total_phases,
+          stepCount: allSteps.length,
+          generationTimeMs: Date.now() - startTime,
+          buildApproach: build_approach || "auto",
+          projectPurpose: project_purpose || "personal",
+        },
+      );
+      console.log(
+        `📊 [Analytics] Logged successful roadmap generation for project ${project.id}`,
+      );
+    }
+
     // Fetch complete project (backward compatible - uses flat steps)
     const completeProject = await fetchProjectWithSteps(project.id);
 
     return res.status(201).json(completeProject);
   } catch (error) {
     console.error("[Roadmap V2] Error:", error);
+
+    // STEP 6: Log roadmap generation failure
+    if (visionId && validUserId) {
+      await logActivity(
+        ActivityActions.ROADMAP_GENERATION_FAILED,
+        { userId: validUserId },
+        {
+          visionId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          failedAtMs: Date.now() - startTime,
+        },
+      );
+      console.log(
+        `📊 [Analytics] Logged roadmap generation failure for vision ${visionId}`,
+      );
+    }
+
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -462,6 +533,20 @@ router.post(
           evidence: suggestion.evidence,
           created_at: new Date().toISOString(),
         });
+
+        // Log completion suggestion activity
+        if (project.user_id && isValidUUID(project.user_id)) {
+          await logActivity(
+            ActivityActions.COMPLETION_SUGGESTED,
+            { userId: project.user_id, projectId: id },
+            {
+              stepId: currentStep.id,
+              stepNumber: currentStep.step_number,
+              confidence: suggestion.confidence_score,
+              suggestionType: artifacts ? "artifact_based" : "auto_detected",
+            },
+          );
+        }
       }
 
       return res.json(suggestion);
@@ -500,11 +585,12 @@ router.post(
       }
 
       // Mark step as completed
+      const stepCompletedAt = new Date().toISOString();
       const { error: stepError } = await supabase
         .from("roadmap_steps")
         .update({
           status: "completed",
-          completed_at: new Date().toISOString(),
+          completed_at: stepCompletedAt,
         })
         .eq("id", currentStep.id);
 
@@ -516,6 +602,20 @@ router.post(
       console.log(
         `✅ [Roadmap V2] Step ${currentStep.step_number} "${currentStep.title}" marked complete`,
       );
+
+      // Log step completion activity
+      if (project.user_id && isValidUUID(project.user_id)) {
+        await logActivity(
+          ActivityActions.STEP_COMPLETED,
+          { userId: project.user_id, projectId: id },
+          {
+            stepId: currentStep.id,
+            stepNumber: currentStep.step_number,
+            stepTitle: currentStep.title,
+            manualComplete: true,
+          },
+        );
+      }
 
       // Update suggestion as accepted
       await supabase
@@ -598,6 +698,18 @@ router.post("/projects/:id/continue", async (req: Request, res: Response) => {
         .from("projects")
         .update({ status: "completed", roadmap_status: "completed" })
         .eq("id", id);
+
+      // Log project completion
+      if (project.user_id && isValidUUID(project.user_id)) {
+        await logActivity(
+          ActivityActions.PROJECT_COMPLETED,
+          { userId: project.user_id, projectId: id },
+          {
+            totalSteps: project.metadata.total_steps,
+            projectGoal: project.goal,
+          },
+        );
+      }
 
       return res.json({
         project_complete: true,
