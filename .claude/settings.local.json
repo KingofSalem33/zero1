@@ -54,7 +54,9 @@
       "Bash(npm run db:migrate:*)",
       "Bash(if exist migrate-temp.cjs del migrate-temp.cjs)",
       "Bash(if exist migrate-temp.js del migrate-temp.js)",
-      "Bash(if exist nul del nul)"
+      "Bash(if exist nul del nul)",
+      "Bash(xargs basename:*)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

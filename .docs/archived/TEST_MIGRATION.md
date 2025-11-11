@@ -79,6 +79,7 @@ SELECT 'checkpoints', COUNT(*) FROM checkpoints;
 ```
 
 **Expected Result:**
+
 - artifacts: 1
 - artifact_signals: 1
 - checkpoints: 1 (or 2 if auto-checkpoint trigger fired)
@@ -99,6 +100,7 @@ ORDER BY created_at DESC;
 ```
 
 **Expected Result:** Should see a new checkpoint with:
+
 - name: "Phase P2 Complete"
 - reason: "Automatic checkpoint on phase completion"
 - created_by: "system"
