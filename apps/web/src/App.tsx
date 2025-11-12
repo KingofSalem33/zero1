@@ -1223,64 +1223,77 @@ interface ToolActivity {
 interface NavBarProps {
   hasProject?: boolean;
   onShowAuthModal: () => void;
-  onNavigateToLibrary: () => void;
   onSignOut: () => void;
   projectCount: number;
+  projects: any[];
+  onSelectProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
 }
 
 const NavBar: React.FC<NavBarProps> = ({
   hasProject,
   onShowAuthModal,
-  onNavigateToLibrary,
   onSignOut,
   projectCount,
-}) => (
-  <nav className="sticky top-0 z-50 bg-neutral-900/98 backdrop-blur-xl border-b border-neutral-700/50 shadow-2xl">
-    <div className="mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex items-center justify-between h-14">
-        {/* Brand Lockup - Tightened spacing */}
+  projects,
+  onSelectProject,
+  onDeleteProject,
+}) => {
+  // Create wrapper for onSelectProject to convert Project to projectId string
+  const handleSelectProject = (project: any) => {
+    onSelectProject(project.id);
+  };
 
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center shadow-lg shadow-glow">
-            <svg
-              className="w-3.5 h-3.5 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
+  return (
+    <nav className="sticky top-0 z-50 bg-neutral-900/98 backdrop-blur-xl border-b border-neutral-700/50 shadow-2xl">
+      <div className="mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14">
+          {/* Brand Lockup - Tightened spacing */}
+
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center shadow-lg shadow-glow">
+              <svg
+                className="w-3.5 h-3.5 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+            </div>
+
+            <h1 className="text-lg font-bold text-white tracking-tight">
+              Zero<span className="text-brand-primary-400">1</span>
+            </h1>
           </div>
 
-          <h1 className="text-lg font-bold text-white tracking-tight">
-            Zero<span className="text-brand-primary-400">1</span>
-          </h1>
-        </div>
+          {/* Primary Actions - Right side */}
 
-        {/* Primary Actions - Right side */}
-
-        <div className="flex items-center gap-3">
-          {hasProject && (
-            <span className="hidden lg:block text-neutral-500 text-xs font-medium uppercase tracking-wider">
-              Workspace
-            </span>
-          )}
-          <AvatarMenu
-            onShowAuthModal={onShowAuthModal}
-            onNavigateToLibrary={onNavigateToLibrary}
-            onSignOut={onSignOut}
-            projectCount={projectCount}
-          />
+          <div className="flex items-center gap-3">
+            {hasProject && (
+              <span className="hidden lg:block text-neutral-500 text-xs font-medium uppercase tracking-wider">
+                Workspace
+              </span>
+            )}
+            <AvatarMenu
+              onShowAuthModal={onShowAuthModal}
+              onSignOut={onSignOut}
+              projectCount={projectCount}
+              projects={projects}
+              onSelectProject={handleSelectProject}
+              onDeleteProject={onDeleteProject}
+            />
+          </div>
         </div>
       </div>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 // ---- Main App Component ----
 
@@ -1348,8 +1361,8 @@ function App() {
           const data = await response.json();
           setUserProjects(data.projects || []);
         }
-      } catch (error) {
-        console.error("Error loading user projects:", error);
+      } catch {
+        // Failed to load user projects
       }
     };
 
@@ -1543,8 +1556,6 @@ function App() {
     setCreatingProject(true);
 
     setGuidance("✨ Creating your project workspace...");
-
-    console.log("[Project Creation] User ID:", user?.id || "anonymous");
 
     try {
       const response = await fetch(`${API_URL}/api/v2/projects`, {
@@ -1819,11 +1830,8 @@ Return only the refined vision statement using the format "I want to build _____
       es.addEventListener("phase_unlocked", (e: Event) => {
         try {
           const { data } = e as any;
-          const payload = JSON.parse(data);
+          JSON.parse(data);
           // Legacy toast notification - removed setPopupToast (V1 only)
-          console.log(
-            `Phase ${payload.phase_number} unlocked: ${payload.phase_goal}`,
-          );
         } catch {
           // Ignore parsing errors
         }
@@ -1908,8 +1916,7 @@ Return only the refined vision statement using the format "I want to build _____
 
       // Clear completion suggestion
       setCompletionSuggestionV2(null);
-    } catch (error) {
-      console.error("Error completing step:", error);
+    } catch {
       setGuidance("⚠️ Error completing step. Please try again.");
       setTimeout(() => setGuidance(""), 3000);
     } finally {
@@ -1920,10 +1927,6 @@ Return only the refined vision statement using the format "I want to build _____
   // Navigation handlers
   const handleShowAuthModal = () => setShowAuthModal(true);
   const handleCloseAuthModal = () => setShowAuthModal(false);
-
-  const handleNavigateToLibrary = () => {
-    setCurrentView("library");
-  };
 
   const handleSignOut = () => {
     // Clear project state
@@ -1946,8 +1949,34 @@ Return only the refined vision statement using the format "I want to build _____
         setProject(normalizedProject);
         setCurrentView("workspace");
       }
-    } catch (error) {
-      console.error("Error loading project:", error);
+    } catch {
+      // Failed to load project
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!user) return;
+
+    try {
+      const token = await getAccessToken();
+      const response = await fetch(`${API_URL}/api/v2/projects/${projectId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        // Remove from local state
+        setUserProjects((prev) => prev.filter((p) => p.id !== projectId));
+        // If this was the active project, clear it
+        if (project?.id === projectId) {
+          setProject(null);
+          localStorage.removeItem("zero1_lastProjectId");
+        }
+      }
+    } catch {
+      // Failed to delete project
     }
   };
 
@@ -2004,9 +2033,11 @@ Return only the refined vision statement using the format "I want to build _____
       <NavBar
         hasProject={!!project}
         onShowAuthModal={handleShowAuthModal}
-        onNavigateToLibrary={handleNavigateToLibrary}
         onSignOut={handleSignOut}
         projectCount={userProjects.length}
+        projects={userProjects}
+        onSelectProject={handleSelectProject}
+        onDeleteProject={handleDeleteProject}
       />
 
       <div className="flex">
