@@ -992,6 +992,54 @@ router.get(
   },
 );
 
+// POST /api/v2/projects/:id/steps/:stepId/execute-micro-step - Execute current micro-step with streaming
+router.post(
+  "/projects/:id/steps/:stepId/execute-micro-step",
+  aiLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { id: projectId, stepId } = req.params;
+
+      console.log(
+        `[Roadmap V2] Executing micro-step for project: ${projectId}, step: ${stepId}`,
+      );
+
+      // Set up SSE
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      // Execute micro-step with streaming
+      await executionService.executeMicroStepStreaming({
+        project_id: projectId,
+        step_id: stepId,
+        res,
+      });
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (error) {
+      console.error("[Roadmap V2] Error executing micro-step:", error);
+
+      // Send error via SSE if headers already sent, otherwise JSON
+      if (res.headersSent) {
+        res.write(
+          `data: ${JSON.stringify({ error: error instanceof Error ? error.message : "Failed to execute micro-step" })}\n\n`,
+        );
+        res.end();
+      } else {
+        return res.status(500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to execute micro-step",
+        });
+      }
+    }
+  },
+);
+
 // POST /api/v2/projects/:id/steps/:stepId/complete-micro-step - Complete a micro-step
 router.post(
   "/projects/:id/steps/:stepId/complete-micro-step",

@@ -11,6 +11,7 @@ import { runModelStream } from "../../../ai/runModelStream";
 import { selectRelevantTools } from "../../../ai/tools/selectTools";
 import { ENV } from "../../../env";
 import { threadService } from "../../../services/threadService";
+import { supabase } from "../../../db";
 
 export interface ExecutionRequest {
   project_id: string;
@@ -32,6 +33,12 @@ export interface ExecutionResult {
     step: string;
     project_goal: string;
   };
+}
+
+export interface MicroStepExecutionRequest {
+  project_id: string;
+  step_id: string;
+  res: Response; // For streaming
 }
 
 interface V2Project {
@@ -410,5 +417,211 @@ Execute FOR the user. Don't plan, don't advise, don't guide. JUST BUILD.
         project_goal: project.goal,
       },
     };
+  }
+
+  /**
+   * Execute a single micro-step with streaming
+   * This replaces the "do everything at once" approach with focused, bite-sized execution
+   */
+  async executeMicroStepStreaming(
+    request: MicroStepExecutionRequest,
+  ): Promise<void> {
+    console.log(
+      `🚀 [ExecutionService] Executing micro-step for step: ${request.step_id}`,
+    );
+
+    const res = request.res;
+
+    // Fetch the roadmap step to get current_micro_step and plan status
+    const { data: roadmapStep, error: stepError } = await supabase
+      .from("roadmap_steps")
+      .select("*, project:projects(*)")
+      .eq("id", request.step_id)
+      .single();
+
+    if (stepError || !roadmapStep) {
+      throw new Error(`Roadmap step not found: ${stepError?.message}`);
+    }
+
+    const currentMicroStepNumber = roadmapStep.current_micro_step;
+
+    if (!currentMicroStepNumber || currentMicroStepNumber === 0) {
+      throw new Error(
+        "No active micro-step. Plan must be approved first (current_micro_step = 0)",
+      );
+    }
+
+    // Fetch the current micro-step
+    const { data: microStep, error: microStepError } = await supabase
+      .from("micro_steps")
+      .select("*")
+      .eq("step_id", request.step_id)
+      .eq("micro_step_number", currentMicroStepNumber)
+      .single();
+
+    if (microStepError || !microStep) {
+      throw new Error(
+        `Micro-step ${currentMicroStepNumber} not found: ${microStepError?.message}`,
+      );
+    }
+
+    console.log(
+      `📋 [ExecutionService] Executing micro-step: ${microStep.title}`,
+    );
+    console.log(
+      `📋 [ExecutionService] Estimated duration: ${microStep.estimated_duration}`,
+    );
+
+    // Get project context
+    const project = roadmapStep.project;
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    // Get or create thread
+    let thread = null;
+    let useThreads = true;
+    let accumulatedResponse = "";
+
+    try {
+      thread = await threadService.getOrCreateThread(request.project_id);
+    } catch (error) {
+      console.warn("⚠️ [ExecutionService] Thread service unavailable:", error);
+      useThreads = false;
+    }
+
+    // Fetch all micro-steps to show context
+    const { data: allMicroSteps } = await supabase
+      .from("micro_steps")
+      .select("micro_step_number, title, status")
+      .eq("step_id", request.step_id)
+      .order("micro_step_number", { ascending: true });
+
+    const microStepsContext =
+      allMicroSteps
+        ?.map(
+          (ms) =>
+            `${ms.status === "completed" ? "✅" : ms.status === "in_progress" ? "🔄" : "⏳"} Micro-step ${ms.micro_step_number}: ${ms.title}`,
+        )
+        .join("\n") || "";
+
+    // Build focused system message for THIS micro-step only
+    const systemMessage = `You are helping a user build: "${project.goal}"
+
+**CURRENT ROADMAP STEP:** ${roadmapStep.title}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**🎯 YOUR CURRENT MICRO-TASK (${currentMicroStepNumber} of ${allMicroSteps?.length || 0}):**
+
+**Title:** ${microStep.title}
+
+**Description:** ${microStep.description}
+
+**Estimated Duration:** ${microStep.estimated_duration}
+
+**ACCEPTANCE CRITERIA (What "done" looks like):**
+${microStep.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**PROGRESS SO FAR:**
+${microStepsContext}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**YOUR JOB:**
+✅ Complete THIS micro-task only (not the whole step, just this 2-3 minute chunk)
+✅ Execute the work directly (use tools: Write, Edit, Bash, WebSearch, etc.)
+✅ Verify all acceptance criteria are satisfied
+✅ Report what you built with a brief summary
+
+**EXECUTION STYLE:**
+- Be a DOER, not a guide (create files, write code, run commands)
+- Focus ONLY on this micro-task (don't expand scope)
+- Use tools immediately (no "you should" or "let's plan")
+- Keep it concise - this is a 2-3 minute task
+- Report: "✅ [what you did]" when done
+
+**REMEMBER:** You're executing a BITE-SIZED task. Don't overthink it. Just complete the acceptance criteria above.
+
+**START BUILDING NOW.**`;
+
+    const userMessage = `Execute micro-step ${currentMicroStepNumber}: "${microStep.title}". Follow the acceptance criteria and complete this focused task.`;
+
+    try {
+      console.log(`🚀 [ExecutionService] Building context messages...`);
+      let contextMessages: any[];
+
+      if (useThreads && thread) {
+        const rawMessages = await threadService.buildContextMessages(
+          thread.id,
+          systemMessage,
+          ENV.OPENAI_MODEL_NAME,
+        );
+
+        contextMessages = rawMessages.filter((msg: any) => {
+          return (
+            msg.role === "system" ||
+            msg.role === "user" ||
+            msg.role === "assistant"
+          );
+        });
+
+        contextMessages.push({
+          role: "user" as const,
+          content: userMessage,
+        });
+      } else {
+        contextMessages = [
+          {
+            role: "system" as const,
+            content: systemMessage,
+          },
+          {
+            role: "user" as const,
+            content: userMessage,
+          },
+        ];
+      }
+
+      // Select relevant tools
+      const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+        selectRelevantTools(userMessage);
+
+      console.log(
+        `🚀 [ExecutionService] Starting micro-step execution with ${Object.keys(selectedMap).length} tools`,
+      );
+
+      // Stream the LLM response
+      accumulatedResponse = await runModelStream(res, contextMessages, {
+        toolSpecs: selectedSpecs,
+        toolMap: selectedMap,
+        model: ENV.OPENAI_MODEL_NAME,
+      });
+
+      console.log(
+        `✅ [ExecutionService] Micro-step execution finished, accumulated ${accumulatedResponse.length} chars`,
+      );
+
+      // Save AI response to thread
+      if (useThreads && thread) {
+        await threadService.saveMessage(
+          thread.id,
+          "assistant",
+          accumulatedResponse,
+        );
+      }
+
+      console.log(
+        `✅ [ExecutionService] Micro-step ${currentMicroStepNumber} execution completed`,
+      );
+    } catch (error) {
+      console.error(
+        `❌ [ExecutionService] Micro-step execution failed:`,
+        error,
+      );
+      throw error;
+    }
   }
 }
