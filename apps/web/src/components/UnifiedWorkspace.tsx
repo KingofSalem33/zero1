@@ -901,7 +901,20 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   // Disable auto-scroll; user controls scroll position manually
 
+  // Check if micro-steps are active for current step
+  const isMicroStepsActive = (): boolean => {
+    if (!project) return false;
+    const currentStep = project.steps?.find(
+      (s) => s.step_number === project.current_step,
+    );
+    const planStatus = currentStep?.plan_status;
+    return !!(planStatus && planStatus !== "not_generated");
+  };
+
   const getContextualPlaceholder = (): string => {
+    if (isMicroStepsActive()) {
+      return "Use the Plan Approval or Checkpoint cards to continue...";
+    }
     return "What's on your mind?";
   };
 
@@ -923,6 +936,40 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       return;
     }
 
+    // Get current step to check if using micro-steps
+    const currentStep = project.steps.find(
+      (s) => s.step_number === project.current_step,
+    );
+
+    if (!currentStep) {
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: "ai",
+        content:
+          "No active step found. Please make sure you have an active project with steps.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      return;
+    }
+
+    // Check if this step is using the micro-step workflow
+    const planStatus = currentStep.plan_status;
+    if (planStatus && planStatus !== "not_generated") {
+      // Micro-steps are active - don't run old execution flow
+      // User should use the Plan Approval or Checkpoint cards instead
+      const infoMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: "ai",
+        content:
+          "This step is using the micro-step workflow. Please use the **Plan Approval** card to start, or the **Checkpoint** card to continue between micro-steps. The chat input is disabled during micro-step execution to prevent overwhelming you with multiple tasks at once.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, infoMessage]);
+      setCurrentInput("");
+      return;
+    }
+
     setIsProcessing(true);
     setToolsUsed([]); // Clear previous tools
     const userMessage = currentInput.trim();
@@ -935,24 +982,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     setMessages((prev) => [...prev, newMessage]);
     setCurrentInput("");
-
-    // Get current step's master prompt
-    const currentStep = project.steps.find(
-      (s) => s.step_number === project.current_step,
-    );
-
-    if (!currentStep) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: "ai",
-        content:
-          "No active step found. Please make sure you have an active project with steps.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      setIsProcessing(false);
-      return;
-    }
 
     const masterPrompt = currentStep.master_prompt;
 
@@ -1698,11 +1727,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   placeholder={getContextualPlaceholder()}
                   className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[44px] max-h-[200px] leading-relaxed"
                   rows={1}
-                  disabled={isProcessing}
+                  disabled={isMicroStepsActive() || isProcessing}
                 />
                 <button
                   onClick={handleSendMessage}
-                  disabled={!currentInput.trim() || isProcessing}
+                  disabled={
+                    !currentInput.trim() || isMicroStepsActive() || isProcessing
+                  }
                   className="btn-icon-primary"
                   title={isProcessing ? "Sending..." : "Send message"}
                 >
@@ -2092,11 +2123,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 placeholder={getContextualPlaceholder()}
                 className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
                 rows={1}
-                disabled={isProcessing}
+                disabled={isMicroStepsActive() || isProcessing}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!currentInput.trim() || isProcessing}
+                disabled={
+                  !currentInput.trim() || isMicroStepsActive() || isProcessing
+                }
                 className="btn-icon-primary"
                 title={isProcessing ? "Sending..." : "Send message"}
               >
