@@ -10,6 +10,8 @@ interface RoadmapStep {
   estimated_complexity: number;
   status: "pending" | "active" | "completed" | "skipped";
   acceptance_criteria: string[];
+  plan_status?: "not_generated" | "generated" | "approved" | "rejected";
+  current_micro_step?: number;
 }
 
 interface PhaseSubstep {
@@ -95,6 +97,13 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
     project.steps?.filter((s) => s.status === "completed") || [];
   const upcomingSteps =
     project.steps?.filter((s) => s.step_number > project.current_step) || [];
+
+  // Check if micro-steps are active for current step
+  const isMicroStepsActive = (): boolean => {
+    if (!currentStep) return false;
+    const planStatus = currentStep.plan_status;
+    return !!(planStatus && planStatus !== "not_generated");
+  };
 
   // For phase-based projects
   const currentPhase = project.phases?.find((p) => p.status === "active");
@@ -281,7 +290,16 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
                 {/* Action Buttons */}
                 <div className="flex gap-2">
-                  <button onClick={onAskAI} className="btn-primary flex-1">
+                  <button
+                    onClick={onAskAI}
+                    disabled={isMicroStepsActive()}
+                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={
+                      isMicroStepsActive()
+                        ? "Use Plan Approval or Checkpoint cards to continue"
+                        : "Ask AI for help"
+                    }
+                  >
                     <svg
                       className="w-4 h-4"
                       fill="none"
@@ -493,7 +511,16 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
               {/* Action Buttons */}
               <div className="flex gap-2">
-                <button onClick={onAskAI} className="btn-primary flex-1">
+                <button
+                  onClick={onAskAI}
+                  disabled={isMicroStepsActive()}
+                  className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={
+                    isMicroStepsActive()
+                      ? "Use Plan Approval or Checkpoint cards to continue"
+                      : "Ask AI for help"
+                  }
+                >
                   <svg
                     className="w-4 h-4"
                     fill="none"
