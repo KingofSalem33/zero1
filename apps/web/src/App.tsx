@@ -1544,6 +1544,8 @@ function App() {
 
     setGuidance("✨ Creating your project workspace...");
 
+    console.log("[Project Creation] User ID:", user?.id || "anonymous");
+
     try {
       const response = await fetch(`${API_URL}/api/v2/projects`, {
         method: "POST",
@@ -1552,6 +1554,7 @@ function App() {
 
         body: JSON.stringify({
           vision: goal.trim(),
+          user_id: user?.id, // Send authenticated user ID
           build_approach: buildApproach || "auto",
           project_purpose: projectPurpose || "personal",
         }),
