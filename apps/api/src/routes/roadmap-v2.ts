@@ -878,6 +878,150 @@ router.post(
 );
 
 // ============================================================================
+// MICRO-STEP ENDPOINTS - Plan → Approve → Execute Workflow
+// ============================================================================
+
+import { MicroStepService } from "../domain/projects/services/MicroStepService";
+const microStepService = new MicroStepService();
+
+// POST /api/v2/projects/:id/steps/:stepId/generate-plan - Generate micro-step plan
+router.post(
+  "/projects/:id/steps/:stepId/generate-plan",
+  aiLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { id, stepId } = req.params;
+
+      console.log(
+        `[Roadmap V2] Generating micro-step plan for step: ${stepId}`,
+      );
+
+      // Fetch step details
+      const { data: step, error: stepError } = await supabase
+        .from("roadmap_steps")
+        .select("*")
+        .eq("id", stepId)
+        .eq("project_id", id)
+        .single();
+
+      if (stepError || !step) {
+        return res.status(404).json({ error: "Step not found" });
+      }
+
+      // Fetch project goal
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("goal")
+        .eq("id", id)
+        .single();
+
+      if (projectError || !project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Generate plan
+      const result = await microStepService.generatePlan({
+        step_id: stepId,
+        step_title: step.title,
+        step_description: step.description || "",
+        acceptance_criteria: step.acceptance_criteria || [],
+        project_goal: project.goal,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      console.error("[Roadmap V2] Error generating micro-step plan:", error);
+      return res.status(500).json({ error: "Failed to generate plan" });
+    }
+  },
+);
+
+// POST /api/v2/projects/:id/steps/:stepId/approve-plan - Approve generated plan
+router.post(
+  "/projects/:id/steps/:stepId/approve-plan",
+  async (req: Request, res: Response) => {
+    try {
+      const { stepId } = req.params;
+
+      console.log(`[Roadmap V2] Approving plan for step: ${stepId}`);
+
+      const result = await microStepService.approvePlan(stepId);
+
+      return res.json(result);
+    } catch (error) {
+      console.error("[Roadmap V2] Error approving plan:", error);
+      return res.status(500).json({ error: "Failed to approve plan" });
+    }
+  },
+);
+
+// POST /api/v2/projects/:id/steps/:stepId/reject-plan - Reject and regenerate plan
+router.post(
+  "/projects/:id/steps/:stepId/reject-plan",
+  async (req: Request, res: Response) => {
+    try {
+      const { stepId } = req.params;
+
+      console.log(`[Roadmap V2] Rejecting plan for step: ${stepId}`);
+
+      const result = await microStepService.rejectPlan(stepId);
+
+      return res.json(result);
+    } catch (error) {
+      console.error("[Roadmap V2] Error rejecting plan:", error);
+      return res.status(500).json({ error: "Failed to reject plan" });
+    }
+  },
+);
+
+// GET /api/v2/projects/:id/steps/:stepId/micro-steps - Get micro-steps for a step
+router.get(
+  "/projects/:id/steps/:stepId/micro-steps",
+  readOnlyLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { stepId } = req.params;
+
+      const microSteps = await microStepService.getMicroSteps(stepId);
+
+      return res.json({ micro_steps: microSteps });
+    } catch (error) {
+      console.error("[Roadmap V2] Error fetching micro-steps:", error);
+      return res.status(500).json({ error: "Failed to fetch micro-steps" });
+    }
+  },
+);
+
+// POST /api/v2/projects/:id/steps/:stepId/complete-micro-step - Complete a micro-step
+router.post(
+  "/projects/:id/steps/:stepId/complete-micro-step",
+  async (req: Request, res: Response) => {
+    try {
+      const { stepId } = req.params;
+      const { micro_step_number } = req.body;
+
+      if (!micro_step_number) {
+        return res.status(400).json({ error: "micro_step_number required" });
+      }
+
+      console.log(
+        `[Roadmap V2] Completing micro-step ${micro_step_number} for step: ${stepId}`,
+      );
+
+      const result = await microStepService.completeMicroStep(
+        stepId,
+        micro_step_number,
+      );
+
+      return res.json(result);
+    } catch (error) {
+      console.error("[Roadmap V2] Error completing micro-step:", error);
+      return res.status(500).json({ error: "Failed to complete micro-step" });
+    }
+  },
+);
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 

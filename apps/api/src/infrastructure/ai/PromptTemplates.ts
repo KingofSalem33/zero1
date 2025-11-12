@@ -246,6 +246,65 @@ Return only the refined vision statement using the format "I want to build _____
   }
 
   /**
+   * Micro-Step Generation - Break a step into 3-5 micro-tasks (2-3 min each)
+   */
+  static microStepGeneration(
+    stepTitle: string,
+    stepDescription: string,
+    acceptanceCriteria: string[],
+    projectGoal: string,
+  ): string {
+    return `You are breaking down a roadmap step into bite-sized micro-tasks.
+
+PROJECT: "${projectGoal}"
+STEP: "${stepTitle}"
+DESCRIPTION: ${stepDescription}
+
+ACCEPTANCE CRITERIA:
+${acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+YOUR JOB: Create 3-5 micro-tasks that are:
+1. **2-3 minutes each** (no longer!)
+2. **Sequential** (each builds on the previous)
+3. **Crystal clear** what "done" looks like
+4. **Specific to this project** (not generic)
+5. **One focus per micro-task** (don't combine things)
+
+MICRO-TASK SIZING RULES:
+✅ GOOD: "Research Minnesota cottage food laws" (2 min)
+❌ TOO BIG: "Set up entire commercial kitchen" (hours!)
+✅ GOOD: "Create permit checklist from findings" (3 min)
+❌ TOO SMALL: "Open Google" (seconds)
+
+MOMENTUM-BUILDING PATTERN:
+- Micro-task 1: Quick win (easiest, builds confidence)
+- Micro-tasks 2-3: Core work (where the value is)
+- Micro-task 4-5: Polish & verify (wrap it up)
+
+Each micro-task must have:
+- micro_step_number: 1, 2, 3, etc.
+- title: Clear, action-oriented (5-7 words max)
+- description: 2-3 sentences explaining what to do and why
+- estimated_duration: Human-readable (e.g., "2-3 minutes", "5 minutes")
+- acceptance_criteria: 1-3 bullet points defining "done"
+
+EXAMPLE for "Set Up Development Environment":
+1. Install Git and create repository (5 min)
+   - Download Git, install, create GitHub repo, clone locally
+   - Done when: Can commit and push to GitHub
+
+2. Configure Node.js and npm (3 min)
+   - Install Node.js LTS, verify npm works, create package.json
+   - Done when: "npm --version" shows installed version
+
+3. Deploy Hello World to Vercel (4 min)
+   - Create index.html, connect Vercel, deploy, verify live URL
+   - Done when: Public URL shows "Hello World"
+
+Return ONLY a JSON array of micro-tasks. Make them HYPER-SPECIFIC to "${projectGoal}".`;
+  }
+
+  /**
    * Phase Constraints - Domain-specific constraints for substep generation
    */
   static getPhaseConstraints(phaseId: string): string {

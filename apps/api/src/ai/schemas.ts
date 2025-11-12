@@ -139,6 +139,43 @@ export const substepGenerationJsonSchema = {
   },
 } as const;
 
+// Micro-step generation response schema
+export const microStepGenerationJsonSchema = {
+  name: "micro_step_generation",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      micro_steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            micro_step_number: { type: "number" },
+            title: { type: "string" },
+            description: { type: "string" },
+            estimated_duration: { type: "string" },
+            acceptance_criteria: {
+              type: "array",
+              items: { type: "string" },
+            },
+          },
+          required: [
+            "micro_step_number",
+            "title",
+            "description",
+            "estimated_duration",
+            "acceptance_criteria",
+          ],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["micro_steps"],
+    additionalProperties: false,
+  },
+} as const;
+
 export type WebSearchParams = z.infer<typeof webSearchSchema>;
 export type HttpFetchParams = z.infer<typeof httpFetchSchema>;
 export type CalculatorParams = z.infer<typeof calculatorSchema>;
