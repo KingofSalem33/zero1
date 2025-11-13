@@ -29,19 +29,7 @@ const getPhaseNumber = (phase: string | number): number => {
   return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
 };
 
-// Micro-Step (2-3 minute chunks)
-interface MicroStep {
-  id: string;
-  step_id: string;
-  micro_step_number: number;
-  title: string;
-  description: string;
-  estimated_duration: string;
-  acceptance_criteria: string[];
-  status: "pending" | "in_progress" | "completed" | "skipped";
-  created_at: string;
-  completed_at?: string;
-}
+// Removed MicroStep interface - no longer using cards UI
 
 // V2 Roadmap Step
 interface RoadmapStep {
@@ -145,11 +133,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [showBuildApproachQuestions, setShowBuildApproachQuestions] =
     useState(false);
 
-  // Micro-step state
-  const [microSteps, setMicroSteps] = useState<MicroStep[]>([]);
-  const [showPlanApproval, setShowPlanApproval] = useState(false);
-  const [showCheckpoint, setShowCheckpoint] = useState(false);
-  const [generatingPlan, setGeneratingPlan] = useState(false);
+  // Removed micro-step state variables - no longer using cards UI
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -169,32 +153,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     previousInspiringRef.current = inspiring;
   }, [inspiring]);
 
-  // Auto-generate micro-step plan when step is first activated
-  useEffect(() => {
-    if (!project || generatingPlan || showPlanApproval) return;
-
-    const currentStep = project.steps?.find(
-      (s) => s.step_number === project.current_step,
-    );
-
-    if (!currentStep) return;
-
-    // Check if plan needs to be generated
-    const planStatus = currentStep.plan_status;
-    if (!planStatus || planStatus === "not_generated") {
-      console.log(
-        `[UnifiedWorkspace] Auto-generating micro-step plan for step: ${currentStep.title}`,
-      );
-      generateMicroStepPlan(currentStep.id);
-    } else if (planStatus === "generated") {
-      // Plan already generated, show approval UI
-      fetchMicroSteps(currentStep.id);
-      setShowPlanApproval(true);
-    } else if (planStatus === "approved") {
-      // Plan approved, fetch micro-steps for display
-      fetchMicroSteps(currentStep.id);
-    }
-  }, [project?.current_step, project?.id]);
+  // Removed auto-generation of micro-steps
+  // Micro-steps will be generated and executed seamlessly when "Ask AI" is clicked
 
   // Auto-expand phase when current_substep === 0 (needs expansion) - V1 only
   useEffect(() => {
@@ -614,269 +574,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     [project, setToolsUsed, onRefreshProject, fetchThreadMessages],
   );
 
-  // Micro-step API functions
-  const fetchMicroSteps = async (stepId: string) => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project?.id}/steps/${stepId}/micro-steps`,
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setMicroSteps(data.micro_steps || []);
-        return data.micro_steps || [];
-      }
-    } catch (error) {
-      console.error("Error fetching micro-steps:", error);
-    }
-    return [];
-  };
-
-  const generateMicroStepPlan = async (stepId: string) => {
-    if (!project) return;
-
-    setGeneratingPlan(true);
-    try {
-      const currentStep = project.steps.find((s) => s.id === stepId);
-      if (!currentStep) return;
-
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/steps/${stepId}/generate-plan`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            step_title: currentStep.title,
-            step_description: currentStep.description,
-            acceptance_criteria: currentStep.acceptance_criteria,
-            project_goal: project.goal,
-          }),
-        },
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setMicroSteps(data.micro_steps || []);
-        setShowPlanApproval(true);
-        // Refresh project to update plan_status
-        onRefreshProject();
-      }
-    } catch (error) {
-      console.error("Error generating plan:", error);
-    } finally {
-      setGeneratingPlan(false);
-    }
-  };
-
-  const approveMicroStepPlan = async (stepId: string) => {
-    if (!project) return;
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/steps/${stepId}/approve-plan`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (response.ok) {
-        setShowPlanApproval(false);
-        // Refresh to get updated current_micro_step
-        await onRefreshProject();
-        // Execute first micro-step
-        await executeMicroStep(stepId);
-      }
-    } catch (error) {
-      console.error("Error approving plan:", error);
-    }
-  };
-
-  const rejectMicroStepPlan = async (stepId: string) => {
-    if (!project) return;
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/steps/${stepId}/reject-plan`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (response.ok) {
-        setShowPlanApproval(false);
-        setMicroSteps([]);
-        // Regenerate plan
-        await generateMicroStepPlan(stepId);
-      }
-    } catch (error) {
-      console.error("Error rejecting plan:", error);
-    }
-  };
-
-  const executeMicroStep = async (stepId: string) => {
-    if (!project || isProcessing) return;
-
-    setIsProcessing(true);
-    setShowCheckpoint(false);
-    setToolsUsed([]);
-
-    // Create placeholder for AI message
-    const aiMessageId = (Date.now() + 1).toString();
-    const aiMessage: ChatMessage = {
-      id: aiMessageId,
-      type: "ai",
-      content: "Starting micro-step...",
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, aiMessage]);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/steps/${stepId}/execute-micro-step`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const decoder = new (window as any).TextDecoder();
-      let buffer = "";
-      let accumulatedContent = "";
-      const allTools: ToolActivity[] = [];
-      let currentEvent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line === "" || line.startsWith(":")) {
-            if (line === "") currentEvent = "";
-            continue;
-          }
-          if (line.startsWith("event:")) {
-            currentEvent = line.slice(6).trim();
-          } else if (line.startsWith("data:")) {
-            const data = line.slice(5).trim();
-            if (!data || data === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(data);
-
-              switch (currentEvent) {
-                case "content":
-                  accumulatedContent += parsed.delta;
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === aiMessageId
-                        ? { ...msg, content: accumulatedContent }
-                        : msg,
-                    ),
-                  );
-                  break;
-
-                case "tool_call":
-                  allTools.push({
-                    type: "tool_start",
-                    tool: parsed.tool,
-                    args: parsed.args,
-                    timestamp: new Date().toISOString(),
-                  });
-                  setToolsUsed([...allTools]);
-                  break;
-
-                case "tool_result":
-                  allTools.push({
-                    type: "tool_end",
-                    tool: parsed.tool,
-                    result: parsed.result,
-                    timestamp: new Date().toISOString(),
-                  });
-                  setToolsUsed([...allTools]);
-                  break;
-              }
-            } catch (e) {
-              console.error("Error parsing SSE data:", e);
-            }
-          }
-        }
-      }
-
-      // Show checkpoint after execution
-      setShowCheckpoint(true);
-      // Refresh to get updated micro-step status
-      await onRefreshProject();
-      await fetchMicroSteps(stepId);
-    } catch (error) {
-      console.error("Error executing micro-step:", error);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === aiMessageId
-            ? {
-                ...msg,
-                content: `Error executing micro-step: ${error instanceof Error ? error.message : "Unknown error"}`,
-              }
-            : msg,
-        ),
-      );
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const completeMicroStep = async (stepId: string, microStepNumber: number) => {
-    if (!project) return;
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/steps/${stepId}/complete-micro-step`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ micro_step_number: microStepNumber }),
-        },
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setShowCheckpoint(false);
-        // Refresh project state
-        await onRefreshProject();
-        await fetchMicroSteps(stepId);
-
-        // If there's a next micro-step, execute it
-        if (data.next_micro_step) {
-          await executeMicroStep(stepId);
-        } else {
-          // All micro-steps complete - step is done
-          const completionMessage: ChatMessage = {
-            id: Date.now().toString(),
-            type: "ai",
-            content: `🎉 Excellent work! You've completed all micro-steps for this roadmap step. The step is now marked as complete.`,
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, completionMessage]);
-        }
-      }
-    } catch (error) {
-      console.error("Error completing micro-step:", error);
-    }
-  };
+  // Removed all micro-step API functions - no longer using cards UI workflow
 
   const handleAskAI = useCallback(() => {
     if (!project || isProcessing) return;
@@ -901,20 +599,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   // Disable auto-scroll; user controls scroll position manually
 
-  // Check if micro-steps are active for current step
-  const isMicroStepsActive = (): boolean => {
-    if (!project) return false;
-    const currentStep = project.steps?.find(
-      (s) => s.step_number === project.current_step,
-    );
-    const planStatus = currentStep?.plan_status;
-    return !!(planStatus && planStatus !== "not_generated");
-  };
-
   const getContextualPlaceholder = (): string => {
-    if (isMicroStepsActive()) {
-      return "Use the Plan Approval or Checkpoint cards to continue...";
-    }
     return "What's on your mind?";
   };
 
@@ -936,7 +621,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       return;
     }
 
-    // Get current step to check if using micro-steps
+    // Get current step
     const currentStep = project.steps.find(
       (s) => s.step_number === project.current_step,
     );
@@ -950,23 +635,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-      return;
-    }
-
-    // Check if this step is using the micro-step workflow
-    const planStatus = currentStep.plan_status;
-    if (planStatus && planStatus !== "not_generated") {
-      // Micro-steps are active - don't run old execution flow
-      // User should use the Plan Approval or Checkpoint cards instead
-      const infoMessage: ChatMessage = {
-        id: Date.now().toString(),
-        type: "ai",
-        content:
-          "This step is using the micro-step workflow. Please use the **Plan Approval** card to start, or the **Checkpoint** card to continue between micro-steps. The chat input is disabled during micro-step execution to prevent overwhelming you with multiple tasks at once.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, infoMessage]);
-      setCurrentInput("");
       return;
     }
 
@@ -1727,13 +1395,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   placeholder={getContextualPlaceholder()}
                   className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[44px] max-h-[200px] leading-relaxed"
                   rows={1}
-                  disabled={isMicroStepsActive() || isProcessing}
+                  disabled={isProcessing}
                 />
                 <button
                   onClick={handleSendMessage}
-                  disabled={
-                    !currentInput.trim() || isMicroStepsActive() || isProcessing
-                  }
+                  disabled={!currentInput.trim() || isProcessing}
                   className="btn-icon-primary"
                   title={isProcessing ? "Sending..." : "Send message"}
                 >
@@ -1824,211 +1490,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               </div>
             )}
 
-          {/* Plan Approval Card */}
-          {showPlanApproval && microSteps.length > 0 && project && (
-            <div className="mt-6">
-              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-2xl p-6 shadow-xl">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                      <svg
-                        className="w-6 h-6 text-blue-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                        />
-                      </svg>
-                      Your Micro-Step Plan
-                    </h3>
-                    <p className="text-sm text-neutral-400 mt-1">
-                      {microSteps.length} focused tasks • Est. total:{" "}
-                      {microSteps.reduce((acc, ms) => {
-                        const match = ms.estimated_duration.match(/\d+/);
-                        return acc + (match ? parseInt(match[0]) : 3);
-                      }, 0)}{" "}
-                      minutes
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  {microSteps.map((ms, idx) => (
-                    <div
-                      key={ms.id}
-                      className="bg-neutral-800/50 border border-neutral-700/50 rounded-xl p-4"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 text-sm font-bold flex-shrink-0">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-white">
-                            {ms.title}
-                          </h4>
-                          <p className="text-sm text-neutral-400 mt-1">
-                            {ms.description}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs text-blue-400">
-                              ⏱️ {ms.estimated_duration}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      const currentStep = project.steps.find(
-                        (s) => s.step_number === project.current_step,
-                      );
-                      if (currentStep) approveMicroStepPlan(currentStep.id);
-                    }}
-                    disabled={isProcessing}
-                    className="flex-1 px-6 py-3 bg-gradient-brand text-white rounded-xl font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Start Building
-                  </button>
-                  <button
-                    onClick={() => {
-                      const currentStep = project.steps.find(
-                        (s) => s.step_number === project.current_step,
-                      );
-                      if (currentStep) rejectMicroStepPlan(currentStep.id);
-                    }}
-                    disabled={isProcessing}
-                    className="px-6 py-3 bg-neutral-800 text-neutral-300 rounded-xl font-semibold hover:bg-neutral-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Regenerate Plan
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Checkpoint Card */}
-          {showCheckpoint && microSteps.length > 0 && project && (
-            <div className="mt-6">
-              <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-2xl p-6 shadow-xl">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-                    <svg
-                      className="w-7 h-7 text-green-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">
-                      Micro-step complete!
-                    </h3>
-                    <p className="text-sm text-neutral-400">
-                      Great progress. Ready for the next one?
-                    </p>
-                  </div>
-                </div>
-
-                {/* Show next micro-step preview */}
-                {(() => {
-                  const completedMicroSteps = microSteps.filter(
-                    (ms) => ms.status === "completed",
-                  ).length;
-                  const nextMicroStep = microSteps.find(
-                    (ms) => ms.status === "in_progress",
-                  );
-
-                  return (
-                    <div>
-                      <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-xl p-4 mb-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-neutral-400">
-                            Progress
-                          </span>
-                          <span className="text-sm font-semibold text-white">
-                            {completedMicroSteps} / {microSteps.length}
-                          </span>
-                        </div>
-                        <div className="w-full bg-neutral-700 rounded-full h-2">
-                          <div
-                            className="bg-gradient-brand h-2 rounded-full transition-all"
-                            style={{
-                              width: `${(completedMicroSteps / microSteps.length) * 100}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {nextMicroStep && (
-                        <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-xl p-4 mb-4">
-                          <p className="text-xs text-neutral-500 mb-1">
-                            Up next:
-                          </p>
-                          <h4 className="font-semibold text-white">
-                            {nextMicroStep.title}
-                          </h4>
-                          <p className="text-sm text-neutral-400 mt-1">
-                            {nextMicroStep.description}
-                          </p>
-                          <span className="text-xs text-blue-400 mt-2 inline-block">
-                            ⏱️ {nextMicroStep.estimated_duration}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => {
-                            const currentStep = project.steps.find(
-                              (s) => s.step_number === project.current_step,
-                            );
-                            const completedStep = microSteps.find(
-                              (ms) => ms.status === "completed",
-                            );
-                            if (currentStep && completedStep) {
-                              completeMicroStep(
-                                currentStep.id,
-                                completedStep.micro_step_number,
-                              );
-                            }
-                          }}
-                          disabled={isProcessing}
-                          className="flex-1 px-6 py-3 bg-gradient-brand text-white rounded-xl font-semibold hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {completedMicroSteps === microSteps.length
-                            ? "Finish Step"
-                            : "Continue"}
-                        </button>
-                        <button
-                          onClick={() => setShowCheckpoint(false)}
-                          disabled={isProcessing}
-                          className="px-6 py-3 bg-neutral-800 text-neutral-300 rounded-xl font-semibold hover:bg-neutral-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Take a Break
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
+          {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
 
           <div ref={messagesEndRef} />
         </div>
@@ -2123,13 +1585,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 placeholder={getContextualPlaceholder()}
                 className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
                 rows={1}
-                disabled={isMicroStepsActive() || isProcessing}
+                disabled={isProcessing}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={
-                  !currentInput.trim() || isMicroStepsActive() || isProcessing
-                }
+                disabled={!currentInput.trim() || isProcessing}
                 className="btn-icon-primary"
                 title={isProcessing ? "Sending..." : "Send message"}
               >

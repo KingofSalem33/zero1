@@ -98,12 +98,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   const upcomingSteps =
     project.steps?.filter((s) => s.step_number > project.current_step) || [];
 
-  // Check if micro-steps are active for current step
-  const isMicroStepsActive = (): boolean => {
-    if (!currentStep) return false;
-    const planStatus = currentStep.plan_status;
-    return !!(planStatus && planStatus !== "not_generated");
-  };
+  // Removed micro-steps check - "Ask AI" button works normally now
 
   // For phase-based projects
   const currentPhase = project.phases?.find((p) => p.status === "active");
@@ -292,13 +287,8 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={onAskAI}
-                    disabled={isMicroStepsActive()}
-                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={
-                      isMicroStepsActive()
-                        ? "Use Plan Approval or Checkpoint cards to continue"
-                        : "Ask AI for help"
-                    }
+                    className="btn-primary flex-1"
+                    title="Ask AI for help"
                   >
                     <svg
                       className="w-4 h-4"
@@ -513,13 +503,8 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               <div className="flex gap-2">
                 <button
                   onClick={onAskAI}
-                  disabled={isMicroStepsActive()}
-                  className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={
-                    isMicroStepsActive()
-                      ? "Use Plan Approval or Checkpoint cards to continue"
-                      : "Ask AI for help"
-                  }
+                  className="btn-primary flex-1"
+                  title="Ask AI for help"
                 >
                   <svg
                     className="w-4 h-4"
