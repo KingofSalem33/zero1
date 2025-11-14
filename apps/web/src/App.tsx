@@ -67,7 +67,23 @@ const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
  */
 
 const normalizeProject = (rawProject: any): any => {
-  if (!rawProject || !rawProject.phases) {
+  if (!rawProject) {
+    return rawProject;
+  }
+
+  // V2 projects have 'steps' instead of 'phases'
+  if (rawProject.steps) {
+    // V2 format - already normalized, just return as-is
+    return {
+      ...rawProject,
+      current_step: rawProject.current_step || 1,
+      steps: rawProject.steps || [],
+      metadata: rawProject.metadata || {},
+    };
+  }
+
+  // V1 projects have 'phases'
+  if (!rawProject.phases) {
     return rawProject;
   }
 
@@ -1377,6 +1393,7 @@ function App() {
   }, [project?.id]);
 
   // Load project from URL parameter or localStorage on mount
+  const hasLoadedProjectRef = useRef(false);
 
   useEffect(() => {
     // Wait for auth to finish loading
@@ -1385,25 +1402,37 @@ function App() {
     // Only restore projects for authenticated users
     if (!user) return;
 
+    // Only run once per user session
+    if (hasLoadedProjectRef.current) return;
+
     const urlParams = new URLSearchParams(window.location.search);
 
     const projectIdFromUrl = urlParams.get("project");
-    const projectIdFromStorage = localStorage.getItem("zero1_lastProjectId");
 
-    // Prioritize URL param, then fall back to localStorage
-    const projectId = projectIdFromUrl || projectIdFromStorage;
+    // Only load from URL parameter (for sharing)
+    // Don't auto-resume from localStorage - users should explicitly select from dropdown
+    const projectId = projectIdFromUrl;
 
     if (projectId && !project) {
       // Load the project
+      hasLoadedProjectRef.current = true;
 
       const loadProject = async () => {
         try {
-          const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+          // Try V2 endpoint first (new projects)
+          let response = await fetch(`${API_URL}/api/v2/projects/${projectId}`);
+
+          // If not found, try V1 endpoint (old projects)
+          if (!response.ok && response.status === 404) {
+            response = await fetch(`${API_URL}/api/projects/${projectId}`);
+          }
 
           const data = await response.json();
 
-          if (response.ok && data.project) {
-            const normalizedProject = normalizeProject(data.project);
+          if (response.ok && (data.project || data.id)) {
+            // V2 projects return the project directly, V1 wraps it in data.project
+            const projectData = data.project || data;
+            const normalizedProject = normalizeProject(projectData);
 
             setProject(normalizedProject);
 
@@ -1527,18 +1556,30 @@ function App() {
     if (!project?.id) return;
 
     try {
-      const response = await fetch(`${API_URL}/api/projects/${project.id}`);
+      // Try V2 endpoint first (new projects)
+      let response = await fetch(`${API_URL}/api/v2/projects/${project.id}`);
+
+      // If not found, try V1 endpoint (old projects)
+      if (!response.ok && response.status === 404) {
+        response = await fetch(`${API_URL}/api/projects/${project.id}`);
+      }
 
       const data = await response.json();
 
-      if (response.ok && data.project) {
+      if (response.ok && (data.project || data.id)) {
+        // V2 projects return the project directly, V1 wraps it in data.project
+        const projectData = data.project || data;
+
         setProject((prev) => ({
           ...prev!,
-
-          completed_substeps: data.project.completed_substeps || [],
-
+          ...projectData,
+          completed_substeps:
+            projectData.completed_substeps || prev!.completed_substeps || [],
           current_substep:
-            data.project.current_substep || prev!.current_substep,
+            projectData.current_substep ||
+            projectData.current_step ||
+            prev!.current_substep,
+          current_step: projectData.current_step || prev!.current_step,
         }));
       }
     } catch {
@@ -1554,15 +1595,12 @@ function App() {
     if (!goal.trim() || creatingProject) return;
 
     setCreatingProject(true);
-
     setGuidance("✨ Creating your project workspace...");
 
     try {
       const response = await fetch(`${API_URL}/api/v2/projects`, {
         method: "POST",
-
         headers: { "Content-Type": "application/json" },
-
         body: JSON.stringify({
           vision: goal.trim(),
           user_id: user?.id, // Send authenticated user ID
@@ -1574,24 +1612,28 @@ function App() {
       const data = await response.json();
 
       if (response.ok && data) {
-        // V2: Project is returned with full roadmap already generated
-        setProject(data);
-        setGuidance("🎉 Roadmap generated! Ready to start building.");
-        setTimeout(() => setGuidance(""), 3000);
+        // Clear any existing project state first
+        setProject(null);
+        localStorage.removeItem("zero1_lastProjectId");
+
+        // Small delay to ensure state is cleared
+        setTimeout(() => {
+          // V2: Project is returned with full roadmap already generated
+          setProject(data);
+          setGuidance("🎉 Roadmap generated! Ready to start building.");
+          setTimeout(() => setGuidance(""), 3000);
+        }, 50);
+
         setCreatingProject(false);
         return; // V2 doesn't need SSE streaming
       } else {
-        setGuidance(`G�� Error: ${data?.error || "Failed to create project"}`);
-
+        setGuidance(`Error: ${data?.error || "Failed to create project"}`);
         setCreatingProject(false);
       }
     } catch {
-      // Create project error
-
       setGuidance(
         "⚠️ Network error. Please check your connection and try again.",
       );
-
       setCreatingProject(false);
     }
   };
@@ -1837,16 +1879,27 @@ Return only the refined vision statement using the format "I want to build _____
         }
       });
 
-      es.addEventListener("project_refresh_request", () => {
+      es.addEventListener("project_refresh_request", async () => {
         // Refresh project from API to pick up latest roadmap/pointers
-        fetch(`${API_URL}/api/projects/${project.id}`)
-          .then((r) => r.json())
-          .then((p) => {
-            if (p?.project) setProject(normalizeProject(p.project));
-          })
-          .catch(() => {
-            // Ignore fetch errors
-          });
+        try {
+          // Try V2 endpoint first (new projects)
+          let response = await fetch(
+            `${API_URL}/api/v2/projects/${project.id}`,
+          );
+
+          // If not found, try V1 endpoint (old projects)
+          if (!response.ok && response.status === 404) {
+            response = await fetch(`${API_URL}/api/projects/${project.id}`);
+          }
+
+          const data = await response.json();
+          if (data?.project || data?.id) {
+            const projectData = data.project || data;
+            setProject(normalizeProject(projectData));
+          }
+        } catch {
+          // Ignore fetch errors
+        }
       });
 
       es.onerror = () => {
@@ -1935,6 +1988,8 @@ Return only the refined vision statement using the format "I want to build _____
     // Clear localStorage
     localStorage.removeItem("zero1_lastProjectId");
     localStorage.removeItem("zero1_userId"); // Clean up legacy userId if it exists
+    // Reset the project load ref so next login can restore projects
+    hasLoadedProjectRef.current = false;
     // Navigate to landing
     setCurrentView("landing");
   };
@@ -1942,10 +1997,23 @@ Return only the refined vision statement using the format "I want to build _____
   const handleSelectProject = async (projectId: string) => {
     // Load the selected project
     try {
-      const response = await fetch(`${API_URL}/api/projects/${projectId}`);
+      // Try V2 endpoint first (new projects)
+      let response = await fetch(`${API_URL}/api/v2/projects/${projectId}`);
+
+      // If not found, try V1 endpoint (old projects)
+      if (!response.ok && response.status === 404) {
+        response = await fetch(`${API_URL}/api/projects/${projectId}`);
+      }
+
       const data = await response.json();
-      if (response.ok && data.project) {
-        const normalizedProject = normalizeProject(data.project);
+      if (response.ok && (data.project || data.id)) {
+        // V2 projects return the project directly, V1 wraps it in data.project
+        const projectData = data.project || data;
+        const normalizedProject = normalizeProject(projectData);
+
+        // Store the project ID for auto-resume
+        localStorage.setItem("zero1_lastProjectId", projectId);
+
         setProject(normalizedProject);
         setCurrentView("workspace");
       }
@@ -1982,6 +2050,7 @@ Return only the refined vision statement using the format "I want to build _____
 
   const handleCreateNewFromLibrary = () => {
     setProject(null);
+    localStorage.removeItem("zero1_lastProjectId");
     setCurrentView("landing");
   };
 
@@ -1991,6 +2060,13 @@ Return only the refined vision statement using the format "I want to build _____
     } else {
       setCurrentView("landing");
     }
+  };
+
+  const handleExitToLibrary = () => {
+    // Clear project and return to landing page
+    setProject(null);
+    localStorage.removeItem("zero1_lastProjectId");
+    setCurrentView("landing");
   };
 
   // Determine current view based on project state
@@ -2051,6 +2127,7 @@ Return only the refined vision statement using the format "I want to build _____
           onCompleteStep={handleCompleteStepV2}
           onRefreshProject={refreshProject}
           isCompletingStep={isCompletingStep}
+          onExitToLibrary={handleExitToLibrary}
         />
 
         {/* Main Workspace - Full Width */}

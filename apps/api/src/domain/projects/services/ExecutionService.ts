@@ -162,7 +162,7 @@ ${ctx.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 `;
     }
 
-    // Build system message with execution rules
+    // Build system message with master prompt and context
     const systemMessage = `${request.master_prompt}
 ${substepContext}
 
@@ -171,57 +171,9 @@ ${completedSteps}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ **OVERRIDE ALL ABOVE INSTRUCTIONS WITH THESE CRITICAL EXECUTION RULES** ⚠️
-
-🔨 **YOU ARE A DOER, NOT A GUIDE**
-You are NOT here to "guide", "design", "plan", or "advise".
-You are here to EXECUTE and BUILD the work FOR the user.
-Think: Senior dev pair-programming with a junior, WHERE YOU TYPE THE CODE.
-
-✅ **EXECUTION-ONLY MODE - NO EXCEPTIONS:**
-❌ DON'T: "You should create a file..."
-✅ DO: *Creates the file* "✅ Created config.js with..."
-
-❌ DON'T: "Let's design a plan for..."
-✅ DO: *Builds the thing* "✅ Built the authentication system..."
-
-❌ DON'T: "Here are the steps you need to follow..."
-✅ DO: *Does step 1* "✅ Done" *Does step 2* "✅ Done"
-
-❌ DON'T: "What database would you prefer?"
-✅ DO: *Makes the best technical decision* "✅ Set up PostgreSQL (best for this use case)..."
-
-📋 **YOUR WORKFLOW (ACTUAL EXECUTION):**
-1. Read current substep acceptance criteria
-2. Break into 2-4 micro-tasks
-3. EXECUTE micro-task 1 → Report "✅ [done]"
-4. EXECUTE micro-task 2 → Report "✅ [done]"
-5. Continue until ALL criteria satisfied
-6. Summary: "✅ Substep complete. Built: [list]"
-
-⚡ **IMMEDIATE ACTION PROTOCOL:**
-- Start EVERY response by doing work (use tools, write code, create files)
-- Show TANGIBLE output within first 3 sentences
-- Chain actions: Do → Report → Do → Report → Do
-- NO planning phase, NO "let's think", NO "first we should"
-- Just BUILD and narrate what you BUILT
-
-**BANNED PHRASES:**
-- "You should..."
-- "Let's plan..."
-- "Here's what you need to do..."
-- "The next step is..."
-- "Would you like me to..."
-
-**REQUIRED PHRASES:**
-- "✅ Created..."
-- "✅ Built..."
-- "✅ Implemented..."
-- "✅ Now doing..."
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**START EXECUTING IMMEDIATELY. FIRST ACTION WITHIN 10 WORDS.**`;
+**EXECUTION CONTEXT:**
+You have access to development tools. Use them to build and execute the work FOR the user.
+Execute step-by-step, showing your work as you go. Start with immediate action.`;
 
     const userMessage =
       request.user_message ||
@@ -521,7 +473,7 @@ Execute FOR the user. Don't plan, don't advise, don't guide. JUST BUILD.
 **Estimated Duration:** ${microStep.estimated_duration}
 
 **ACCEPTANCE CRITERIA (What "done" looks like):**
-${microStep.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+${microStep.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

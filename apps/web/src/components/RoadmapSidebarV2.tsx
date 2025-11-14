@@ -60,6 +60,7 @@ interface RoadmapSidebarV2Props {
   onCompleteStep: () => void;
   onRefreshProject?: () => void;
   isCompletingStep?: boolean;
+  onExitToLibrary?: () => void;
 }
 
 const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
@@ -70,6 +71,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   onCompleteStep,
   onRefreshProject,
   isCompletingStep = false,
+  onExitToLibrary,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem("roadmapCollapsed");
@@ -182,6 +184,29 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             {project.goal}
           </p>
         </div>
+
+        {/* Exit Project Button */}
+        {onExitToLibrary && (
+          <button
+            onClick={onExitToLibrary}
+            className="w-full px-3 py-2 text-sm font-medium text-neutral-300 hover:text-white bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 rounded-lg transition-all flex items-center gap-2 justify-center"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+              />
+            </svg>
+            Exit Project
+          </button>
+        )}
 
         {/* Divider */}
         <div className="h-px bg-neutral-700/30" />

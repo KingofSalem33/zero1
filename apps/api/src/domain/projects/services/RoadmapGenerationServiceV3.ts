@@ -12,6 +12,7 @@ import {
   generateMasterPrompt,
   type PhaseTemplate,
 } from "../templates/PhaseTemplates";
+import { PromptTemplates } from "../../../infrastructure/ai/PromptTemplates";
 
 export interface PhaseSubstep {
   substep_number: number;
@@ -200,28 +201,18 @@ export class RoadmapGenerationServiceV3 {
     request: GenerateRoadmapRequest,
     client: any,
   ): Promise<PhaseSubstep[]> {
-    const systemPrompt = `You are a senior architect creating substeps for phase: ${template.title}
+    // Use centralized PromptTemplates.substepGeneration
+    const promptText = PromptTemplates.substepGeneration(
+      template.goal,
+      template.phase_id,
+      request.vision,
+      undefined, // No previous phases context at generation time
+    );
 
-**PHASE GOAL:**
-${template.goal}
-
-**PEDAGOGICAL PURPOSE:**
-${template.pedagogical_purpose}
-
-**SUBSTEP GUIDANCE:**
-${template.substep_generation_guidance}
-
-Generate ${template.min_substeps}-${template.max_substeps} concrete, actionable substeps for this phase.
-Each substep should be specific to the user's project vision.
-
-**QUALITY CRITERIA:**
-- Action-oriented titles (verbs: "Install", "Create", "Test")
-- Specific to the project (not generic)
-- Clear acceptance criteria
-- Achievable wins
-- Build on each other sequentially
-
-Output ONLY the structured JSON. No commentary.`;
+    // Add phase constraints for better substep generation
+    const phaseConstraints = PromptTemplates.getPhaseConstraints(
+      template.phase_id,
+    );
 
     // Build approach guidance for LLM
     let buildApproachGuidance = "";
@@ -283,20 +274,19 @@ Output ONLY the structured JSON. No commentary.`;
 - Keep it simple and maintainable\n`;
     }
 
-    const userPrompt = `**USER'S PROJECT VISION:**
-"${request.vision}"
+    const enhancedPrompt = `${promptText}
+
+${phaseConstraints}
 
 ${buildApproachGuidance}
 ${projectPurposeGuidance}
 ${request.clarification_context ? `\n**ADDITIONAL CONTEXT:**\n${request.clarification_context}\n` : ""}
-Generate tailored substeps for the "${template.title}" phase that will help them achieve: ${template.goal}`;
+
+Output ONLY the structured JSON. No commentary.`;
 
     const result = await client.responses.create({
       model: ENV.OPENAI_MODEL_NAME,
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
+      input: [{ role: "user", content: enhancedPrompt }],
       temperature: 0.6, // Slightly more creative for bespoke substeps
       max_output_tokens: 2000,
       text: {
@@ -331,13 +321,18 @@ Generate tailored substeps for the "${template.title}" phase that will help them
     const parsed = JSON.parse(responseText);
 
     // Map to PhaseSubstep interface with unique master prompts
+    // Get completed substeps context (empty at generation time)
+    const completedSubsteps = "None yet - this is the first substep";
+
     return parsed.substeps.map((substep: any, index: number) => {
-      // Generate substep-specific master prompt
-      const substepMasterPrompt = this.generateSubstepMasterPrompt(
-        template,
-        substep,
-        request.vision,
-        index + 1,
+      // Use centralized PromptTemplates.executionSystem for substep master prompt
+      const substepMasterPrompt = PromptTemplates.executionSystem(
+        request.vision, // projectGoal
+        template.goal, // phaseGoal
+        substep.title, // substepLabel
+        completedSubsteps, // completedSubsteps
+        template.master_prompt_template, // masterPrompt (phase-level guidance)
+        undefined, // cumulativeContext (not available at generation time)
       );
 
       return {
@@ -351,50 +346,6 @@ Generate tailored substeps for the "${template.title}" phase that will help them
         master_prompt: substepMasterPrompt,
       };
     });
-  }
-
-  /**
-   * Generate substep-specific master prompt
-   */
-  private generateSubstepMasterPrompt(
-    phaseTemplate: PhaseTemplate,
-    substep: any,
-    vision: string,
-    substepNumber: number,
-  ): string {
-    return `You are a senior architect executing ${phaseTemplate.phase_id}.${substepNumber}: ${substep.title}
-
-**PROJECT VISION:**
-${vision}
-
-**OVERALL PHASE CONTEXT (${phaseTemplate.phase_id}: ${phaseTemplate.title}):**
-${phaseTemplate.goal}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🎯 **YOUR SPECIFIC TASK FOR THIS SUBSTEP:**
-
-**Substep ${substepNumber}: ${substep.title}**
-
-${substep.description}
-
-**ACCEPTANCE CRITERIA (what you MUST accomplish):**
-${substep.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
-
-**CRITICAL RULES:**
-- EXECUTE this substep completely before moving forward
-- DO NOT work on other substeps from this phase
-- DO NOT give advice or plans - BUILD and EXECUTE
-- Use tools immediately (Write, Edit, Bash, etc.)
-- Create tangible deliverables
-- Report: "✅ Built X", "✅ Created Y"
-
-**TEACHING MOMENT:**
-${phaseTemplate.pedagogical_purpose}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**START BUILDING IMMEDIATELY. Focus ONLY on "${substep.title}".**`;
   }
 
   /**

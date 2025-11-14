@@ -400,6 +400,59 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
 });
 
 // ============================================================================
+// DELETE /api/v2/projects/:id - Delete a project
+// ============================================================================
+router.delete(
+  "/projects/:id",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = req.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log(`[Roadmap V2] Deleting project ${id} for user ${userId}`);
+
+      // Verify project belongs to user
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("id, user_id")
+        .eq("id", id)
+        .single();
+
+      if (projectError || !project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (project.user_id !== userId) {
+        return res.status(403).json({ error: "Forbidden: Not your project" });
+      }
+
+      // Delete project (cascade should handle related records)
+      const { error: deleteError } = await supabase
+        .from("projects")
+        .delete()
+        .eq("id", id);
+
+      if (deleteError) {
+        console.error("[Roadmap V2] Error deleting project:", deleteError);
+        return res.status(500).json({ error: "Failed to delete project" });
+      }
+
+      console.log(`✅ [Roadmap V2] Project ${id} deleted successfully`);
+
+      return res.json({ success: true, message: "Project deleted" });
+    } catch (error) {
+      console.error("[Roadmap V2] Error in DELETE /projects/:id:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+// ============================================================================
 // GET /api/v2/projects/:id/thread - Get or create thread for project
 // ============================================================================
 router.get(
@@ -1019,6 +1072,7 @@ router.post(
 
       res.write("data: [DONE]\n\n");
       res.end();
+      return;
     } catch (error) {
       console.error("[Roadmap V2] Error executing micro-step:", error);
 
@@ -1028,6 +1082,7 @@ router.post(
           `data: ${JSON.stringify({ error: error instanceof Error ? error.message : "Failed to execute micro-step" })}\n\n`,
         );
         res.end();
+        return;
       } else {
         return res.status(500).json({
           error:
