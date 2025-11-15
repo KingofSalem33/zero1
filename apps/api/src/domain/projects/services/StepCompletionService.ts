@@ -26,7 +26,10 @@ export interface Message {
 
 export interface CompletionSuggestion {
   should_complete: boolean;
-  confidence_score: number; // 0-100
+  confidence_score: number; // 0-100 (combined score)
+  conversation_confidence: number; // 0-100 (conversation-only)
+  artifact_confidence: number; // 0-100 (artifact-only)
+  auto_advance: boolean; // True if threshold met for auto-advancement (85%+)
   reasoning: string;
   evidence: {
     satisfied_criteria: string[];
@@ -35,6 +38,7 @@ export interface CompletionSuggestion {
     artifact_signals?: string[];
   };
   suggestion_message: string; // User-facing message
+  celebration_message?: string; // Message for inline chat celebration
 }
 
 export interface AnalyzeCompletionRequest {
@@ -117,9 +121,36 @@ export class StepCompletionService {
 
       const analysis = JSON.parse(responseText);
 
+      // Calculate hybrid confidence score
+      const conversationConf = analysis.confidence_score || 0;
+      const artifactConf = this.calculateArtifactConfidence(request.artifacts);
+
+      // Hybrid formula:
+      // - If artifacts present: weighted average (70% conversation, 30% artifact)
+      // - If no artifacts: conversation score needs to be higher (90% to auto-advance)
+      const hasArtifacts = request.artifacts &&
+        (request.artifacts.file_count || 0) > 0;
+
+      const combinedScore = hasArtifacts
+        ? Math.round(conversationConf * 0.7 + artifactConf * 0.3)
+        : conversationConf;
+
+      // Auto-advance threshold:
+      // - With artifacts: 85%+ combined score
+      // - Without artifacts: 90%+ conversation score
+      const autoAdvanceThreshold = hasArtifacts ? 85 : 90;
+      const autoAdvance = combinedScore >= autoAdvanceThreshold;
+
+      console.log(
+        `[StepCompletionService] Scores - Conversation: ${conversationConf}%, Artifact: ${artifactConf}%, Combined: ${combinedScore}%, Auto-advance: ${autoAdvance}`
+      );
+
       return {
         should_complete: analysis.should_complete,
-        confidence_score: analysis.confidence_score,
+        confidence_score: combinedScore,
+        conversation_confidence: conversationConf,
+        artifact_confidence: artifactConf,
+        auto_advance: autoAdvance,
         reasoning: analysis.reasoning,
         evidence: {
           satisfied_criteria: analysis.satisfied_criteria || [],
@@ -128,6 +159,9 @@ export class StepCompletionService {
           artifact_signals: analysis.artifact_signals || [],
         },
         suggestion_message: this.formatSuggestionMessage(analysis),
+        celebration_message: autoAdvance
+          ? this.formatCelebrationMessage(request.step)
+          : undefined,
       };
     } catch (error) {
       console.error(
@@ -273,9 +307,61 @@ Output your analysis as JSON.`;
         "reasoning",
         "satisfied_criteria",
         "missing_criteria",
+        "conversation_signals",
+        "artifact_signals",
       ],
       additionalProperties: false,
     };
+  }
+
+  /**
+   * Calculate artifact confidence score
+   */
+  private calculateArtifactConfidence(artifacts?: {
+    file_count?: number;
+    tech_stack?: string[];
+    has_tests?: boolean;
+    quality_score?: number;
+  }): number {
+    if (!artifacts) return 0;
+
+    let score = 0;
+
+    // Files present: +40 points
+    if (artifacts.file_count && artifacts.file_count > 0) {
+      score += 40;
+    }
+
+    // Quality score: up to +30 points
+    if (artifacts.quality_score) {
+      score += (artifacts.quality_score / 10) * 30;
+    }
+
+    // Tests present: +20 points
+    if (artifacts.has_tests) {
+      score += 20;
+    }
+
+    // Tech stack identified: +10 points
+    if (artifacts.tech_stack && artifacts.tech_stack.length > 0) {
+      score += 10;
+    }
+
+    return Math.min(score, 100);
+  }
+
+  /**
+   * Format celebration message for inline chat
+   */
+  private formatCelebrationMessage(step: RoadmapStep): string {
+    const celebrations = [
+      `✅ **Step ${step.step_number} complete!** Great work on "${step.title}".\n\n🚀 Moving to Step ${step.step_number + 1}...`,
+      `🎉 **Excellent!** You've completed "${step.title}".\n\n✨ Advancing to the next step...`,
+      `👏 **Well done!** Step ${step.step_number} is complete.\n\n⚡ Continuing to Step ${step.step_number + 1}...`,
+    ];
+
+    // Pick a random celebration
+    return celebrations[Math.floor(Math.random() * celebrations.length)];
   }
 
   /**
@@ -365,12 +451,24 @@ Output your analysis as JSON.`;
       baseScore += 15; // Big bonus for actual artifacts
     }
 
-    const score = Math.min(baseScore, 100);
-    const shouldComplete = score >= 60; // Lower threshold - 60% is good enough!
+    const conversationScore = Math.min(baseScore, 100);
+    const artifactScore = this.calculateArtifactConfidence(artifacts);
+
+    const hasArtifacts = artifacts && (artifacts.file_count || 0) > 0;
+    const combinedScore = hasArtifacts
+      ? Math.round(conversationScore * 0.7 + artifactScore * 0.3)
+      : conversationScore;
+
+    const shouldComplete = combinedScore >= 60;
+    const autoAdvanceThreshold = hasArtifacts ? 85 : 90;
+    const autoAdvance = combinedScore >= autoAdvanceThreshold;
 
     return {
       should_complete: shouldComplete,
-      confidence_score: Math.round(score),
+      confidence_score: Math.round(combinedScore),
+      conversation_confidence: Math.round(conversationScore),
+      artifact_confidence: Math.round(artifactScore),
+      auto_advance: autoAdvance,
       reasoning: shouldComplete
         ? "Heuristic analysis suggests step is complete based on conversation signals and artifacts."
         : "Heuristic analysis suggests more work is needed.",
@@ -385,6 +483,9 @@ Output your analysis as JSON.`;
       suggestion_message: shouldComplete
         ? "You've got what you need! The foundation is solid - let's build on it!"
         : "Keep going - you're making progress! Focus on getting the core work done.",
+      celebration_message: autoAdvance
+        ? this.formatCelebrationMessage(step)
+        : undefined,
     };
   }
 

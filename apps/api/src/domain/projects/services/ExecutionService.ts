@@ -12,6 +12,7 @@ import { selectRelevantTools } from "../../../ai/tools/selectTools";
 import { ENV } from "../../../env";
 import { threadService } from "../../../services/threadService";
 import { supabase } from "../../../db";
+import { dynamicPromptBuilder } from "./DynamicPromptBuilder";
 
 export interface ExecutionRequest {
   project_id: string;
@@ -142,11 +143,42 @@ export class ExecutionService {
       `🔍 [ExecutionService] Completed steps count: ${project.steps?.filter((s) => s.status === "completed").length || 0}`,
     );
 
-    // Build current substep context if provided
-    let substepContext = "";
-    if (request.current_step_context) {
-      const ctx = request.current_step_context;
-      substepContext = `
+    // Build dynamic system message with real-time progress tracking
+    let systemMessage: string;
+
+    if (request.current_step_context && useThreads && thread) {
+      // NEW: Use dynamic prompt builder for roadmap-aware context
+      console.log(
+        `🧠 [ExecutionService] Building dynamic system message for Step ${request.current_step_context.step_number}`,
+      );
+
+      // Fetch recent conversation messages for progress analysis
+      const conversationMessages = await threadService.getRecentMessages(
+        thread.id,
+        20, // Last 20 messages for context
+      );
+
+      systemMessage = dynamicPromptBuilder.buildSystemMessage({
+        project_goal: project.goal,
+        current_substep: request.current_step_context,
+        master_prompt: request.master_prompt,
+        conversation_messages: conversationMessages,
+        completed_steps_summary: completedSteps,
+      });
+
+      console.log(
+        `✅ [ExecutionService] Dynamic system message built with ${conversationMessages.length} messages analyzed`,
+      );
+    } else {
+      // Fallback: Static system message (for backward compatibility)
+      console.log(
+        `⚠️ [ExecutionService] Using static system message (no substep context or threads)`,
+      );
+
+      let substepContext = "";
+      if (request.current_step_context) {
+        const ctx = request.current_step_context;
+        substepContext = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **🎯 CURRENT SUBSTEP (${ctx.step_number}): ${ctx.title}**
@@ -160,10 +192,9 @@ ${ctx.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
-    }
+      }
 
-    // Build system message with master prompt and context
-    const systemMessage = `${request.master_prompt}
+      systemMessage = `${request.master_prompt}
 ${substepContext}
 
 **COMPLETED STEPS IN THIS PROJECT:**
@@ -174,6 +205,7 @@ ${completedSteps}
 **EXECUTION CONTEXT:**
 You have access to development tools. Use them to build and execute the work FOR the user.
 Execute step-by-step, showing your work as you go. Start with immediate action.`;
+    }
 
     const userMessage =
       request.user_message ||
@@ -292,47 +324,41 @@ Execute step-by-step, showing your work as you go. Start with immediate action.`
 
     const stepLabel = currentStep?.title || "Unknown Step";
 
-    // Build current substep context if provided
-    let substepContext = "";
-    if (request.current_step_context) {
-      const ctx = request.current_step_context;
-      substepContext = `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Build dynamic system message if possible
+    let systemMessage: string;
 
-**🎯 CURRENT SUBSTEP (${ctx.step_number}): ${ctx.title}**
+    if (request.current_step_context && request.thread_id) {
+      // Try to use dynamic prompt builder
+      try {
+        const thread = await threadService.getThread(request.thread_id);
+        const conversationMessages = await threadService.getRecentMessages(
+          thread.id,
+          20,
+        );
 
-${ctx.description}
+        systemMessage = dynamicPromptBuilder.buildSystemMessage({
+          project_goal: project.goal,
+          current_substep: request.current_step_context,
+          master_prompt: request.master_prompt,
+          conversation_messages: conversationMessages,
+          completed_steps_summary: completedSteps,
+        });
 
-**ACCEPTANCE CRITERIA FOR THIS SUBSTEP:**
-${ctx.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
-
-**IMPORTANT:** Focus ONLY on this substep. The overall phase context is provided above, but your immediate goal is to help the user complete THIS specific substep.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`;
+        console.log(
+          `✅ [ExecutionService] Dynamic system message built for non-streaming`,
+        );
+      } catch {
+        console.warn(
+          `⚠️ [ExecutionService] Failed to build dynamic message, using static fallback`,
+        );
+        systemMessage = this.buildStaticSystemMessage(
+          request,
+          completedSteps,
+        );
+      }
+    } else {
+      systemMessage = this.buildStaticSystemMessage(request, completedSteps);
     }
-
-    const systemMessage = `${request.master_prompt}
-${substepContext}
-
-**COMPLETED STEPS SO FAR:**
-${completedSteps}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ **OVERRIDE ALL ABOVE WITH THESE EXECUTION RULES** ⚠️
-
-🔨 **YOU ARE A DOER, NOT A GUIDE**
-Execute FOR the user. Don't plan, don't advise, don't guide. JUST BUILD.
-
-✅ **EXECUTION-ONLY:**
-- Use tools immediately (Write, Edit, Bash, etc.)
-- Create actual files, code, configurations
-- Report: "✅ Created X" → THEN do next thing
-- NO "you should", NO "let's plan", NO "here are the steps"
-- Just DO the work and narrate what you DID
-
-**START EXECUTING IMMEDIATELY.**`;
 
     const userMessage =
       request.user_message ||
@@ -575,5 +601,69 @@ ${microStepsContext}
       );
       throw error;
     }
+  }
+
+  /**
+   * Build static system message (fallback when dynamic builder unavailable)
+   */
+  private buildStaticSystemMessage(
+    request: ExecutionRequest,
+    completedSteps: string,
+  ): string {
+    let substepContext = "";
+    if (request.current_step_context) {
+      const ctx = request.current_step_context;
+      substepContext = `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**🎯 CURRENT SUBSTEP (${ctx.step_number}): ${ctx.title}**
+
+${ctx.description}
+
+**ACCEPTANCE CRITERIA (Execute these NOW):**
+${ctx.acceptance_criteria.map((c, i) => `${i + 1}. [⏳ TODO] ${c}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+    }
+
+    return `⚠️ **CRITICAL OVERRIDE - READ THIS FIRST** ⚠️
+
+🔨 **YOU ARE AN EXPERT BUILDER WHO EXECUTES, NOT A CONVERSATIONAL GUIDE**
+
+**EXECUTION-ONLY MODE:**
+✅ USE TOOLS IMMEDIATELY - Write, Edit, Bash, WebSearch, etc.
+✅ CREATE FILES, WRITE CODE, RUN COMMANDS - Do the actual work
+✅ REPORT "✅ Created X" after each action, then IMMEDIATELY do the next thing
+❌ NO "you should...", NO "let's plan...", NO "here are the steps..."
+❌ NO QUESTIONS unless you're completely blocked
+❌ NO GUIDANCE - Just BUILD and narrate what you DID
+
+**YOUR ONE JOB:** Execute the acceptance criteria below. Start NOW.
+${substepContext}
+
+## 🧠 EXPERT CONTEXT (Background knowledge - use this to make smart decisions):
+
+${request.master_prompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**COMPLETED STEPS SO FAR:**
+${completedSteps}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## ⚡ EXECUTE NOW:
+
+**EXECUTION RULES (Override everything above if there's conflict):**
+1. Use tools FIRST, talk SECOND
+2. Create actual files, code, and configurations
+3. After each action, report "✅ [what you did]" then DO the next thing
+4. Focus ONLY on completing the acceptance criteria above
+5. NO planning, NO asking permission, NO guidance - JUST EXECUTE
+6. Stay on this substep - don't jump ahead
+
+**BEGIN EXECUTION NOW - Use your first tool call immediately.**`;
   }
 }

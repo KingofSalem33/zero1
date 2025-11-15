@@ -700,6 +700,45 @@ router.post(
         })
         .eq("project_id", id);
 
+      // AUTOMATICALLY ADVANCE TO NEXT STEP (instead of requiring separate /continue call)
+      const nextStepNumber = project.current_step + 1;
+
+      if (nextStepNumber <= project.metadata.total_steps) {
+        // Advance to next step
+        console.log(
+          `🚀 [Roadmap V2] Auto-advancing from step ${project.current_step} to step ${nextStepNumber}`,
+        );
+
+        await supabase
+          .from("projects")
+          .update({ current_step: nextStepNumber })
+          .eq("id", id);
+
+        // Mark next step as active
+        const nextStep = project.steps.find(
+          (s: any) => s.step_number === nextStepNumber,
+        );
+
+        if (nextStep) {
+          await supabase
+            .from("roadmap_steps")
+            .update({ status: "active" })
+            .eq("id", nextStep.id);
+
+          console.log(
+            `✅ [Roadmap V2] Now on Step ${nextStepNumber}: "${nextStep.title}"`,
+          );
+        }
+      } else {
+        // All steps complete!
+        console.log(`🎉 [Roadmap V2] All steps completed for project ${id}`);
+
+        await supabase
+          .from("projects")
+          .update({ status: "completed", roadmap_status: "completed" })
+          .eq("id", id);
+      }
+
       // Return updated project
       const updatedProject = await fetchProjectWithSteps(id);
 
@@ -839,7 +878,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { master_prompt, user_message } = req.body;
+      const { user_message } = req.body;
 
       console.log(
         `🚀 [Roadmap V2] ============================================`,
@@ -847,19 +886,8 @@ router.post(
       console.log(`🚀 [Roadmap V2] Execute step endpoint hit!`);
       console.log(`🚀 [Roadmap V2] Project ID: ${id}`);
       console.log(`🚀 [Roadmap V2] User message: ${user_message || "(none)"}`);
-      console.log(
-        `🚀 [Roadmap V2] Master prompt length: ${master_prompt?.length || 0} chars`,
-      );
-      console.log(
-        `🚀 [Roadmap V2] ============================================`,
-      );
 
-      if (!master_prompt || typeof master_prompt !== "string") {
-        console.error(`❌ [Roadmap V2] Master prompt missing or invalid`);
-        return res.status(400).json({ error: "Master prompt is required" });
-      }
-
-      // Get current step details for context
+      // Get current step details from database (source of truth)
       const project = await fetchProjectWithSteps(id);
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
@@ -873,14 +901,19 @@ router.post(
         return res.status(404).json({ error: "Current step not found" });
       }
 
+      // ALWAYS use master_prompt from database, not from frontend
+      const master_prompt = currentStep.master_prompt;
+
+      if (!master_prompt || typeof master_prompt !== "string") {
+        console.error(`❌ [Roadmap V2] Master prompt missing in database for step ${project.current_step}`);
+        return res.status(500).json({ error: "Master prompt not found for current step" });
+      }
+
       console.log(
-        `🚀 [Roadmap V2] ============================================`,
+        `🚀 [Roadmap V2] Using master prompt from Step ${project.current_step}: "${currentStep.title}"`,
       );
       console.log(
-        `🚀 [Roadmap V2] Executing step #${currentStep.step_number}: "${currentStep.title}"`,
-      );
-      console.log(
-        `🚀 [Roadmap V2] Step description: ${currentStep.description?.substring(0, 100)}...`,
+        `🚀 [Roadmap V2] Master prompt length: ${master_prompt.length} chars`,
       );
       console.log(
         `🚀 [Roadmap V2] Acceptance criteria count: ${currentStep.acceptance_criteria?.length || 0}`,

@@ -333,6 +333,8 @@ Output ONLY the structured JSON. No commentary.`;
         completedSubsteps, // completedSubsteps
         template.master_prompt_template, // masterPrompt (phase-level guidance)
         undefined, // cumulativeContext (not available at generation time)
+        substep.description, // substepDescription - CRITICAL for focus!
+        substep.acceptance_criteria, // acceptanceCriteria - CRITICAL for tracking!
       );
 
       return {
