@@ -10,7 +10,6 @@
  */
 
 import type { Message } from "../../../services/threadService";
-import { conversationAnalyzer } from "./ConversationAnalyzer";
 
 export interface SubstepContext {
   step_number: number;
@@ -20,12 +19,31 @@ export interface SubstepContext {
   phase_id?: string; // e.g., "P0", "P1", etc.
 }
 
+export interface CriterionContext {
+  criterion_index: number; // 0-based index within substep
+  criterion_text: string;
+  previous_criterion?: string; // What was just completed
+  next_criterion?: string; // What comes after this
+  substep_title: string;
+  substep_number: number;
+}
+
+export interface RoadmapStep {
+  step_number: number;
+  title: string;
+  description: string;
+  acceptance_criteria: string[];
+  status: string;
+}
+
 export interface DynamicPromptContext {
   project_goal: string;
   current_substep: SubstepContext;
+  current_criterion?: CriterionContext; // NEW: Criterion-level focus
   master_prompt: string;
   conversation_messages: Message[];
   completed_steps_summary: string;
+  all_steps?: RoadmapStep[]; // NEW: Full roadmap for visibility
 }
 
 /**
@@ -39,96 +57,126 @@ export class DynamicPromptBuilder {
    */
   buildSystemMessage(context: DynamicPromptContext): string {
     const {
-      project_goal,
-      current_substep,
       master_prompt,
-      conversation_messages,
-      completed_steps_summary,
+      current_criterion,
+      current_substep,
+      project_goal,
+      all_steps,
     } = context;
 
-    // Analyze conversation to extract progress
-    const progressAnalysis = conversationAnalyzer.analyzeProgress(
-      conversation_messages,
-      current_substep.acceptance_criteria,
-    );
-
-    // Determine if this is P0 (conversational) or technical phase (execution)
-    const isP0 = current_substep.phase_id === "P0" || current_substep.title.includes("P0:");
-    const isConversationalPhase = isP0;
-
-    // Build the dynamic system message with appropriate mode
-    if (isConversationalPhase) {
-      // P0: Conversational mode - help user think through their idea
-      return this.buildConversationalSystemMessage(
-        context,
-        progressAnalysis,
+    // If we have criterion-level context, use laser-focused mode
+    if (current_criterion) {
+      return this.buildCriterionFocusedMessage(
+        project_goal,
+        current_criterion,
+        master_prompt,
+        all_steps,
       );
     }
 
-    // P1-P7: EXECUTION mode - build and execute FOR the user
-    const systemMessage = `⚠️ **CRITICAL OVERRIDE - READ THIS FIRST** ⚠️
+    // Fallback: use master_prompt as-is (for backward compatibility)
+    return `${master_prompt}
 
-🔨 **YOU ARE AN EXPERT BUILDER WHO EXECUTES, NOT A CONVERSATIONAL GUIDE**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**EXECUTION-ONLY MODE:**
-✅ USE TOOLS IMMEDIATELY - Write, Edit, Bash, WebSearch, etc.
-✅ CREATE FILES, WRITE CODE, RUN COMMANDS - Do the actual work
-✅ REPORT "✅ Created X" after each action, then IMMEDIATELY do the next thing
-❌ NO "you should...", NO "let's plan...", NO "here are the steps..."
-❌ NO QUESTIONS unless you're completely blocked
-❌ NO GUIDANCE - Just BUILD and narrate what you DID
+**YOUR FOCUS:** Complete the acceptance criteria for "${current_substep.title}".`;
+  }
 
-**YOUR ONE JOB:** Execute the acceptance criteria below. Start NOW.
+  /**
+   * Build laser-focused message for a SINGLE acceptance criterion
+   */
+  private buildCriterionFocusedMessage(
+    projectGoal: string,
+    criterion: CriterionContext,
+    masterPrompt: string,
+    allSteps?: RoadmapStep[],
+  ): string {
+    const previousSection = criterion.previous_criterion
+      ? `## ✅ PREVIOUS CRITERION (COMPLETED):
+${criterion.previous_criterion}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`
+      : "";
 
-## 🎯 CURRENT SUBSTEP (${current_substep.step_number}): ${current_substep.title}
+    const nextSection = criterion.next_criterion
+      ? `## 📍 NEXT CRITERION (AFTER THIS ONE):
+${criterion.next_criterion}
 
-**Description:** ${current_substep.description}
+`
+      : `## 🎉 FINAL CRITERION:
+This is the last criterion for "${criterion.substep_title}". After this, the substep is complete.
 
-**ACCEPTANCE CRITERIA (Execute these NOW):**
-${this.formatAcceptanceCriteria(progressAnalysis.acceptance_criteria_progress)}
+`;
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Build full roadmap visibility
+    let roadmapSection = "";
+    if (allSteps && allSteps.length > 0) {
+      const currentStepNum = criterion.substep_number;
 
-## 📊 REAL-TIME PROGRESS (${progressAnalysis.completion_percentage}% COMPLETE)
+      // Show previous step (if exists)
+      const prevStep = allSteps.find(s => s.step_number === currentStepNum - 1);
+      const prevStepText = prevStep
+        ? `**Step ${prevStep.step_number}** (Completed): ${prevStep.title}`
+        : "";
 
-${progressAnalysis.progress_summary}
+      // Show current step
+      const currentStepText = `**Step ${currentStepNum}** (Current): ${criterion.substep_title}`;
 
-${this.buildNextActionGuidance(progressAnalysis)}
+      // Show next 2-3 steps
+      const nextSteps = allSteps
+        .filter(s => s.step_number > currentStepNum && s.step_number <= currentStepNum + 3)
+        .map(s => `**Step ${s.step_number}** (Upcoming): ${s.title}`)
+        .join("\n");
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      roadmapSection = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## 🧠 EXPERT CONTEXT (Background knowledge - use this to make smart decisions):
+## 🗺️ YOUR ROADMAP (Full Project Journey):
 
-${master_prompt}
+${prevStepText ? prevStepText + "\n" : ""}${currentStepText}
+${nextSteps}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When user says "next step", refer to Step ${currentStepNum + 1} above.
 
-## ✅ COMPLETED STEPS IN THIS PROJECT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+    }
 
-${completed_steps_summary}
+    return `You are building: "${projectGoal}"
+${roadmapSection}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🎯 CURRENT TASK (Step ${criterion.substep_number}):
+${criterion.substep_title}
 
-## ⚡ EXECUTE NOW:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**IMMEDIATE ACTION:**
-${this.determineCurrentFocus(progressAnalysis)}
+${previousSection}## 🔨 YOUR ONE JOB RIGHT NOW:
 
-**EXECUTION RULES (Override everything above if there's conflict):**
-1. Use tools FIRST, talk SECOND
-2. Create actual files, code, and configurations
-3. After each action, report "✅ [what you did]" then DO the next thing
-4. Focus ONLY on the [⏳ NEEDED] criteria above
-5. NO planning, NO asking permission, NO guidance - JUST EXECUTE
-6. Stay on Step ${current_substep.step_number} - don't jump ahead
+**Criterion ${criterion.criterion_index + 1}:** ${criterion.criterion_text}
 
-Project: "${project_goal}"
+${nextSection}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**BEGIN EXECUTION NOW - Use your first tool call immediately.**`;
+## HOW TO EXECUTE:
 
-    return systemMessage;
+${masterPrompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## YOUR WORKFLOW:
+
+1. **BUILD** - Complete the criterion above using your tools
+2. **CONFIRM** - When done, say "✅ Criterion ${criterion.criterion_index + 1} complete. Ready to advance?"
+3. **WAIT** - User confirms, then you move to next criterion
+
+**CRITICAL RULES:**
+- Focus ONLY on criterion ${criterion.criterion_index + 1} above
+- Do NOT work on previous or next criteria
+- Do NOT ask "should I...?" - JUST BUILD IT
+- Present completed work, ask for confirmation to advance
+- Use tools immediately (Write, Bash, Edit, WebSearch)
+- When user says "next step", reference the roadmap above
+
+**BEGIN NOW:** Build criterion ${criterion.criterion_index + 1}. Show your work.`;
   }
 
   /**
@@ -179,70 +227,6 @@ Project: "${project_goal}"
 
     const nextCriterion = unsatisfied[0];
     return `Complete the next acceptance criterion: "${nextCriterion.text}". Use your tools to execute this work directly.`;
-  }
-
-  /**
-   * Build conversational system message for P0 (Define Vision phase)
-   * This phase requires conversation and clarifying questions, not execution
-   */
-  private buildConversationalSystemMessage(
-    context: DynamicPromptContext,
-    progressAnalysis: any,
-  ): string {
-    const {
-      project_goal,
-      current_substep,
-      master_prompt,
-    } = context;
-
-    return `You are helping the user define their project vision.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## 🎯 CURRENT SUBSTEP (${current_substep.step_number}): ${current_substep.title}
-
-**Description:** ${current_substep.description}
-
-**ACCEPTANCE CRITERIA:**
-${this.formatAcceptanceCriteria(progressAnalysis.acceptance_criteria_progress)}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## 📊 PROGRESS (${progressAnalysis.completion_percentage}% COMPLETE)
-
-${progressAnalysis.progress_summary}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## 🧠 EXPERT GUIDANCE:
-
-${master_prompt}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## YOUR APPROACH FOR THIS PHASE:
-
-**P0 (Define Vision) is CONVERSATIONAL** - You should:
-- Ask clarifying questions to understand the user's idea
-- Help them think through their target audience
-- Guide them to articulate their vision clearly
-- Challenge vague ideas with specific questions
-- Lead them to the acceptance criteria above
-
-**DO:**
-✅ Ask thoughtful questions
-✅ Provide examples and frameworks
-✅ Help them think critically about their idea
-✅ Guide conversation toward completing the acceptance criteria
-
-**DON'T:**
-❌ Create files or write code (this is strategy, not implementation)
-❌ Jump ahead to technical details
-❌ Make decisions for them - help THEM decide
-
-Project: "${project_goal}"
-
-**Start by addressing the remaining acceptance criteria through conversation.**`;
   }
 }
 

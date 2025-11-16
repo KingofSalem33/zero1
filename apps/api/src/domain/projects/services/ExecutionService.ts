@@ -13,6 +13,7 @@ import { ENV } from "../../../env";
 import { threadService } from "../../../services/threadService";
 import { supabase } from "../../../db";
 import { dynamicPromptBuilder } from "./DynamicPromptBuilder";
+import { conversationAnalyzer } from "./ConversationAnalyzer";
 
 export interface ExecutionRequest {
   project_id: string;
@@ -158,12 +159,48 @@ export class ExecutionService {
         20, // Last 20 messages for context
       );
 
+      // Determine current criterion based on conversation analysis
+      const criteriaProgress = conversationAnalyzer.analyzeProgress(
+        conversationMessages,
+        request.current_step_context.acceptance_criteria,
+      );
+
+      // Find first unsatisfied criterion (this is what we're working on)
+      const currentCriterionIndex = criteriaProgress.acceptance_criteria_progress.findIndex(
+        (c: any) => !c.satisfied,
+      );
+
+      let currentCriterion = undefined;
+      if (currentCriterionIndex !== -1) {
+        const criteria = request.current_step_context.acceptance_criteria;
+        currentCriterion = {
+          criterion_index: currentCriterionIndex,
+          criterion_text: criteria[currentCriterionIndex],
+          previous_criterion:
+            currentCriterionIndex > 0
+              ? criteria[currentCriterionIndex - 1]
+              : undefined,
+          next_criterion:
+            currentCriterionIndex < criteria.length - 1
+              ? criteria[currentCriterionIndex + 1]
+              : undefined,
+          substep_title: request.current_step_context.title,
+          substep_number: request.current_step_context.step_number,
+        };
+
+        console.log(
+          `🎯 [ExecutionService] Current criterion: ${currentCriterionIndex + 1}/${criteria.length} - "${currentCriterion.criterion_text}"`,
+        );
+      }
+
       systemMessage = dynamicPromptBuilder.buildSystemMessage({
         project_goal: project.goal,
         current_substep: request.current_step_context,
+        current_criterion: currentCriterion, // NEW: Pass criterion-level focus
         master_prompt: request.master_prompt,
         conversation_messages: conversationMessages,
         completed_steps_summary: completedSteps,
+        all_steps: project.steps, // NEW: Full roadmap visibility
       });
 
       console.log(

@@ -56,7 +56,10 @@
       "Bash(if exist migrate-temp.js del migrate-temp.js)",
       "Bash(if exist nul del nul)",
       "Bash(xargs basename:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(npm run build:api:*)",
+      "Bash(Select-Object -First 100)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []
