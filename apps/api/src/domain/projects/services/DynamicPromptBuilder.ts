@@ -32,7 +32,7 @@ export interface RoadmapStep {
   step_number: number;
   title: string;
   description: string;
-  acceptance_criteria: string[];
+  acceptance_criteria?: string[];
   status: string;
 }
 
@@ -179,55 +179,6 @@ ${masterPrompt}
 **BEGIN NOW:** Build criterion ${criterion.criterion_index + 1}. Show your work.`;
   }
 
-  /**
-   * Format acceptance criteria with progress indicators
-   */
-  private formatAcceptanceCriteria(
-    criteriaProgress: Array<{ text: string; satisfied: boolean; evidence?: string }>,
-  ): string {
-    return criteriaProgress
-      .map((c, i) => {
-        const status = c.satisfied ? "✅" : "⏳";
-        const statusText = c.satisfied ? "DONE" : "NEEDED";
-        return `${i + 1}. [${status} ${statusText}] ${c.text}${c.evidence ? `\n   Evidence: "${c.evidence}..."` : ""}`;
-      })
-      .join("\n");
-  }
-
-  /**
-   * Build next action guidance based on progress
-   */
-  private buildNextActionGuidance(progressAnalysis: any): string {
-    const unsatisfied = progressAnalysis.acceptance_criteria_progress.filter(
-      (c: any) => !c.satisfied,
-    );
-
-    if (unsatisfied.length === 0) {
-      return `**🎉 ALL CRITERIA SATISFIED!** This substep is complete. The user can advance when ready.`;
-    }
-
-    if (progressAnalysis.completion_percentage >= 50) {
-      return `**📍 YOU'RE HALFWAY THERE!** Focus on completing the remaining criteria:\n${unsatisfied.map((c: any) => `- ${c.text}`).join("\n")}`;
-    }
-
-    return `**🚀 NEXT ACTIONS:** Complete these criteria in order:\n${unsatisfied.slice(0, 3).map((c: any, i: number) => `${i + 1}. ${c.text}`).join("\n")}`;
-  }
-
-  /**
-   * Determine what the LLM should focus on right now
-   */
-  private determineCurrentFocus(progressAnalysis: any): string {
-    const unsatisfied = progressAnalysis.acceptance_criteria_progress.filter(
-      (c: any) => !c.satisfied,
-    );
-
-    if (unsatisfied.length === 0) {
-      return "All acceptance criteria are satisfied. Verify everything is working, then let the user know this substep is complete.";
-    }
-
-    const nextCriterion = unsatisfied[0];
-    return `Complete the next acceptance criterion: "${nextCriterion.text}". Use your tools to execute this work directly.`;
-  }
 }
 
 export const dynamicPromptBuilder = new DynamicPromptBuilder();
