@@ -57,9 +57,7 @@ interface RoadmapSidebarV2Props {
   onOpenFileManager: () => void;
   onOpenMemoryManager: () => void;
   onAskAI: () => void;
-  onCompleteStep: () => void;
   onRefreshProject?: () => void;
-  isCompletingStep?: boolean;
   onExitToLibrary?: () => void;
 }
 
@@ -68,9 +66,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   onOpenFileManager,
   onOpenMemoryManager,
   onAskAI,
-  onCompleteStep,
   onRefreshProject,
-  isCompletingStep = false,
   onExitToLibrary,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -330,41 +326,6 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                     </svg>
                     <span>Ask AI</span>
                   </button>
-                  <button
-                    onClick={onCompleteStep}
-                    disabled={
-                      !currentSubstep ||
-                      currentSubstep.status === "completed" ||
-                      isCompletingStep
-                    }
-                    className={`btn-icon w-10 h-10 transition-all ${
-                      currentSubstep?.status === "completed" || isCompletingStep
-                        ? "bg-green-600 border-green-500 scale-110"
-                        : "bg-neutral-700/50 hover:bg-green-600/20 border border-neutral-600/50 hover:border-green-500"
-                    }`}
-                    title={
-                      currentSubstep?.status === "completed"
-                        ? "Completed"
-                        : "Mark complete"
-                    }
-                  >
-                    {(currentSubstep?.status === "completed" ||
-                      isCompletingStep) && (
-                      <svg
-                        className={`w-5 h-5 text-white ${isCompletingStep ? "animate-bounce" : ""}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    )}
-                  </button>
                 </div>
               </div>
             )}
@@ -545,41 +506,6 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                     />
                   </svg>
                   <span>Ask AI</span>
-                </button>
-                <button
-                  onClick={onCompleteStep}
-                  disabled={
-                    !currentStep ||
-                    currentStep.status === "completed" ||
-                    isCompletingStep
-                  }
-                  className={`btn-icon w-10 h-10 transition-all ${
-                    currentStep?.status === "completed" || isCompletingStep
-                      ? "bg-green-600 border-green-500 scale-110"
-                      : "bg-neutral-700/50 hover:bg-green-600/20 border border-neutral-600/50 hover:border-green-500"
-                  }`}
-                  title={
-                    currentStep?.status === "completed"
-                      ? "Completed"
-                      : "Mark complete"
-                  }
-                >
-                  {(currentStep?.status === "completed" ||
-                    isCompletingStep) && (
-                    <svg
-                      className={`w-5 h-5 text-white ${isCompletingStep ? "animate-bounce" : ""}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={3}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                  )}
                 </button>
               </div>
             </div>

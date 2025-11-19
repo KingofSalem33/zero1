@@ -1333,10 +1333,6 @@ function App() {
   // Ref to connect RoadmapSidebar "Ask AI" to UnifiedWorkspace
   const askAIRef = useRef<(() => void) | null>(null);
 
-  // V2: Completion suggestion state
-  const [, setCompletionSuggestionV2] = useState<any>(null);
-  const [isCompletingStep, setIsCompletingStep] = useState(false);
-
   // Authentication
   const { user, loading: authLoading, getAccessToken } = useAuth();
 
@@ -1409,9 +1405,9 @@ function App() {
 
     const projectIdFromUrl = urlParams.get("project");
 
-    // Only load from URL parameter (for sharing)
-    // Don't auto-resume from localStorage - users should explicitly select from dropdown
-    const projectId = projectIdFromUrl;
+    // Load from URL parameter (sharing) OR localStorage (session persistence)
+    const lastProjectId = localStorage.getItem("zero1_lastProjectId");
+    const projectId = projectIdFromUrl || lastProjectId;
 
     if (projectId && !project) {
       // Load the project
@@ -1461,6 +1457,56 @@ function App() {
       loadProject();
     }
   }, [authLoading, user]); // Run when auth state changes
+
+  // Handle page visibility changes (wake from sleep, tab focus)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        // Page became visible - check if we need to restore project
+        const lastProjectId = localStorage.getItem("zero1_lastProjectId");
+
+        // If we have a lastProjectId but no current project, restore it
+        if (lastProjectId && !project && user && !authLoading) {
+          console.log("[App] Page visible - restoring project:", lastProjectId);
+
+          const restoreProject = async () => {
+            try {
+              let response = await fetch(
+                `${API_URL}/api/v2/projects/${lastProjectId}`,
+              );
+
+              if (!response.ok && response.status === 404) {
+                response = await fetch(
+                  `${API_URL}/api/projects/${lastProjectId}`,
+                );
+              }
+
+              const data = await response.json();
+
+              if (response.ok && (data.project || data.id)) {
+                const projectData = data.project || data;
+                const normalizedProject = normalizeProject(projectData);
+                setProject(normalizedProject);
+                console.log("[App] Project restored successfully");
+              } else {
+                localStorage.removeItem("zero1_lastProjectId");
+              }
+            } catch (error) {
+              console.error("[App] Failed to restore project:", error);
+            }
+          };
+
+          restoreProject();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [project, user, authLoading]);
 
   // Popup workspace management
 
@@ -1570,17 +1616,16 @@ function App() {
         // V2 projects return the project directly, V1 wraps it in data.project
         const projectData = data.project || data;
 
-        setProject((prev) => ({
-          ...prev!,
-          ...projectData,
-          completed_substeps:
-            projectData.completed_substeps || prev!.completed_substeps || [],
-          current_substep:
-            projectData.current_substep ||
-            projectData.current_step ||
-            prev!.current_substep,
-          current_step: projectData.current_step || prev!.current_step,
-        }));
+        // Normalize the project to ensure consistency
+        const normalizedProject = normalizeProject(projectData);
+
+        // Fully replace project state to ensure steps array is updated with completion status
+        setProject(normalizedProject);
+
+        console.log(
+          "[App] Project refreshed - steps updated:",
+          normalizedProject.steps?.length || 0,
+        );
       }
     } catch {
       // Failed to refresh project
@@ -1926,57 +1971,6 @@ Return only the refined vision statement using the format "I want to build _____
     };
   }, [project?.id]);
 
-  // V2: Handle step completion
-  const handleCompleteStepV2 = async () => {
-    if (!project || isCompletingStep) return;
-
-    setIsCompletingStep(true);
-    setGuidance("Completing step...");
-
-    try {
-      // Step 1: Mark current step complete
-      const completeResponse = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/complete-step`,
-        { method: "POST" },
-      );
-
-      if (!completeResponse.ok) {
-        throw new Error("Failed to complete step");
-      }
-
-      // Step 2: Continue to next step
-      const continueResponse = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/continue`,
-        { method: "POST" },
-      );
-
-      const data = await continueResponse.json();
-
-      if (data.project_complete) {
-        setGuidance("🎉 Project Complete! Congratulations!");
-        setTimeout(() => setGuidance(""), 5000);
-      } else {
-        setGuidance(`Step complete! Now on Step ${data.current_step}`);
-        setTimeout(() => setGuidance(""), 3000);
-      }
-
-      // Refresh project
-      const refreshResponse = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}`,
-      );
-      const refreshedProject = await refreshResponse.json();
-      setProject(refreshedProject);
-
-      // Clear completion suggestion
-      setCompletionSuggestionV2(null);
-    } catch {
-      setGuidance("⚠️ Error completing step. Please try again.");
-      setTimeout(() => setGuidance(""), 3000);
-    } finally {
-      setIsCompletingStep(false);
-    }
-  };
-
   // Navigation handlers
   const handleShowAuthModal = () => setShowAuthModal(true);
   const handleCloseAuthModal = () => setShowAuthModal(false);
@@ -2118,20 +2112,16 @@ Return only the refined vision statement using the format "I want to build _____
 
       <div className="flex">
         {/* Collapsible Roadmap Sidebar */}
-
         <RoadmapSidebarV2
           project={project}
           onOpenFileManager={() => setShowFileManager(true)}
           onOpenMemoryManager={() => setShowMemoryManager(true)}
           onAskAI={() => askAIRef.current?.()}
-          onCompleteStep={handleCompleteStepV2}
           onRefreshProject={refreshProject}
-          isCompletingStep={isCompletingStep}
           onExitToLibrary={handleExitToLibrary}
         />
 
-        {/* Main Workspace - Full Width */}
-
+        {/* Main Workspace */}
         <main className="flex-1 min-h-[calc(100vh-64px)]">
           <UnifiedWorkspace
             project={project}

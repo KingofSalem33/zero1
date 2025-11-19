@@ -159,6 +159,21 @@ export class ExecutionService {
         20, // Last 20 messages for context
       );
 
+      // Check if this is a step transition (first execution after advancing)
+      const isStepTransition =
+        conversationMessages.length === 0 ||
+        (completedSteps.length > 0 &&
+          request.current_step_context &&
+          !conversationMessages.some((msg) =>
+            msg.content
+              .toLowerCase()
+              .includes(request.current_step_context!.title.toLowerCase()),
+          ));
+
+      console.log(
+        `🔄 [ExecutionService] Step transition detected: ${isStepTransition}`,
+      );
+
       // Determine current criterion based on conversation analysis
       const criteriaProgress = conversationAnalyzer.analyzeProgress(
         conversationMessages,
@@ -166,9 +181,10 @@ export class ExecutionService {
       );
 
       // Find first unsatisfied criterion (this is what we're working on)
-      const currentCriterionIndex = criteriaProgress.acceptance_criteria_progress.findIndex(
-        (c: any) => !c.satisfied,
-      );
+      const currentCriterionIndex =
+        criteriaProgress.acceptance_criteria_progress.findIndex(
+          (c: any) => !c.satisfied,
+        );
 
       let currentCriterion = undefined;
       if (currentCriterionIndex !== -1) {
@@ -201,6 +217,7 @@ export class ExecutionService {
         conversation_messages: conversationMessages,
         completed_steps_summary: completedSteps,
         all_steps: project.steps, // NEW: Full roadmap visibility
+        is_step_transition: isStepTransition, // NEW: Step transition flag
       });
 
       console.log(
@@ -388,10 +405,7 @@ Execute step-by-step, showing your work as you go. Start with immediate action.`
         console.warn(
           `⚠️ [ExecutionService] Failed to build dynamic message, using static fallback`,
         );
-        systemMessage = this.buildStaticSystemMessage(
-          request,
-          completedSteps,
-        );
+        systemMessage = this.buildStaticSystemMessage(request, completedSteps);
       }
     } else {
       systemMessage = this.buildStaticSystemMessage(request, completedSteps);

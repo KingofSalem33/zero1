@@ -59,7 +59,8 @@
       "Bash(nul)",
       "Bash(npm run build:api:*)",
       "Bash(Select-Object -First 100)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []

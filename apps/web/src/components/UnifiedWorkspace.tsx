@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
 import ArtifactAnalysisCard from "./ArtifactAnalysisCard";
+import { StepCompletionModal } from "./StepCompletionModal";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -131,11 +132,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     "personal" | "business" | "learning" | "creative" | null
   >(null);
 
-  // Auto-advancement state
-  const [pendingAdvancement, setPendingAdvancement] = useState<{
+  // Completion modal state
+  const [completionModalData, setCompletionModalData] = useState<{
     stepNumber: number;
-    celebrationMessage: string;
-    timeoutId: ReturnType<typeof setTimeout>;
+    stepTitle: string;
+    acceptanceCriteria: string[];
+    mentorshipFeedback: string;
+    statusRecommendation: "READY_TO_COMPLETE" | "KEEP_WORKING" | "BLOCKED";
+    totalSteps: number;
   } | null>(null);
   const [isCheckingCompletion, setIsCheckingCompletion] = useState(false);
 
@@ -565,10 +569,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           // Stream completed successfully even without explicit done event
         }
 
-        // Check for step completion after AI response
-        if (hasContent) {
-          setTimeout(() => checkStepCompletion(), 2000);
-        }
+        // Note: Completion check is now manual via "Check Progress" button
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Failed to get AI response";
@@ -592,113 +593,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   );
 
   /**
-   * Check if current step should auto-advance
-   */
-  const checkStepCompletion = useCallback(async () => {
-    if (!project || isCheckingCompletion) return;
-
-    const currentStep = project.steps.find(
-      (s) => s.step_number === project.current_step
-    );
-
-    if (!currentStep || currentStep.status === "completed") return;
-
-    setIsCheckingCompletion(true);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/check-completion`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            step_number: currentStep.step_number,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        console.warn("[Auto-advance] Failed to check completion");
-        return;
-      }
-
-      const result = await response.json();
-
-      console.log(
-        `[Auto-advance] Completion check - Score: ${result.confidence_score}%, Auto-advance: ${result.auto_advance}`
-      );
-
-      // If auto-advance threshold met, schedule advancement
-      if (result.auto_advance && result.celebration_message) {
-        handleAutoAdvance(currentStep.step_number, result.celebration_message);
-      }
-    } catch (error) {
-      console.error("[Auto-advance] Error checking completion:", error);
-    } finally {
-      setIsCheckingCompletion(false);
-    }
-  }, [project, isCheckingCompletion]);
-
-  /**
-   * Handle auto-advancement with 10-second undo window
-   */
-  const handleAutoAdvance = useCallback(
-    (stepNumber: number, celebrationMessage: string) => {
-      // Clear any pending advancement
-      if (pendingAdvancement) {
-        clearTimeout(pendingAdvancement.timeoutId);
-      }
-
-      // Show celebration message inline
-      const celebrationMsg: ChatMessage = {
-        id: `celebration-${Date.now()}`,
-        type: "ai",
-        content: celebrationMessage,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, celebrationMsg]);
-
-      // Schedule advancement after 10 seconds
-      const timeoutId = setTimeout(async () => {
-        await advanceToNextStep(stepNumber);
-        setPendingAdvancement(null);
-      }, 10000);
-
-      setPendingAdvancement({
-        stepNumber,
-        celebrationMessage,
-        timeoutId,
-      });
-
-      console.log(
-        `[Auto-advance] Step ${stepNumber} will advance in 10 seconds (click Undo to cancel)`
-      );
-    },
-    [pendingAdvancement]
-  );
-
-  /**
-   * Undo pending advancement
-   */
-  const undoAdvancement = useCallback(() => {
-    if (pendingAdvancement) {
-      clearTimeout(pendingAdvancement.timeoutId);
-      setPendingAdvancement(null);
-
-      // Show undo confirmation
-      const undoMsg: ChatMessage = {
-        id: `undo-${Date.now()}`,
-        type: "ai",
-        content: "⏮️ Auto-advancement cancelled. You can continue working on this step.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, undoMsg]);
-
-      console.log("[Auto-advance] Advancement cancelled by user");
-    }
-  }, [pendingAdvancement]);
-
-  /**
    * Advance to next step
    */
   const advanceToNextStep = async (completedStepNumber: number) => {
@@ -711,11 +605,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
 
       if (response.ok) {
-        console.log(`[Auto-advance] ✅ Step ${completedStepNumber} completed, advancing to next step`);
+        console.log(
+          `[Auto-advance] ✅ Step ${completedStepNumber} completed, advancing to next step`,
+        );
 
         // Refresh project to get updated state
         if (onRefreshProject) {
@@ -724,7 +620,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
         // Wait a moment for project state to update, then automatically continue
         setTimeout(() => {
-          console.log("[Auto-advance] Automatically triggering next step guidance...");
+          console.log(
+            "[Auto-advance] Automatically triggering next step guidance...",
+          );
           sendMessageWithPrompt(""); // Triggers next step's master prompt
         }, 1500);
       }
@@ -793,6 +691,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setIsProcessing(true);
     setToolsUsed([]); // Clear previous tools
     const userMessage = currentInput.trim();
+
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
@@ -1444,6 +1343,23 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Main workspace with conversation
   return (
     <div className="flex flex-col h-full">
+      {/* Current Step Header (Progress-as-Presence) */}
+      {project && project.steps && (
+        <div className="sticky top-0 z-10 bg-neutral-950/95 backdrop-blur-sm border-b border-neutral-800/50 px-6 py-3">
+          <div className="max-w-4xl mx-auto flex items-center gap-3">
+            {/* Current Step Chip */}
+            <div className="px-3 py-1.5 bg-gradient-brand rounded-full text-xs font-semibold text-white shadow-lg">
+              Step {project.current_step} /{" "}
+              {project.metadata?.total_steps || project.steps.length}
+            </div>
+            <div className="text-sm text-neutral-300">
+              {project.steps.find((s) => s.step_number === project.current_step)
+                ?.title || "Loading..."}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto px-6 py-8 pb-28">
         {/* Centered composer when no messages (ChatGPT-style start) */}
@@ -1586,7 +1502,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       Workshop AI
                     </span>
                   </div>
-                  <div className="ml-[2.625rem]">
+                  <div className="ml-[2.625rem] space-y-2">
                     {message.content === "Thinking..." ? (
                       <div className="space-y-3 animate-pulse">
                         <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
@@ -1594,7 +1510,96 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
                       </div>
                     ) : (
-                      <MarkdownMessage content={message.content} />
+                      <>
+                        <MarkdownMessage content={message.content} />
+                        {/* Inline action buttons - show only for the last AI message and not "Thinking..." */}
+                        {idx === messages.length - 1 &&
+                          !isProcessing &&
+                          project && (
+                            <div className="flex items-center gap-2 pt-2">
+                              <button
+                                onClick={async () => {
+                                  const currentStep = project.steps.find(
+                                    (s) =>
+                                      s.step_number === project.current_step,
+                                  );
+                                  if (
+                                    !currentStep ||
+                                    currentStep.status === "completed"
+                                  )
+                                    return;
+
+                                  // Check completion and show modal
+                                  setIsCheckingCompletion(true);
+                                  try {
+                                    const response = await fetch(
+                                      `${API_URL}/api/v2/projects/${project.id}/check-completion`,
+                                      {
+                                        method: "POST",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                        },
+                                        body: JSON.stringify({
+                                          step_number: currentStep.step_number,
+                                        }),
+                                      },
+                                    );
+
+                                    if (response.ok) {
+                                      const result = await response.json();
+                                      console.log(
+                                        `[Manual Completion Check] Mentorship feedback ready`,
+                                      );
+
+                                      // Show modal with mentorship feedback
+                                      setCompletionModalData({
+                                        stepNumber: currentStep.step_number,
+                                        stepTitle: currentStep.title,
+                                        acceptanceCriteria:
+                                          currentStep.acceptance_criteria || [],
+                                        mentorshipFeedback:
+                                          result.mentorship_feedback ||
+                                          "Keep building!",
+                                        statusRecommendation:
+                                          result.status_recommendation ||
+                                          "KEEP_WORKING",
+                                        totalSteps:
+                                          project.metadata?.total_steps ||
+                                          project.steps.length,
+                                      });
+                                    }
+                                  } catch (error) {
+                                    console.error(
+                                      "[Manual Completion Check] Error:",
+                                      error,
+                                    );
+                                  } finally {
+                                    setIsCheckingCompletion(false);
+                                  }
+                                }}
+                                disabled={isCheckingCompletion}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 rounded-lg transition-colors"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                                {isCheckingCompletion
+                                  ? "Checking..."
+                                  : "Check Progress"}
+                              </button>
+                            </div>
+                          )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1754,42 +1759,27 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         </div>
       )}
 
-      {/* Auto-advance toast notification */}
-      {pendingAdvancement && (
-        <div className="fixed bottom-24 right-6 z-50">
-          <div className="bg-gradient-to-r from-green-600 to-emerald-600 border border-green-400/30 rounded-xl shadow-2xl shadow-green-900/50 px-6 py-4 flex items-center gap-4 min-w-[320px] animate-slide-in-bottom">
-            <div className="flex-shrink-0">
-              <svg
-                className="w-6 h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <p className="text-white font-semibold text-sm">
-                ✓ Step {pendingAdvancement.stepNumber} → Step{" "}
-                {pendingAdvancement.stepNumber + 1}
-              </p>
-              <p className="text-green-100 text-xs mt-0.5">
-                Advancing in 10s...
-              </p>
-            </div>
-            <button
-              onClick={undoAdvancement}
-              className="flex-shrink-0 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Undo
-            </button>
-          </div>
-        </div>
+      {/* Step Completion Modal */}
+      {completionModalData && (
+        <StepCompletionModal
+          stepNumber={completionModalData.stepNumber}
+          stepTitle={completionModalData.stepTitle}
+          acceptanceCriteria={completionModalData.acceptanceCriteria}
+          mentorshipFeedback={completionModalData.mentorshipFeedback}
+          statusRecommendation={completionModalData.statusRecommendation}
+          totalSteps={completionModalData.totalSteps}
+          onKeepWorking={() => {
+            setCompletionModalData(null);
+            console.log("[Completion Modal] User chose to keep working");
+          }}
+          onMarkComplete={async () => {
+            console.log(
+              "[Completion Modal] User marked step complete - advancing",
+            );
+            await advanceToNextStep(completionModalData.stepNumber);
+            setCompletionModalData(null);
+          }}
+        />
       )}
     </div>
   );

@@ -44,6 +44,7 @@ export interface DynamicPromptContext {
   conversation_messages: Message[];
   completed_steps_summary: string;
   all_steps?: RoadmapStep[]; // NEW: Full roadmap for visibility
+  is_step_transition?: boolean; // NEW: Flag for step transitions
 }
 
 /**
@@ -62,6 +63,7 @@ export class DynamicPromptBuilder {
       current_substep,
       project_goal,
       all_steps,
+      is_step_transition,
     } = context;
 
     // If we have criterion-level context, use laser-focused mode
@@ -71,6 +73,7 @@ export class DynamicPromptBuilder {
         current_criterion,
         master_prompt,
         all_steps,
+        is_step_transition,
       );
     }
 
@@ -90,6 +93,7 @@ export class DynamicPromptBuilder {
     criterion: CriterionContext,
     masterPrompt: string,
     allSteps?: RoadmapStep[],
+    isStepTransition?: boolean,
   ): string {
     const previousSection = criterion.previous_criterion
       ? `## ✅ PREVIOUS CRITERION (COMPLETED):
@@ -114,7 +118,9 @@ This is the last criterion for "${criterion.substep_title}". After this, the sub
       const currentStepNum = criterion.substep_number;
 
       // Show previous step (if exists)
-      const prevStep = allSteps.find(s => s.step_number === currentStepNum - 1);
+      const prevStep = allSteps.find(
+        (s) => s.step_number === currentStepNum - 1,
+      );
       const prevStepText = prevStep
         ? `**Step ${prevStep.step_number}** (Completed): ${prevStep.title}`
         : "";
@@ -124,8 +130,12 @@ This is the last criterion for "${criterion.substep_title}". After this, the sub
 
       // Show next 2-3 steps
       const nextSteps = allSteps
-        .filter(s => s.step_number > currentStepNum && s.step_number <= currentStepNum + 3)
-        .map(s => `**Step ${s.step_number}** (Upcoming): ${s.title}`)
+        .filter(
+          (s) =>
+            s.step_number > currentStepNum &&
+            s.step_number <= currentStepNum + 3,
+        )
+        .map((s) => `**Step ${s.step_number}** (Upcoming): ${s.title}`)
         .join("\n");
 
       roadmapSection = `
@@ -142,8 +152,42 @@ When user says "next step", refer to Step ${currentStepNum + 1} above.
 `;
     }
 
+    // Step Transition Intro (narrated guidance)
+    const transitionIntro = isStepTransition
+      ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 🎉 STEP TRANSITION - START WITH NARRATION
+
+**CRITICAL:** This is the user's FIRST interaction with this step.
+
+**YOUR FIRST MESSAGE MUST:**
+1. Celebrate their progress from the previous step (be specific and genuine!)
+2. Introduce the new step naturally: "${criterion.substep_title}"
+3. Briefly explain what they'll accomplish (1-2 sentences max)
+4. Then immediately start working on the first criterion
+
+**Example Opening:**
+"Great work on [previous step accomplishment]! You've made solid progress.
+
+Now we're moving to Step ${criterion.substep_number}: ${criterion.substep_title}. In this step, we'll [what this accomplishes]. Let me get started on the first part..."
+
+[Then proceed to build/execute criterion ${criterion.criterion_index + 1}]
+
+**DO NOT:**
+- Just dive into work without acknowledging transition
+- Ask if they're ready (they are!)
+- Repeat full step description verbatim
+- Be overly verbose
+
+**FLOW:** Brief celebration (1 line) → Introduce step (1-2 lines) → Start executing
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`
+      : "";
+
     return `You are building: "${projectGoal}"
-${roadmapSection}
+${transitionIntro}${roadmapSection}
 
 ## 🎯 CURRENT TASK (Step ${criterion.substep_number}):
 ${criterion.substep_title}
@@ -178,7 +222,6 @@ ${masterPrompt}
 
 **BEGIN NOW:** Build criterion ${criterion.criterion_index + 1}. Show your work.`;
   }
-
 }
 
 export const dynamicPromptBuilder = new DynamicPromptBuilder();

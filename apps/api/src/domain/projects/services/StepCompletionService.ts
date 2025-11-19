@@ -24,8 +24,27 @@ export interface Message {
   timestamp?: string;
 }
 
+export type StepStatusRecommendation =
+  | "READY_TO_COMPLETE"
+  | "KEEP_WORKING"
+  | "BLOCKED";
+
+/**
+ * LLM Analysis Response (strict schema from OpenAI)
+ */
+interface LLMAnalysisResponse {
+  status_recommendation: StepStatusRecommendation;
+  confidence_score: number;
+  reasoning: string;
+  satisfied_criteria: string[];
+  missing_criteria: string[];
+  conversation_signals: string[];
+  artifact_signals: string[];
+  mentorship_feedback: string;
+}
+
 export interface CompletionSuggestion {
-  should_complete: boolean;
+  status_recommendation: StepStatusRecommendation; // LLM's recommendation (backend decides final status)
   confidence_score: number; // 0-100 (combined score)
   conversation_confidence: number; // 0-100 (conversation-only)
   artifact_confidence: number; // 0-100 (artifact-only)
@@ -39,6 +58,8 @@ export interface CompletionSuggestion {
   };
   suggestion_message: string; // User-facing message
   celebration_message?: string; // Message for inline chat celebration
+  mentorship_feedback: string; // Encouraging feedback (2-4 sentences)
+  step_summary?: string; // Optional summary of what was accomplished (2-3 sentences)
 }
 
 export interface AnalyzeCompletionRequest {
@@ -86,10 +107,10 @@ export class StepCompletionService {
           {
             role: "user",
             content:
-              "Analyze if this step is complete based on the conversation and criteria provided. Focus on whether they can move forward, not perfection.",
+              "Read the conversation messages above carefully. Extract SPECIFIC details: file names, data found, tools used, features created. Your mentorship feedback MUST reference these concrete things from the actual messages, not generic phrases. If the conversation shows no real work, say 'You haven't started yet' with specific first action. Prove you read the messages by quoting or referencing them.",
           },
         ],
-        temperature: 0.4, // Balanced temperature for fair but consistent analysis
+        temperature: 0.3, // Lower temperature for more consistent, focused analysis
         max_output_tokens: 1500,
         text: {
           format: {
@@ -119,7 +140,10 @@ export class StepCompletionService {
         throw new Error("No text content in assistant message");
       }
 
-      const analysis = JSON.parse(responseText);
+      const analysis = JSON.parse(responseText) as LLMAnalysisResponse;
+
+      // Validate LLM response has all required fields
+      this.validateLLMResponse(analysis);
 
       // Calculate hybrid confidence score
       const conversationConf = analysis.confidence_score || 0;
@@ -128,8 +152,8 @@ export class StepCompletionService {
       // Hybrid formula:
       // - If artifacts present: weighted average (70% conversation, 30% artifact)
       // - If no artifacts: conversation score needs to be higher (90% to auto-advance)
-      const hasArtifacts = request.artifacts &&
-        (request.artifacts.file_count || 0) > 0;
+      const hasArtifacts =
+        request.artifacts && (request.artifacts.file_count || 0) > 0;
 
       const combinedScore = hasArtifacts
         ? Math.round(conversationConf * 0.7 + artifactConf * 0.3)
@@ -142,11 +166,11 @@ export class StepCompletionService {
       const autoAdvance = combinedScore >= autoAdvanceThreshold;
 
       console.log(
-        `[StepCompletionService] Scores - Conversation: ${conversationConf}%, Artifact: ${artifactConf}%, Combined: ${combinedScore}%, Auto-advance: ${autoAdvance}`
+        `[StepCompletionService] Scores - Conversation: ${conversationConf}%, Artifact: ${artifactConf}%, Combined: ${combinedScore}%, Auto-advance: ${autoAdvance}`,
       );
 
       return {
-        should_complete: analysis.should_complete,
+        status_recommendation: analysis.status_recommendation,
         confidence_score: combinedScore,
         conversation_confidence: conversationConf,
         artifact_confidence: artifactConf,
@@ -162,6 +186,7 @@ export class StepCompletionService {
         celebration_message: autoAdvance
           ? this.formatCelebrationMessage(request.step)
           : undefined,
+        mentorship_feedback: analysis.mentorship_feedback || "Keep building!",
       };
     } catch (error) {
       console.error(
@@ -178,9 +203,28 @@ export class StepCompletionService {
   private buildAnalysisPrompt(request: AnalyzeCompletionRequest): string {
     const { step, conversation, artifacts } = request;
 
-    let prompt = `You are a supportive senior developer helping a builder make progress from zero to one.
+    let prompt = `You are a supportive senior developer coaching someone in real-time.
 
-Your job is to recognize when work is "GOOD ENOUGH TO MOVE FORWARD" - not perfect, but solid enough to build on.
+🚨 CRITICAL RULES FOR MENTORSHIP FEEDBACK:
+1. READ THE CONVERSATION CAREFULLY - extract specific details they mentioned
+2. REFERENCE ACTUAL THINGS: file names, component names, features, code snippets, data found
+3. NEVER USE GENERIC PHRASES: "started working", "made progress", "builds foundation", "this step gets you"
+4. If conversation is empty/minimal, say "You haven't started this yet" and give specific first action
+5. Your feedback must prove you read their actual messages, not just the step description
+
+🚫 BANNED PHRASES (DO NOT USE):
+- "This step gets you..."
+- "You started working on..."
+- "You still need to address..."
+- "Next: [repeating criteria]"
+- "builds foundation"
+- "essential for what comes next"
+- Any phrase that just restates the step title or criteria
+
+✅ INSTEAD DO THIS:
+- If work was done: Quote or reference SPECIFIC things from the conversation (exact words, data, names)
+- If NO work done yet: "You haven't started this step yet. First, [specific action with example]."
+- Reference actual conversation content: "I see you mentioned X" or "You described Y"
 
 STEP DETAILS:
 Title: ${step.title}
@@ -190,11 +234,17 @@ Complexity: ${step.estimated_complexity}/10
 ACCEPTANCE CRITERIA:
 ${step.acceptance_criteria.map((c: string, i: number) => `${i + 1}. ${c}`).join("\n")}
 
-CONVERSATION (last ${conversation.length} messages):
+CONVERSATION (${conversation.length} messages for THIS step only):
 ${conversation
-  .slice(-10)
-  .map((m) => `[${m.role}]: ${m.content.substring(0, 200)}`)
-  .join("\n")}
+  .map((m, i) => `Message ${i + 1} [${m.role}]: ${m.content.substring(0, 500)}`)
+  .join("\n\n")}
+
+⚠️ CRITICAL ANALYSIS INSTRUCTIONS:
+1. Read EVERY message above carefully
+2. Look for: specific names, numbers, data, files, tools, features mentioned
+3. If the conversation shows actual work/research, QUOTE or REFERENCE it specifically
+4. If conversation is just step intro with no work done, say "You haven't started yet"
+5. NEVER say generic phrases - your response must prove you read the actual messages
 `;
 
     if (artifacts) {
@@ -261,15 +311,16 @@ Output your analysis as JSON.`;
     return {
       type: "object",
       properties: {
-        should_complete: {
-          type: "boolean",
+        status_recommendation: {
+          type: "string",
+          enum: ["READY_TO_COMPLETE", "KEEP_WORKING", "BLOCKED"],
           description:
-            "Whether this step should be marked complete. BIAS TOWARD TRUE - pass if 2+ criteria done or all are partial/better.",
+            "Your recommendation for this step's status. READY_TO_COMPLETE if 2+ criteria done or all partial/better. KEEP_WORKING if making progress but not ready. BLOCKED only if there's a critical blocker preventing any progress.",
         },
         confidence_score: {
           type: "number",
           description:
-            "Confidence that step is complete (0-100). Be generous: 60+ if decent progress, 80+ if strong work.",
+            "Confidence in your recommendation (0-100). Be generous: 60+ if decent progress, 80+ if strong work.",
           minimum: 0,
           maximum: 100,
         },
@@ -300,15 +351,21 @@ Output your analysis as JSON.`;
           description: "Signals from artifacts indicating completion",
           items: { type: "string" },
         },
+        mentorship_feedback: {
+          type: "string",
+          description:
+            "Encouraging feedback about their progress. Reference SPECIFIC things from the conversation (names, data, tools used). 2-4 sentences. Start with what's done, then what's next if incomplete. Be a supportive coach, not a taskmaster.",
+        },
       },
       required: [
-        "should_complete",
+        "status_recommendation",
         "confidence_score",
         "reasoning",
         "satisfied_criteria",
         "missing_criteria",
         "conversation_signals",
         "artifact_signals",
+        "mentorship_feedback",
       ],
       additionalProperties: false,
     };
@@ -368,7 +425,11 @@ Output your analysis as JSON.`;
    * Format user-facing suggestion message
    */
   private formatSuggestionMessage(analysis: any): string {
-    if (!analysis.should_complete) {
+    if (analysis.status_recommendation === "BLOCKED") {
+      return "It looks like you might be stuck. Consider taking a different approach or asking for help.";
+    }
+
+    if (analysis.status_recommendation === "KEEP_WORKING") {
       return "Keep working - you're making progress! Focus on the core criteria to move forward.";
     }
 
@@ -459,19 +520,29 @@ Output your analysis as JSON.`;
       ? Math.round(conversationScore * 0.7 + artifactScore * 0.3)
       : conversationScore;
 
-    const shouldComplete = combinedScore >= 60;
+    // Determine status recommendation based on combined score
+    let statusRecommendation: StepStatusRecommendation;
+    if (combinedScore >= 60) {
+      statusRecommendation = "READY_TO_COMPLETE";
+    } else if (combinedScore >= 30) {
+      statusRecommendation = "KEEP_WORKING";
+    } else {
+      statusRecommendation = "BLOCKED";
+    }
+
     const autoAdvanceThreshold = hasArtifacts ? 85 : 90;
     const autoAdvance = combinedScore >= autoAdvanceThreshold;
 
     return {
-      should_complete: shouldComplete,
+      status_recommendation: statusRecommendation,
       confidence_score: Math.round(combinedScore),
       conversation_confidence: Math.round(conversationScore),
       artifact_confidence: Math.round(artifactScore),
       auto_advance: autoAdvance,
-      reasoning: shouldComplete
-        ? "Heuristic analysis suggests step is complete based on conversation signals and artifacts."
-        : "Heuristic analysis suggests more work is needed.",
+      reasoning:
+        statusRecommendation === "READY_TO_COMPLETE"
+          ? "Heuristic analysis suggests step is complete based on conversation signals and artifacts."
+          : "Heuristic analysis suggests more work is needed.",
       evidence: {
         satisfied_criteria: satisfied,
         missing_criteria: step.acceptance_criteria.slice(satisfied.length),
@@ -480,13 +551,169 @@ Output your analysis as JSON.`;
           ? [`${artifacts.file_count || 0} files`]
           : [],
       },
-      suggestion_message: shouldComplete
-        ? "You've got what you need! The foundation is solid - let's build on it!"
-        : "Keep going - you're making progress! Focus on getting the core work done.",
+      suggestion_message:
+        statusRecommendation === "READY_TO_COMPLETE"
+          ? "You've got what you need! The foundation is solid - let's build on it!"
+          : "Keep going - you're making progress! Focus on getting the core work done.",
       celebration_message: autoAdvance
         ? this.formatCelebrationMessage(step)
         : undefined,
+      mentorship_feedback:
+        satisfied.length > 0
+          ? `Great start! You've made progress on ${satisfied.slice(0, 2).join(" and ")}. ${statusRecommendation === "READY_TO_COMPLETE" ? "You're ready to move forward!" : "Keep building out the remaining pieces to complete this step."}`
+          : `Let's get started on ${step.title}. First, ${step.acceptance_criteria[0] || "work on the core requirements"}.`,
     };
+  }
+
+  /**
+   * Validate LLM response has all required fields with correct types
+   */
+  private validateLLMResponse(
+    analysis: any,
+  ): asserts analysis is LLMAnalysisResponse {
+    const requiredFields: (keyof LLMAnalysisResponse)[] = [
+      "status_recommendation",
+      "confidence_score",
+      "reasoning",
+      "satisfied_criteria",
+      "missing_criteria",
+      "conversation_signals",
+      "artifact_signals",
+      "mentorship_feedback",
+    ];
+
+    for (const field of requiredFields) {
+      if (!(field in analysis)) {
+        throw new Error(`Missing required field: ${field}`);
+      }
+    }
+
+    // Validate types
+    if (
+      !["READY_TO_COMPLETE", "KEEP_WORKING", "BLOCKED"].includes(
+        analysis.status_recommendation,
+      )
+    ) {
+      throw new Error(
+        `Invalid status_recommendation: ${analysis.status_recommendation}`,
+      );
+    }
+
+    if (
+      typeof analysis.confidence_score !== "number" ||
+      analysis.confidence_score < 0 ||
+      analysis.confidence_score > 100
+    ) {
+      throw new Error(`Invalid confidence_score: ${analysis.confidence_score}`);
+    }
+
+    if (typeof analysis.reasoning !== "string" || !analysis.reasoning.trim()) {
+      throw new Error("Invalid reasoning: must be non-empty string");
+    }
+
+    if (!Array.isArray(analysis.satisfied_criteria)) {
+      throw new Error("Invalid satisfied_criteria: must be array");
+    }
+
+    if (!Array.isArray(analysis.missing_criteria)) {
+      throw new Error("Invalid missing_criteria: must be array");
+    }
+
+    if (!Array.isArray(analysis.conversation_signals)) {
+      throw new Error("Invalid conversation_signals: must be array");
+    }
+
+    if (!Array.isArray(analysis.artifact_signals)) {
+      throw new Error("Invalid artifact_signals: must be array");
+    }
+
+    if (
+      typeof analysis.mentorship_feedback !== "string" ||
+      !analysis.mentorship_feedback.trim()
+    ) {
+      throw new Error("Invalid mentorship_feedback: must be non-empty string");
+    }
+  }
+
+  /**
+   * Generate a 2-3 sentence summary of what was accomplished in this step
+   */
+  async generateStepSummary(
+    step: RoadmapStep,
+    conversation: Message[],
+  ): Promise<string> {
+    try {
+      const client = makeOpenAI();
+      if (!client) {
+        return this.generateHeuristicSummary(step, conversation);
+      }
+
+      const prompt = `You are summarizing what a builder accomplished in this roadmap step.
+
+**STEP:**
+${step.title}
+${step.description}
+
+**ACCEPTANCE CRITERIA:**
+${step.acceptance_criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+**CONVERSATION (what they actually did):**
+${conversation
+  .slice(-10)
+  .map((m) => `${m.role}: ${m.content.substring(0, 500)}`)
+  .join("\n\n")}
+
+---
+
+Write a 2-3 sentence summary of what was accomplished. Be specific:
+- What did they build/create/define?
+- What key decisions were made?
+- What artifacts/outputs were produced?
+
+Focus on CONCRETE outcomes, not just that they "worked on" something.
+Be concise but specific.`;
+
+      const result = await client.responses.create({
+        model: ENV.OPENAI_MODEL_NAME,
+        input: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        max_output_tokens: 200,
+      });
+
+      const assistantMessage = result.output.find(
+        (item: any) => item.type === "message" && item.role === "assistant",
+      ) as any;
+
+      if (!assistantMessage) {
+        return this.generateHeuristicSummary(step, conversation);
+      }
+
+      const summary =
+        assistantMessage.content
+          ?.filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("") || "";
+
+      return (
+        summary.trim() || this.generateHeuristicSummary(step, conversation)
+      );
+    } catch (error) {
+      console.error("[StepCompletionService] Error generating summary:", error);
+      return this.generateHeuristicSummary(step, conversation);
+    }
+  }
+
+  /**
+   * Fallback summary when LLM unavailable
+   */
+  private generateHeuristicSummary(
+    step: RoadmapStep,
+    conversation: Message[],
+  ): string {
+    const criteriaCount = step.acceptance_criteria.length;
+    const messageCount = conversation.length;
+
+    return `Completed "${step.title}" with ${criteriaCount} acceptance ${criteriaCount === 1 ? "criterion" : "criteria"} addressed through ${messageCount} conversation ${messageCount === 1 ? "exchange" : "exchanges"}.`;
   }
 
   /**
@@ -502,6 +729,9 @@ Output your analysis as JSON.`;
     });
 
     // Lower threshold for quick check - 60% confidence is enough to move forward
-    return analysis.should_complete && analysis.confidence_score >= 60;
+    return (
+      analysis.status_recommendation === "READY_TO_COMPLETE" &&
+      analysis.confidence_score >= 60
+    );
   }
 }

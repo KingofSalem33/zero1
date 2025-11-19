@@ -543,73 +543,6 @@ router.get(
 );
 
 // ============================================================================
-// POST /api/v2/projects/:id/check-completion - Check if step is complete
-// ============================================================================
-router.post(
-  "/projects/:id/check-completion",
-  async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { conversation, artifacts } = req.body;
-
-      const project = await fetchProjectWithSteps(id);
-
-      if (!project) {
-        return res.status(404).json({ error: "Project not found" });
-      }
-
-      const currentStep = project.steps.find(
-        (s: any) => s.step_number === project.current_step,
-      );
-
-      if (!currentStep) {
-        return res.status(404).json({ error: "Current step not found" });
-      }
-
-      // Analyze completion
-      const suggestion = await completionService.analyzeCompletion({
-        step: currentStep,
-        conversation: conversation || [],
-        artifacts,
-      });
-
-      // Store suggestion if completion is recommended
-      // Lower threshold to 60 to align with momentum-focused approach
-      if (suggestion.should_complete && suggestion.confidence_score >= 60) {
-        await supabase.from("completion_suggestions").insert({
-          project_id: id,
-          step_id: currentStep.id,
-          suggestion_type: artifacts ? "artifact_based" : "auto_detected",
-          confidence_score: suggestion.confidence_score,
-          reasoning: suggestion.reasoning,
-          evidence: suggestion.evidence,
-          created_at: new Date().toISOString(),
-        });
-
-        // Log completion suggestion activity
-        if (project.user_id && isValidUUID(project.user_id)) {
-          await logActivity(
-            ActivityActions.COMPLETION_SUGGESTED,
-            { userId: project.user_id, projectId: id },
-            {
-              stepId: currentStep.id,
-              stepNumber: currentStep.step_number,
-              confidence: suggestion.confidence_score,
-              suggestionType: artifacts ? "artifact_based" : "auto_detected",
-            },
-          );
-        }
-      }
-
-      return res.json(suggestion);
-    } catch (error) {
-      console.error("[Roadmap V2] Error checking completion:", error);
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  },
-);
-
-// ============================================================================
 // POST /api/v2/projects/:id/complete-step - Mark current step complete
 // ============================================================================
 router.post(
@@ -636,13 +569,55 @@ router.post(
         return res.status(400).json({ error: "Step already completed" });
       }
 
-      // Mark step as completed
+      // Generate step summary from conversation
+      let stepSummary: string | undefined;
+      try {
+        const { data: threadData } = await supabase
+          .from("threads")
+          .select("id")
+          .eq("project_id", id)
+          .single();
+
+        if (threadData) {
+          const stepStartTime =
+            currentStep.created_at || new Date(0).toISOString();
+          const { data: messages } = await supabase
+            .from("messages")
+            .select("role, content, created_at")
+            .eq("thread_id", threadData.id)
+            .gte("created_at", stepStartTime)
+            .order("created_at", { ascending: true });
+
+          const threadMessages = (messages || []).map((msg: any) => ({
+            role: msg.role === "assistant" ? "assistant" : "user",
+            content: msg.content,
+            timestamp: msg.created_at,
+          }));
+
+          const completionService = new StepCompletionService();
+          stepSummary = await completionService.generateStepSummary(
+            currentStep,
+            threadMessages,
+          );
+
+          console.log(`📝 [Complete Step] Generated summary: ${stepSummary}`);
+        }
+      } catch (summaryError) {
+        console.error(
+          "[Complete Step] Error generating summary:",
+          summaryError,
+        );
+        // Continue without summary - it's not critical
+      }
+
+      // Mark step as completed with summary
       const stepCompletedAt = new Date().toISOString();
       const { error: stepError } = await supabase
         .from("roadmap_steps")
         .update({
           status: "completed",
           completed_at: stepCompletedAt,
+          completion_summary: stepSummary || null,
         })
         .eq("id", currentStep.id);
 
@@ -905,8 +880,12 @@ router.post(
       const master_prompt = currentStep.master_prompt;
 
       if (!master_prompt || typeof master_prompt !== "string") {
-        console.error(`❌ [Roadmap V2] Master prompt missing in database for step ${project.current_step}`);
-        return res.status(500).json({ error: "Master prompt not found for current step" });
+        console.error(
+          `❌ [Roadmap V2] Master prompt missing in database for step ${project.current_step}`,
+        );
+        return res
+          .status(500)
+          .json({ error: "Master prompt not found for current step" });
       }
 
       console.log(
@@ -1257,5 +1236,93 @@ async function fetchProjectWithPhases(projectId: string) {
     phases: phasesWithSubsteps,
   };
 }
+
+// ============================================================================
+// POST /api/v2/projects/:id/check-completion - Check if current step should auto-advance
+// ============================================================================
+router.post(
+  "/projects/:id/check-completion",
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { step_number } = req.body;
+
+      const project = await fetchProjectWithSteps(id);
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const currentStep = project.steps.find(
+        (s: any) =>
+          s.step_number === step_number ||
+          s.step_number === project.current_step,
+      );
+
+      if (!currentStep) {
+        return res.status(404).json({ error: "Step not found" });
+      }
+
+      // Fetch thread messages for analysis - ONLY messages for this step
+      const { data: threadData } = await supabase
+        .from("threads")
+        .select("id")
+        .eq("project_id", id)
+        .single();
+
+      if (!threadData) {
+        return res.status(404).json({ error: "Thread not found" });
+      }
+
+      // Get the timestamp when this step became active
+      const stepStartTime = currentStep.created_at || new Date(0).toISOString();
+
+      // Only get messages since this step started
+      const { data: messages } = await supabase
+        .from("messages")
+        .select("role, content, created_at")
+        .eq("thread_id", threadData.id)
+        .gte("created_at", stepStartTime)
+        .order("created_at", { ascending: true });
+
+      const threadMessages = (messages || []).map((msg: any) => ({
+        role: msg.role === "assistant" ? "assistant" : "user",
+        content: msg.content,
+        timestamp: msg.created_at,
+      }));
+
+      console.log(
+        `[Check Completion] Analyzing ${threadMessages.length} messages for step ${currentStep.step_number} (since ${stepStartTime})`,
+      );
+
+      // Analyze completion
+      const suggestion = await completionService.analyzeCompletion({
+        step: {
+          step_number: currentStep.step_number,
+          title: currentStep.title,
+          description: currentStep.description,
+          acceptance_criteria: currentStep.acceptance_criteria || [],
+          estimated_complexity: currentStep.estimated_complexity || 5,
+          status: currentStep.status,
+        },
+        conversation: threadMessages,
+      });
+
+      console.log(
+        `[Check Completion] Step ${currentStep.step_number}: ${suggestion.status_recommendation} (${suggestion.confidence_score}% confidence, auto-advance: ${suggestion.auto_advance})`,
+      );
+
+      return res.json(suggestion);
+    } catch (error) {
+      console.error("[Check Completion] Error:", error);
+      return res.status(500).json({
+        error: "Failed to check completion",
+        status_recommendation: "BLOCKED" as const,
+        auto_advance: false,
+        confidence_score: 0,
+      });
+    }
+  },
+);
 
 export default router;
