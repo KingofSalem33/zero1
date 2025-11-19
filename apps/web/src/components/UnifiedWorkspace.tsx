@@ -91,6 +91,9 @@ interface UnifiedWorkspaceProps {
     goal: string,
     buildApproach?: "code" | "platform" | "auto",
     projectPurpose?: "personal" | "business" | "learning" | "creative",
+    coreProof?: string,
+    budgetLimit?: "$0" | "$100" | "$1000+",
+    clarificationContext?: string,
   ) => void;
   onInspireMe: (goal: string, callback: () => void) => void;
   toolsUsed: ToolActivity[];
@@ -131,6 +134,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [projectPurpose, setProjectPurpose] = useState<
     "personal" | "business" | "learning" | "creative" | null
   >(null);
+  const [coreProof, setCoreProof] = useState("");
+  const [budgetLimit, setBudgetLimit] = useState<
+    "$0" | "$100" | "$1000+" | null
+  >(null);
+  const [additionalContext, setAdditionalContext] = useState("");
 
   // Completion modal state
   const [completionModalData, setCompletionModalData] = useState<{
@@ -663,11 +671,17 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         currentInput.trim(),
         buildApproach || "auto",
         projectPurpose || "personal",
+        coreProof || undefined,
+        budgetLimit || undefined,
+        additionalContext || undefined,
       );
       setCurrentInput("");
       // Reset state for next project
       setBuildApproach(null);
       setProjectPurpose(null);
+      setCoreProof("");
+      setBudgetLimit(null);
+      setAdditionalContext("");
       return;
     }
 
@@ -975,6 +989,26 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               </div>
             </div>
 
+            {/* Core Proof Statement */}
+            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
+              <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
+                If your project accomplishes ONE thing to prove it works, what
+                is it?
+              </label>
+              <textarea
+                value={coreProof}
+                onChange={(e) => setCoreProof(e.target.value)}
+                placeholder="Example: I log an expense and see my remaining budget update instantly"
+                className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
+                rows={2}
+                disabled={creating || inspiring}
+              />
+              <div className="mt-2 text-xs text-neutral-500">
+                Examples: "Someone creates a task and their teammate gets
+                notified" • "I save a recipe and find it later by ingredient"
+              </div>
+            </div>
+
             {/* Build Approach Selection */}
             <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
               <h3 className="text-sm font-medium text-neutral-300 mb-6">
@@ -1087,10 +1121,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         </svg>
                       </div>
                     )}
-                    <div className="text-3xl">🤷</div>
+                    <div className="text-3xl">🤖</div>
                     <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">Not Sure</div>
-                      <div className="text-xs opacity-80">AI picks for me</div>
+                      <div className="font-semibold text-sm mb-1">
+                        Best for My Project
+                      </div>
+                      <div className="text-xs opacity-80">AI recommends</div>
                     </div>
                   </button>
                 </div>
@@ -1235,6 +1271,134 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Question 3: Budget Constraints */}
+              <div>
+                <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
+                  3. What are your budget limits?
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* $0 Budget Option */}
+                  <button
+                    onClick={() => setBudgetLimit("$0")}
+                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      budgetLimit === "$0"
+                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                    }`}
+                  >
+                    {budgetLimit === "$0" && (
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-brand-primary-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="text-3xl">🆓</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">
+                        Strictly $0
+                      </div>
+                      <div className="text-xs opacity-80">Free tools only</div>
+                    </div>
+                  </button>
+
+                  {/* $100/mo Budget Option */}
+                  <button
+                    onClick={() => setBudgetLimit("$100")}
+                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      budgetLimit === "$100"
+                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                    }`}
+                  >
+                    {budgetLimit === "$100" && (
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-brand-primary-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="text-3xl">💳</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">
+                        Up to $100/mo
+                      </div>
+                      <div className="text-xs opacity-80">Tools & hosting</div>
+                    </div>
+                  </button>
+
+                  {/* $1000+ Budget Option */}
+                  <button
+                    onClick={() => setBudgetLimit("$1000+")}
+                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                      budgetLimit === "$1000+"
+                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
+                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
+                    }`}
+                  >
+                    {budgetLimit === "$1000+" && (
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-3 h-3 text-brand-primary-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="text-3xl">💵</div>
+                    <div className="text-center">
+                      <div className="font-semibold text-sm mb-1">$1,000+</div>
+                      <div className="text-xs opacity-80">
+                        Can hire or run ads
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Context (Optional) */}
+            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
+              <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
+                Anything else we should know? (Optional)
+              </label>
+              <textarea
+                value={additionalContext}
+                onChange={(e) => setAdditionalContext(e.target.value)}
+                placeholder="Example: Already have a logo designed, or working with a team of 2, or must work on mobile..."
+                className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
+                rows={2}
+                disabled={creating || inspiring}
+              />
             </div>
 
             {/* Quick Start Examples */}

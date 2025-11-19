@@ -42,6 +42,8 @@ export interface GenerateRoadmapRequest {
   user_skill_level?: "beginner" | "intermediate" | "advanced";
   build_approach?: "code" | "platform" | "auto";
   project_purpose?: "personal" | "business" | "learning" | "creative";
+  core_proof?: string;
+  budget_limit?: "$0" | "$100" | "$1000+";
 }
 
 export interface GenerateRoadmapResponse {
@@ -274,12 +276,53 @@ export class RoadmapGenerationServiceV3 {
 - Keep it simple and maintainable\n`;
     }
 
+    // Core proof guidance - defines the MVP
+    let coreProofGuidance = "";
+    if (request.core_proof) {
+      coreProofGuidance = `\n**CORE PROOF STATEMENT:**
+"${request.core_proof}"
+
+This is the ONE thing that must work to prove the project is viable.
+- Phase 2 (Core Loop) MUST deliver this exact outcome
+- All substeps should build toward or support this proof point
+- Use this as the North Star for scoping features
+- Everything else is secondary until this works\n`;
+    }
+
+    // Budget constraint guidance
+    let budgetGuidance = "";
+    if (request.budget_limit === "$0") {
+      budgetGuidance = `\n**BUDGET CONSTRAINT: STRICTLY $0**
+- ONLY recommend free tools, free tiers, and open source solutions
+- Hosting: Vercel, Netlify, Railway free tier, GitHub Pages
+- Database: Supabase free tier, Firebase free tier, SQLite
+- Services: No paid APIs, no paid SaaS tools
+- DO NOT suggest: Shopify, paid databases, commercial services
+- Focus on scrappy, bootstrap solutions\n`;
+    } else if (request.budget_limit === "$100") {
+      budgetGuidance = `\n**BUDGET CONSTRAINT: UP TO $100/MONTH**
+- Can use affordable hosting and basic paid tools
+- Database: Can use small paid tiers (Supabase Pro, PlanetScale)
+- Services: Can suggest low-cost APIs and tools ($5-20/mo)
+- Avoid: Enterprise tools, expensive platforms, hiring
+- Balance between free and paid options for best UX\n`;
+    } else if (request.budget_limit === "$1000+") {
+      budgetGuidance = `\n**BUDGET AVAILABLE: $1,000+**
+- Can recommend paid tools, platforms, and services
+- Can suggest hiring for specific tasks (design, copywriting)
+- Can include paid marketing, ads, and growth tools
+- Prioritize best-in-class solutions over cost
+- Include paid deployment, monitoring, and analytics\n`;
+    }
+
     const enhancedPrompt = `${promptText}
 
 ${phaseConstraints}
 
+${coreProofGuidance}
 ${buildApproachGuidance}
 ${projectPurposeGuidance}
+${budgetGuidance}
 ${request.clarification_context ? `\n**ADDITIONAL CONTEXT:**\n${request.clarification_context}\n` : ""}
 
 Output ONLY the structured JSON. No commentary.`;

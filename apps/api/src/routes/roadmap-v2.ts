@@ -89,6 +89,8 @@ router.post("/projects", async (req: Request, res: Response) => {
       skill_level,
       build_approach,
       project_purpose,
+      core_proof,
+      budget_limit,
     } = req.body;
 
     if (!vision) {
@@ -98,6 +100,8 @@ router.post("/projects", async (req: Request, res: Response) => {
     console.log("[Roadmap V2] Creating project with vision:", vision);
     console.log("[Roadmap V2] Build approach:", build_approach || "auto");
     console.log("[Roadmap V2] Project purpose:", project_purpose || "personal");
+    console.log("[Roadmap V2] Core proof:", core_proof || "not provided");
+    console.log("[Roadmap V2] Budget limit:", budget_limit || "not specified");
 
     // Ensure user_id is valid for analytics
     validUserId = user_id && isValidUUID(user_id) ? user_id : randomUUID();
@@ -135,6 +139,8 @@ router.post("/projects", async (req: Request, res: Response) => {
       user_skill_level: skill_level || "beginner",
       build_approach: build_approach || "auto",
       project_purpose: project_purpose || "personal",
+      core_proof,
+      budget_limit,
     });
 
     console.log(

@@ -1636,6 +1636,9 @@ function App() {
     goal: string,
     buildApproach?: "code" | "platform" | "auto",
     projectPurpose?: "personal" | "business" | "learning" | "creative",
+    coreProof?: string,
+    budgetLimit?: "$0" | "$100" | "$1000+",
+    clarificationContext?: string,
   ) => {
     if (!goal.trim() || creatingProject) return;
 
@@ -1651,6 +1654,9 @@ function App() {
           user_id: user?.id, // Send authenticated user ID
           build_approach: buildApproach || "auto",
           project_purpose: projectPurpose || "personal",
+          core_proof: coreProof,
+          budget_limit: budgetLimit,
+          clarification_context: clarificationContext,
         }),
       });
 
