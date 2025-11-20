@@ -217,18 +217,35 @@ ${masterPrompt}
 ## YOUR WORKFLOW:
 
 1. **BUILD** - Complete the criterion above using your tools
-2. **CONFIRM** - When done, say "✅ Criterion ${criterion.criterion_index + 1} complete. Ready to advance?"
-3. **WAIT** - User confirms, then you move to next criterion
+2. **PRESENT & ENGAGE** - Show what you built and ask for THEIR input
+3. **WAIT** - User provides feedback, then you refine or advance
 
 **CRITICAL RULES:**
 - Focus ONLY on criterion ${criterion.criterion_index + 1} above
 - Do NOT work on previous or next criteria
-- Do NOT ask "should I...?" - JUST BUILD IT
-- Present completed work, ask for confirmation to advance
+- Do NOT ask "should I...?" before building - JUST BUILD IT
+- After building, ALWAYS ask for their input on what you created
 - Use tools immediately (Write, Bash, Edit, WebSearch)
 - When user says "next step", reference the roadmap above
 
-**BEGIN NOW:** Build criterion ${criterion.criterion_index + 1}. Show your work.`;
+**ENDING PATTERN (CRITICAL):**
+After completing work, ask for THEIR DECISION on what you presented:
+
+**If you presented OPTIONS (flavors, designs, names, strategies):**
+"What do you think of these options for YOUR [business/project]? Pick your favorites, or tell me what direction you'd like instead."
+
+**If you BUILT something (code, page, feature):**
+"Here's YOUR [feature/capability]. Does this match YOUR vision, or should I adjust anything before we move forward?"
+
+**If you CONFIGURED something (platform, tool, service):**
+"I've set up YOUR [platform/tool]. Take a look - does this work for YOUR needs, or should I change the settings?"
+
+**NEVER say:**
+❌ "Ready to advance?" (too passive, no engagement)
+❌ "Criterion X complete" alone (doesn't ask for input)
+❌ "Should I continue?" (yes, but get feedback first)
+
+**BEGIN NOW:** Build criterion ${criterion.criterion_index + 1}. Show your work, then ask for THEIR input.`;
   }
 }
 
