@@ -152,13 +152,24 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
 
   const [popupToast, setPopupToast] = useState<string>("");
 
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [size, setSize] = useState({ width: 400, height: 500 });
 
   const [position, setPosition] = useState(workspace.position);
 
   const [isDragging, setIsDragging] = useState(false);
 
+  const [isResizing, setIsResizing] = useState(false);
+
+  const [resizeDirection, setResizeDirection] = useState<string>("");
+
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  const [resizeStart, setResizeStart] = useState({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  });
 
   const handleSendMessage = async () => {
     if (!currentInput.trim() || !project || isProcessing) return;
@@ -183,33 +194,51 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
 
     setCurrentInput("");
 
-    // Get current substep's master prompt
+    // Get current substep's master prompt - handle both V1 (phases) and V2 (steps)
+    let contextPrompt = "";
 
-    const currentPhase = project.phases?.find(
-      (p) => p.phase_number === getPhaseNumber(project.current_phase),
-    );
+    // Check if this is a V2 project (has 'steps' field)
+    const isV2Project = !!(project as any).steps;
 
-    const currentSubstep = currentPhase?.substeps?.find(
-      (s) => s.step_number === project.current_substep,
-    );
+    if (isV2Project) {
+      // V2 project - use simple context
+      contextPrompt = `Context: Deep dive workspace for the current step.\n\nUser question: ${userMessage}`;
+    } else {
+      // V1 project - get current substep
+      const currentPhase = project.phases?.find(
+        (p) => p.phase_number === getPhaseNumber(project.current_phase),
+      );
 
-    if (!currentSubstep) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+      const currentSubstep = currentPhase?.substeps?.find(
+        (s) => s.step_number === project.current_substep,
+      );
 
-        type: "ai",
+      if (!currentSubstep) {
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
 
-        content:
-          "No active substep found. Please make sure you have an active project with substeps.",
+          type: "ai",
 
-        timestamp: new Date(),
-      };
+          content:
+            "No active substep found. Please make sure you have an active project with substeps.",
 
-      onUpdateMessages(workspace.id, [...updatedMessages, errorMessage]);
+          timestamp: new Date(),
+        };
 
-      setIsProcessing(false);
+        onUpdateMessages(workspace.id, [...updatedMessages, errorMessage]);
 
-      return;
+        setIsProcessing(false);
+
+        return;
+      }
+
+      contextPrompt = `
+Context: Deep dive workspace for ${workspace.title}
+
+${currentSubstep.prompt_to_send}
+
+User question: ${userMessage}
+`;
     }
 
     // Create AI message placeholder
@@ -233,20 +262,6 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
     onUpdateMessages(workspace.id, streamMessages);
 
     try {
-      const contextPrompt = `
-
-Context: Deep dive workspace for ${workspace.title}
-
-
-
-${currentSubstep.prompt_to_send}
-
-
-
-User question: ${userMessage}
-
-`;
-
       const response = await fetch(
         `${API_URL}/api/projects/${project.id}/execute-step/stream`,
 
@@ -489,8 +504,9 @@ User question: ${userMessage}
     }
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (isExpanded) return; // Don't drag when expanded
+  // Handle header drag to move window
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only left click
     setIsDragging(true);
     setDragOffset({
       x: e.clientX - position.x,
@@ -498,24 +514,74 @@ User question: ${userMessage}
     });
   };
 
+  // Handle resize handle drag to resize window
+  const handleResizeMouseDown = (e: React.MouseEvent, direction: string) => {
+    e.stopPropagation(); // Prevent triggering header drag
+    setIsResizing(true);
+    setResizeDirection(direction);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: size.width,
+      height: size.height,
+    });
+  };
+
   const handleMouseMove = useCallback(
     (e: globalThis.MouseEvent) => {
-      if (isDragging && !isExpanded) {
+      if (isDragging) {
         setPosition({
           x: e.clientX - dragOffset.x,
           y: e.clientY - dragOffset.y,
         });
+      } else if (isResizing) {
+        const deltaX = e.clientX - resizeStart.x;
+        const deltaY = e.clientY - resizeStart.y;
+
+        let newWidth = resizeStart.width;
+        let newHeight = resizeStart.height;
+        let newX = position.x;
+        let newY = position.y;
+
+        // Calculate new dimensions based on resize direction
+        if (resizeDirection.includes("e")) {
+          newWidth = Math.max(300, resizeStart.width + deltaX);
+        }
+        if (resizeDirection.includes("w")) {
+          newWidth = Math.max(300, resizeStart.width - deltaX);
+          newX = position.x + (resizeStart.width - newWidth);
+        }
+        if (resizeDirection.includes("s")) {
+          newHeight = Math.max(300, resizeStart.height + deltaY);
+        }
+        if (resizeDirection.includes("n")) {
+          newHeight = Math.max(300, resizeStart.height - deltaY);
+          newY = position.y + (resizeStart.height - newHeight);
+        }
+
+        setSize({ width: newWidth, height: newHeight });
+        setPosition({ x: newX, y: newY });
       }
     },
-    [isDragging, isExpanded, dragOffset],
+    [
+      isDragging,
+      isResizing,
+      dragOffset,
+      resizeStart,
+      resizeDirection,
+      position,
+      size,
+    ],
   );
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
+    setIsResizing(false);
+    setResizeDirection("");
   }, []);
 
   useEffect(() => {
-    if (isDragging) {
+    if (isDragging || isResizing) {
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
       return () => {
@@ -523,244 +589,25 @@ User question: ${userMessage}
         document.removeEventListener("mouseup", handleMouseUp);
       };
     }
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+  }, [isDragging, isResizing, handleMouseMove, handleMouseUp]);
 
   if (!workspace.isVisible) return null;
 
-  // Expanded mode - full screen modal
-  if (isExpanded) {
-    return (
-      <>
-        {/* Modal Overlay */}
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
-          onClick={() => setIsExpanded(false)}
-        />
-
-        {/* Modal Content - Full screen workspace */}
-        <div className="fixed inset-4 z-50 bg-neutral-950 rounded-2xl border border-neutral-800/50 shadow-2xl flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="sticky top-0 z-10 bg-neutral-950/95 backdrop-blur-sm border-b border-neutral-800/50 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center">
-                  <svg
-                    className="w-4 h-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-white">
-                    Research & Deep Dive
-                  </h3>
-                  <p className="text-sm text-neutral-400">{workspace.title}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setIsExpanded(false)}
-                  className="w-10 h-10 rounded-lg bg-neutral-800/60 hover:bg-neutral-700/60 flex items-center justify-center transition-colors"
-                  title="Collapse to small window"
-                >
-                  <svg
-                    className="w-5 h-5 text-neutral-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                <button
-                  onClick={onClose}
-                  className="w-10 h-10 rounded-lg bg-neutral-800/60 hover:bg-neutral-700/60 flex items-center justify-center transition-colors"
-                  title="Close workspace"
-                >
-                  <svg
-                    className="w-5 h-5 text-neutral-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Messages Container - Styled like main workspace */}
-          <div className="flex-1 overflow-y-auto px-6 py-8 pb-28">
-            {workspace.messages.length === 0 ? (
-              <div className="h-full w-full flex items-center justify-center">
-                <div className="w-full max-w-3xl text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-brand/20 flex items-center justify-center mx-auto mb-4">
-                    <svg
-                      className="w-8 h-8 text-brand-primary-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
-                    Research Workspace
-                  </h2>
-                  <p className="text-neutral-400">
-                    This is a separate space for research and exploration
-                    without affecting your main project thread.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="max-w-4xl mx-auto space-y-8">
-                {workspace.messages.map((message) => (
-                  <div key={message.id}>
-                    {message.type === "user" ? (
-                      <div className="flex justify-end">
-                        <div className="max-w-[80%] rounded-2xl px-6 py-4 bg-gradient-brand text-white">
-                          <p className="leading-relaxed whitespace-pre-wrap">
-                            {message.content}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex gap-4">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0">
-                          <svg
-                            className="w-4 h-4 text-white"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="prose prose-invert max-w-none">
-                            <div className="text-neutral-200 leading-relaxed whitespace-pre-wrap">
-                              {message.content}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Input Area - Fixed at bottom, styled like main workspace */}
-          <div className="fixed bottom-4 left-4 right-4 z-10 pointer-events-none">
-            <div className="max-w-4xl mx-auto pointer-events-auto">
-              <div className="relative flex gap-2 items-center bg-neutral-800/60 border border-neutral-700/50 rounded-2xl px-4 py-3 shadow-lg backdrop-blur-xl focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all">
-                <input
-                  type="text"
-                  value={currentInput}
-                  onChange={(e) => setCurrentInput(e.target.value)}
-                  placeholder="Ask questions, request research, explore ideas..."
-                  className="flex-1 bg-transparent border-none outline-none text-white placeholder-neutral-500 text-base"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                    if (e.key === "Escape") {
-                      onClose();
-                    }
-                  }}
-                  autoFocus
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!currentInput.trim() || isProcessing}
-                  className="btn-primary w-10 h-10 rounded-xl"
-                  title="Send message (Enter)"
-                >
-                  {isProcessing ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                      />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {popupToast && (
-            <div className="absolute top-20 right-6">
-              <Toast
-                message={popupToast}
-                duration={2000}
-                onClose={() => setPopupToast("")}
-                type="success"
-              />
-            </div>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  // Collapsed mode - small draggable window
+  // Single resizable/draggable window
   return (
     <div
       className="fixed z-40 bg-gradient-to-br from-gray-900/98 to-black/95 backdrop-blur-xl rounded-2xl border border-gray-700/50 shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
-        width: "400px",
-        height: "500px",
+        width: `${size.width}px`,
+        height: `${size.height}px`,
       }}
     >
       {/* Header */}
       <div
-        className="p-4 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/50 to-purple-950/50 cursor-move"
-        onMouseDown={handleMouseDown}
+        className="p-4 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/50 to-purple-950/50 cursor-move select-none"
+        onMouseDown={handleHeaderMouseDown}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -790,25 +637,6 @@ User question: ${userMessage}
           </div>
 
           <div className="flex gap-1">
-            <button
-              onClick={() => setIsExpanded(true)}
-              className="w-6 h-6 rounded-lg bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors"
-              title="Expand workspace"
-            >
-              <svg
-                className="w-3 h-3 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                />
-              </svg>
-            </button>
             <button
               onClick={onClose}
               className="w-6 h-6 rounded-lg bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors"
@@ -950,6 +778,51 @@ User question: ${userMessage}
           />
         </div>
       )}
+
+      {/* Resize Handles */}
+      {/* Corner handles */}
+      <div
+        className="absolute top-0 left-0 w-3 h-3 cursor-nw-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "nw")}
+        title="Resize"
+      />
+      <div
+        className="absolute top-0 right-0 w-3 h-3 cursor-ne-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "ne")}
+        title="Resize"
+      />
+      <div
+        className="absolute bottom-0 left-0 w-3 h-3 cursor-sw-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "sw")}
+        title="Resize"
+      />
+      <div
+        className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "se")}
+        title="Resize"
+      />
+
+      {/* Edge handles */}
+      <div
+        className="absolute top-0 left-3 right-3 h-1 cursor-n-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "n")}
+        title="Resize"
+      />
+      <div
+        className="absolute bottom-0 left-3 right-3 h-1 cursor-s-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "s")}
+        title="Resize"
+      />
+      <div
+        className="absolute left-0 top-3 bottom-3 w-1 cursor-w-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "w")}
+        title="Resize"
+      />
+      <div
+        className="absolute right-0 top-3 bottom-3 w-1 cursor-e-resize"
+        onMouseDown={(e) => handleResizeMouseDown(e, "e")}
+        title="Resize"
+      />
     </div>
   );
 };
