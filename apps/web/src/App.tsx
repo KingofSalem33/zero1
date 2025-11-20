@@ -1392,6 +1392,13 @@ function App() {
   const hasLoadedProjectRef = useRef(false);
 
   useEffect(() => {
+    console.log("[App] Mount effect - checking if should load project", {
+      authLoading,
+      hasUser: !!user,
+      hasLoadedBefore: hasLoadedProjectRef.current,
+      currentProject: project?.id,
+    });
+
     // Wait for auth to finish loading
     if (authLoading) return;
 
@@ -1408,6 +1415,12 @@ function App() {
     // Load from URL parameter (sharing) OR localStorage (session persistence)
     const lastProjectId = localStorage.getItem("zero1_lastProjectId");
     const projectId = projectIdFromUrl || lastProjectId;
+
+    console.log("[App] Will attempt to load project:", {
+      projectIdFromUrl,
+      lastProjectId,
+      finalProjectId: projectId,
+    });
 
     if (projectId && !project) {
       // Load the project
@@ -1462,12 +1475,29 @@ function App() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
+        console.log("[App] Page became visible - checking project state");
+
         // Page became visible - check if we need to restore project
         const lastProjectId = localStorage.getItem("zero1_lastProjectId");
 
-        // If we have a lastProjectId but no current project, restore it
-        if (lastProjectId && !project && user && !authLoading) {
-          console.log("[App] Page visible - restoring project:", lastProjectId);
+        console.log("[App] Visibility check:", {
+          hasProjectId: !!lastProjectId,
+          hasProject: !!project,
+          currentProjectId: project?.id,
+          lastProjectId,
+          hasUser: !!user,
+          authLoading,
+        });
+
+        // If we have a lastProjectId but no current project, OR the IDs don't match, restore it
+        const needsRestore =
+          lastProjectId &&
+          user &&
+          !authLoading &&
+          (!project || project.id !== lastProjectId);
+
+        if (needsRestore) {
+          console.log("[App] Restoring project:", lastProjectId);
 
           const restoreProject = async () => {
             try {
@@ -1487,8 +1517,12 @@ function App() {
                 const projectData = data.project || data;
                 const normalizedProject = normalizeProject(projectData);
                 setProject(normalizedProject);
-                console.log("[App] Project restored successfully");
+                console.log(
+                  "[App] Project restored successfully:",
+                  normalizedProject.id,
+                );
               } else {
+                console.log("[App] Project not found, clearing localStorage");
                 localStorage.removeItem("zero1_lastProjectId");
               }
             } catch (error) {
