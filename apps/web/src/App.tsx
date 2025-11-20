@@ -171,6 +171,13 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
     height: 0,
   });
 
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [workspace.messages]);
+
   const handleSendMessage = async () => {
     if (!currentInput.trim() || !project || isProcessing) return;
 
@@ -596,7 +603,7 @@ User question: ${userMessage}
   // Single resizable/draggable window
   return (
     <div
-      className="fixed z-40 bg-gradient-to-br from-gray-900/98 to-black/95 backdrop-blur-xl rounded-2xl border border-gray-700/50 shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
+      className="fixed z-40 bg-neutral-950 backdrop-blur-xl rounded-2xl border border-neutral-800/50 shadow-2xl flex flex-col overflow-hidden"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -604,154 +611,168 @@ User question: ${userMessage}
         height: `${size.height}px`,
       }}
     >
-      {/* Header */}
+      {/* Header - with drag icon indicator */}
       <div
-        className="p-4 border-b border-gray-700/50 bg-gradient-to-r from-blue-950/50 to-purple-950/50 cursor-move select-none"
+        className="p-3 border-b border-neutral-800/50 bg-neutral-900/95 cursor-move select-none flex items-center justify-between"
         onMouseDown={handleHeaderMouseDown}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <svg
-                className="w-3 h-3 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                />
-              </svg>
+        <div className="flex items-center gap-2 flex-1">
+          <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center">
+            <svg
+              className="w-3.5 h-3.5 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+              />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-white truncate">
+              Research & Deep Dive
+            </h3>
+            <p className="text-xs text-brand-primary-400 truncate">
+              {workspace.title}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Drag indicator */}
+          <div className="flex flex-col gap-0.5 opacity-50">
+            <div className="flex gap-0.5">
+              <div className="w-1 h-1 rounded-full bg-neutral-500" />
+              <div className="w-1 h-1 rounded-full bg-neutral-500" />
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-white">
-                Research & Deep Dive
-              </h3>
-              <p className="text-xs text-blue-400 truncate max-w-48">
-                {workspace.title}
-              </p>
+            <div className="flex gap-0.5">
+              <div className="w-1 h-1 rounded-full bg-neutral-500" />
+              <div className="w-1 h-1 rounded-full bg-neutral-500" />
             </div>
           </div>
 
-          <div className="flex gap-1">
-            <button
-              onClick={onClose}
-              className="w-6 h-6 rounded-lg bg-gray-800/60 hover:bg-gray-700/60 flex items-center justify-center transition-colors"
-              title="Close workspace"
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg bg-neutral-800/60 hover:bg-neutral-700/60 flex items-center justify-center transition-colors"
+            title="Close workspace"
+          >
+            <svg
+              className="w-3.5 h-3.5 text-neutral-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg
-                className="w-3 h-3 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4">
-        {workspace.messages.length === 0 && (
-          <div className="text-center text-gray-400 text-sm mt-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600/20 to-indigo-600/20 flex items-center justify-center mx-auto mb-3">
-              <svg
-                className="w-6 h-6 text-purple-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
+      <div className="flex-1 px-6 py-4 overflow-y-auto">
+        {workspace.messages.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-xl bg-gradient-brand/20 flex items-center justify-center mx-auto mb-3">
+                <svg
+                  className="w-6 h-6 text-brand-primary-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+              </div>
+              <p className="text-neutral-400 text-sm">
+                Ask questions to dive deeper into this topic.
+              </p>
             </div>
-            <p>Ask questions to dive deeper into this topic.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {workspace.messages.map((message) => (
+              <div key={message.id}>
+                {message.type === "user" ? (
+                  <div className="flex justify-end">
+                    <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-gradient-brand text-white">
+                      <p className="leading-relaxed whitespace-pre-wrap text-sm">
+                        {message.content}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0">
+                      <svg
+                        className="w-3.5 h-3.5 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-neutral-200 leading-relaxed whitespace-pre-wrap text-sm">
+                        {message.content}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
         )}
-
-        {workspace.messages.map((message) => (
-          <div key={message.id}>
-            {message.type === "user" ? (
-              <div className="flex justify-end">
-                <div className="max-w-[85%] rounded-xl p-3 bg-gradient-to-br from-blue-600 to-purple-600 text-white text-sm">
-                  <p className="leading-relaxed whitespace-pre-wrap">
-                    {message.content}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-md bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                    <svg
-                      className="w-2.5 h-2.5 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                  </div>
-                  <span className="text-xs text-emerald-400 font-medium">
-                    AI Assistant
-                  </span>
-                </div>
-                <div className="pl-7">
-                  <div className="text-gray-200 leading-relaxed whitespace-pre-wrap text-sm">
-                    {message.content}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
       </div>
 
       {/* Input Area */}
-      <div className="p-3 border-t border-gray-700/50">
-        <div className="flex gap-2">
+      <div className="p-4 border-t border-neutral-800/50">
+        <div className="relative flex gap-2 items-center bg-neutral-900/60 border border-neutral-700/50 rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all">
           <input
             type="text"
             value={currentInput}
             onChange={(e) => setCurrentInput(e.target.value)}
             placeholder="Ask questions about this topic..."
-            className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-2 py-1.5 text-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="flex-1 bg-transparent border-none outline-none text-white placeholder-neutral-500 text-sm"
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSendMessage();
               }
             }}
+            autoFocus
           />
           <button
             onClick={handleSendMessage}
             disabled={!currentInput.trim() || isProcessing}
-            className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:from-gray-700 disabled:to-gray-600 rounded-lg flex items-center justify-center transition-all duration-200"
+            className="btn-primary w-9 h-9 rounded-lg flex items-center justify-center"
+            title="Send message (Enter)"
           >
             {isProcessing ? (
-              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <svg
-                className="w-3 h-3 text-white"
+                className="w-4 h-4 text-white"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -780,48 +801,56 @@ User question: ${userMessage}
       )}
 
       {/* Resize Handles */}
-      {/* Corner handles */}
+      {/* Corner handles - visible on hover */}
       <div
-        className="absolute top-0 left-0 w-3 h-3 cursor-nw-resize"
+        className="absolute -top-1 -left-1 w-4 h-4 cursor-nw-resize group"
         onMouseDown={(e) => handleResizeMouseDown(e, "nw")}
         title="Resize"
-      />
+      >
+        <div className="absolute top-1 left-1 w-2 h-2 rounded-full bg-brand-primary-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
       <div
-        className="absolute top-0 right-0 w-3 h-3 cursor-ne-resize"
+        className="absolute -top-1 -right-1 w-4 h-4 cursor-ne-resize group"
         onMouseDown={(e) => handleResizeMouseDown(e, "ne")}
         title="Resize"
-      />
+      >
+        <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-primary-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
       <div
-        className="absolute bottom-0 left-0 w-3 h-3 cursor-sw-resize"
+        className="absolute -bottom-1 -left-1 w-4 h-4 cursor-sw-resize group"
         onMouseDown={(e) => handleResizeMouseDown(e, "sw")}
         title="Resize"
-      />
+      >
+        <div className="absolute bottom-1 left-1 w-2 h-2 rounded-full bg-brand-primary-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
       <div
-        className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize"
+        className="absolute -bottom-1 -right-1 w-4 h-4 cursor-se-resize group"
         onMouseDown={(e) => handleResizeMouseDown(e, "se")}
         title="Resize"
-      />
+      >
+        <div className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-brand-primary-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
 
-      {/* Edge handles */}
+      {/* Edge handles - larger hit areas */}
       <div
-        className="absolute top-0 left-3 right-3 h-1 cursor-n-resize"
+        className="absolute top-0 left-4 right-4 h-2 cursor-n-resize hover:bg-brand-primary-500/20 transition-colors"
         onMouseDown={(e) => handleResizeMouseDown(e, "n")}
-        title="Resize"
+        title="Resize vertically"
       />
       <div
-        className="absolute bottom-0 left-3 right-3 h-1 cursor-s-resize"
+        className="absolute bottom-0 left-4 right-4 h-2 cursor-s-resize hover:bg-brand-primary-500/20 transition-colors"
         onMouseDown={(e) => handleResizeMouseDown(e, "s")}
-        title="Resize"
+        title="Resize vertically"
       />
       <div
-        className="absolute left-0 top-3 bottom-3 w-1 cursor-w-resize"
+        className="absolute left-0 top-4 bottom-4 w-2 cursor-w-resize hover:bg-brand-primary-500/20 transition-colors"
         onMouseDown={(e) => handleResizeMouseDown(e, "w")}
-        title="Resize"
+        title="Resize horizontally"
       />
       <div
-        className="absolute right-0 top-3 bottom-3 w-1 cursor-e-resize"
+        className="absolute right-0 top-4 bottom-4 w-2 cursor-e-resize hover:bg-brand-primary-500/20 transition-colors"
         onMouseDown={(e) => handleResizeMouseDown(e, "e")}
-        title="Resize"
+        title="Resize horizontally"
       />
     </div>
   );
