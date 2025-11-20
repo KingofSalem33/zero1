@@ -201,53 +201,6 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
 
     setCurrentInput("");
 
-    // Get current substep's master prompt - handle both V1 (phases) and V2 (steps)
-    let contextPrompt = "";
-
-    // Check if this is a V2 project (has 'steps' field)
-    const isV2Project = !!(project as any).steps;
-
-    if (isV2Project) {
-      // V2 project - use simple context
-      contextPrompt = `Context: Deep dive workspace for the current step.\n\nUser question: ${userMessage}`;
-    } else {
-      // V1 project - get current substep
-      const currentPhase = project.phases?.find(
-        (p) => p.phase_number === getPhaseNumber(project.current_phase),
-      );
-
-      const currentSubstep = currentPhase?.substeps?.find(
-        (s) => s.step_number === project.current_substep,
-      );
-
-      if (!currentSubstep) {
-        const errorMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-
-          type: "ai",
-
-          content:
-            "No active substep found. Please make sure you have an active project with substeps.",
-
-          timestamp: new Date(),
-        };
-
-        onUpdateMessages(workspace.id, [...updatedMessages, errorMessage]);
-
-        setIsProcessing(false);
-
-        return;
-      }
-
-      contextPrompt = `
-Context: Deep dive workspace for ${workspace.title}
-
-${currentSubstep.prompt_to_send}
-
-User question: ${userMessage}
-`;
-    }
-
     // Create AI message placeholder
 
     const aiMessageId = (Date.now() + 1).toString();
@@ -269,8 +222,14 @@ User question: ${userMessage}
     onUpdateMessages(workspace.id, streamMessages);
 
     try {
+      // Build conversation history from workspace messages
+      const history = workspace.messages.map((msg) => ({
+        role: msg.type === "user" ? "user" : "assistant",
+        content: msg.content,
+      }));
+
       const response = await fetch(
-        `${API_URL}/api/projects/${project.id}/execute-step/stream`,
+        `${API_URL}/api/chat/stream`,
 
         {
           method: "POST",
@@ -278,11 +237,9 @@ User question: ${userMessage}
           headers: { "Content-Type": "application/json" },
 
           body: JSON.stringify({
-            master_prompt: contextPrompt,
-
-            user_message: userMessage,
-
-            thread_id: workspace.threadId, // Include thread ID for persistence
+            message: userMessage,
+            userId: workspace.threadId || `workspace_${workspace.id}`,
+            history: history,
           }),
         },
       );
