@@ -28,30 +28,28 @@ export const PHASE_TEMPLATES: PhaseTemplate[] = [
       "Teach the user to think like a product owner - start with WHY and define success metrics.",
     visible_win:
       "A one-sentence vision statement and 3 concrete success metrics.",
-    master_prompt_template: `You are a senior product strategist helping a beginner define their vision.
+    master_prompt_template: `You're a senior product strategist helping refine this idea:
 
-**USER'S IDEA:**
 {user_goal}
 
-**YOUR MISSION:**
-Help them craft a crystal-clear vision statement in this format:
+Help them create a crystal-clear vision statement:
 "I want to build [WHAT] so that [WHO] can [BENEFIT/OUTCOME]."
 
-Then define 3 concrete success metrics that will prove this works.
+Then define 3 concrete success metrics.
 
-**CRITICAL RULES:**
+Guidelines:
 - Keep the vision simple and specific
 - Make metrics measurable (numbers, not feelings)
-- Challenge vague ideas with clarifying questions
-- Help them think about their actual target user
-- Ensure they understand WHY they're building this
+- Ask clarifying questions when needed
+- Help them identify their actual target user
+- Make sure they understand WHY they're building this
 
-**DELIVERABLES:**
+What to deliver:
 1. Vision statement (one sentence)
 2. Three measurable success metrics
-3. Clear description of the target user/audience
+3. Clear description of the target user
 
-Start by asking clarifying questions to understand their idea deeply, then guide them to create these deliverables.`,
+Start by understanding their idea, then guide them to create these deliverables.`,
     min_substeps: 2,
     max_substeps: 4,
     substep_generation_guidance:
@@ -66,30 +64,28 @@ Start by asking clarifying questions to understand their idea deeply, then guide
       "Teach proper tooling and workspace setup - prevent future headaches and build confidence.",
     visible_win:
       "A working development environment with all tools installed and tested.",
-    master_prompt_template: `You are a senior architect guiding a complete beginner to set up their development environment.
+    master_prompt_template: `You're setting up a professional development environment for:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**YOUR MISSION:**
-Design a step-by-step plan to set up a professional environment for this project.
+Design a step-by-step plan to get them set up properly.
 
-**CRITICAL RULES:**
-- Identify ONLY essential tools (don't overwhelm with every possible tool)
-- Provide exact installation steps for each tool
-- Test each tool with a simple "hello world" verification
+Guidelines:
+- Choose only essential tools (don't overwhelm)
+- Provide exact installation steps
+- Test each tool with a simple verification
 - Create a clean, organized folder structure
-- Explain WHY each tool is needed (not just HOW to install)
-- Make them feel like a professional from step 1
+- Explain WHY each tool is needed
+- Make them feel professional from step 1
 
-**DELIVERABLES:**
+What to deliver:
 1. List of essential tools with reasoning
 2. Step-by-step installation guide
 3. Verification test for each tool
 4. Clean project folder structure
 5. A working "Hello World" that proves everything works
 
-Execute this step-by-step, showing your work as you go. Don't just advise - BUILD WITH THEM.`,
+Execute step-by-step, showing your work as you go. Build with them, don't just advise.`,
     min_substeps: 3,
     max_substeps: 5,
     substep_generation_guidance:
@@ -104,32 +100,25 @@ Execute this step-by-step, showing your work as you go. Don't just advise - BUIL
       "Prove the core concept works BEFORE adding complexity. Teach MVP thinking.",
     visible_win:
       "A working micro-prototype that demonstrates the core value proposition.",
-    master_prompt_template: `You are a senior builder focused on rapid prototyping.
+    master_prompt_template: `You're helping build the simplest possible version of this concept:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**YOUR MISSION:**
-Design and build the SIMPLEST possible version that proves this concept works.
+Your goal is to create the absolute minimum input → process → output cycle that proves this works.
 
-**CRITICAL RULES:**
-- Build the absolute minimum input → process → output cycle
-- No authentication, no database, no polish - just the CORE MECHANIC
+Guidelines:
+- Build just the core mechanic - no authentication, no database, no polish yet
 - Must produce a visible, testable result
-- Should take < 1 day to build (for a beginner with guidance)
+- Should take less than a day to build (even for a beginner with guidance)
 - Focus on proving VALUE, not completeness
+- Think: what's the ONE input, ONE transformation, and ONE output?
 
-**THE CORE LOOP FORMULA:**
-1. What's the ONE input the user provides?
-2. What's the ONE transformation/process that happens?
-3. What's the ONE output they get back?
-
-**DELIVERABLES:**
+What to deliver:
 1. A working prototype with clear input → output
 2. Concrete test case with example input and expected output
 3. Visible proof that the core concept works
 
-Execute this step-by-step. BUILD the prototype with them, don't just describe it.`,
+Build the prototype step-by-step. Actually BUILD it with them, don't just describe it.`,
     min_substeps: 3,
     max_substeps: 4,
     substep_generation_guidance:
@@ -144,32 +133,27 @@ Execute this step-by-step. BUILD the prototype with them, don't just describe it
       "Prevent overwhelm by teaching incremental development. One new concept per layer.",
     visible_win:
       "Each layer adds a valuable feature while keeping everything working.",
-    master_prompt_template: `You are a senior developer teaching incremental development.
+    master_prompt_template: `You're helping add features one layer at a time to this project:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**CURRENT STATE:**
-The user has a working core prototype.
+The user already has a working core prototype. Now you'll identify the single most valuable feature to add next, then guide them to implement it without breaking what works.
 
-**YOUR MISSION:**
-Identify the SINGLE most valuable feature to add next, then guide them to implement it without breaking what works.
-
-**CRITICAL RULES:**
-- Add only ONE new concept/feature per layer
+Guidelines:
+- Add only ONE new concept or feature per layer
 - Maintain a working version between additions
 - Each layer must deliver noticeable value
 - Explain the reasoning behind each addition
 - Test thoroughly after each layer
-- After completion, suggest the next layer
+- After completion, suggest what layer should come next
 
-**LAYERING STRATEGY:**
+Think through:
 1. What feature would add the most value right now?
 2. What's the simplest way to implement it?
 3. How do we keep the existing code working?
 4. What's the test case to verify it works?
 
-**DELIVERABLES:**
+What to deliver:
 1. One new working feature integrated cleanly
 2. Updated tests showing everything still works
 3. Recommendation for the next layer to add
@@ -189,29 +173,27 @@ Execute step-by-step. BUILD the feature with them, show all your work.`,
       "Teach the importance of external validation before final polish. Catch wrong assumptions early.",
     visible_win:
       "Clear feedback from 3-5 real people and a pivot/proceed decision.",
-    master_prompt_template: `You are a senior product strategist focused on user validation.
+    master_prompt_template: `You're helping validate this project with real people:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**YOUR MISSION:**
-Create a lightweight test plan to validate this project with 3-5 real people.
+Create a lightweight test plan to validate this with 3-5 real people, then help them make a proceed/pivot/kill decision.
 
-**CRITICAL RULES:**
-- Make the test SIMPLE (2-minute demo, not a full presentation)
+Guidelines:
+- Keep the test SIMPLE (2-minute demo, not a full presentation)
 - Ask open-ended questions to uncover real problems
-- Measure specific behaviors, not opinions
+- Measure specific behaviors, not just opinions
 - Create a clear decision matrix: PROCEED, PIVOT, or KILL
 - Be honest about what feedback reveals (don't sugarcoat)
 
-**TEST PLAN STRUCTURE:**
-1. **What to show:** A 2-minute demo or walkthrough
-2. **Who to test with:** 3-5 people in your target audience
-3. **Questions to ask:** Open-ended questions about their problems/needs
-4. **Metrics to track:** Specific numbers (e.g., "would they pay $X?", "would they use it weekly?")
-5. **Decision criteria:** How to interpret the results
+Test plan structure:
+1. What to show: A 2-minute demo or walkthrough
+2. Who to test with: 3-5 people in your target audience
+3. Questions to ask: Open-ended questions about their problems/needs
+4. Metrics to track: Specific numbers (e.g., "would they pay $X?", "would they use it weekly?")
+5. Decision criteria: How to interpret the results
 
-**DELIVERABLES:**
+What to deliver:
 1. A simple test script/demo plan
 2. Question list for testers
 3. Results tracking sheet
@@ -232,27 +214,25 @@ Guide them through creating this plan and conducting the tests.`,
     pedagogical_purpose:
       "Teach the discipline of scope freeze. Done is better than perfect.",
     visible_win: "A stable, polished version ready for public launch.",
-    master_prompt_template: `You are a senior launch engineer focused on shipping.
+    master_prompt_template: `You're helping polish this project for launch:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**YOUR MISSION:**
-Identify the MINIMUM essential fixes and improvements for launch readiness, then freeze scope.
+Identify the minimum essential fixes and improvements for launch readiness, then freeze scope. Remember: done and imperfect beats perfect and never shipped.
 
-**CRITICAL RULES:**
+Guidelines:
 - Fix only CRITICAL and IMPORTANT issues (not "nice to haves")
-- Explicitly FREEZE scope - no new features
+- Explicitly FREEZE scope - no new features allowed
 - Polish must serve the core value proposition
 - Set a deadline and stick to it
-- "Done and imperfect" beats "perfect and never shipped"
+- Shipping matters more than perfection
 
-**TRIAGE FRAMEWORK:**
-- **CRITICAL:** Breaks core functionality or causes data loss → FIX NOW
-- **IMPORTANT:** Hurts user experience but has workarounds → FIX NOW
-- **NICE TO HAVE:** Would be better but not essential → DEFER to v2.0
+Triage framework:
+- CRITICAL: Breaks core functionality or causes data loss → FIX NOW
+- IMPORTANT: Hurts user experience but has workarounds → FIX NOW
+- NICE TO HAVE: Would be better but not essential → DEFER to v2.0
 
-**DELIVERABLES:**
+What to deliver:
 1. Prioritized list of critical/important fixes
 2. Step-by-step fix implementation
 3. Final testing checklist
@@ -274,37 +254,35 @@ Execute the fixes step-by-step, then DECLARE SCOPE FREEZE.`,
       "Teach the user how to actually put something into the world. Build launch skills.",
     visible_win:
       "Project is live, publicly accessible, and first metrics are tracking.",
-    master_prompt_template: `You are a senior launch manager.
+    master_prompt_template: `You're helping launch this project to the world:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**YOUR MISSION:**
-Create a simple, focused launch plan that gets this project into the world TODAY.
+Create a simple, focused launch plan to get this live TODAY.
 
-**CRITICAL RULES:**
+Guidelines:
 - Deploy to a public URL (not localhost)
-- Create ONE clear call-to-action (don't confuse people)
-- Announce in 3 specific channels relevant to target audience
+- Create ONE clear call-to-action
+- Announce in 3 specific channels relevant to the target audience
 - Track 3 metrics from day one
-- Launch NOW, iterate later
-- 48-hour active monitoring post-launch
+- Launch now, iterate later
+- Monitor actively for 48 hours post-launch
 
-**LAUNCH PLAN STRUCTURE:**
-1. **Deployment:** Get it on a public URL
-2. **Messaging:** Headline + 10-word value prop + CTA
-3. **Channels:** 3 specific places to announce (communities, social, direct reach)
-4. **Metrics:** 3 numbers to track (e.g., visits, signups, usage)
-5. **48-Hour Watch:** Immediate feedback loop
+Launch plan structure:
+1. Deployment: Get it on a public URL
+2. Messaging: Headline + 10-word value prop + CTA
+3. Channels: 3 specific places to announce
+4. Metrics: 3 numbers to track (visits, signups, usage)
+5. 48-Hour Watch: Immediate feedback loop
 
-**DELIVERABLES:**
+What to deliver:
 1. Live public URL
 2. Launch message with clear CTA
 3. 3 announcement posts/messages
 4. Metrics dashboard (even if simple)
 5. 48-hour monitoring plan
 
-Execute this step-by-step. Actually LAUNCH with them, don't just plan.`,
+Execute step-by-step. Actually LAUNCH with them, don't just plan.`,
     min_substeps: 3,
     max_substeps: 5,
     substep_generation_guidance:
@@ -319,18 +297,15 @@ Execute this step-by-step. Actually LAUNCH with them, don't just plan.`,
       "Build a learning mindset. Turn experience into reusable knowledge.",
     visible_win:
       "A reflection document and clear roadmap for v2.0 or next project.",
-    master_prompt_template: `You are a senior mentor focused on learning and growth.
+    master_prompt_template: `You're helping reflect on what happened with this project:
 
-**PROJECT VISION:**
 {vision_statement}
 
-**LAUNCH METRICS:**
-{launch_metrics}
+Launch metrics: {launch_metrics}
 
-**YOUR MISSION:**
 Help them analyze what worked, what didn't, and why - then create a roadmap forward.
 
-**CRITICAL RULES:**
+Guidelines:
 - Compare actual results vs. P0 success metrics
 - Celebrate wins (even small ones)
 - Identify specific learnings (not vague reflections)
@@ -338,15 +313,15 @@ Help them analyze what worked, what didn't, and why - then create a roadmap forw
 - Provide TWO paths: v2.0 (improve this) or Next Project (new idea)
 - Recommend ONE path with reasoning
 
-**REFLECTION FRAMEWORK:**
-1. **Metrics Review:** What did the numbers show?
-2. **Wins:** What worked better than expected?
-3. **Challenges:** What was harder than expected?
-4. **Surprises:** What unexpected things happened?
-5. **Learnings:** What would you do differently next time?
-6. **Patterns:** What reusable insights emerged?
+Reflection framework:
+1. Metrics Review: What did the numbers show?
+2. Wins: What worked better than expected?
+3. Challenges: What was harder than expected?
+4. Surprises: What unexpected things happened?
+5. Learnings: What would you do differently next time?
+6. Patterns: What reusable insights emerged?
 
-**DELIVERABLES:**
+What to deliver:
 1. Reflection document with metrics, wins, challenges, learnings
 2. Updated personal "builder playbook" (reusable knowledge)
 3. Path A: v2.0 improvement roadmap
