@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
 import ArtifactAnalysisCard from "./ArtifactAnalysisCard";
-import { StepCompletionModal } from "./StepCompletionModal";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -141,16 +140,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [additionalContext, setAdditionalContext] = useState("");
 
   // Completion modal state
-  const [completionModalData, setCompletionModalData] = useState<{
-    stepNumber: number;
-    stepTitle: string;
-    acceptanceCriteria: string[];
-    mentorshipFeedback: string;
-    statusRecommendation: "READY_TO_COMPLETE" | "KEEP_WORKING" | "BLOCKED";
-    totalSteps: number;
-  } | null>(null);
-
   // Removed micro-step state variables - no longer using cards UI
+  // Removed completion modal - AI auto-advances conversationally
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -598,45 +589,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     },
     [project, setToolsUsed, onRefreshProject, fetchThreadMessages],
   );
-
-  /**
-   * Advance to next step
-   */
-  const advanceToNextStep = async (completedStepNumber: number) => {
-    if (!project) return;
-
-    try {
-      // Use the correct endpoint: /complete-step (not /steps/:stepNumber/complete)
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/complete-step`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (response.ok) {
-        console.log(
-          `[Auto-advance] ✅ Step ${completedStepNumber} completed, advancing to next step`,
-        );
-
-        // Refresh project to get updated state
-        if (onRefreshProject) {
-          await onRefreshProject();
-        }
-
-        // Wait a moment for project state to update, then automatically continue
-        setTimeout(() => {
-          console.log(
-            "[Auto-advance] Automatically triggering next step guidance...",
-          );
-          sendMessageWithPrompt(""); // Triggers next step's master prompt
-        }, 1500);
-      }
-    } catch (error) {
-      console.error("[Auto-advance] Error completing step:", error);
-    }
-  };
 
   // Removed all micro-step API functions - no longer using cards UI workflow
 
@@ -1723,27 +1675,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       )}
 
       {/* Step Completion Modal */}
-      {completionModalData && (
-        <StepCompletionModal
-          stepNumber={completionModalData.stepNumber}
-          stepTitle={completionModalData.stepTitle}
-          acceptanceCriteria={completionModalData.acceptanceCriteria}
-          mentorshipFeedback={completionModalData.mentorshipFeedback}
-          statusRecommendation={completionModalData.statusRecommendation}
-          totalSteps={completionModalData.totalSteps}
-          onKeepWorking={() => {
-            setCompletionModalData(null);
-            console.log("[Completion Modal] User chose to keep working");
-          }}
-          onMarkComplete={async () => {
-            console.log(
-              "[Completion Modal] User marked step complete - advancing",
-            );
-            await advanceToNextStep(completionModalData.stepNumber);
-            setCompletionModalData(null);
-          }}
-        />
-      )}
     </div>
   );
 };
