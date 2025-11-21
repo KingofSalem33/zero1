@@ -23,6 +23,8 @@ import { AuthModal } from "./components/AuthModal";
 
 import { ProjectLibrary } from "./components/ProjectLibrary";
 
+import { MarkdownMessage } from "./components/MarkdownMessage";
+
 import { useAuth } from "./contexts/AuthContext";
 
 // ---- Utility helpers ----
@@ -172,23 +174,11 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [workspace.messages]);
-
-  // Copy message content to clipboard
-  const handleCopyMessage = async (messageId: string, content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopiedMessageId(messageId);
-      setTimeout(() => setCopiedMessageId(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
-  };
 
   const handleSendMessage = async () => {
     if (!currentInput.trim() || !project || isProcessing) return;
@@ -722,66 +712,30 @@ This is a research workspace for exploring ideas related to your project.`;
                     </div>
                   </div>
                 ) : (
-                  <div className="flex gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center flex-shrink-0">
-                      <svg
-                        className="w-3.5 h-3.5 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 10V3L4 14h7v7l9-11h-7z"
-                        />
-                      </svg>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-gradient-brand flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                        AI
+                      </div>
+                      <span className="text-xs text-neutral-500 font-medium">
+                        Research AI
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-neutral-200 leading-relaxed whitespace-pre-wrap text-sm">
-                        {message.content}
-                      </div>
-                      {/* Copy button - always visible */}
-                      <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={() =>
-                            handleCopyMessage(message.id, message.content)
-                          }
-                          className="p-1 rounded-md hover:bg-neutral-800/60 text-neutral-500 hover:text-neutral-300 transition-colors"
-                          title="Copy to clipboard"
-                        >
-                          {copiedMessageId === message.id ? (
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
+                    <div className="ml-[2.375rem]">
+                      {message.content === "Thinking..." ? (
+                        <div className="space-y-3 animate-pulse">
+                          <div className="h-3 bg-neutral-700/50 rounded w-3/4"></div>
+                          <div className="h-3 bg-neutral-700/50 rounded w-full"></div>
+                          <div className="h-3 bg-neutral-700/50 rounded w-5/6"></div>
+                        </div>
+                      ) : (
+                        <MarkdownMessage
+                          content={message.content}
+                          onCopy={() => {
+                            // Copy functionality handled internally
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
