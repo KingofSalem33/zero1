@@ -1409,23 +1409,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Main workspace with conversation
   return (
     <div className="flex flex-col h-full">
-      {/* Current Step Header (Progress-as-Presence) */}
-      {project && project.steps && (
-        <div className="sticky top-0 z-10 bg-neutral-950/95 backdrop-blur-sm border-b border-neutral-800/50 px-6 py-3">
-          <div className="max-w-4xl mx-auto flex items-center gap-3">
-            {/* Current Step Chip */}
-            <div className="px-3 py-1.5 bg-gradient-brand rounded-full text-xs font-semibold text-white shadow-lg">
-              Step {project.current_step} /{" "}
-              {project.metadata?.total_steps || project.steps.length}
-            </div>
-            <div className="text-sm text-neutral-300">
-              {project.steps.find((s) => s.step_number === project.current_step)
-                ?.title || "Loading..."}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto px-6 py-8 pb-28">
         {/* Centered composer when no messages (ChatGPT-style start) */}
