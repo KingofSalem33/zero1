@@ -149,7 +149,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     statusRecommendation: "READY_TO_COMPLETE" | "KEEP_WORKING" | "BLOCKED";
     totalSteps: number;
   } | null>(null);
-  const [isCheckingCompletion, setIsCheckingCompletion] = useState(false);
 
   // Removed micro-step state variables - no longer using cards UI
 
@@ -1530,7 +1529,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         ) : null}
 
         <div className="max-w-4xl mx-auto space-y-6">
-          {messages.map((message, idx) => (
+          {messages.map((message) => (
             <div key={message.id}>
               {message.type === "user" ? (
                 <div className="flex justify-end">
@@ -1563,93 +1562,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                             // Copy functionality is handled internally by MarkdownMessage
                           }}
                         />
-                        {/* Inline action buttons - show only for the last AI message and not "Thinking..." */}
-                        {idx === messages.length - 1 &&
-                          !isProcessing &&
-                          project && (
-                            <div className="flex items-center gap-2 pt-2">
-                              <button
-                                onClick={async () => {
-                                  const currentStep = project.steps.find(
-                                    (s) =>
-                                      s.step_number === project.current_step,
-                                  );
-                                  if (
-                                    !currentStep ||
-                                    currentStep.status === "completed"
-                                  )
-                                    return;
-
-                                  // Check completion and show modal
-                                  setIsCheckingCompletion(true);
-                                  try {
-                                    const response = await fetch(
-                                      `${API_URL}/api/v2/projects/${project.id}/check-completion`,
-                                      {
-                                        method: "POST",
-                                        headers: {
-                                          "Content-Type": "application/json",
-                                        },
-                                        body: JSON.stringify({
-                                          step_number: currentStep.step_number,
-                                        }),
-                                      },
-                                    );
-
-                                    if (response.ok) {
-                                      const result = await response.json();
-                                      console.log(
-                                        `[Manual Completion Check] Mentorship feedback ready`,
-                                      );
-
-                                      // Show modal with mentorship feedback
-                                      setCompletionModalData({
-                                        stepNumber: currentStep.step_number,
-                                        stepTitle: currentStep.title,
-                                        acceptanceCriteria:
-                                          currentStep.acceptance_criteria || [],
-                                        mentorshipFeedback:
-                                          result.mentorship_feedback ||
-                                          "Keep building!",
-                                        statusRecommendation:
-                                          result.status_recommendation ||
-                                          "KEEP_WORKING",
-                                        totalSteps:
-                                          project.metadata?.total_steps ||
-                                          project.steps.length,
-                                      });
-                                    }
-                                  } catch (error) {
-                                    console.error(
-                                      "[Manual Completion Check] Error:",
-                                      error,
-                                    );
-                                  } finally {
-                                    setIsCheckingCompletion(false);
-                                  }
-                                }}
-                                disabled={isCheckingCompletion}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 rounded-lg transition-colors"
-                              >
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  />
-                                </svg>
-                                {isCheckingCompletion
-                                  ? "Checking..."
-                                  : "Check Progress"}
-                              </button>
-                            </div>
-                          )}
                       </>
                     )}
                   </div>
