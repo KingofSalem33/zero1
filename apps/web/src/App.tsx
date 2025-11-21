@@ -715,7 +715,7 @@ This is a research workspace for exploring ideas related to your project.`;
               <div key={message.id}>
                 {message.type === "user" ? (
                   <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-gradient-brand text-white">
+                    <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-neutral-800 text-white">
                       <p className="leading-relaxed whitespace-pre-wrap text-sm">
                         {message.content}
                       </p>

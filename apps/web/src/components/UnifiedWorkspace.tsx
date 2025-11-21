@@ -1549,12 +1549,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message, idx) => (
             <div key={message.id}>
-              {idx > 0 && (
-                <div className="h-px w-full bg-gradient-to-r from-blue-500/30 via-purple-500/30 to-blue-500/30" />
-              )}
               {message.type === "user" ? (
                 <div className="flex justify-end">
-                  <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-gradient-brand text-white shadow-sm">
+                  <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800 text-white shadow-sm">
                     {message.content}
                   </div>
                 </div>
