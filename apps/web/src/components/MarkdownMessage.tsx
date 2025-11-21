@@ -21,8 +21,8 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   content,
   isStreaming = false,
   onCopy,
-  onRegenerate,
-  onEdit,
+  onRegenerate: _onRegenerate,
+  onEdit: _onEdit,
   showActions = true,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -181,34 +181,44 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
         )}
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons - always visible */}
       {showActions && !isStreaming && (
-        <div className="absolute -top-2 right-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        <div className="flex items-center gap-2 mt-3">
           {onCopy && (
             <button
               onClick={handleCopy}
-              className="btn-icon-secondary text-xs w-7 h-7"
-              title="Copy message"
+              className="p-1 rounded-md hover:bg-neutral-800/60 text-neutral-500 hover:text-neutral-300 transition-colors"
+              title="Copy to clipboard"
             >
-              {copied ? "✓" : "📋"}
-            </button>
-          )}
-          {onRegenerate && (
-            <button
-              onClick={onRegenerate}
-              className="btn-icon-secondary text-xs w-7 h-7"
-              title="Regenerate"
-            >
-              🔄
-            </button>
-          )}
-          {onEdit && (
-            <button
-              onClick={onEdit}
-              className="btn-icon-secondary text-xs w-7 h-7"
-              title="Edit message"
-            >
-              ✏️
+              {copied ? (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+              )}
             </button>
           )}
         </div>
