@@ -165,20 +165,18 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
         {/* Progress Circle */}
         <div className="flex flex-col items-center py-2">
           <CircularProgress value={progress} size="lg" />
-          {isPhaseBasedProject ? (
-            <div className="text-sm font-semibold text-white mt-2">
-              Phase {(project.current_phase ?? 0) + 1} of{" "}
-              {project.metadata?.total_phases || 8}
-            </div>
-          ) : (
-            <div className="text-sm font-semibold text-white mt-2">
-              Step {project.current_step} of{" "}
-              {project.metadata?.total_steps || 0}
-            </div>
-          )}
+          <div className="text-sm font-semibold text-white mt-2">
+            Your Journey
+          </div>
           <p className="text-xs text-neutral-400 mt-1 text-center line-clamp-2 px-2">
             {project.goal}
           </p>
+          {isPhaseBasedProject && (
+            <div className="text-xs text-neutral-600 mt-1">
+              Phase {(project.current_phase ?? 0) + 1}/{" "}
+              {project.metadata?.total_phases || 8}
+            </div>
+          )}
         </div>
 
         {/* Exit Project Button */}
@@ -216,21 +214,21 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-brand-primary-400 animate-pulse" />
                   <span className="text-xs font-bold text-brand-primary-400 tracking-wider">
-                    CURRENT PHASE: {currentPhase.phase_id}
+                    BUILDING NOW
                   </span>
                 </div>
 
                 <div className="p-4 bg-neutral-800/30 border border-brand-primary-500/20 rounded-lg space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <div className="text-lg font-bold text-white mb-1">
-                        {currentPhase.title}
-                      </div>
-                      <div className="text-xs text-neutral-400 mb-2">
-                        {currentPhase.goal}
-                      </div>
-                      <div className="text-xs text-brand-primary-300/70 italic">
+                      <div className="text-base font-bold text-brand-primary-300 mb-2 leading-snug">
                         ✨ {currentPhase.visible_win}
+                      </div>
+                      <div className="text-xs text-neutral-500 mb-1">
+                        {currentPhase.phase_id} · {currentPhase.title}
+                      </div>
+                      <div className="text-xs text-neutral-400">
+                        {currentPhase.goal}
                       </div>
                     </div>
                   </div>
@@ -341,7 +339,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                   className="w-full flex items-center justify-between text-left"
                 >
                   <span className="text-xs font-bold text-green-400 tracking-wider">
-                    ✓ COMPLETED ({completedPhases.length})
+                    ✓ WHAT YOU'VE BUILT ({completedPhases.length})
                   </span>
                   <svg
                     className={`w-3 h-3 text-neutral-400 transition-transform ${showCompleted ? "rotate-180" : ""}`}
@@ -358,16 +356,21 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                   </svg>
                 </button>
                 {showCompleted && (
-                  <div className="space-y-1 pl-2">
+                  <div className="space-y-2 pl-2">
                     {completedPhases.map((phase) => (
                       <div
                         key={phase.id}
-                        className="text-xs text-neutral-500 flex items-start gap-2"
+                        className="text-xs flex items-start gap-2"
                       >
                         <span className="text-green-400 mt-0.5">✓</span>
-                        <span className="flex-1">
-                          {phase.phase_id}: {phase.title}
-                        </span>
+                        <div className="flex-1">
+                          <div className="text-neutral-400 font-medium">
+                            {phase.visible_win}
+                          </div>
+                          <div className="text-neutral-600 text-[11px] mt-0.5">
+                            {phase.phase_id} · {phase.title}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -383,7 +386,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                   className="w-full flex items-center justify-between text-left"
                 >
                   <span className="text-xs font-bold text-neutral-500 tracking-wider">
-                    🔒 LOCKED ({lockedPhases.length})
+                    COMING NEXT ({lockedPhases.length})
                   </span>
                   <svg
                     className={`w-3 h-3 text-neutral-400 transition-transform ${showUpcoming ? "rotate-180" : ""}`}
@@ -404,13 +407,13 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                     {lockedPhases.map((phase) => (
                       <div key={phase.id} className="text-xs space-y-1">
                         <div className="flex items-start gap-2 text-neutral-600">
-                          <span className="mt-0.5">🔒</span>
+                          <span className="mt-0.5">→</span>
                           <div className="flex-1">
-                            <div className="font-medium">
-                              {phase.phase_id}: {phase.title}
+                            <div className="font-medium text-neutral-500">
+                              {phase.visible_win}
                             </div>
-                            <div className="text-neutral-700 text-[11px] italic mt-0.5">
-                              {phase.goal}
+                            <div className="text-neutral-700 text-[11px] mt-0.5">
+                              {phase.phase_id} · {phase.title}
                             </div>
                           </div>
                         </div>
