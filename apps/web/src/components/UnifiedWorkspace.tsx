@@ -1574,7 +1574,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       </div>
                     ) : (
                       <>
-                        <MarkdownMessage content={message.content} />
+                        <MarkdownMessage
+                          content={message.content}
+                          onCopy={() => {
+                            // Copy functionality is handled internally by MarkdownMessage
+                          }}
+                        />
                         {/* Inline action buttons - show only for the last AI message and not "Thinking..." */}
                         {idx === messages.length - 1 &&
                           !isProcessing &&
