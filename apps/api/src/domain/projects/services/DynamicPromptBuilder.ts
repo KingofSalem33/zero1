@@ -77,12 +77,29 @@ export class DynamicPromptBuilder {
       );
     }
 
-    // Fallback: use master_prompt as-is (for backward compatibility)
-    return `${master_prompt}
+    // Fallback: use conversational wrapper even without criterion focus
+    return `You are building: "${project_goal}"
+
+## What we're building now:
+${current_substep.title}
+
+${current_substep.description}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**YOUR FOCUS:** Complete the acceptance criteria for "${current_substep.title}".`;
+## How to execute:
+
+${master_prompt}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Acceptance criteria to complete:
+
+${current_substep.acceptance_criteria?.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Work through these criteria, showing what you build and asking for feedback after each one.`;
   }
 
   /**
