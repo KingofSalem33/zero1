@@ -54,6 +54,22 @@ export interface DynamicPromptContext {
  */
 export class DynamicPromptBuilder {
   /**
+   * Convert old-style command prompts to conversational style
+   */
+  private makeConversational(prompt: string): string {
+    return prompt
+      .replace(/\*\*YOUR MISSION:\*\*/g, "Your goal:")
+      .replace(/\*\*CRITICAL RULES:\*\*/g, "Guidelines:")
+      .replace(/\*\*DELIVERABLES:\*\*/g, "What to deliver:")
+      .replace(/\*\*YOUR JOB:\*\*/g, "What to do:")
+      .replace(/\*\*APPROACH:\*\*/g, "Approach:")
+      .replace(/\*\*EXECUTION STYLE:\*\*/g, "How to work:")
+      .replace(/You are a senior/g, "You're a senior")
+      .replace(/You are an expert/g, "You're an expert")
+      .replace(/You are helping/g, "You're helping");
+  }
+
+  /**
    * Build a dynamic system message with real-time progress
    */
   buildSystemMessage(context: DynamicPromptContext): string {
@@ -78,6 +94,8 @@ export class DynamicPromptBuilder {
     }
 
     // Fallback: use conversational wrapper even without criterion focus
+    const conversationalPrompt = this.makeConversational(master_prompt);
+
     return `You are building: "${project_goal}"
 
 ## What we're building now:
@@ -89,7 +107,7 @@ ${current_substep.description}
 
 ## How to execute:
 
-${master_prompt}
+${conversationalPrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -199,6 +217,8 @@ Now I'm building YOUR delivery logistics system (Step ${criterion.substep_number
 `
       : "";
 
+    const conversationalPrompt = this.makeConversational(masterPrompt);
+
     return `You are building: "${projectGoal}"
 ${transitionIntro}${roadmapSection}
 
@@ -215,7 +235,7 @@ ${nextSection}━━━━━━━━━━━━━━━━━━━━━━
 
 ## HOW TO EXECUTE:
 
-${masterPrompt}
+${conversationalPrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
