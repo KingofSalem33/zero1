@@ -222,11 +222,49 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
     onUpdateMessages(workspace.id, streamMessages);
 
     try {
+      // Build project context
+      let projectContext = "";
+      if (project) {
+        // Check if V2 project (has 'steps' field) or V1 (has 'phases')
+        const isV2Project = !!(project as any).steps;
+
+        if (isV2Project) {
+          const v2Project = project as any;
+          projectContext = `**Project Context:**
+- Vision: ${project.goal || v2Project.vision || "Not specified"}
+- Current Step: ${v2Project.current_step || 1}/${v2Project.steps?.length || 0}
+- Project Phase: ${v2Project.metadata?.phase || "Building"}
+
+This is a research workspace for exploring ideas related to your project.`;
+        } else {
+          const currentPhase = project.phases?.find(
+            (p) => p.phase_number === getPhaseNumber(project.current_phase),
+          );
+          const currentSubstep = currentPhase?.substeps?.find(
+            (s) => s.step_number === project.current_substep,
+          );
+
+          projectContext = `**Project Context:**
+- Goal: ${project.goal}
+- Current Phase: ${currentPhase?.goal || "Unknown"}
+- Current Step: ${currentSubstep?.label || "Unknown"}
+- Phase ${project.current_phase} of ${project.phases?.length || 0}
+
+This is a research workspace for exploring ideas related to your project.`;
+        }
+      }
+
       // Build conversation history from workspace messages
       const history = workspace.messages.map((msg) => ({
         role: msg.type === "user" ? "user" : "assistant",
         content: msg.content,
       }));
+
+      // Add project context as system message if this is the first message
+      let messageToSend = userMessage;
+      if (workspace.messages.length === 0 && projectContext) {
+        messageToSend = `${projectContext}\n\n${userMessage}`;
+      }
 
       const response = await fetch(
         `${API_URL}/api/chat/stream`,
@@ -237,7 +275,7 @@ const PopupWorkspaceComponent: React.FC<PopupWorkspaceProps> = ({
           headers: { "Content-Type": "application/json" },
 
           body: JSON.stringify({
-            message: userMessage,
+            message: messageToSend,
             userId: workspace.threadId || `workspace_${workspace.id}`,
             history: history,
           }),
