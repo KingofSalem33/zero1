@@ -1,3 +1,5 @@
+// Updated: 2025-11-21 06:25 AM - Phase 1 UX improvements (outcome-focused labels)
+// VERSION: 2.1.0 - Outcome-focused roadmap labels
 import React, { useState, useEffect } from "react";
 import CircularProgress from "./CircularProgress";
 import { ArtifactUploadButton } from "./ArtifactUploadButton";
@@ -84,8 +86,8 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   if (!project) return null;
 
   // Detect if this is a phase-based project
-  const isPhaseBasedProject =
-    !!project.phases && project.metadata?.roadmap_type === "phase_based";
+  // Use phase-based UI whenever phases exist (outcome-focused display)
+  const isPhaseBasedProject = !!project.phases && project.phases.length > 0;
 
   // For step-based projects (old model)
   const currentStep = project.steps?.find(
@@ -100,9 +102,6 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
   // For phase-based projects
   const currentPhase = project.phases?.find((p) => p.status === "active");
-  const currentSubstep = currentPhase?.substeps.find(
-    (s) => s.status === "active",
-  );
   const completedPhases =
     project.phases?.filter((p) => p.status === "completed") || [];
   const lockedPhases =
@@ -134,7 +133,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-neutral-700/50">
         <h3 className="text-xs font-bold text-neutral-400 tracking-wider">
-          ZERO1 BUILDER
+          ZERO1 BUILDER <span className="text-green-500">v2.1</span>
         </h3>
         <button
           onClick={() => {
@@ -233,71 +232,19 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                     </div>
                   </div>
 
-                  {/* Current Substep */}
-                  {currentSubstep && (
-                    <div className="mt-3 p-3 bg-neutral-900/50 border border-brand-primary-500/10 rounded-lg">
-                      <div className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-                        <span className="text-brand-primary-400">→</span>
-                        {currentSubstep.title}
-                      </div>
-                      <div className="text-xs text-neutral-300 leading-relaxed mb-2">
-                        {currentSubstep.description}
-                      </div>
-                      {currentSubstep.acceptance_criteria &&
-                        currentSubstep.acceptance_criteria.length > 0 && (
-                          <div className="text-xs space-y-1">
-                            <div className="text-neutral-500 font-semibold">
-                              Acceptance Criteria:
-                            </div>
-                            {currentSubstep.acceptance_criteria.map(
-                              (criteria, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-start gap-2 text-neutral-400"
-                                >
-                                  <span>•</span>
-                                  <span>{criteria}</span>
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        )}
-                    </div>
-                  )}
+                  {/* Hide current substep details - focus on phase outcome only */}
 
-                  {/* Other substeps in current phase */}
+                  {/* Phase Progress Indicator - Just show count, not all substeps */}
                   {currentPhase.substeps.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      <div className="text-xs font-semibold text-neutral-500 mb-1">
-                        Phase Progress:{" "}
+                    <div className="mt-2">
+                      <div className="text-xs text-neutral-500">
                         {
                           currentPhase.substeps.filter(
                             (s) => s.status === "completed",
                           ).length
                         }
-                        /{currentPhase.substeps.length}
+                        /{currentPhase.substeps.length} steps complete
                       </div>
-                      {currentPhase.substeps.map((substep) => (
-                        <div
-                          key={substep.id}
-                          className={`flex items-center gap-2 text-xs ${substep.status === "active" ? "hidden" : ""}`}
-                        >
-                          {substep.status === "completed" ? (
-                            <span className="text-green-400">✓</span>
-                          ) : (
-                            <span className="text-neutral-600">○</span>
-                          )}
-                          <span
-                            className={
-                              substep.status === "completed"
-                                ? "text-neutral-500 line-through"
-                                : "text-neutral-400"
-                            }
-                          >
-                            {substep.title}
-                          </span>
-                        </div>
-                      ))}
                     </div>
                   )}
                 </div>
@@ -432,7 +379,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-brand-primary-400 animate-pulse" />
                 <span className="text-xs font-bold text-brand-primary-400 tracking-wider">
-                  CURRENT STEP
+                  BUILDING NOW
                 </span>
               </div>
 
@@ -524,7 +471,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                   className="w-full flex items-center justify-between text-left"
                 >
                   <span className="text-xs font-bold text-green-400 tracking-wider">
-                    ✓ COMPLETED ({completedSteps.length})
+                    ✓ WHAT YOU'VE BUILT ({completedSteps.length})
                   </span>
                   <svg
                     className={`w-3 h-3 text-neutral-400 transition-transform ${showCompleted ? "rotate-180" : ""}`}
@@ -564,7 +511,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                   className="w-full flex items-center justify-between text-left"
                 >
                   <span className="text-xs font-bold text-neutral-500 tracking-wider">
-                    UPCOMING ({upcomingSteps.length})
+                    COMING NEXT ({upcomingSteps.length})
                   </span>
                   <svg
                     className={`w-3 h-3 text-neutral-400 transition-transform ${showUpcoming ? "rotate-180" : ""}`}
