@@ -58,10 +58,46 @@ ALTER TABLE project_roadmap_metadata
 -- ============================================================================
 -- 4. Add columns to projects table
 -- ============================================================================
+-- First, handle existing current_phase column if it exists as TEXT
+DO $$
+BEGIN
+  -- Check if current_phase exists and is TEXT
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'projects' AND column_name = 'current_phase' AND data_type = 'text'
+  ) THEN
+    -- Drop dependent triggers first
+    DROP TRIGGER IF EXISTS trigger_auto_checkpoint ON projects;
+
+    -- Drop the TEXT column
+    ALTER TABLE projects DROP COLUMN current_phase CASCADE;
+  END IF;
+END $$;
+
+-- Now add columns with correct types
 ALTER TABLE projects
   ADD COLUMN IF NOT EXISTS current_phase INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS vision_statement TEXT,
   ADD COLUMN IF NOT EXISTS launch_metrics JSONB DEFAULT '{}'::jsonb;
+
+-- Recreate the checkpoint trigger if it was dropped
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_auto_checkpoint'
+  ) THEN
+    -- Only recreate if the function exists
+    IF EXISTS (
+      SELECT 1 FROM pg_proc WHERE proname = 'auto_create_checkpoint'
+    ) THEN
+      CREATE TRIGGER trigger_auto_checkpoint
+        AFTER UPDATE OF current_step, current_phase ON projects
+        FOR EACH ROW
+        WHEN (OLD.current_step IS DISTINCT FROM NEW.current_step OR OLD.current_phase IS DISTINCT FROM NEW.current_phase)
+        EXECUTE FUNCTION auto_create_checkpoint();
+    END IF;
+  END IF;
+END $$;
 
 -- ============================================================================
 -- 5. Create triggers for phase table

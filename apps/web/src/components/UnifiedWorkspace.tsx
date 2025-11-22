@@ -360,9 +360,20 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       }
 
       // Get current step's master prompt
-      const currentStep = project.steps.find(
-        (s) => s.step_number === project.current_step,
-      );
+      // Handle both phase-based and step-based projects
+      let currentStep;
+      if (project.phases && project.phases.length > 0) {
+        // Phase-based project: find current phase and active substep
+        const currentPhase = project.phases.find((p) => p.status === "active");
+        if (currentPhase && currentPhase.substeps) {
+          currentStep = currentPhase.substeps.find((s) => s.status === "active");
+        }
+      } else if (project.steps) {
+        // Step-based project (legacy)
+        currentStep = project.steps.find(
+          (s) => s.step_number === project.current_step,
+        );
+      }
 
       if (!currentStep) {
         const errorMessage: ChatMessage = {
@@ -636,10 +647,20 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       return;
     }
 
-    // Get current step
-    const currentStep = project.steps.find(
-      (s) => s.step_number === project.current_step,
-    );
+    // Get current step - handle both phase-based and step-based projects
+    let currentStep;
+    if (project.phases && project.phases.length > 0) {
+      // Phase-based project: find current phase and active substep
+      const currentPhase = project.phases.find((p) => p.status === "active");
+      if (currentPhase && currentPhase.substeps) {
+        currentStep = currentPhase.substeps.find((s) => s.status === "active");
+      }
+    } else if (project.steps) {
+      // Step-based project (legacy)
+      currentStep = project.steps.find(
+        (s) => s.step_number === project.current_step,
+      );
+    }
 
     if (!currentStep) {
       const errorMessage: ChatMessage = {

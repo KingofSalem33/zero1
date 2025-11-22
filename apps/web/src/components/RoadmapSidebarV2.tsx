@@ -275,10 +275,14 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               </div>
             )}
 
-            {/* Divider */}
-            <div className="h-px bg-neutral-700/30" />
-
             {/* Completed Phases */}
+            {completedPhases.length > 0 && (
+              <>
+                {/* Divider */}
+                <div className="h-px bg-neutral-700/30" />
+              </>
+            )}
+
             {completedPhases.length > 0 && (
               <div className="space-y-2">
                 <button
@@ -325,51 +329,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               </div>
             )}
 
-            {/* Locked Phases */}
-            {lockedPhases.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setShowUpcoming(!showUpcoming)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <span className="text-xs font-bold text-neutral-500 tracking-wider">
-                    COMING NEXT ({lockedPhases.length})
-                  </span>
-                  <svg
-                    className={`w-3 h-3 text-neutral-400 transition-transform ${showUpcoming ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showUpcoming && (
-                  <div className="space-y-2 pl-2">
-                    {lockedPhases.map((phase) => (
-                      <div key={phase.id} className="text-xs space-y-1">
-                        <div className="flex items-start gap-2 text-neutral-600">
-                          <span className="mt-0.5">→</span>
-                          <div className="flex-1">
-                            <div className="font-medium text-neutral-500">
-                              {phase.visible_win}
-                            </div>
-                            <div className="text-neutral-700 text-[11px] mt-0.5">
-                              {phase.phase_id} · {phase.title}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* HIDE UPCOMING PHASES - Progressive disclosure: show only what's been completed */}
           </>
         ) : (
           /* STEP-BASED UI (OLD MODEL) */
@@ -503,51 +463,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               </div>
             )}
 
-            {/* Upcoming Steps */}
-            {upcomingSteps.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setShowUpcoming(!showUpcoming)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <span className="text-xs font-bold text-neutral-500 tracking-wider">
-                    COMING NEXT ({upcomingSteps.length})
-                  </span>
-                  <svg
-                    className={`w-3 h-3 text-neutral-400 transition-transform ${showUpcoming ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showUpcoming && (
-                  <div className="space-y-2 pl-2">
-                    {upcomingSteps.slice(0, 5).map((step) => (
-                      <div key={step.id} className="text-xs space-y-1">
-                        <div className="flex items-start gap-2 text-neutral-400">
-                          <span className="text-neutral-600 mt-0.5">→</span>
-                          <span className="flex-1 font-medium">
-                            {step.title}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {upcomingSteps.length > 5 && (
-                      <div className="text-xs text-neutral-600 italic pl-4">
-                        ...and {upcomingSteps.length - 5} more steps
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* HIDE UPCOMING STEPS - Progressive disclosure */}
           </>
         )}
       </div>

@@ -192,25 +192,125 @@ router.post("/projects", async (req: Request, res: Response) => {
         .json({ error: "Failed to create roadmap metadata" });
     }
 
+    const activePhaseNumber =
+      roadmapResponse.phases.find((phase) => phase.status === "active")
+        ?.phase_number || 0;
+    const phaseIdMap = new Map<number, string>();
+    let phaseInsertSucceeded = false;
+
+    try {
+      const { data: insertedPhases, error: phaseInsertError } = await supabase
+        .from("roadmap_phases")
+        .insert(
+          roadmapResponse.phases.map((phase) => {
+            const status =
+              phase.status || (phase.phase_number === 0 ? "active" : "locked");
+            return {
+              project_id: project.id,
+              phase_number: phase.phase_number,
+              phase_id: phase.phase_id,
+              title: phase.title,
+              goal: phase.goal,
+              pedagogical_purpose: phase.pedagogical_purpose,
+              visible_win: phase.visible_win,
+              master_prompt: phase.master_prompt,
+              status,
+              unlocked_at:
+                status === "active" ? new Date().toISOString() : null,
+            };
+          }),
+        )
+        .select();
+
+      if (phaseInsertError) {
+        console.warn(
+          "[Roadmap V3] Failed to insert roadmap_phases, falling back to flat steps:",
+          phaseInsertError.message || phaseInsertError,
+        );
+      } else if (insertedPhases && insertedPhases.length > 0) {
+        phaseInsertSucceeded = true;
+
+        insertedPhases.forEach((insertedPhase) => {
+          phaseIdMap.set(insertedPhase.phase_number, insertedPhase.id);
+        });
+
+        const { error: projectPhaseUpdateError } = await supabase
+          .from("projects")
+          .update({
+            current_phase: activePhaseNumber,
+            vision_statement: vision,
+          })
+          .eq("id", project.id);
+
+        if (projectPhaseUpdateError) {
+          console.warn(
+            "[Roadmap V3] Unable to update project with phase data:",
+            projectPhaseUpdateError.message || projectPhaseUpdateError,
+          );
+        }
+
+        const metadataPhaseUpdates: Record<string, unknown> = {
+          total_phases: roadmapResponse.total_phases,
+          current_phase: activePhaseNumber,
+          roadmap_type: "phase_based",
+        };
+
+        if (roadmapResponse.estimated_timeline) {
+          metadataPhaseUpdates.estimated_timeline =
+            roadmapResponse.estimated_timeline;
+        }
+
+        const { error: metadataPhaseUpdateError } = await supabase
+          .from("project_roadmap_metadata")
+          .update(metadataPhaseUpdates)
+          .eq("project_id", project.id);
+
+        if (metadataPhaseUpdateError) {
+          console.warn(
+            "[Roadmap V3] Unable to update roadmap metadata with phase columns:",
+            metadataPhaseUpdateError.message || metadataPhaseUpdateError,
+          );
+        }
+      }
+    } catch (phaseInsertException) {
+      console.error(
+        "[Roadmap V3] Unexpected error inserting roadmap_phases:",
+        phaseInsertException,
+      );
+    }
+
     // Insert steps (backward compatible - flatten all substeps into regular steps)
     // NOTE: This is a fallback for when the migration hasn't been run yet
     // Once migration is run, this will properly create phases and substeps
     let stepNumber = 1;
     const allSteps: any[] = [];
 
+    const usingPhaseModel = phaseInsertSucceeded && phaseIdMap.size > 0;
+
     for (const phase of roadmapResponse.phases) {
+      const linkedPhaseId = phaseIdMap.get(phase.phase_number);
       // Flatten all substeps from all phases into a single array of steps
-      for (const substep of phase.substeps) {
+      for (const [subIndex, substep] of phase.substeps.entries()) {
+        const derivedStatus =
+          (usingPhaseModel && substep.status) ||
+          (stepNumber === 1 ? "active" : "pending");
+
         allSteps.push({
           project_id: project.id,
           step_number: stepNumber,
+          phase_id: linkedPhaseId,
+          substep_number:
+            usingPhaseModel && linkedPhaseId
+              ? substep.substep_number || subIndex + 1
+              : null,
+          is_substep: Boolean(usingPhaseModel && linkedPhaseId),
           title: `${phase.phase_id}: ${substep.title}`,
           description: substep.description,
           // Use substep-specific master prompt if available, fallback to phase prompt
           master_prompt: substep.master_prompt || phase.master_prompt,
           acceptance_criteria: substep.acceptance_criteria,
           estimated_complexity: substep.estimated_complexity,
-          status: stepNumber === 1 ? "active" : "pending", // First step is active
+          status: derivedStatus, // Respect generated status when available
           created_at: new Date().toISOString(),
         });
         stepNumber++;
@@ -268,7 +368,9 @@ router.post("/projects", async (req: Request, res: Response) => {
     }
 
     // Fetch complete project (backward compatible - uses flat steps)
-    const completeProject = await fetchProjectWithSteps(project.id);
+    const completeProject = phaseInsertSucceeded
+      ? await fetchProjectWithPhases(project.id)
+      : await fetchProjectWithSteps(project.id);
 
     return res.status(201).json(completeProject);
   } catch (error) {
@@ -294,6 +396,8 @@ router.post("/projects", async (req: Request, res: Response) => {
   }
 });
 
+let hasLoggedMetadataColumnWarning = false;
+
 // ============================================================================
 // GET /api/v2/projects - List all projects for authenticated user
 // ============================================================================
@@ -315,15 +419,7 @@ router.get(
       // TODO: Add last_accessed_at column to database and use for sorting
       const { data: projects, error: projectsError } = await supabase
         .from("projects")
-        .select(
-          `
-          id,
-          goal,
-          status,
-          created_at,
-          current_step
-        `,
-        )
+        .select("id, goal, status, created_at, current_step")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
@@ -335,15 +431,43 @@ router.get(
       // Fetch metadata for each project to get phase info and completion
       const projectsWithMeta = await Promise.all(
         (projects || []).map(async (project) => {
-          const { data: metadata } = await supabase
+          const {
+            data: metadata,
+            error: metadataError,
+          } = await supabase
             .from("project_roadmap_metadata")
-            .select("current_phase, completion_percentage")
+            .select("completion_percentage")
             .eq("project_id", project.id)
-            .single();
+            .maybeSingle();
+
+          if (
+            metadataError &&
+            metadataError.code !== "PGRST116" &&
+            !hasLoggedMetadataColumnWarning
+          ) {
+            hasLoggedMetadataColumnWarning = true;
+            console.warn(
+              "[Roadmap V2] project_roadmap_metadata missing expected columns. Run latest migrations to enable phase tracking.",
+              metadataError,
+            );
+          }
+
+          const rawCurrentPhase = (project as Record<string, unknown>)
+            ?.current_phase;
+          let currentPhaseNumber = 0;
+
+          if (typeof rawCurrentPhase === "number") {
+            currentPhaseNumber = rawCurrentPhase;
+          } else if (typeof rawCurrentPhase === "string") {
+            const numeric = parseInt(rawCurrentPhase.replace(/\D+/g, ""), 10);
+            if (!Number.isNaN(numeric)) {
+              currentPhaseNumber = numeric;
+            }
+          }
 
           return {
             ...project,
-            current_phase: metadata?.current_phase || 0,
+            current_phase: currentPhaseNumber,
             completion_percentage: metadata?.completion_percentage || 0,
           };
         }),
@@ -381,14 +505,22 @@ router.get("/projects/:id", async (req: Request, res: Response) => {
       // Silently fail if column doesn't exist yet
     }
 
-    // Check if project uses phase-based roadmap
-    const { data: metadata } = await supabase
-      .from("project_roadmap_metadata")
-      .select("roadmap_type")
+    // Check if project has phases in the database
+    const { data: phases, error: phasesError } = await supabase
+      .from("roadmap_phases")
+      .select("id")
       .eq("project_id", id)
-      .single();
+      .limit(1);
 
-    const isPhaseBasedProject = metadata?.roadmap_type === "phase_based";
+    console.log(`[Roadmap V2] Checking phases for project ${id}:`, {
+      phasesFound: phases?.length || 0,
+      phasesError,
+      phases,
+    });
+
+    const isPhaseBasedProject = phases && phases.length > 0;
+
+    console.log(`[Roadmap V2] isPhaseBasedProject: ${isPhaseBasedProject}`);
 
     const project = isPhaseBasedProject
       ? await fetchProjectWithPhases(id)
