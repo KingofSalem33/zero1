@@ -1,28 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
-import ArtifactAnalysisCard from "./ArtifactAnalysisCard";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
-
-interface ArtifactAnalysis {
-  quality_score: number;
-  satisfied_criteria: string[];
-  partial_criteria: string[];
-  missing_criteria: string[];
-  tech_stack: string[];
-  has_tests: boolean;
-  feedback: string;
-  suggest_completion: boolean;
-  confidence: number;
-}
-
-interface LatestArtifact {
-  artifact_id: string;
-  file_name: string;
-  analysis: ArtifactAnalysis;
-  analyzed_at: string;
-}
 
 // Helper to convert phase format: "P1" -> 1, or pass through if already number
 const getPhaseNumber = (phase: string | number): number => {
@@ -121,12 +101,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUploadButton, setShowUploadButton] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [latestArtifact, setLatestArtifact] = useState<LatestArtifact | null>(
-    null,
-  );
-  const [dismissedArtifactId, setDismissedArtifactId] = useState<string | null>(
-    null,
-  );
   const [buildApproach, setBuildApproach] = useState<
     "code" | "platform" | "auto" | null
   >(null);
@@ -275,8 +249,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     if (project?.id) {
       // Clear messages when switching to a new project
       setMessages([]);
-      setLatestArtifact(null);
-      setDismissedArtifactId(null);
       messagesFetchedRef.current = false;
 
       console.log(
@@ -295,49 +267,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   // No polling needed - SSE streams provide real-time updates
   // Messages are fetched once on mount and updated via streaming responses
-
-  // Fetch latest artifact analysis
-  const fetchLatestArtifact = useCallback(async () => {
-    if (!project) return;
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/artifacts/project/${project.id}/latest`,
-      );
-      if (response.ok) {
-        const data: LatestArtifact = await response.json();
-        // Only update if it's a new artifact (different ID)
-        if (data.artifact_id !== latestArtifact?.artifact_id) {
-          setLatestArtifact(data);
-          console.log(
-            `[UnifiedWorkspace] New artifact analysis: ${data.file_name}`,
-          );
-        }
-      } else if (response.status === 404) {
-        // No analyzed artifacts yet - this is normal for new projects
-        setLatestArtifact(null);
-      } else if (response.status === 429) {
-        // Rate limited - skip this poll, will try again next interval
-        console.warn(
-          "[UnifiedWorkspace] Rate limited on artifact fetch, skipping",
-        );
-      }
-    } catch (error) {
-      // Only log errors that aren't rate limits or 404s
-      if (error instanceof Error && !error.message.includes("429")) {
-        console.error(
-          "[UnifiedWorkspace] Error fetching latest artifact:",
-          error,
-        );
-      }
-    }
-  }, [project, latestArtifact?.artifact_id]);
-
-  // Fetch artifact analysis once on mount (no polling)
-  useEffect(() => {
-    if (!project) return;
-    fetchLatestArtifact();
-  }, [project?.id, fetchLatestArtifact]);
 
   // Helper function to send a message directly with a specific prompt
   const sendMessageWithPrompt = useCallback(
@@ -366,7 +295,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         // Phase-based project: find current phase and active substep
         const currentPhase = project.phases.find((p) => p.status === "active");
         if (currentPhase && currentPhase.substeps) {
-          currentStep = currentPhase.substeps.find((s) => s.status === "active");
+          currentStep = currentPhase.substeps.find(
+            (s) => s.status === "active",
+          );
         }
       } else if (project.steps) {
         // Step-based project (legacy)
@@ -1549,25 +1480,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               <ToolBadges tools={toolsUsed} />
             </div>
           )}
-
-          {/* Artifact Analysis Card */}
-          {latestArtifact &&
-            latestArtifact.artifact_id !== dismissedArtifactId && (
-              <div className="mt-6">
-                <ArtifactAnalysisCard
-                  analysis={latestArtifact.analysis}
-                  fileName={latestArtifact.file_name}
-                  stepTitle={
-                    project?.steps.find(
-                      (s) => s.step_number === project.current_step,
-                    )?.title || "Current Step"
-                  }
-                  onDismiss={() =>
-                    setDismissedArtifactId(latestArtifact.artifact_id)
-                  }
-                />
-              </div>
-            )}
 
           {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
 

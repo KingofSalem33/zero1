@@ -21,8 +21,6 @@ import { AvatarMenu } from "./components/AvatarMenu";
 
 import { AuthModal } from "./components/AuthModal";
 
-import { ProjectLibrary } from "./components/ProjectLibrary";
-
 import { MarkdownMessage } from "./components/MarkdownMessage";
 
 import { useAuth } from "./contexts/AuthContext";
@@ -1467,8 +1465,6 @@ function App() {
   const { user, loading: authLoading, getAccessToken } = useAuth();
 
   // View state management
-  type AppView = "landing" | "workspace" | "library";
-  const [currentView, setCurrentView] = useState<AppView>("landing");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userProjects, setUserProjects] = useState<any[]>([]);
 
@@ -2154,8 +2150,8 @@ Return only the refined vision statement using the format "I want to build _____
     localStorage.removeItem("zero1_userId"); // Clean up legacy userId if it exists
     // Reset the project load ref so next login can restore projects
     hasLoadedProjectRef.current = false;
-    // Navigate to landing
-    setCurrentView("landing");
+    // Clear project
+    setProject(null);
   };
 
   const handleSelectProject = async (projectId: string) => {
@@ -2179,7 +2175,6 @@ Return only the refined vision statement using the format "I want to build _____
         localStorage.setItem("zero1_lastProjectId", projectId);
 
         setProject(normalizedProject);
-        setCurrentView("workspace");
       }
     } catch {
       // Failed to load project
@@ -2212,37 +2207,11 @@ Return only the refined vision statement using the format "I want to build _____
     }
   };
 
-  const handleCreateNewFromLibrary = () => {
-    setProject(null);
-    localStorage.removeItem("zero1_lastProjectId");
-    setCurrentView("landing");
-  };
-
-  const handleCloseLibrary = () => {
-    if (project) {
-      setCurrentView("workspace");
-    } else {
-      setCurrentView("landing");
-    }
-  };
-
   const handleExitToLibrary = () => {
-    // Clear project and return to landing page
+    // Clear project
     setProject(null);
     localStorage.removeItem("zero1_lastProjectId");
-    setCurrentView("landing");
   };
-
-  // Determine current view based on project state
-  useEffect(() => {
-    if (currentView === "library") return; // Don't auto-switch when in library
-
-    if (project) {
-      setCurrentView("workspace");
-    } else {
-      setCurrentView("landing");
-    }
-  }, [project]);
 
   // Show loading while auth initializes
   if (authLoading) {
@@ -2253,21 +2222,7 @@ Return only the refined vision statement using the format "I want to build _____
     );
   }
 
-  // Render library view
-  if (currentView === "library") {
-    return (
-      <>
-        <ProjectLibrary
-          onSelectProject={handleSelectProject}
-          onCreateNew={handleCreateNewFromLibrary}
-          onClose={handleCloseLibrary}
-        />
-        {showAuthModal && <AuthModal onClose={handleCloseAuthModal} />}
-      </>
-    );
-  }
-
-  // Render workspace or landing view
+  // Always render workspace view
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
       <NavBar
