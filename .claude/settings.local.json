@@ -60,7 +60,11 @@
       "Bash(npm run build:api:*)",
       "Bash(Select-Object -First 100)",
       "Bash(npx tsc:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(npx ts-node-dev:*)",
+      "Bash(Select-Object -First 50)",
+      "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite)",
+      "Bash(git checkout -b llm-only)"
     ],
     "deny": [],
     "ask": []

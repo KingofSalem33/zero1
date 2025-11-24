@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
+import { useChatStream } from "../hooks/useChatStream";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -82,6 +83,8 @@ interface UnifiedWorkspaceProps {
   onRefreshProject: () => void;
   onAskAIRef?: React.MutableRefObject<(() => void) | null>;
   onOpenNewWorkspace?: () => void;
+  messages?: ChatMessage[];
+  onMessagesChange?: (messages: ChatMessage[]) => void;
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -95,8 +98,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   onRefreshProject,
   onAskAIRef,
   onOpenNewWorkspace,
+  messages: externalMessages,
+  onMessagesChange,
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
+  const messages = externalMessages !== undefined ? externalMessages : internalMessages;
+  const setMessages = onMessagesChange || setInternalMessages;
   const [currentInput, setCurrentInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUploadButton, setShowUploadButton] = useState(false);
@@ -555,223 +562,94 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     return "What's on your mind?";
   };
 
-  const handleSendMessage = async () => {
-    if (!currentInput.trim() || isProcessing) return;
+  // Use simple chat stream hook for LLM-only mode
+  const { streamingMessage, isStreaming, startStream } = useChatStream();
 
-    // If no project, create one
-    if (!project) {
-      onCreateProject(
-        currentInput.trim(),
-        buildApproach || "auto",
-        projectPurpose || "personal",
-        coreProof || undefined,
-        budgetLimit || undefined,
-        additionalContext || undefined,
-      );
-      setCurrentInput("");
-      // Reset state for next project
-      setBuildApproach(null);
-      setProjectPurpose(null);
-      setCoreProof("");
-      setBudgetLimit(null);
-      setAdditionalContext("");
-      return;
-    }
+  // Update messages when streaming message changes
+  useEffect(() => {
+    if (streamingMessage && streamingMessage.content) {
+      setMessages((prev) => {
+        // Check if last message is the streaming AI message
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg && lastMsg.type === "ai" && lastMsg.id === "streaming") {
+          // Update existing streaming message
+          return prev.map((msg) =>
+            msg.id === "streaming"
+              ? { ...msg, content: streamingMessage.content }
+              : msg
+          );
+        } else {
+          // Add new AI message
+          return [
+            ...prev,
+            {
+              id: "streaming",
+              type: "ai" as const,
+              content: streamingMessage.content,
+              timestamp: new Date(),
+            },
+          ];
+        }
+      });
 
-    // Get current step - handle both phase-based and step-based projects
-    let currentStep;
-    if (project.phases && project.phases.length > 0) {
-      // Phase-based project: find current phase and active substep
-      const currentPhase = project.phases.find((p) => p.status === "active");
-      if (currentPhase && currentPhase.substeps) {
-        currentStep = currentPhase.substeps.find((s) => s.status === "active");
+      // Update tool badges from streaming message
+      if (streamingMessage.activeTools.length > 0 || streamingMessage.completedTools.length > 0) {
+        const newTools: ToolActivity[] = [
+          ...streamingMessage.activeTools.map(tool => ({
+            type: "tool_start" as const,
+            tool,
+            timestamp: new Date().toISOString(),
+          })),
+          ...streamingMessage.completedTools.map(tool => ({
+            type: "tool_end" as const,
+            tool,
+            timestamp: new Date().toISOString(),
+          })),
+        ];
+        setToolsUsed(newTools);
       }
-    } else if (project.steps) {
-      // Step-based project (legacy)
-      currentStep = project.steps.find(
-        (s) => s.step_number === project.current_step,
-      );
     }
 
-    if (!currentStep) {
-      const errorMessage: ChatMessage = {
-        id: Date.now().toString(),
-        type: "ai",
-        content:
-          "No active step found. Please make sure you have an active project with steps.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      return;
+    // When streaming is complete, finalize the message and clear tool badges
+    if (streamingMessage?.isComplete) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === "streaming"
+            ? { ...msg, id: Date.now().toString() }
+            : msg
+        )
+      );
+      // Clear tool badges when streaming is complete
+      setToolsUsed([]);
     }
+  }, [streamingMessage, setToolsUsed]);
+
+  const handleSendMessage = async () => {
+    if (!currentInput.trim() || isProcessing || isStreaming) return;
 
     setIsProcessing(true);
-    setToolsUsed([]); // Clear previous tools
     const userMessage = currentInput.trim();
 
+    // Add user message to chat
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
       content: userMessage,
       timestamp: new Date(),
     };
-
-    setMessages((prev) => [...prev, newMessage]);
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
     setCurrentInput("");
 
-    const masterPrompt = currentStep.master_prompt;
+    // Convert ChatMessage format to API format (role/content)
+    const historyForAPI = updatedMessages.slice(0, -1).map(msg => ({
+      role: msg.type === "user" ? "user" : "assistant",
+      content: msg.content,
+    }));
 
-    // Create placeholder for AI message that will be streamed
-    const aiMessageId = (Date.now() + 1).toString();
-    const aiMessage: ChatMessage = {
-      id: aiMessageId,
-      type: "ai",
-      content: "Thinking...",
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, aiMessage]);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/v2/projects/${project.id}/execute-step`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            master_prompt: masterPrompt,
-            user_message: userMessage,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          const errorData = await response.json().catch(() => ({}));
-          const retryAfter = errorData.retryAfter || "1 minute";
-          throw new Error(
-            `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
-          );
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const decoder = new (window as any).TextDecoder();
-      let buffer = "";
-      let accumulatedContent = "";
-      const allTools: ToolActivity[] = [];
-      let receivedDone = false;
-      let currentEvent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line === "") {
-            currentEvent = "";
-            continue;
-          }
-          if (line.startsWith(":")) {
-            continue;
-          }
-          if (line.startsWith("event:")) {
-            currentEvent = line.slice(6).trim();
-          } else if (line.startsWith("data:")) {
-            const data = line.slice(5).trim();
-            if (!data) continue;
-
-            try {
-              const parsed = JSON.parse(data);
-
-              switch (currentEvent) {
-                case "content":
-                  accumulatedContent += parsed.delta;
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === aiMessageId
-                        ? { ...msg, content: accumulatedContent }
-                        : msg,
-                    ),
-                  );
-                  break;
-
-                case "tool_call":
-                  allTools.push({
-                    type: "tool_start",
-                    tool: parsed.tool,
-                    args: parsed.args,
-                    timestamp: new Date().toISOString(),
-                  });
-                  setToolsUsed([...allTools]);
-                  break;
-
-                case "tool_result":
-                  allTools.push({
-                    type: "tool_end",
-                    tool: parsed.tool,
-                    result: parsed.result,
-                    timestamp: new Date().toISOString(),
-                  });
-                  setToolsUsed([...allTools]);
-                  break;
-
-                case "tool_error":
-                  allTools.push({
-                    type: "tool_error",
-                    tool: parsed.tool,
-                    error: parsed.error,
-                    timestamp: new Date().toISOString(),
-                  });
-                  setToolsUsed([...allTools]);
-                  break;
-
-                case "done":
-                  receivedDone = true;
-                  break;
-
-                case "error":
-                  throw new Error(parsed.message || "Streaming error");
-              }
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-        if (receivedDone) {
-          try {
-            await reader.cancel();
-          } catch {
-            // Ignore cancel errors
-          }
-          break;
-        }
-      }
-    } catch (error) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 2).toString(),
-        type: "ai",
-        content:
-          error instanceof Error
-            ? error.message
-            : "Network error. Please check your connection and try again.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsProcessing(false);
-      // Refresh messages from thread to catch any async messages (like artifact analysis)
-      setTimeout(() => fetchThreadMessages(), 1000);
-    }
+    // Start streaming AI response with updated message history
+    await startStream(userMessage, "user", historyForAPI);
+    setIsProcessing(false);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -781,8 +659,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
   };
 
+  // LLM-only branch: Skip landing page, always show workshop
   // Empty state when no project
-  if (!project) {
+  if (false && !project) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 py-12">
         <div className="max-w-3xl w-full space-y-8">
@@ -1445,11 +1324,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 <div className="space-y-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                      AI
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
                     </div>
-                    <span className="text-xs text-neutral-500 font-medium">
-                      Workshop AI
-                    </span>
                   </div>
                   <div className="ml-[2.625rem] space-y-2">
                     {message.content === "Thinking..." ? (
@@ -1478,6 +1356,24 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           {toolsUsed.length > 0 && (
             <div className="ml-[2.625rem]">
               <ToolBadges tools={toolsUsed} />
+            </div>
+          )}
+
+          {/* Loading skeleton while streaming */}
+          {isStreaming && !streamingMessage?.content && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm animate-pulse">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="ml-[2.625rem] space-y-3 animate-pulse">
+                <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
+                <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
+                <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+              </div>
             </div>
           )}
 
