@@ -66,7 +66,9 @@
       "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite)",
       "Bash(git checkout -b llm-only)",
       "Bash(echo:*)",
-      "Bash(MarkdownMessage.tsx)"
+      "Bash(MarkdownMessage.tsx)",
+      "Bash(git rm:*)",
+      "Bash(del nul)"
     ],
     "deny": [],
     "ask": []
