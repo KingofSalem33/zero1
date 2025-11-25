@@ -64,7 +64,9 @@
       "Bash(npx ts-node-dev:*)",
       "Bash(Select-Object -First 50)",
       "Bash(if exist node_modules.vite rmdir /s /q node_modules.vite)",
-      "Bash(git checkout -b llm-only)"
+      "Bash(git checkout -b llm-only)",
+      "Bash(echo:*)",
+      "Bash(MarkdownMessage.tsx)"
     ],
     "deny": [],
     "ask": []

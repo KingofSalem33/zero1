@@ -1,6 +1,8 @@
+/* eslint-disable no-console */
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
+import { VoiceSettings } from "./VoiceSettings";
 import { useChatStream } from "../hooks/useChatStream";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -89,7 +91,7 @@ interface UnifiedWorkspaceProps {
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
-  onCreateProject,
+  onCreateProject: _onCreateProject,
   onInspireMe,
   toolsUsed,
   setToolsUsed,
@@ -102,7 +104,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   onMessagesChange,
 }) => {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
-  const messages = externalMessages !== undefined ? externalMessages : internalMessages;
+  const messages =
+    externalMessages !== undefined ? externalMessages : internalMessages;
   const setMessages = onMessagesChange || setInternalMessages;
   const [currentInput, setCurrentInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -576,7 +579,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           return prev.map((msg) =>
             msg.id === "streaming"
               ? { ...msg, content: streamingMessage.content }
-              : msg
+              : msg,
           );
         } else {
           // Add new AI message
@@ -593,14 +596,17 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       });
 
       // Update tool badges from streaming message
-      if (streamingMessage.activeTools.length > 0 || streamingMessage.completedTools.length > 0) {
+      if (
+        streamingMessage.activeTools.length > 0 ||
+        streamingMessage.completedTools.length > 0
+      ) {
         const newTools: ToolActivity[] = [
-          ...streamingMessage.activeTools.map(tool => ({
+          ...streamingMessage.activeTools.map((tool) => ({
             type: "tool_start" as const,
             tool,
             timestamp: new Date().toISOString(),
           })),
-          ...streamingMessage.completedTools.map(tool => ({
+          ...streamingMessage.completedTools.map((tool) => ({
             type: "tool_end" as const,
             tool,
             timestamp: new Date().toISOString(),
@@ -614,10 +620,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     if (streamingMessage?.isComplete) {
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === "streaming"
-            ? { ...msg, id: Date.now().toString() }
-            : msg
-        )
+          msg.id === "streaming" ? { ...msg, id: Date.now().toString() } : msg,
+        ),
       );
       // Clear tool badges when streaming is complete
       setToolsUsed([]);
@@ -642,7 +646,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setCurrentInput("");
 
     // Convert ChatMessage format to API format (role/content)
-    const historyForAPI = updatedMessages.slice(0, -1).map(msg => ({
+    const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
       role: msg.type === "user" ? "user" : "assistant",
       content: msg.content,
     }));
@@ -661,6 +665,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   // LLM-only branch: Skip landing page, always show workshop
   // Empty state when no project
+  // eslint-disable-next-line no-constant-condition, no-constant-binary-expression
   if (false && !project) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 py-12">
@@ -1324,8 +1329,18 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 <div className="space-y-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -1364,8 +1379,18 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <div className="space-y-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm animate-pulse">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
                   </svg>
                 </div>
               </div>
@@ -1474,6 +1499,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 rows={1}
                 disabled={isProcessing}
               />
+              {/* Voice Settings Button */}
+              <VoiceSettings />
               <button
                 onClick={handleSendMessage}
                 disabled={!currentInput.trim() || isProcessing}

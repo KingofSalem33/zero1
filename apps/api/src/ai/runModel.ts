@@ -189,7 +189,6 @@ export async function runModel(
         input: conversationMessages,
         tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
         tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-        temperature: 0.3,
         max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
         parallel_tool_calls: true,
         // Text configuration with structured outputs and verbosity
