@@ -33,7 +33,11 @@ import {
   strictLimiter,
   uploadLimiter,
 } from "./middleware/rateLimit";
-import { buildSystemPrompt, buildSystemPromptWithJson } from "./config/prompts";
+import {
+  buildSystemPrompt,
+  buildSystemPromptWithJson,
+  buildExegeticalEssayUserPrompt,
+} from "./config/prompts";
 
 // Extract URLs from text using regex
 function extractUrls(text: string): string[] {
@@ -328,6 +332,13 @@ app.post(
         userId && userId !== "anonymous" ? await getFacts(userId) : [];
       const systemMessage = buildSystemPrompt(userFacts);
 
+      // For first message in conversation, use essay template
+      // For follow-up questions, use message as-is
+      const userMessage =
+        history.length === 0
+          ? buildExegeticalEssayUserPrompt(message)
+          : message;
+
       const conversationMessages = [
         {
           role: "system" as const,
@@ -336,7 +347,7 @@ app.post(
         ...history,
         {
           role: "user" as const,
-          content: message,
+          content: userMessage,
         },
       ];
 
