@@ -13,7 +13,7 @@ interface Chat {
 }
 
 function App() {
-  const { user, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const [project] = useState(null); // No project management for clean slate
   const [toolsUsed, setToolsUsed] = useState([]);
 
@@ -83,7 +83,11 @@ function App() {
   // Handle selecting a chat from history
   const handleSelectChat = (chatId: string) => {
     // Save current chat first
-    if (currentMessages.length > 0 && currentChatId && currentChatId !== chatId) {
+    if (
+      currentMessages.length > 0 &&
+      currentChatId &&
+      currentChatId !== chatId
+    ) {
       const firstUserMessage = currentMessages.find((m) => m.type === "user");
       const title = firstUserMessage?.content.slice(0, 50) || "New Chat";
       const lastAiMessage = [...currentMessages]
