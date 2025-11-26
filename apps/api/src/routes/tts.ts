@@ -40,7 +40,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     console.log("Calling OpenAI TTS API...");
 
     // Generate speech with timeout
-    const mp3 = await Promise.race([
+    const mp3Result = await Promise.race([
       client.audio.speech.create({
         model,
         voice,
@@ -55,6 +55,11 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         ),
       ),
     ]);
+
+    // Type assertion - we know the successful result is the speech response
+    const mp3 = mp3Result as Awaited<
+      ReturnType<typeof client.audio.speech.create>
+    >;
 
     console.log("TTS API call successful");
 
