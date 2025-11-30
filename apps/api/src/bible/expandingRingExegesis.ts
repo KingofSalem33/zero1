@@ -97,7 +97,7 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
 
   // Try to match full name to abbreviation
   for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
-    if (fullName.toLowerCase() === bookAbbrev) {
+    if (typeof fullName === 'string' && fullName.toLowerCase() === bookAbbrev) {
       bookAbbrev = abbrev;
       console.log(`[Expanding Ring] Matched full name "${bestCandidate.book}" to abbrev "${abbrev}"`);
       break;

@@ -113,7 +113,7 @@ export async function buildContextBundle(
   // ========================================
   console.log(`[Graph Walker] Fetching Ring 3 (max ${cfg.ring3Limit})...`);
 
-  excludeSet.add(...ring2Ids);
+  ring2Ids.forEach(id => excludeSet.add(id));
   const ring3IdsRaw = await fetchLayer(ring2Ids, cfg.ring3Limit, excludeSet);
   const ring3Ids = ring3IdsRaw.filter((id) => !excludeSet.has(id));
   const ring3 = await hydrateVerses(ring3Ids);
