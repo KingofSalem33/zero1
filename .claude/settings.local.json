@@ -68,7 +68,18 @@
       "Bash(echo:*)",
       "Bash(MarkdownMessage.tsx)",
       "Bash(git rm:*)",
-      "Bash(del nul)"
+      "Bash(del nul)",
+      "Bash(del remove-bom.js kjv-new.json)",
+      "WebFetch(domain:www.openbible.info)",
+      "WebFetch(domain:github.com)",
+      "Bash(tar:*)",
+      "Bash(Select-Object -First 5)",
+      "Bash(Get-Content \"C:\\Users\\coryh\\zero1\\apps\\api\\logs\\api.log\")",
+      "Bash(Select-Object -Last 100)",
+      "Bash(git checkout:*)",
+      "Bash(test:*)",
+      "Bash(Select-Object -Last 150)",
+      "Bash(Select-String -Pattern \"passover|Passover|Request received\" -Context 5)"
     ],
     "deny": [],
     "ask": []
