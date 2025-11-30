@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback, useRef } from "react";
+import { flushSync } from "react-dom";
 
 export interface ToolCallEvent {
   tool: string;
@@ -115,16 +116,33 @@ export function useChatStream() {
 
               try {
                 const parsed = JSON.parse(data);
+                console.log("[Frontend SSE] Event:", currentEvent, "Data length:", JSON.stringify(parsed).length);
+                console.log("[Frontend SSE] currentEvent value:", JSON.stringify(currentEvent));
+                console.log("[Frontend SSE] currentEvent === 'content':", currentEvent === "content");
 
-                setStreamingMessage((prev) => {
-                  if (!prev) return prev;
+                console.log("[Frontend SSE] About to call setStreamingMessage");
+                try {
+                  flushSync(() => {
+                    setStreamingMessage((prev) => {
+                  console.log("[Frontend SSE] setStreamingMessage called, prev:", prev);
+                  if (!prev) {
+                    console.log("[Frontend SSE] prev is null/undefined, returning");
+                    return prev;
+                  }
 
+                  console.log("[Frontend SSE] About to enter switch with currentEvent:", currentEvent);
                   switch (currentEvent) {
                     case "content": {
                       const contentEvent = parsed as ContentEvent;
+                      console.log("[Frontend SSE] Content event:", contentEvent);
+                      console.log("[Frontend SSE] Delta:", contentEvent.delta);
+                      console.log("[Frontend SSE] Delta length:", contentEvent.delta?.length);
+                      console.log("[Frontend SSE] Prev content length:", prev.content.length);
+                      const newContent = prev.content + (contentEvent.delta || "");
+                      console.log("[Frontend SSE] New content length:", newContent.length);
                       return {
                         ...prev,
-                        content: prev.content + contentEvent.delta,
+                        content: newContent,
                       };
                     }
 
@@ -183,6 +201,11 @@ export function useChatStream() {
                       return prev;
                   }
                 });
+                  });
+                console.log("[Frontend SSE] setStreamingMessage call completed");
+              } catch (setStateError) {
+                console.error("[Frontend SSE] Error calling setStreamingMessage:", setStateError);
+              }
               } catch (parseError) {
                 console.error("Failed to parse SSE data:", parseError);
               }

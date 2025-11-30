@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
 import { VoiceSettings } from "./VoiceSettings";
+import { TextHighlightTooltip } from "./TextHighlightTooltip";
+import { BookmarkPanel } from "./BookmarkPanel";
 import { useChatStream } from "../hooks/useChatStream";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -122,6 +124,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     "$0" | "$100" | "$1000+" | null
   >(null);
   const [additionalContext, setAdditionalContext] = useState("");
+  const [showBookmarkPanel, setShowBookmarkPanel] = useState(false);
 
   // Completion modal state
   // Removed micro-step state variables - no longer using cards UI
@@ -570,6 +573,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   // Update messages when streaming message changes
   useEffect(() => {
+    console.log("[UnifiedWorkspace] streamingMessage changed:", {
+      hasContent: !!streamingMessage?.content,
+      contentLength: streamingMessage?.content?.length,
+      isComplete: streamingMessage?.isComplete,
+    });
     if (streamingMessage && streamingMessage.content) {
       setMessages((prev) => {
         // Check if last message is the streaming AI message
@@ -661,6 +669,35 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleGoDeeper = async (selectedText: string) => {
+    // Create a prompt asking the LLM to explain the selected text
+    const prompt = `Explain this in detail:\n\n"${selectedText}"`;
+
+    if (isProcessing || isStreaming) return;
+
+    setIsProcessing(true);
+
+    // Add user message to chat
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: "user",
+      content: prompt,
+      timestamp: new Date(),
+    };
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
+
+    // Convert ChatMessage format to API format (role/content)
+    const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
+      role: msg.type === "user" ? "user" : "assistant",
+      content: msg.content,
+    }));
+
+    // Start streaming AI response with updated message history
+    await startStream(prompt, "user", historyForAPI);
+    setIsProcessing(false);
   };
 
   // LLM-only branch: Skip landing page, always show workshop
@@ -1499,6 +1536,16 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 rows={1}
                 disabled={isProcessing}
               />
+              {/* Bookmark Button */}
+              <button
+                onClick={() => setShowBookmarkPanel(true)}
+                className="p-2 rounded-lg text-neutral-400 hover:text-blue-400 hover:bg-white/5 transition-all"
+                title="View bookmarks"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              </button>
               {/* Voice Settings Button */}
               <VoiceSettings />
               <button
@@ -1531,6 +1578,18 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       )}
 
       {/* Step Completion Modal */}
+
+      {/* Text Highlight Tooltip */}
+      <TextHighlightTooltip onGoDeeper={handleGoDeeper} userId="anonymous" />
+
+      {/* Bookmark Panel */}
+      {showBookmarkPanel && (
+        <BookmarkPanel
+          userId="anonymous"
+          onClose={() => setShowBookmarkPanel(false)}
+          onSelectBookmark={handleGoDeeper}
+        />
+      )}
     </div>
   );
 };

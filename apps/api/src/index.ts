@@ -7,6 +7,8 @@ import { ENV } from "./env";
 import threadsRouter from "./routes/threads";
 import checkpointsRouter from "./routes/checkpoints";
 import ttsRouter from "./routes/tts";
+import synopsisRouter from "./routes/synopsis";
+import bookmarksRouter from "./routes/bookmarks";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream";
 import { selectRelevantTools } from "./ai/tools/selectTools";
@@ -36,7 +38,6 @@ import {
 import {
   buildSystemPrompt,
   buildSystemPromptWithJson,
-  buildExegeticalEssayUserPrompt,
 } from "./config/prompts";
 
 // Extract URLs from text using regex
@@ -101,6 +102,12 @@ app.use("/api/checkpoints", optionalAuth, checkpointsRouter);
 
 // Mount TTS routes (text-to-speech)
 app.use("/api/tts", optionalAuth, ttsRouter);
+
+// Mount synopsis routes (text analysis)
+app.use("/api/synopsis", optionalAuth, synopsisRouter);
+
+// Mount bookmark routes
+app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
 
 // File endpoints (temporarily optional auth for testing)
 app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);
@@ -314,6 +321,7 @@ app.post(
   aiLimiter,
   express.json(),
   async (req, res) => {
+    console.log("[Chat Stream] Request received:", { message: req.body?.message?.substring(0, 50) });
     try {
       // Validate request body
       const {
@@ -327,44 +335,90 @@ app.post(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Build conversation messages with Bible study system prompt
-      const userFacts =
-        userId && userId !== "anonymous" ? await getFacts(userId) : [];
-      const systemMessage = buildSystemPrompt(userFacts);
+      // Helper to send SSE event (copied from runModelStream)
+      const sendEvent = (event: string, data: unknown) => {
+        const eventStr = `event: ${event}\n`;
+        const dataStr =
+          typeof data === "string"
+            ? `data: ${data}\n\n`
+            : `data: ${JSON.stringify(data)}\n\n`;
+        console.log(
+          `[SSE] Sending event: ${event}, data: ${typeof data === "string" ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100)}...`,
+        );
+        res.write(eventStr);
+        res.write(dataStr);
+      };
 
-      // For first message in conversation, use essay template
-      // For follow-up questions, use message as-is
-      const userMessage =
-        history.length === 0
-          ? buildExegeticalEssayUserPrompt(message)
-          : message;
+      // Send initial heartbeat (copied from runModelStream)
+      res.write(`:\n\n`);
 
-      const conversationMessages = [
-        {
-          role: "system" as const,
-          content: systemMessage,
-        },
-        ...history,
-        {
-          role: "user" as const,
-          content: userMessage,
-        },
-      ];
+      // Use the Expanding Ring exegesis pipeline
+      // NOTE: Requires Supabase database to be populated first!
+      // Database is now populated with 31,100 verses and 210,330 cross-references ✓
+      // ENABLED: Using Expanding Ring graph-based approach
+      {
+        console.log("[Exegesis] Running Expanding Ring pipeline...");
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { explainScripture } = require("./bible/expandingRingExegesis");
+        const exegesisResult = await explainScripture(message);
+        console.log("[Exegesis] Got result, length:", exegesisResult.answer.length);
+        console.log("[Exegesis] Context stats:", exegesisResult.contextStats);
 
-      // Dynamically select relevant tools
-      const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
-        selectRelevantTools(message, history);
+        // Send answer as content in sentence-based chunks for better performance
+        console.log("[SSE] Sending content in sentence chunks");
+        // Split into sentences (periods, question marks, exclamation points followed by space or end)
+        const sentences = exegesisResult.answer.split(/(?<=[.!?])\s+/);
+        for (const sentence of sentences) {
+          sendEvent("content", { delta: sentence + " " });
+        }
 
-      // Run streaming model with selected tools
-      await runModelStream(res, conversationMessages, {
-        toolSpecs: selectedSpecs,
-        toolMap: selectedMap,
-      });
+        // Send done event with context metadata
+        sendEvent("done", {
+          citations: [],
+          anchor: exegesisResult.anchor,
+          contextStats: exegesisResult.contextStats,
+        });
+        console.log("[SSE] Ending response");
+        res.end();
 
-      // Store conversation in memory if userId is provided
-      if (userId && userId !== "anonymous") {
-        await pushToThread(userId, { role: "user", content: message });
-        // Note: We don't have the full response here, would need to capture it during streaming
+        // Store in memory
+        if (userId && userId !== "anonymous") {
+          await pushToThread(userId, { role: "user", content: message });
+          await pushToThread(userId, { role: "assistant", content: exegesisResult.answer });
+        }
+      } else {
+        // EXISTING: Conversational follow-up with streaming
+        const userFacts =
+          userId && userId !== "anonymous" ? await getFacts(userId) : [];
+        const systemMessage = buildSystemPrompt(userFacts);
+
+        const conversationMessages = [
+          {
+            role: "system" as const,
+            content: systemMessage,
+          },
+          ...history,
+          {
+            role: "user" as const,
+            content: message,
+          },
+        ];
+
+        // Dynamically select relevant tools
+        const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
+          selectRelevantTools(message, history);
+
+        // Run streaming model with selected tools
+        await runModelStream(res, conversationMessages, {
+          toolSpecs: selectedSpecs,
+          toolMap: selectedMap,
+        });
+
+        // Store conversation in memory if userId is provided
+        if (userId && userId !== "anonymous") {
+          await pushToThread(userId, { role: "user", content: message });
+          // Note: We don't have the full response here, would need to capture it during streaming
+        }
       }
     } catch (error) {
       console.error("Chat streaming error:", error);
