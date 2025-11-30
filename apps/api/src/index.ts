@@ -10,8 +10,8 @@ import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
 import bookmarksRouter from "./routes/bookmarks";
 import { runModel } from "./ai/runModel";
-import { runModelStream } from "./ai/runModelStream";
-import { selectRelevantTools } from "./ai/tools/selectTools";
+// import { runModelStream } from "./ai/runModelStream"; // Disabled - using Expanding Ring instead
+// import { selectRelevantTools } from "./ai/tools/selectTools"; // Disabled - using Expanding Ring instead
 import {
   chatRequestSchema,
   chatJsonResponseSchema,
@@ -327,7 +327,7 @@ app.post(
       const {
         message,
         userId = "anonymous",
-        history = [],
+        // history = [], // Not used in Expanding Ring mode
       } = chatRequestSchema.parse(req.body);
 
       // Set SSE headers
