@@ -21,6 +21,7 @@ export function TextHighlightTooltip({ onGoDeeper, userId = "anonymous" }: TextH
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [bookmarkSuccess, setBookmarkSuccess] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line no-undef
   const abortControllerRef = useRef<AbortController | null>(null);
   const isStreamingRef = useRef(false);
 
@@ -87,8 +88,10 @@ export function TextHighlightTooltip({ onGoDeeper, userId = "anonymous" }: TextH
       }
     };
 
+    // eslint-disable-next-line no-undef
     const handleMouseDown = (e: MouseEvent) => {
       // Close tooltip if clicking outside
+      // eslint-disable-next-line no-undef
       if (tooltipRef.current && !tooltipRef.current.contains(e.target as Node)) {
         closeTooltip();
       }
@@ -160,6 +163,7 @@ export function TextHighlightTooltip({ onGoDeeper, userId = "anonymous" }: TextH
   const generateAISynopsis = async (text: string) => {
     try {
       // Create new abort controller for this request
+      // eslint-disable-next-line no-undef
       abortControllerRef.current = new AbortController();
       isStreamingRef.current = true;
 
