@@ -10,8 +10,8 @@ import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
 import bookmarksRouter from "./routes/bookmarks";
 import { runModel } from "./ai/runModel";
-// import { runModelStream } from "./ai/runModelStream"; // Disabled - using Expanding Ring instead
-// import { selectRelevantTools } from "./ai/tools/selectTools"; // Disabled - using Expanding Ring instead
+// import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
+import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
 import {
   chatRequestSchema,
   chatJsonResponseSchema,
