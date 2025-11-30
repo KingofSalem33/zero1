@@ -33,7 +33,7 @@ async function loadBookmarks(): Promise<Bookmark[]> {
     await ensureDataDir();
     const data = await fs.readFile(BOOKMARKS_FILE, "utf-8");
     return JSON.parse(data);
-  } catch (_error) {
+  } catch {
     // File doesn't exist yet or is empty
     return [];
   }

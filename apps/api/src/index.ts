@@ -356,37 +356,38 @@ app.post(
       // NOTE: Requires Supabase database to be populated first!
       // Database is now populated with 31,100 verses and 210,330 cross-references ✓
       // ENABLED: Using Expanding Ring graph-based approach
-      {
-        console.log("[Exegesis] Running Expanding Ring pipeline...");
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { explainScripture } = require("./bible/expandingRingExegesis");
-        const exegesisResult = await explainScripture(message);
-        console.log("[Exegesis] Got result, length:", exegesisResult.answer.length);
-        console.log("[Exegesis] Context stats:", exegesisResult.contextStats);
+      console.log("[Exegesis] Running Expanding Ring pipeline...");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { explainScripture } = require("./bible/expandingRingExegesis");
+      const exegesisResult = await explainScripture(message);
+      console.log("[Exegesis] Got result, length:", exegesisResult.answer.length);
+      console.log("[Exegesis] Context stats:", exegesisResult.contextStats);
 
-        // Send answer as content in sentence-based chunks for better performance
-        console.log("[SSE] Sending content in sentence chunks");
-        // Split into sentences (periods, question marks, exclamation points followed by space or end)
-        const sentences = exegesisResult.answer.split(/(?<=[.!?])\s+/);
-        for (const sentence of sentences) {
-          sendEvent("content", { delta: sentence + " " });
-        }
+      // Send answer as content in sentence-based chunks for better performance
+      console.log("[SSE] Sending content in sentence chunks");
+      // Split into sentences (periods, question marks, exclamation points followed by space or end)
+      const sentences = exegesisResult.answer.split(/(?<=[.!?])\s+/);
+      for (const sentence of sentences) {
+        sendEvent("content", { delta: sentence + " " });
+      }
 
-        // Send done event with context metadata
-        sendEvent("done", {
-          citations: [],
-          anchor: exegesisResult.anchor,
-          contextStats: exegesisResult.contextStats,
-        });
-        console.log("[SSE] Ending response");
-        res.end();
+      // Send done event with context metadata
+      sendEvent("done", {
+        citations: [],
+        anchor: exegesisResult.anchor,
+        contextStats: exegesisResult.contextStats,
+      });
+      console.log("[SSE] Ending response");
+      res.end();
 
-        // Store in memory
-        if (userId && userId !== "anonymous") {
-          await pushToThread(userId, { role: "user", content: message });
-          await pushToThread(userId, { role: "assistant", content: exegesisResult.answer });
-        }
-      } else {
+      // Store in memory
+      if (userId && userId !== "anonymous") {
+        await pushToThread(userId, { role: "user", content: message });
+        await pushToThread(userId, { role: "assistant", content: exegesisResult.answer });
+      }
+
+      /* DISABLED: Old conversational mode - now using Expanding Ring exclusively
+      if (false) {
         // EXISTING: Conversational follow-up with streaming
         const userFacts =
           userId && userId !== "anonymous" ? await getFacts(userId) : [];
@@ -420,6 +421,7 @@ app.post(
           // Note: We don't have the full response here, would need to capture it during streaming
         }
       }
+      */
     } catch (error) {
       console.error("Chat streaming error:", error);
       res.write(`event: error\n`);
