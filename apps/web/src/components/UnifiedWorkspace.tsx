@@ -9,11 +9,6 @@ import { useChatStream } from "../hooks/useChatStream";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
-// Helper to convert phase format: "P1" -> 1, or pass through if already number
-const getPhaseNumber = (phase: string | number): number => {
-  return typeof phase === "string" ? parseInt(phase.replace("P", "")) : phase;
-};
-
 // Removed MicroStep interface - no longer using cards UI
 
 // V2 Roadmap Step
@@ -132,74 +127,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const isExpandingPhase = useRef(false);
   const messagesFetchedRef = useRef(false);
 
   // Removed auto-generation of micro-steps
   // Micro-steps will be generated and executed seamlessly when "Ask AI" is clicked
-
-  // Auto-expand phase when current_substep === 0 (needs expansion) - V1 only
-  useEffect(() => {
-    // Skip for V2 projects (they have pre-generated steps)
-    if (
-      !project ||
-      project.steps ||
-      project.current_substep !== 0 ||
-      isExpandingPhase.current
-    ) {
-      return;
-    }
-
-    // Get current phase that needs expansion
-    const currentPhase = project.phases?.find(
-      (p) => p.phase_number === getPhaseNumber(project.current_phase!),
-    );
-
-    if (!currentPhase) {
-      console.log(
-        "[UnifiedWorkspace] No current phase found for auto-expansion",
-      );
-      return;
-    }
-
-    console.log(
-      `[UnifiedWorkspace] Auto-expanding phase ${currentPhase.phase_id} (current_substep === 0)`,
-    );
-
-    isExpandingPhase.current = true;
-
-    // Call expand endpoint with explicit phase_id
-    fetch(`${API_URL}/api/projects/${project.id}/expand`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        phase_id: currentPhase.phase_id,
-        thinking_input: `Auto-expanding ${currentPhase.goal}`,
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log(
-          "[UnifiedWorkspace] Phase expansion complete:",
-          data.phase_expanded ? "success" : "no expansion",
-        );
-        if (data.phase_expanded) {
-          // Refresh project to get new substeps
-          onRefreshProject();
-        }
-      })
-      .catch((error) => {
-        console.error("[UnifiedWorkspace] Error expanding phase:", error);
-      })
-      .finally(() => {
-        isExpandingPhase.current = false;
-      });
-  }, [
-    project?.id,
-    project?.current_phase,
-    project?.current_substep,
-    onRefreshProject,
-  ]);
 
   // Fetch thread for V2 projects
   useEffect(() => {
@@ -1542,8 +1473,18 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 className="p-2 rounded-lg text-neutral-400 hover:text-blue-400 hover:bg-white/5 transition-all"
                 title="View bookmarks"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  />
                 </svg>
               </button>
               {/* Voice Settings Button */}

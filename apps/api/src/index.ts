@@ -5,7 +5,6 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { ENV } from "./env";
 import threadsRouter from "./routes/threads";
-import checkpointsRouter from "./routes/checkpoints";
 import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
 import bookmarksRouter from "./routes/bookmarks";
@@ -35,10 +34,7 @@ import {
   strictLimiter,
   uploadLimiter,
 } from "./middleware/rateLimit";
-import {
-  buildSystemPrompt,
-  buildSystemPromptWithJson,
-} from "./config/prompts";
+import { buildSystemPrompt, buildSystemPromptWithJson } from "./config/prompts";
 
 // Extract URLs from text using regex
 function extractUrls(text: string): string[] {
@@ -96,9 +92,6 @@ app.use("/api/", apiLimiter);
 
 // Mount thread routes (temporarily optional auth for testing)
 app.use("/api/threads", optionalAuth, threadsRouter);
-
-// Mount checkpoint routes (temporarily optional auth for testing)
-app.use("/api/checkpoints", optionalAuth, checkpointsRouter);
 
 // Mount TTS routes (text-to-speech)
 app.use("/api/tts", optionalAuth, ttsRouter);
@@ -321,7 +314,9 @@ app.post(
   aiLimiter,
   express.json(),
   async (req, res) => {
-    console.log("[Chat Stream] Request received:", { message: req.body?.message?.substring(0, 50) });
+    console.log("[Chat Stream] Request received:", {
+      message: req.body?.message?.substring(0, 50),
+    });
     try {
       // Validate request body
       const {
@@ -360,7 +355,10 @@ app.post(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { explainScripture } = require("./bible/expandingRingExegesis");
       const exegesisResult = await explainScripture(message);
-      console.log("[Exegesis] Got result, length:", exegesisResult.answer.length);
+      console.log(
+        "[Exegesis] Got result, length:",
+        exegesisResult.answer.length,
+      );
       console.log("[Exegesis] Context stats:", exegesisResult.contextStats);
 
       // Send answer as content in sentence-based chunks for better performance
@@ -383,45 +381,11 @@ app.post(
       // Store in memory
       if (userId && userId !== "anonymous") {
         await pushToThread(userId, { role: "user", content: message });
-        await pushToThread(userId, { role: "assistant", content: exegesisResult.answer });
-      }
-
-      /* DISABLED: Old conversational mode - now using Expanding Ring exclusively
-      if (false) {
-        // EXISTING: Conversational follow-up with streaming
-        const userFacts =
-          userId && userId !== "anonymous" ? await getFacts(userId) : [];
-        const systemMessage = buildSystemPrompt(userFacts);
-
-        const conversationMessages = [
-          {
-            role: "system" as const,
-            content: systemMessage,
-          },
-          ...history,
-          {
-            role: "user" as const,
-            content: message,
-          },
-        ];
-
-        // Dynamically select relevant tools
-        const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
-          selectRelevantTools(message, history);
-
-        // Run streaming model with selected tools
-        await runModelStream(res, conversationMessages, {
-          toolSpecs: selectedSpecs,
-          toolMap: selectedMap,
+        await pushToThread(userId, {
+          role: "assistant",
+          content: exegesisResult.answer,
         });
-
-        // Store conversation in memory if userId is provided
-        if (userId && userId !== "anonymous") {
-          await pushToThread(userId, { role: "user", content: message });
-          // Note: We don't have the full response here, would need to capture it during streaming
-        }
       }
-      */
     } catch (error) {
       console.error("Chat streaming error:", error);
       res.write(`event: error\n`);
