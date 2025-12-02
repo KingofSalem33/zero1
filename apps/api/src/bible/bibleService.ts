@@ -24,7 +24,8 @@ function normalizeBookName(bookName: string): string {
   return lower;
 }
 
-const KJV_PATH = path.join(process.cwd(), "data", "kjv.json");
+// Resolve relative to this file so dev (root cwd) and build (dist cwd) both work
+const KJV_PATH = path.join(__dirname, "..", "..", "data", "kjv.json");
 
 let kjvData: Book[] | null = null;
 
@@ -39,7 +40,9 @@ export async function loadKJVData(): Promise<Book[]> {
   try {
     console.log(`[Bible Service] Loading KJV data from ${KJV_PATH}...`);
     const rawData = await fs.readFile(KJV_PATH, "utf-8");
-    console.log(`[Bible Service] File loaded, parsing JSON (${rawData.length} chars, first char code: ${rawData.charCodeAt(0)})...`);
+    console.log(
+      `[Bible Service] File loaded, parsing JSON (${rawData.length} chars, first char code: ${rawData.charCodeAt(0)})...`,
+    );
     const books = JSON.parse(rawData) as Book[];
 
     // Add full book names
@@ -65,7 +68,9 @@ export async function getVerse(ref: VerseRef): Promise<Verse | null> {
   const normalizedBook = normalizeBookName(ref.book);
   const bookIndex = ABBREV_TO_INDEX[normalizedBook];
   if (bookIndex === undefined || bookIndex >= data.length) {
-    console.log(`[Bible Service] Book not found: "${ref.book}" (normalized: "${normalizedBook}")`);
+    console.log(
+      `[Bible Service] Book not found: "${ref.book}" (normalized: "${normalizedBook}")`,
+    );
     return null;
   }
 
@@ -107,14 +112,16 @@ export async function getVerseRange(
   book: string,
   chapter: number,
   startVerse: number,
-  endVerse: number
+  endVerse: number,
 ): Promise<Verse[]> {
   const data = await loadKJVData();
 
   const normalizedBook = normalizeBookName(book);
   const bookIndex = ABBREV_TO_INDEX[normalizedBook];
   if (bookIndex === undefined || bookIndex >= data.length) {
-    console.log(`[Bible Service] Book not found: "${book}" (normalized: "${normalizedBook}")`);
+    console.log(
+      `[Bible Service] Book not found: "${book}" (normalized: "${normalizedBook}")`,
+    );
     return [];
   }
 
@@ -151,7 +158,7 @@ export async function getVerseRange(
  */
 export async function searchVerses(
   keywords: string[],
-  limit: number = 50
+  limit: number = 50,
 ): Promise<Verse[]> {
   const data = await loadKJVData();
 
@@ -175,7 +182,7 @@ export async function searchVerses(
 
         // Check if verse contains any of the keywords (exact substring match)
         const matchCount = normalizedKeywords.filter((keyword) =>
-          normalizedText.includes(keyword)
+          normalizedText.includes(keyword),
         ).length;
 
         if (matchCount > 0) {
@@ -187,7 +194,9 @@ export async function searchVerses(
           });
 
           if (exactResults.length >= limit) {
-            console.log(`[Bible Service] Found ${exactResults.length} exact matches`);
+            console.log(
+              `[Bible Service] Found ${exactResults.length} exact matches`,
+            );
             return exactResults;
           }
         }
@@ -253,7 +262,9 @@ export async function searchVerses(
   fuzzyResults.sort((a, b) => a.score - b.score);
   const topResults = fuzzyResults.slice(0, limit);
 
-  console.log(`[Bible Service] Found ${topResults.length} fuzzy matches (from ${fuzzyResults.length} candidates)`);
+  console.log(
+    `[Bible Service] Found ${topResults.length} fuzzy matches (from ${fuzzyResults.length} candidates)`,
+  );
 
   // Remove score property before returning
   return topResults.map(({ score: _score, ...verse }) => verse);

@@ -98,7 +98,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
       audioRef.current.onerror = () => {
         setIsPlaying(false);
         setIsLoading(false);
-        // eslint-disable-next-line no-console
+
         console.error("Audio playback error");
       };
 
@@ -107,9 +107,8 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
       setIsPlaying(true);
       setIsLoading(false);
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("TTS error:", error);
-       
+
       alert("Failed to generate speech. Please try again.");
       setIsLoading(false);
     }

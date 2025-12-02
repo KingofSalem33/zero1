@@ -1,4 +1,9 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+
+// Load .env from the api package root regardless of where the server is started
+const envPath = path.resolve(__dirname, "..", ".env");
+dotenv.config({ path: envPath });
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -388,10 +393,12 @@ app.post(
       }
     } catch (error) {
       console.error("Chat streaming error:", error);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Chat streaming request failed";
       res.write(`event: error\n`);
-      res.write(
-        `data: ${JSON.stringify({ error: "Chat streaming request failed" })}\n\n`,
-      );
+      res.write(`data: ${JSON.stringify({ message })}\n\n`);
       res.end();
       return; // ✅ Explicit return to prevent fall-through
     }
@@ -414,6 +421,26 @@ app.post(
         history = [],
       } = chatRequestSchema.parse(req.body);
 
+      // Detect low-signal affirmations (e.g., "yes, let's do it") after a follow-up question
+      const isLowSignalAffirmation = (text: string): boolean => {
+        const normalized = text.trim();
+        if (normalized.split(/\s+/).length > 12) return false;
+        return /^(yes|yep|yeah|sure|ok|okay|alright|sounds good|let's do it|let's explore|go ahead|proceed|continue|go for it)[\s.!]*$/i.test(
+          normalized,
+        );
+      };
+
+      // If the user just affirmed, recover the last assistant question so the model can proceed
+      const lastAssistantQuestion = [...history]
+        .reverse()
+        .find(
+          (msg) =>
+            msg.role === "assistant" &&
+            typeof msg.content === "string" &&
+            msg.content.trim().length > 0 &&
+            msg.content.trim().endsWith("?"),
+        )?.content;
+
       // Build conversation messages with Bible study system prompt
       const userFacts =
         userId && userId !== "anonymous" ? await getFacts(userId) : [];
@@ -433,6 +460,18 @@ app.post(
           content: message,
         },
       ];
+
+      // If low-signal affirmation, inject a priming system message so the model uses the last question
+      if (
+        isLowSignalAffirmation(message) &&
+        lastAssistantQuestion &&
+        conversationMessages.length >= 2
+      ) {
+        conversationMessages.splice(conversationMessages.length - 1, 0, {
+          role: "system" as const,
+          content: `The assistant previously asked: "${lastAssistantQuestion}". The user's latest reply is an affirmation. Continue by answering that question directly with concrete, specific guidance. Do not ask for more detail; propose a plan or answer.`,
+        });
+      }
 
       // Dynamically select relevant tools
       const { toolSpecs: selectedSpecs, toolMap: selectedMap } =

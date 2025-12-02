@@ -27,7 +27,6 @@ export function useUserPreferences() {
         return { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
       }
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("Failed to load user preferences:", error);
     }
     return DEFAULT_PREFERENCES;
@@ -45,7 +44,6 @@ export function useUserPreferences() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("Failed to save user preferences:", error);
     }
   }, [preferences]);

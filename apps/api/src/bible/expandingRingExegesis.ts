@@ -11,7 +11,13 @@
  */
 
 import { runModel } from "../ai/runModel";
-import { buildContextBundle, getVerseId, formatVerse, type ContextBundle, type Verse } from "./graphWalker";
+import {
+  buildContextBundle,
+  getVerseId,
+  formatVerse,
+  type ContextBundle,
+  type Verse,
+} from "./graphWalker";
 import { searchVerses } from "./bibleService";
 import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
@@ -35,14 +41,16 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
     const anchorId = await getVerseId(
       explicitRef.book,
       explicitRef.chapter,
-      explicitRef.verse
+      explicitRef.verse,
     );
 
     if (anchorId) {
       console.log(`[Expanding Ring] Resolved to verse ID ${anchorId}`);
       return anchorId;
     } else {
-      console.warn(`[Expanding Ring] Explicit reference not found in database: ${explicitRef.book} ${explicitRef.chapter}:${explicitRef.verse}`);
+      console.warn(
+        `[Expanding Ring] Explicit reference not found in database: ${explicitRef.book} ${explicitRef.chapter}:${explicitRef.verse}`,
+      );
     }
   }
 
@@ -55,18 +63,22 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
       const anchorId = await getVerseId(
         parsedConcept.book,
         parsedConcept.chapter,
-        parsedConcept.verse
+        parsedConcept.verse,
       );
 
       if (anchorId) {
-        console.log(`[Expanding Ring] Resolved concept to verse ID ${anchorId}`);
+        console.log(
+          `[Expanding Ring] Resolved concept to verse ID ${anchorId}`,
+        );
         return anchorId;
       }
     }
   }
 
   // FALLBACK: Keyword search
-  console.log("[Expanding Ring] No explicit reference or concept match, using keyword search...");
+  console.log(
+    "[Expanding Ring] No explicit reference or concept match, using keyword search...",
+  );
 
   const keywords = userPrompt
     .toLowerCase()
@@ -86,7 +98,9 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
 
   // Pick first match
   const bestCandidate = candidates[0];
-  console.log(`[Expanding Ring] Selected: ${bestCandidate.book} ${bestCandidate.chapter}:${bestCandidate.verse}`);
+  console.log(
+    `[Expanding Ring] Selected: ${bestCandidate.book} ${bestCandidate.chapter}:${bestCandidate.verse}`,
+  );
 
   // Normalize book name for database lookup
   // searchVerses returns full names like "Judges", database uses abbreviations like "jud"
@@ -97,9 +111,11 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
 
   // Try to match full name to abbreviation
   for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
-    if (typeof fullName === 'string' && fullName.toLowerCase() === bookAbbrev) {
+    if (typeof fullName === "string" && fullName.toLowerCase() === bookAbbrev) {
       bookAbbrev = abbrev;
-      console.log(`[Expanding Ring] Matched full name "${bestCandidate.book}" to abbrev "${abbrev}"`);
+      console.log(
+        `[Expanding Ring] Matched full name "${bestCandidate.book}" to abbrev "${abbrev}"`,
+      );
       break;
     }
   }
@@ -107,26 +123,38 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
   // If still not found, it might already be an abbreviation - just ensure lowercase
   if (bookAbbrev === bestCandidate.book.toLowerCase()) {
     // Check if it's a valid abbreviation by checking BOOK_NAMES keys
-    const validAbbrev = Object.keys(BOOK_NAMES).find(k => k.toLowerCase() === bookAbbrev);
+    const validAbbrev = Object.keys(BOOK_NAMES).find(
+      (k) => k.toLowerCase() === bookAbbrev,
+    );
     if (validAbbrev) {
       bookAbbrev = validAbbrev.toLowerCase();
-      console.log(`[Expanding Ring] Using abbreviation "${bookAbbrev}" directly`);
+      console.log(
+        `[Expanding Ring] Using abbreviation "${bookAbbrev}" directly`,
+      );
     }
   }
 
-  console.log(`[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${bestCandidate.chapter}, verse=${bestCandidate.verse}`);
+  console.log(
+    `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${bestCandidate.chapter}, verse=${bestCandidate.verse}`,
+  );
 
   // Get verse ID from database
   const anchorId = await getVerseId(
     bookAbbrev,
     bestCandidate.chapter,
-    bestCandidate.verse
+    bestCandidate.verse,
   );
 
   if (!anchorId) {
-    console.error(`[Expanding Ring] Database lookup failed for ${bookAbbrev} ${bestCandidate.chapter}:${bestCandidate.verse}`);
-    console.error(`[Expanding Ring] This likely means the Supabase database hasn't been populated yet.`);
-    console.error(`[Expanding Ring] Please run: npx ts-node scripts/importBibleToSupabase.ts`);
+    console.error(
+      `[Expanding Ring] Database lookup failed for ${bookAbbrev} ${bestCandidate.chapter}:${bestCandidate.verse}`,
+    );
+    console.error(
+      `[Expanding Ring] This likely means the Supabase database hasn't been populated yet.`,
+    );
+    console.error(
+      `[Expanding Ring] Please run: npx ts-node scripts/importBibleToSupabase.ts`,
+    );
   }
 
   return anchorId;
@@ -160,7 +188,8 @@ INSTRUCTIONS:
 - **Build Depth**: Use Ring 2 and Ring 3 to demonstrate the "Golden Thread" - the consistency of Scripture interpreting Scripture.
 - **Citation Style**: Quote verse text when relevant. Use the format: (Book Chapter:Verse).
 - **Scripture Only**: Do NOT use external commentary, theology books, or personal interpretation. Use only the provided KJV text.
-
+- **Length: Approximately 200-300 words or (as required to cover the subject fully.)
+- **Always ask follow up regarding the theme to the user then build bundle around them. 
 ---
 
 ${PERFORMANCE_STYLE}`;
@@ -171,7 +200,10 @@ ${PERFORMANCE_STYLE}`;
  *
  * Formats the context bundle into structured text
  */
-function generateUserMessage(userPrompt: string, bundle: ContextBundle): string {
+function generateUserMessage(
+  userPrompt: string,
+  bundle: ContextBundle,
+): string {
   const formatRing = (verses: Verse[]) =>
     verses.map((v) => formatVerse(v)).join("\n");
 
@@ -223,7 +255,8 @@ export async function explainScripture(userPrompt: string): Promise<{
 
   if (!anchorId) {
     return {
-      answer: "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').",
+      answer:
+        "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').",
       anchor: {
         id: 0,
         book_abbrev: "",
@@ -267,7 +300,7 @@ export async function explainScripture(userPrompt: string): Promise<{
       toolSpecs: [],
       toolMap: {},
       model: "gpt-5.1", // Use GPT-5.1 for final synthesis
-    }
+    },
   );
 
   console.timeEnd("[Expanding Ring] Total time");

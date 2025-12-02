@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ToolBadges } from "./ToolBadges";
