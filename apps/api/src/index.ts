@@ -16,6 +16,7 @@ import bookmarksRouter from "./routes/bookmarks";
 import { runModel } from "./ai/runModel";
 // import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
+import { explainScriptureWithGenealogy } from "./bible/expandingRingExegesis";
 import {
   chatRequestSchema,
   chatJsonResponseSchema,
@@ -352,19 +353,25 @@ app.post(
       // Send initial heartbeat (copied from runModelStream)
       res.write(`:\n\n`);
 
-      // Use the Expanding Ring exegesis pipeline
+      // Use the Reference Genealogy exegesis pipeline
       // NOTE: Requires Supabase database to be populated first!
       // Database is now populated with 31,100 verses and 210,330 cross-references ✓
-      // ENABLED: Using Expanding Ring graph-based approach
-      console.log("[Exegesis] Running Expanding Ring pipeline...");
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { explainScripture } = require("./bible/expandingRingExegesis");
-      const exegesisResult = await explainScripture(message);
+      // NOW USING: Reference Genealogy Tree (replaces ring-based approach)
+      console.log("[Exegesis] Running Reference Genealogy pipeline...");
+      const exegesisResult = await explainScriptureWithGenealogy(message);
       console.log(
         "[Exegesis] Got result, length:",
         exegesisResult.answer.length,
       );
-      console.log("[Exegesis] Context stats:", exegesisResult.contextStats);
+      console.log("[Exegesis] Tree stats:", exegesisResult.treeStats);
+
+      // Send the reference genealogy tree (same data the LLM analyzed)
+      if (exegesisResult.visualBundle) {
+        console.log(
+          `[Reference Tree] Sending ${exegesisResult.visualBundle.nodes.length} nodes, ${exegesisResult.visualBundle.edges.length} edges`,
+        );
+        sendEvent("map_data", exegesisResult.visualBundle);
+      }
 
       // Send answer as content in sentence-based chunks for better performance
       console.log("[SSE] Sending content in sentence chunks");
@@ -374,11 +381,11 @@ app.post(
         sendEvent("content", { delta: sentence + " " });
       }
 
-      // Send done event with context metadata
+      // Send done event with tree metadata
       sendEvent("done", {
         citations: [],
         anchor: exegesisResult.anchor,
-        contextStats: exegesisResult.contextStats,
+        treeStats: exegesisResult.treeStats,
       });
       console.log("[SSE] Ending response");
       res.end();

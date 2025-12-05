@@ -5,6 +5,9 @@ import { VoiceSettings } from "./VoiceSettings";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { BookmarkPanel } from "./BookmarkPanel";
 import { useChatStream } from "../hooks/useChatStream";
+import { NarrativeMap } from "./golden-thread/NarrativeMap";
+import { useGoldenThreadHighlighting } from "../hooks/useGoldenThreadHighlighting";
+import type { VisualContextBundle } from "../types/goldenThread";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -498,8 +501,42 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     return "What's on your mind?";
   };
 
+  // State for genealogy visualization
+  const [visualBundle, setVisualBundle] = useState<VisualContextBundle | null>(
+    null,
+  );
+  const [showVisualization, setShowVisualization] = useState(false);
+  const { highlightedRefs, addReferencesFromText, resetHighlights } =
+    useGoldenThreadHighlighting();
+
+  // Handler for map_data events from backend
+  const handleMapData = useCallback(
+    (bundle: VisualContextBundle) => {
+      console.log(
+        "[UnifiedWorkspace] Received map_data with nodes:",
+        bundle?.nodes?.length,
+        "edges:",
+        bundle?.edges?.length,
+      );
+      console.log("[UnifiedWorkspace] Full bundle:", bundle);
+      setVisualBundle(bundle);
+      setShowVisualization(true);
+      console.log("[UnifiedWorkspace] Set showVisualization to true");
+      resetHighlights();
+    },
+    [resetHighlights],
+  );
+
   // Use simple chat stream hook for LLM-only mode
-  const { streamingMessage, isStreaming, startStream } = useChatStream();
+  const { streamingMessage, isStreaming, startStream } =
+    useChatStream(handleMapData);
+
+  // Track citations from streaming content for Golden Thread highlighting
+  useEffect(() => {
+    if (streamingMessage && streamingMessage.content) {
+      addReferencesFromText(streamingMessage.content);
+    }
+  }, [streamingMessage?.content, addReferencesFromText]);
 
   // Update messages when streaming message changes
   useEffect(() => {
@@ -1163,67 +1200,50 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Main workspace with conversation
   return (
     <div className="flex flex-col h-full">
-      {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto px-6 py-8 pb-28">
-        {/* Centered composer when no messages (ChatGPT-style start) */}
-        {messages.length === 0 ? (
-          <div className="h-full w-full flex items-center justify-center">
-            <div className="w-full max-w-3xl">
-              <h1 className="text-4xl md:text-6xl font-extrabold text-white text-center mb-8">
-                Let's Build
-              </h1>
-              <div className="relative flex gap-2 items-center bg-neutral-800/60 border border-neutral-700/50 rounded-2xl px-4 py-3 shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all">
-                <button
-                  onClick={() => setShowUploadButton(!showUploadButton)}
-                  className="btn-icon-ghost w-8 h-8"
-                  title="Add options"
-                >
-                  <svg
-                    className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+      {/* Split View: Chat + Visualization */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Messages Container */}
+        <div
+          className={`flex-1 overflow-y-auto px-6 py-8 pb-28 ${showVisualization ? "border-r border-neutral-700" : ""}`}
+        >
+          {/* Centered composer when no messages (ChatGPT-style start) */}
+          {messages.length === 0 ? (
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="w-full max-w-3xl">
+                <h1 className="text-4xl md:text-6xl font-extrabold text-white text-center mb-8">
+                  Let's Build
+                </h1>
+                <div className="relative flex gap-2 items-center bg-neutral-800/60 border border-neutral-700/50 rounded-2xl px-4 py-3 shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all">
+                  <button
+                    onClick={() => setShowUploadButton(!showUploadButton)}
+                    className="btn-icon-ghost w-8 h-8"
+                    title="Add options"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                </button>
+                    <svg
+                      className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                  </button>
 
-                {/* Options dropdown (extensible) */}
-                {showUploadButton && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
-                    <div className="py-1">
-                      <button
-                        onClick={() => {
-                          onOpenNewWorkspace?.();
-                          setShowUploadButton(false);
-                        }}
-                        className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v16m8-8H4"
-                          />
-                        </svg>
-                        <span>Add Workspace</span>
-                      </button>
-
-                      <div className="border-t border-gray-700 mt-1 pt-1">
+                  {/* Options dropdown (extensible) */}
+                  {showUploadButton && (
+                    <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
+                      <div className="py-1">
                         <button
-                          disabled
-                          className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
+                          onClick={() => {
+                            onOpenNewWorkspace?.();
+                            setShowUploadButton(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
                         >
                           <svg
                             className="w-4 h-4"
@@ -1235,67 +1255,55 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                              d="M12 4v16m8-8H4"
                             />
                           </svg>
-                          <span>More options coming soon...</span>
+                          <span>Add Workspace</span>
                         </button>
+
+                        <div className="border-t border-gray-700 mt-1 pt-1">
+                          <button
+                            disabled
+                            className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                              />
+                            </svg>
+                            <span>More options coming soon...</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-
-                <textarea
-                  value={currentInput}
-                  onChange={(e) => setCurrentInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder={getContextualPlaceholder()}
-                  className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[44px] max-h-[200px] leading-relaxed"
-                  rows={1}
-                  disabled={isProcessing}
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={!currentInput.trim() || isProcessing}
-                  className="btn-icon-primary"
-                  title={isProcessing ? "Sending..." : "Send message"}
-                >
-                  {isProcessing ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                      />
-                    </svg>
                   )}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
-        <div className="max-w-4xl mx-auto space-y-6">
-          {messages.map((message) => (
-            <div key={message.id}>
-              {message.type === "user" ? (
-                <div className="flex justify-end">
-                  <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800 text-white shadow-sm">
-                    {message.content}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                  <textarea
+                    value={currentInput}
+                    onChange={(e) => setCurrentInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder={getContextualPlaceholder()}
+                    className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[44px] max-h-[200px] leading-relaxed"
+                    rows={1}
+                    disabled={isProcessing}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!currentInput.trim() || isProcessing}
+                    className="btn-icon-primary"
+                    title={isProcessing ? "Sending..." : "Send message"}
+                  >
+                    {isProcessing ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
                       <svg
                         className="w-5 h-5"
                         fill="none"
@@ -1306,73 +1314,143 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
                         />
                       </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="max-w-4xl mx-auto space-y-6">
+            {messages.map((message) => (
+              <div key={message.id}>
+                {message.type === "user" ? (
+                  <div className="flex justify-end">
+                    <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800 text-white shadow-sm">
+                      {message.content}
                     </div>
                   </div>
-                  <div className="ml-[2.625rem] space-y-2">
-                    {message.content === "Thinking..." ? (
-                      <div className="space-y-3 animate-pulse">
-                        <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
-                        <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
-                        <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
                       </div>
-                    ) : (
-                      <>
-                        <MarkdownMessage
-                          content={message.content}
-                          onCopy={() => {
-                            // Copy functionality is handled internally by MarkdownMessage
-                          }}
-                        />
-                      </>
-                    )}
+                    </div>
+                    <div className="ml-[2.625rem] space-y-2">
+                      {message.content === "Thinking..." ? (
+                        <div className="space-y-3 animate-pulse">
+                          <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
+                          <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
+                          <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                        </div>
+                      ) : (
+                        <>
+                          <MarkdownMessage
+                            content={message.content}
+                            onCopy={() => {
+                              // Copy functionality is handled internally by MarkdownMessage
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Tool Activity Inline */}
+            {toolsUsed.length > 0 && (
+              <div className="ml-[2.625rem]">
+                <ToolBadges tools={toolsUsed} />
+              </div>
+            )}
+
+            {/* Loading skeleton while streaming */}
+            {isStreaming && !streamingMessage?.content && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm animate-pulse">
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
-
-          {/* Tool Activity Inline */}
-          {toolsUsed.length > 0 && (
-            <div className="ml-[2.625rem]">
-              <ToolBadges tools={toolsUsed} />
-            </div>
-          )}
-
-          {/* Loading skeleton while streaming */}
-          {isStreaming && !streamingMessage?.content && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm animate-pulse">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
+                <div className="ml-[2.625rem] space-y-3 animate-pulse">
+                  <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
+                  <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
+                  <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
                 </div>
               </div>
-              <div className="ml-[2.625rem] space-y-3 animate-pulse">
-                <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
-                <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
-                <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
+            {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
 
-          <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} />
+          </div>
         </div>
+
+        {/* Genealogy Visualization Panel */}
+        {showVisualization && visualBundle && (
+          <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
+              <h3 className="text-sm font-semibold text-neutral-300">
+                Reference Genealogy ({visualBundle.nodes?.length || 0} verses)
+              </h3>
+              <button
+                onClick={() => setShowVisualization(false)}
+                className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                title="Close visualization"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <NarrativeMap
+                bundle={visualBundle}
+                highlightedRefs={highlightedRefs}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Input Composer (sticky bottom) */}

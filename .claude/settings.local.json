@@ -79,7 +79,8 @@
       "Bash(git checkout:*)",
       "Bash(test:*)",
       "Bash(Select-Object -Last 150)",
-      "Bash(Select-String -Pattern \"passover|Passover|Request received\" -Context 5)"
+      "Bash(Select-String -Pattern \"passover|Passover|Request received\" -Context 5)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
