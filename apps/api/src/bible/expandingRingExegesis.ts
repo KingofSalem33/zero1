@@ -302,9 +302,9 @@ export async function explainScripture(userPrompt: string): Promise<{
   const userMessage = generateUserMessage(userPrompt, bundle);
 
   // ========================================
-  // STEP 4: Run LLM (GPT-4o-mini for synthesis)
+  // STEP 4: Run LLM (GPT-5 Nano for synthesis)
   // ========================================
-  console.log("[Expanding Ring] Running LLM (gpt-4o-mini) for synthesis...");
+  console.log("[Expanding Ring] Running LLM (gpt-5-nano) for synthesis...");
 
   const result = await runModel(
     [
@@ -314,7 +314,7 @@ export async function explainScripture(userPrompt: string): Promise<{
     {
       toolSpecs: [],
       toolMap: {},
-      model: "gpt-4o-mini", // Use GPT-4o-mini for fast, cost-effective synthesis
+      model: "gpt-5-nano", // Use GPT-5 Nano for ultra-fast, low-latency synthesis
     },
   );
 
@@ -416,9 +416,7 @@ export async function explainScriptureWithGenealogy(
   // ========================================
   // STEP 4: Run LLM
   // ========================================
-  console.log(
-    "[Genealogy Exegesis] Running LLM (gpt-4o-mini) for synthesis...",
-  );
+  console.log("[Genealogy Exegesis] Running LLM (gpt-5-nano) for synthesis...");
 
   const result = await runModel(
     [
@@ -428,7 +426,7 @@ export async function explainScriptureWithGenealogy(
     {
       toolSpecs: [],
       toolMap: {},
-      model: "gpt-4o-mini",
+      model: "gpt-5-nano",
     },
   );
 
