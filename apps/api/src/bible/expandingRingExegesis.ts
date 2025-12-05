@@ -21,7 +21,6 @@ import {
 import { searchVerses } from "./bibleService";
 import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
-import { BIBLE_STUDY_IDENTITY, PERFORMANCE_STYLE } from "../config/prompts";
 
 /**
  * Step 1: Resolve Anchor Verse
@@ -165,47 +164,68 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
  *
  * Explains the ring structure to the LLM
  */
+/**
+ * THE DIAMOND PATTERN SYSTEM PROMPT
+ * Adapted for Reference Genealogy Tree Structure
+ */
 function generateSystemPrompt(): string {
-  return `${BIBLE_STUDY_IDENTITY}
+  return `You are a faithful teacher of God's Word, teaching from the King James Bible.
 
----
+Your purpose is to explain Scripture using only what the Bible itself says - letting Scripture interpret Scripture through the actual cross-references preserved in the KJV system.
 
-DATA STRUCTURE:
+You will receive a tree of cross-references organized by depth:
+- Depth 0: The main verse being explained
+- Depth 1: Verses it directly references
+- Depth 2: Verses those reference
+- And so on...
 
-You will receive a core passage and 3 concentric rings of cross-references from the KJV Bible.
+YOUR TASK:
+Teach the Scripture naturally and fluidly, like a pastor or Bible teacher explaining God's Word. The reader should feel like they're sitting in a Bible study, not reading a technical document.
 
-1. **ANCHOR PASSAGE (Ring 0)**: The main text and its immediate surrounding verses.
-2. **DIRECT CONNECTIONS (Ring 1)**: Verses directly cited or linked to the anchor by the KJV's own cross-reference system.
-3. **BROADER CONTEXT (Ring 2)**: Themes and teachings that support Ring 1.
-4. **DEEP ECHOES (Ring 3)**: Distant theological connections and thematic parallels.
+Follow the cross-reference connections to show what the Bible says about itself. Cite every verse you mention using this EXACT format: [Book Ch:v] (this lights up the visual map for the reader).
 
----
+STRUCTURE (hidden from reader):
+Your response flows in this order, but DO NOT use headers or labels:
 
-INSTRUCTIONS:
+1. Opening (1 sentence): A powerful summary of what Scripture reveals
+2. Main verse explanation (1-2 paragraphs): Quote [Main Verse Reference] and explain it plainly
+3. Biblical witness (2-3 paragraphs): Follow the cross-references to build the teaching. Example:
+   - GOOD: "We see this same truth in [Isaiah 40:3], where the voice crying in the wilderness..."
+   - BAD: "The anchor references [Isaiah 40:3] at Depth 1..."
+4. Closing (1 paragraph): What this Scripture reveals when taken together
+5. The Invitation: You are a guide standing at a fork in the road with the reader. You see a fascinating connection in Scripture - invite them to explore it with you.
 
-- **Start with the Anchor**: Explain the anchor verse first, focusing on its immediate context.
-- **Trace the Genealogy**: Follow the reference chains - show how verses reference each other in a logical progression.
-- **Build Depth**: Demonstrate how Scripture interprets Scripture through these reference connections.
+   STRUCTURE: Brief setup + Direct invitation
 
-**CRITICAL CITATION REQUIREMENT**:
-When referencing Scripture, you MUST use the exact format: [Book Chapter:Verse]
-Examples: [John 3:16], [Genesis 1:1], [Revelation 21:4], [1 Corinthians 13:4]
+   Examples:
+   - Teaching about the Mercy Seat → "This passage in Leviticus connects directly to the 'Throne of Grace' in Hebrews. Shall we trace the transition from the Seat of Judgment to the Throne of Grace?"
+   - Teaching about John the Baptist → "John's testimony leads us to the moment he identifies Jesus at the Jordan. Shall we explore what happened when John saw Him coming?"
+   - Teaching about the Passover lamb → "This sacrifice in Exodus points forward to Paul's declaration in 1 Corinthians. Shall we see how Christ becomes our Passover?"
+   - Teaching about Moses and the rock → "This water from the rock appears again in Paul's letter, where he reveals something profound. Shall we trace this connection?"
 
-This is NOT optional. The interface depends on this bracketed format to highlight the theological path you trace through Scripture. Each verse you cite will light up on the user's visual genealogy tree, showing the "Golden Thread" of interconnected references.
+   THE FORMULA:
+   - Name the connection you see (2 specific passages or concepts)
+   - Use "Shall we..." to invite them forward
+   - Make it irresistible - they should want to say "Yes!" immediately
 
-You have been given a hierarchical tree of verse references:
-- The anchor verse at the root
-- Verses it references as children
-- Verses those references cite as grandchildren
-- And so on, following the chain of biblical cross-references
+   NOT: "What about Mark 6?" or "Do you want to learn more?"
+   YES: "John's final testimony connects to his execution in Mark's gospel, where Herod's oath seals his fate. Shall we examine how truth brought him to that prison?"
 
-You do NOT need to cite all provided verses - only the ones that build your argument. Choose the clearest path through the reference genealogy to answer the question.
-- **Scripture Only**: Do NOT use external commentary, theology books, or personal interpretation. Use only the provided KJV text.
-- **Length: Approximately 200-300 words or (as required to cover the subject fully.)
-- **Always ask follow up regarding the theme to the user then build bundle around them. 
----
+CRITICAL:
+- NO markdown headers (#)
+- NO labels like "The Core Truth" or "The Biblical Witness"
+- NO meta-commentary about "the anchor" or "Depth 1" or "the tree"
+- Just pure Scripture teaching that flows naturally
+- Weave 3-6 key verses into your explanation
 
-${PERFORMANCE_STYLE}`;
+CRITICAL RULES:
+- Only cite verses from the provided tree
+- ALWAYS use [Book Ch:v] format for every citation
+- Write naturally - the reader should feel like they're learning Scripture, not reading a technical analysis
+- 250-400 words total
+- Let Scripture do the talking
+
+Now teach.`;
 }
 
 /**
@@ -402,9 +422,9 @@ export async function explainScriptureWithGenealogy(
   const { buildReferenceTree } = require("./referenceGenealogy");
 
   const visualBundle = await buildReferenceTree(anchorId, {
-    maxDepth: 6,
-    maxNodes: 100,
-    maxChildrenPerNode: 5,
+    maxDepth: 999, // No artificial depth limit - follow references as deep as they go
+    maxNodes: 30, // Hard cap at 30 verses total for LLM performance
+    maxChildrenPerNode: 999, // No limit on children - include ALL references from each verse
   });
 
   // ========================================
@@ -416,7 +436,7 @@ export async function explainScriptureWithGenealogy(
   // ========================================
   // STEP 4: Run LLM
   // ========================================
-  console.log("[Genealogy Exegesis] Running LLM (gpt-5-nano) for synthesis...");
+  console.log("[Genealogy Exegesis] Running LLM for synthesis...");
 
   const result = await runModel(
     [
@@ -426,7 +446,9 @@ export async function explainScriptureWithGenealogy(
     {
       toolSpecs: [],
       toolMap: {},
-      model: "gpt-5-nano",
+      // gpt-5-nano is NOT a reasoning model - it's fast and efficient
+      // Do not use reasoning effort for nano models
+      reasoningEffort: "low",
     },
   );
 
@@ -485,48 +507,66 @@ function generateGenealogyUserMessage(
 
   const maxDepth = Math.max(...Object.keys(nodesByDepth).map(Number));
 
-  let treeStructure = "";
-  for (let depth = 0; depth <= maxDepth; depth++) {
-    const nodes = nodesByDepth[depth] || [];
-    if (nodes.length === 0) continue;
+  // Format verses as: ID:verseId [Reference] "Text"
+  const formatForGenealogy = (verses: any[]) =>
+    verses
+      .map(
+        (v) =>
+          `ID:${v.id} [${v.book_name} ${v.chapter}:${v.verse}] "${v.text}"`,
+      )
+      .join("\n");
 
-    const depthLabel =
-      depth === 0 ? "ANCHOR VERSE" : `DEPTH ${depth} (${nodes.length} verses)`;
+  // Build the genealogy structure
+  let genealogyData = "";
 
-    treeStructure += `\n== ${depthLabel} ==\n`;
-    treeStructure += nodes.map((v) => formatVerse(v)).join("\n");
-    treeStructure += "\n";
+  // Anchor (Depth 0)
+  const anchor = nodesByDepth[0]?.[0];
+  if (anchor) {
+    genealogyData += `[THE ANCHOR]\n`;
+    genealogyData += formatForGenealogy([anchor]);
+    genealogyData += "\n\n";
   }
 
-  return `USER QUESTION:
-"${userPrompt}"
+  // Children (Depth 1)
+  const children = nodesByDepth[1] || [];
+  if (children.length > 0) {
+    genealogyData += `[THE CHILDREN (Depth 1 - ${children.length} verses)]\n`;
+    genealogyData += formatForGenealogy(children);
+    genealogyData += "\n\n";
+  }
 
----
-REFERENCE GENEALOGY TREE (KJV)
----
+  // Grandchildren (Depth 2)
+  const grandchildren = nodesByDepth[2] || [];
+  if (grandchildren.length > 0) {
+    genealogyData += `[THE GRANDCHILDREN (Depth 2 - ${grandchildren.length} verses)]\n`;
+    genealogyData += formatForGenealogy(grandchildren);
+    genealogyData += "\n\n";
+  }
 
-This is a CRAWL through actual biblical cross-references, level by level:
+  // Great-grandchildren and beyond (Depth 3+)
+  const deeper: any[] = [];
+  for (let depth = 3; depth <= maxDepth; depth++) {
+    deeper.push(...(nodesByDepth[depth] || []));
+  }
+  if (deeper.length > 0) {
+    genealogyData += `[DEEPER GENERATIONS (Depth 3+ - ${deeper.length} verses)]\n`;
+    genealogyData += formatForGenealogy(deeper);
+    genealogyData += "\n";
+  }
 
-- LEVEL 0: The ANCHOR VERSE (the passage you're explaining)
-- LEVEL 1: Verses that the anchor ACTUALLY REFERENCES (from the KJV cross-reference system)
-- LEVEL 2: Verses that LEVEL 1 verses reference
-- LEVEL 3: Verses that LEVEL 2 verses reference
+  return `USER QUERY: "${userPrompt}"
 
-Each verse's children are its ACTUAL cross-references, not just thematically similar passages.
-This creates a natural genealogy tree showing how Scripture references Scripture.
+=== THE CLOUD OF WITNESSES (Available Data) ===
+
+This genealogy tree shows ACTUAL cross-references from the KJV system.
+Each verse is positioned by its genealogical depth from the anchor:
+- Anchor: The root verse
+- Children: Verses the anchor directly references
+- Grandchildren: Verses the children reference
+- And so on...
 
 Total verses in tree: ${visualBundle.nodes.length}
 Total reference connections: ${visualBundle.edges.length}
 
-${treeStructure}
----
-
-INSTRUCTIONS:
-1. Start with the ANCHOR VERSE - explain it in context
-2. Show how it REFERENCES other verses at Level 1 - why did the KJV editors link these?
-3. Follow the reference chains deeper - how do Level 1 verses point to Level 2, and so on
-4. Build your argument by tracing these ACTUAL reference chains, not just themes
-
-The tree structure you see is the SAME tree the user sees in their visualization.
-When you cite a verse using [Book Ch:v] format, it will highlight in their visual genealogy tree.`;
+${genealogyData}`;
 }

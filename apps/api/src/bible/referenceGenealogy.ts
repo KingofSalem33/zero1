@@ -59,181 +59,81 @@ export async function buildReferenceTree(
   );
 
   // ========================================
-  // STEP 2: Build adjacency map (verse -> verses it references)
+  // STEP 2: Helper function to fetch cross-references for specific verses
   // ========================================
-  console.log(`[Reference Tree] Loading cross-reference adjacency map...`);
-  console.log(
-    `[Reference Tree] Using BATCH FETCHING to load all cross-references...`,
-  );
+  const fetchCrossReferencesForVerses = async (
+    verseIds: number[],
+  ): Promise<Map<number, number[]>> => {
+    if (verseIds.length === 0) return new Map();
 
-  // Fetch ALL cross-references (Supabase default limit is 1000, we need all ~210k)
-  let allRefs: any[] = [];
-  let hasMore = true;
-  let offset = 0;
-  const batchSize = 10000;
-
-  while (hasMore) {
     console.log(
-      `[Reference Tree] Fetching batch: offset=${offset}, total accumulated so far: ${allRefs.length}`,
+      `[Reference Tree] Fetching cross-refs for ${verseIds.length} verses...`,
     );
 
-    const {
-      data: batch,
-      error: refsError,
-      count,
-    } = await supabase
+    const { data, error } = await supabase
       .from("cross_references")
-      .select("from_verse_id, to_verse_id", { count: "exact" })
-      .range(offset, offset + batchSize - 1);
+      .select("from_verse_id, to_verse_id")
+      .in("from_verse_id", verseIds);
 
-    console.log(
-      `[Reference Tree] Received ${batch?.length || 0} rows in this batch (DB total count: ${count})`,
-    );
-
-    if (refsError) {
-      throw new Error(`Failed to load cross-references: ${refsError.message}`);
+    if (error) {
+      throw new Error(`Failed to load cross-references: ${error.message}`);
     }
 
-    if (!batch || batch.length === 0) {
-      console.log(`[Reference Tree] No more data, stopping pagination`);
-      hasMore = false;
-    } else {
-      allRefs = allRefs.concat(batch);
-      offset += batch.length; // Use actual returned length, not requested size
-
-      // Stop if we've gotten everything OR if we got fewer rows than the max Supabase limit (1000)
-      // Note: Supabase has a max of 1000 rows per query regardless of range()
-      if (count && allRefs.length >= count) {
-        console.log(
-          `[Reference Tree] Retrieved all ${allRefs.length} rows (count: ${count})`,
-        );
-        hasMore = false;
-      } else if (batch.length < 1000) {
-        // If we got less than 1000, we've hit the end
-        console.log(
-          `[Reference Tree] Received ${batch.length} < 1000, this was the last batch`,
-        );
-        hasMore = false;
+    const outEdges = new Map<number, number[]>();
+    if (data) {
+      for (const ref of data) {
+        if (!outEdges.has(ref.from_verse_id)) {
+          outEdges.set(ref.from_verse_id, []);
+        }
+        outEdges.get(ref.from_verse_id)!.push(ref.to_verse_id);
       }
     }
-  }
 
-  const outEdges = new Map<number, number[]>();
-  for (const ref of allRefs) {
-    if (!outEdges.has(ref.from_verse_id)) {
-      outEdges.set(ref.from_verse_id, []);
-    }
-    outEdges.get(ref.from_verse_id)!.push(ref.to_verse_id);
-  }
-
-  console.log(`[Reference Tree] Loaded ${allRefs.length} cross-references`);
-
-  // ========================================
-  // STEP 3: Fetch all verses (for lookup)
-  // ========================================
-  console.log(`[Reference Tree] Loading verse database...`);
-
-  // Fetch ALL verses (need all ~31k)
-  let allVerses: any[] = [];
-  hasMore = true;
-  offset = 0;
-
-  while (hasMore) {
     console.log(
-      `[Reference Tree] Fetching verses batch: offset=${offset}, total accumulated so far: ${allVerses.length}`,
+      `[Reference Tree] Fetched ${data?.length || 0} cross-refs for ${verseIds.length} verses`,
     );
+    return outEdges;
+  };
 
-    const {
-      data: batch,
-      error: versesError,
-      count,
-    } = await supabase
+  // ========================================
+  // STEP 3: Helper function to fetch specific verses by ID
+  // ========================================
+  const fetchVersesByIds = async (
+    verseIds: number[],
+  ): Promise<Map<number, Verse>> => {
+    if (verseIds.length === 0) return new Map();
+
+    console.log(`[Reference Tree] Fetching ${verseIds.length} verses...`);
+
+    const { data, error } = await supabase
       .from("verses")
-      .select("*", { count: "exact" })
-      .range(offset, offset + batchSize - 1);
+      .select("*")
+      .in("id", verseIds);
 
-    console.log(
-      `[Reference Tree] Received ${batch?.length || 0} verses in this batch (DB total count: ${count})`,
-    );
-
-    if (versesError) {
-      throw new Error(`Failed to load verses: ${versesError.message}`);
+    if (error) {
+      throw new Error(`Failed to load verses: ${error.message}`);
     }
 
-    if (!batch || batch.length === 0) {
-      console.log(`[Reference Tree] No more verses, stopping pagination`);
-      hasMore = false;
-    } else {
-      allVerses = allVerses.concat(batch);
-      offset += batch.length; // Use actual returned length
-
-      // Stop if we've gotten everything OR if we got fewer rows than the max Supabase limit (1000)
-      if (count && allVerses.length >= count) {
-        console.log(
-          `[Reference Tree] Retrieved all ${allVerses.length} verses (count: ${count})`,
-        );
-        hasMore = false;
-      } else if (batch.length < 1000) {
-        console.log(
-          `[Reference Tree] Received ${batch.length} < 1000, this was the last verse batch`,
-        );
-        hasMore = false;
+    const versesById = new Map<number, Verse>();
+    if (data) {
+      for (const v of data) {
+        versesById.set(v.id, v as Verse);
       }
     }
-  }
 
-  const versesById = new Map<number, Verse>();
-  for (const v of allVerses) {
-    versesById.set(v.id, v as Verse);
-  }
-
-  console.log(`[Reference Tree] Loaded ${versesById.size} verses`);
+    console.log(`[Reference Tree] Fetched ${versesById.size} verses`);
+    return versesById;
+  };
 
   // ========================================
-  // STEP 4: Build tree with level-by-level crawl
+  // STEP 4: Build tree with level-by-level crawl (fetch data on-demand)
   // ========================================
   const visited = new Set<number>();
   let nodeCount = 0;
   const nodes: ThreadNode[] = [];
   const edges: VisualEdge[] = [];
   const depthCounts = new Map<number, number>();
-
-  // Helper to add a node
-  const addNode = (verseId: number, depth: number, parentId?: number) => {
-    const verse = versesById.get(verseId);
-    if (!verse) {
-      console.warn(`[Reference Tree] Verse ${verseId} not found in database`);
-      return false;
-    }
-
-    visited.add(verseId);
-    nodeCount++;
-
-    // Track depth statistics
-    depthCounts.set(depth, (depthCounts.get(depth) || 0) + 1);
-
-    // Add node to result
-    nodes.push({
-      ...verse,
-      depth,
-      parentId,
-      isSpine: false,
-      isVisible: false, // Will be calculated after spine is determined
-      collapsedChildCount: 0, // Will be calculated after visibility is set
-      ringSource: `level${depth}`,
-    });
-
-    // Add edge from parent
-    if (parentId !== undefined) {
-      edges.push({
-        from: parentId,
-        to: verseId,
-        weight: 1.0 - depth * 0.15, // Gradual fade per level
-      });
-    }
-
-    return true;
-  };
+  const versesById = new Map<number, Verse>(); // Cache verses we've fetched
 
   console.log(`[Reference Tree] Starting level-by-level crawl from anchor...`);
 
@@ -247,23 +147,79 @@ export async function buildReferenceTree(
     console.log(
       `[Reference Tree] Processing level ${depth} with ${currentLevel.length} verses...`,
     );
-    const nextLevel: Array<{ id: number; parentId: number }> = [];
 
-    // Process all verses at this level
+    // Fetch all verses we need for this level
+    const verseIdsToFetch = currentLevel
+      .map((v) => v.id)
+      .filter((id) => !versesById.has(id));
+    if (verseIdsToFetch.length > 0) {
+      const fetchedVerses = await fetchVersesByIds(verseIdsToFetch);
+      for (const [id, verse] of fetchedVerses.entries()) {
+        versesById.set(id, verse);
+      }
+    }
+
+    // Add all verses at this level to the tree (but stop if we hit maxNodes)
     for (const { id: verseId, parentId } of currentLevel) {
-      // Skip if already visited (prevents cycles)
-      if (visited.has(verseId)) continue;
+      // Stop if we've reached the node limit
+      if (nodeCount >= maxNodes) {
+        console.log(
+          `[Reference Tree] Hit maxNodes limit (${maxNodes}), stopping at depth ${depth}`,
+        );
+        break;
+      }
 
-      // Add this verse to the tree
-      if (!addNode(verseId, depth, parentId)) continue;
+      if (visited.has(verseId)) continue; // Skip cycles
 
-      // Don't expand children if we've hit max depth
-      if (depth >= maxDepth) continue;
+      const verse = versesById.get(verseId);
+      if (!verse) {
+        console.warn(`[Reference Tree] Verse ${verseId} not found in database`);
+        continue;
+      }
 
-      // Get this verse's references (actual cross-references from database)
-      const refs = outEdges.get(verseId) || [];
+      visited.add(verseId);
+      nodeCount++;
+      depthCounts.set(depth, (depthCounts.get(depth) || 0) + 1);
 
-      // Limit children to prevent explosion
+      nodes.push({
+        ...verse,
+        depth,
+        parentId,
+        isSpine: false,
+        isVisible: false,
+        collapsedChildCount: 0,
+        ringSource: `level${depth}`,
+      });
+
+      if (parentId !== undefined) {
+        edges.push({
+          from: parentId,
+          to: verseId,
+          weight: 1.0 - depth * 0.15,
+        });
+      }
+    }
+
+    // If we've hit max depth or max nodes, stop
+    if (depth >= maxDepth || nodeCount >= maxNodes) {
+      console.log(
+        `[Reference Tree] Stopping: depth=${depth}, nodeCount=${nodeCount}`,
+      );
+      break;
+    }
+
+    // Fetch cross-references for all verses at this level
+    const verseIdsAtThisLevel = currentLevel
+      .map((v) => v.id)
+      .filter((id) => visited.has(id)); // Only for verses we actually added
+    const crossRefs = await fetchCrossReferencesForVerses(verseIdsAtThisLevel);
+
+    // Build next level
+    const nextLevel: Array<{ id: number; parentId: number }> = [];
+    for (const { id: verseId } of currentLevel) {
+      if (!visited.has(verseId)) continue;
+
+      const refs = crossRefs.get(verseId) || [];
       const limitedRefs = refs.slice(0, maxChildrenPerNode);
 
       if (refs.length > maxChildrenPerNode) {
@@ -272,7 +228,6 @@ export async function buildReferenceTree(
         );
       }
 
-      // Add all references to next level
       for (const refId of limitedRefs) {
         if (!visited.has(refId) && nodeCount < maxNodes) {
           nextLevel.push({ id: refId, parentId: verseId });
