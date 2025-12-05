@@ -85,10 +85,20 @@ export default {
           800: "#991b1b",
           900: "#7f1d1d",
         },
+
+        // Gold for Scripture citations
+        gold: {
+          300: "#E8C77D", // Lighter gold for accents
+          400: "#DDB95A", // Medium gold
+          500: "#D4AF37", // Metallic Gold (main)
+          600: "#B5942F", // Darker Gold for text/hover
+          700: "#967A27", // Deep gold
+        },
       },
 
       fontFamily: {
         sans: [
+          "var(--font-inter)",
           "Inter",
           "system-ui",
           "-apple-system",
@@ -98,6 +108,15 @@ export default {
           "Helvetica Neue",
           "Arial",
           "sans-serif",
+        ],
+        serif: [
+          "var(--font-crimson)",
+          "Crimson Text",
+          "Georgia",
+          "Cambria",
+          "Times New Roman",
+          "Times",
+          "serif",
         ],
         mono: [
           "JetBrains Mono",

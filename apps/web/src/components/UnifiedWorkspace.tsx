@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { MarkdownMessage } from "./MarkdownMessage";
+import { MessageStream } from "./golden-thread/MessageStream";
 import { ToolBadges } from "./ToolBadges";
 import { VoiceSettings } from "./VoiceSettings";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
@@ -664,6 +664,36 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     // Start streaming AI response with updated message history
     await startStream(prompt, "user", historyForAPI);
+    setIsProcessing(false);
+  };
+
+  // Handle verse click from MessageStream component
+  const handleVerseClick = async (reference: string) => {
+    // Reference is in format like "John 3:16" or "1 Peter 5:7"
+    if (isProcessing || isStreaming) return;
+
+    setIsProcessing(true);
+    setCurrentInput(reference); // Show it in the input briefly
+
+    // Add user message to chat
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: "user",
+      content: reference,
+      timestamp: new Date(),
+    };
+    const updatedMessages = [...messages, newMessage];
+    setMessages(updatedMessages);
+    setCurrentInput(""); // Clear input after adding message
+
+    // Convert ChatMessage format to API format (role/content)
+    const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
+      role: msg.type === "user" ? "user" : "assistant",
+      content: msg.content,
+    }));
+
+    // Start streaming AI response - this will build a new genealogy tree
+    await startStream(reference, "user", historyForAPI);
     setIsProcessing(false);
   };
 
@@ -1361,11 +1391,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         </div>
                       ) : (
                         <>
-                          <MarkdownMessage
+                          <MessageStream
                             content={message.content}
-                            onCopy={() => {
-                              // Copy functionality is handled internally by MarkdownMessage
-                            }}
+                            onVerseClick={handleVerseClick}
                           />
                         </>
                       )}
