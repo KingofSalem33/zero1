@@ -312,6 +312,8 @@ export async function buildVisualBundle(
     depth: 0,
     isSpine: true, // Anchor is always part of the spine
     ringSource: "ring0",
+    isVisible: true, // Anchor is always visible
+    collapsedChildCount: 0, // Will be calculated later
   };
   nodes.push(anchorNode);
   nodeMap.set(bundle.anchor.id, anchorNode);
@@ -328,6 +330,8 @@ export async function buildVisualBundle(
       parentId: bundle.anchor.id,
       isSpine: false,
       ringSource: "ring0",
+      isVisible: false, // Context verses not on spine
+      collapsedChildCount: 0, // Will be calculated later
     };
     nodes.push(node);
     nodeMap.set(v.id, node);
@@ -376,6 +380,8 @@ export async function buildVisualBundle(
       parentId,
       isSpine: false,
       ringSource: "ring1",
+      isVisible: false, // Ring 1 verses not on spine
+      collapsedChildCount: 0, // Will be calculated later
     };
     nodes.push(node);
     nodeMap.set(v.id, node);
@@ -417,6 +423,8 @@ export async function buildVisualBundle(
       parentId,
       isSpine: false,
       ringSource: "ring2",
+      isVisible: false, // Ring 2 verses not on spine
+      collapsedChildCount: 0, // Will be calculated later
     };
     nodes.push(node);
     nodeMap.set(v.id, node);
@@ -458,6 +466,8 @@ export async function buildVisualBundle(
       parentId,
       isSpine: false,
       ringSource: "ring3",
+      isVisible: false, // Ring 3 verses not on spine
+      collapsedChildCount: 0, // Will be calculated later
     };
     nodes.push(node);
     nodeMap.set(v.id, node);
