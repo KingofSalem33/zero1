@@ -8,7 +8,11 @@
       "Bash(git reset:*)",
       "Bash(git push:*)",
       "Bash(npm install:*)",
-      "Bash(npm run dev:api:*)"
+      "Bash(npm run dev:api:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint)",
+      "Bash(cat:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

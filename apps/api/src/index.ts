@@ -9,10 +9,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { ENV } from "./env";
-import threadsRouter from "./routes/threads";
 import ttsRouter from "./routes/tts";
-import synopsisRouter from "./routes/synopsis";
-import bookmarksRouter from "./routes/bookmarks";
 import { runModel } from "./ai/runModel";
 // import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
@@ -97,16 +94,10 @@ app.use("/api/", apiLimiter);
 // app.use("/api/projects", optionalAuth, projectsRouter);
 
 // Mount thread routes (temporarily optional auth for testing)
-app.use("/api/threads", optionalAuth, threadsRouter);
+// app.use("/api/threads", optionalAuth, threadsRouter); // Removed - legacy feature
 
 // Mount TTS routes (text-to-speech)
 app.use("/api/tts", optionalAuth, ttsRouter);
-
-// Mount synopsis routes (text analysis)
-app.use("/api/synopsis", optionalAuth, synopsisRouter);
-
-// Mount bookmark routes
-app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
 
 // File endpoints (temporarily optional auth for testing)
 app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);
