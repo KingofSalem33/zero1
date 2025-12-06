@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 // --- 1. THE CORE TRUTH (Blockquote) ---
 // Renders as a distinct, serif, italicized statement with a gold border.
 const CoreTruth = ({ children }: { children: React.ReactNode }) => (
-  <blockquote className="border-l-4 border-[#D4AF37] pl-6 py-3 my-8 font-serif text-xl italic text-slate-800 leading-relaxed bg-slate-50/50 rounded-r">
+  <blockquote className="border-l-4 border-[#D4AF37] pl-6 py-3 my-8 font-serif text-xl italic text-slate-800 leading-relaxed">
     {children}
   </blockquote>
 );

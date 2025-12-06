@@ -16,7 +16,7 @@ import bookmarksRouter from "./routes/bookmarks";
 import { runModel } from "./ai/runModel";
 // import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
-import { explainScriptureWithGenealogy } from "./bible/expandingRingExegesis";
+import { explainScriptureWithGenealogyStream } from "./bible/expandingRingExegesis";
 import {
   chatRequestSchema,
   chatJsonResponseSchema,
@@ -327,7 +327,7 @@ app.post(
       // Validate request body
       const {
         message,
-        userId = "anonymous",
+        // userId = "anonymous", // Not used in streaming mode
         // history = [], // Not used in Expanding Ring mode
       } = chatRequestSchema.parse(req.body);
 
@@ -336,68 +336,19 @@ app.post(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Helper to send SSE event (copied from runModelStream)
-      const sendEvent = (event: string, data: unknown) => {
-        const eventStr = `event: ${event}\n`;
-        const dataStr =
-          typeof data === "string"
-            ? `data: ${data}\n\n`
-            : `data: ${JSON.stringify(data)}\n\n`;
-        console.log(
-          `[SSE] Sending event: ${event}, data: ${typeof data === "string" ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100)}...`,
-        );
-        res.write(eventStr);
-        res.write(dataStr);
-      };
-
-      // Send initial heartbeat (copied from runModelStream)
+      // Send initial heartbeat
       res.write(`:\n\n`);
 
-      // Use the Reference Genealogy exegesis pipeline
-      // NOTE: Requires Supabase database to be populated first!
-      // Database is now populated with 31,100 verses and 210,330 cross-references ✓
-      // NOW USING: Reference Genealogy Tree (replaces ring-based approach)
-      console.log("[Exegesis] Running Reference Genealogy pipeline...");
-      const exegesisResult = await explainScriptureWithGenealogy(message);
-      console.log(
-        "[Exegesis] Got result, length:",
-        exegesisResult.answer.length,
-      );
-      console.log("[Exegesis] Tree stats:", exegesisResult.treeStats);
+      // Use the STREAMING Reference Genealogy exegesis pipeline
+      // This will stream the LLM response as it generates (token-by-token)
+      // instead of waiting for the full response
+      console.log("[Exegesis STREAM] Running Reference Genealogy pipeline...");
+      await explainScriptureWithGenealogyStream(res, message);
+      console.log("[Exegesis STREAM] Stream completed");
 
-      // Send the reference genealogy tree (same data the LLM analyzed)
-      if (exegesisResult.visualBundle) {
-        console.log(
-          `[Reference Tree] Sending ${exegesisResult.visualBundle.nodes.length} nodes, ${exegesisResult.visualBundle.edges.length} edges`,
-        );
-        sendEvent("map_data", exegesisResult.visualBundle);
-      }
-
-      // Send answer as content in sentence-based chunks for better performance
-      console.log("[SSE] Sending content in sentence chunks");
-      // Split into sentences (periods, question marks, exclamation points followed by space or end)
-      const sentences = exegesisResult.answer.split(/(?<=[.!?])\s+/);
-      for (const sentence of sentences) {
-        sendEvent("content", { delta: sentence + " " });
-      }
-
-      // Send done event with tree metadata
-      sendEvent("done", {
-        citations: [],
-        anchor: exegesisResult.anchor,
-        treeStats: exegesisResult.treeStats,
-      });
-      console.log("[SSE] Ending response");
-      res.end();
-
-      // Store in memory
-      if (userId && userId !== "anonymous") {
-        await pushToThread(userId, { role: "user", content: message });
-        await pushToThread(userId, {
-          role: "assistant",
-          content: exegesisResult.answer,
-        });
-      }
+      // Note: In streaming mode, we don't store the conversation in memory
+      // because we don't have access to the full response text
+      // TODO: Consider accumulating the streamed response for storage
     } catch (error) {
       console.error("Chat streaming error:", error);
       const message =

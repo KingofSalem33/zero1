@@ -55,6 +55,7 @@ interface ChatMessage {
   type: "user" | "ai";
   content: string;
   timestamp: Date;
+  visualBundle?: VisualContextBundle; // Reference genealogy tree for this message
 }
 
 interface ToolActivity {
@@ -506,26 +507,24 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     null,
   );
   const [showVisualization, setShowVisualization] = useState(false);
+  const [pendingVisualBundle, setPendingVisualBundle] =
+    useState<VisualContextBundle | null>(null); // Store bundle until message is complete
   const { highlightedRefs, addReferencesFromText, resetHighlights } =
     useGoldenThreadHighlighting();
 
   // Handler for map_data events from backend
-  const handleMapData = useCallback(
-    (bundle: VisualContextBundle) => {
-      console.log(
-        "[UnifiedWorkspace] Received map_data with nodes:",
-        bundle?.nodes?.length,
-        "edges:",
-        bundle?.edges?.length,
-      );
-      console.log("[UnifiedWorkspace] Full bundle:", bundle);
-      setVisualBundle(bundle);
-      setShowVisualization(true);
-      console.log("[UnifiedWorkspace] Set showVisualization to true");
-      resetHighlights();
-    },
-    [resetHighlights],
-  );
+  // Now stores the bundle but doesn't display it automatically
+  const handleMapData = useCallback((bundle: VisualContextBundle) => {
+    console.log(
+      "[UnifiedWorkspace] Received map_data with nodes:",
+      bundle?.nodes?.length,
+      "edges:",
+      bundle?.edges?.length,
+    );
+    console.log("[UnifiedWorkspace] Full bundle:", bundle);
+    // Store the bundle to attach to the message, but don't show it yet
+    setPendingVisualBundle(bundle);
+  }, []);
 
   // Use simple chat stream hook for LLM-only mode
   const { streamingMessage, isStreaming, startStream } =
@@ -551,9 +550,17 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         const lastMsg = prev[prev.length - 1];
         if (lastMsg && lastMsg.type === "ai" && lastMsg.id === "streaming") {
           // Update existing streaming message
+          // If message is complete, attach the pending visualBundle
           return prev.map((msg) =>
             msg.id === "streaming"
-              ? { ...msg, content: streamingMessage.content }
+              ? {
+                  ...msg,
+                  content: streamingMessage.content,
+                  visualBundle:
+                    streamingMessage.isComplete && pendingVisualBundle
+                      ? pendingVisualBundle
+                      : msg.visualBundle,
+                }
               : msg,
           );
         } else {
@@ -565,6 +572,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               type: "ai" as const,
               content: streamingMessage.content,
               timestamp: new Date(),
+              visualBundle:
+                streamingMessage.isComplete && pendingVisualBundle
+                  ? pendingVisualBundle
+                  : undefined,
             },
           ];
         }
@@ -593,15 +604,20 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     // When streaming is complete, finalize the message and clear tool badges
     if (streamingMessage?.isComplete) {
-      setMessages((prev) =>
-        prev.map((msg) =>
+      setMessages((prev) => {
+        // Only finalize if there's actually a streaming message to finalize
+        const hasStreamingMessage = prev.some((msg) => msg.id === "streaming");
+        if (!hasStreamingMessage) return prev;
+
+        return prev.map((msg) =>
           msg.id === "streaming" ? { ...msg, id: Date.now().toString() } : msg,
-        ),
-      );
-      // Clear tool badges when streaming is complete
+        );
+      });
+      // Clear tool badges and pending bundle when streaming is complete
       setToolsUsed([]);
+      setPendingVisualBundle(null);
     }
-  }, [streamingMessage, setToolsUsed]);
+  }, [streamingMessage?.isComplete, setToolsUsed]);
 
   const handleSendMessage = async () => {
     if (!currentInput.trim() || isProcessing || isStreaming) return;
@@ -1390,14 +1406,116 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                           <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
                         </div>
                       ) : (
-                        <>
-                          <MessageStream
-                            content={message.content}
-                            onVerseClick={handleVerseClick}
-                          />
-                        </>
+                        <MessageStream
+                          content={message.content}
+                          onVerseClick={handleVerseClick}
+                        />
                       )}
                     </div>
+                    {/* Message Action Buttons (for AI messages only, not while streaming) */}
+                    {message.type === "ai" && message.id !== "streaming" && (
+                      <div className="ml-[2.625rem] mt-3 flex items-center gap-2">
+                        {/* Voice/TTS button */}
+                        <button
+                          onClick={async () => {
+                            // Simple TTS implementation - can be enhanced later
+                            /* global URL, Audio */
+                            try {
+                              const response = await fetch(
+                                "http://localhost:3001/api/tts",
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    text: message.content.substring(0, 4000),
+                                    voice: "onyx",
+                                    model: "tts-1",
+                                    speed: 1.0,
+                                  }),
+                                },
+                              );
+                              const audioBlob = await response.blob();
+                              const audioUrl = URL.createObjectURL(audioBlob);
+                              const audio = new Audio(audioUrl);
+                              audio.play();
+                            } catch (error) {
+                              // TTS error - silently fail
+                              void error;
+                            }
+                          }}
+                          className="p-1 rounded-md hover:bg-neutral-800/60 text-neutral-500 hover:text-neutral-300 transition-colors"
+                          title="Read aloud"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                            />
+                          </svg>
+                        </button>
+
+                        {/* Copy button */}
+                        <button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(
+                              message.content,
+                            );
+                          }}
+                          className="p-1 rounded-md hover:bg-neutral-800/60 text-neutral-500 hover:text-neutral-300 transition-colors"
+                          title="Copy to clipboard"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            />
+                          </svg>
+                        </button>
+
+                        {/* View Reference Tree button (only if has visualBundle) */}
+                        {message.visualBundle && (
+                          <button
+                            onClick={() => {
+                              setVisualBundle(message.visualBundle!);
+                              setShowVisualization(true);
+                              resetHighlights();
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 rounded-md transition-colors"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                              />
+                            </svg>
+                            View Tree
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -11,6 +11,8 @@
  */
 
 import { runModel } from "../ai/runModel";
+import { runModelStream } from "../ai/runModelStream";
+import type { Response } from "express";
 import {
   buildContextBundle,
   getVerseId,
@@ -493,6 +495,139 @@ export async function explainScriptureWithGenealogy(
 
   return {
     answer: result.text,
+    anchor,
+    anchorId,
+    treeStats: stats,
+    visualBundle,
+  };
+}
+
+/**
+ * STREAMING VERSION: Explain Scripture with Reference Genealogy Tree
+ * This version streams the LLM response as it generates (token-by-token)
+ * instead of waiting for the full response.
+ */
+export async function explainScriptureWithGenealogyStream(
+  res: Response,
+  userPrompt: string,
+): Promise<{
+  anchor: Verse;
+  anchorId: number | null;
+  treeStats: {
+    totalNodes: number;
+    maxDepth: number;
+    depthDistribution: Record<number, number>;
+  };
+  visualBundle: any;
+}> {
+  console.log("[Genealogy Exegesis STREAM] Pipeline starting...");
+  console.time("[Genealogy Exegesis STREAM] Total time");
+
+  // ========================================
+  // STEP 1: Resolve Anchor
+  // ========================================
+  const anchorId = await resolveAnchor(userPrompt);
+
+  if (!anchorId) {
+    // Send error message via SSE
+    res.write(`event: content\n`);
+    res.write(
+      `data: ${JSON.stringify({ delta: "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16')." })}\n\n`,
+    );
+    res.write(`event: done\n`);
+    res.write(`data: ${JSON.stringify({ citations: [] })}\n\n`);
+
+    return {
+      anchor: {
+        id: 0,
+        book_abbrev: "",
+        book_name: "",
+        chapter: 0,
+        verse: 0,
+        text: "",
+      },
+      anchorId: null,
+      treeStats: {
+        totalNodes: 0,
+        maxDepth: 0,
+        depthDistribution: {},
+      },
+      visualBundle: null,
+    };
+  }
+
+  // ========================================
+  // STEP 2: Build Reference Genealogy Tree
+  // ========================================
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildReferenceTree } = require("./referenceGenealogy");
+
+  const visualBundle = await buildReferenceTree(anchorId, {
+    maxDepth: 999,
+    maxNodes: 30,
+    maxChildrenPerNode: 999,
+  });
+
+  // ========================================
+  // STEP 3: Send Map Data BEFORE LLM starts
+  // ========================================
+  // Calculate stats
+  const depthCounts: Record<number, number> = {};
+  for (const node of visualBundle.nodes) {
+    depthCounts[node.depth] = (depthCounts[node.depth] || 0) + 1;
+  }
+
+  const stats = {
+    totalNodes: visualBundle.nodes.length,
+    maxDepth: Math.max(...visualBundle.nodes.map((n: any) => n.depth)),
+    depthDistribution: depthCounts,
+  };
+
+  // Send the reference genealogy tree immediately
+  console.log(
+    `[Reference Tree STREAM] Sending ${visualBundle.nodes.length} nodes, ${visualBundle.edges.length} edges`,
+  );
+  res.write(`event: map_data\n`);
+  res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
+
+  // ========================================
+  // STEP 4: Format Tree for LLM
+  // ========================================
+  const systemPrompt = generateSystemPrompt();
+  const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
+
+  // ========================================
+  // STEP 5: Stream LLM Response
+  // ========================================
+  console.log("[Genealogy Exegesis STREAM] Streaming LLM response...");
+
+  await runModelStream(
+    res,
+    [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ],
+    {
+      toolSpecs: [],
+      toolMap: {},
+      reasoningEffort: "low",
+    },
+  );
+
+  console.timeEnd("[Genealogy Exegesis STREAM] Total time");
+  console.log("[Genealogy Exegesis STREAM] Tree stats:", stats);
+
+  // Find anchor verse details
+  const anchor = visualBundle.nodes.find((n: any) => n.id === anchorId) || {
+    id: anchorId,
+    book_abbrev: "",
+    book_name: "",
+    chapter: 0,
+    verse: 0,
+    text: "",
+  };
+
+  return {
     anchor,
     anchorId,
     treeStats: stats,

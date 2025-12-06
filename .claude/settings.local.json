@@ -5,7 +5,10 @@
       "Bash(npx eslint:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:api:*)"
     ],
     "deny": [],
     "ask": []
