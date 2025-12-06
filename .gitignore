@@ -112,4 +112,7 @@ out/
 
 # Logs
 logs
-*.lognul
+*.log
+
+# Bible data (too large for git)
+apps/api/data/
