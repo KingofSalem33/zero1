@@ -512,6 +512,75 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const { highlightedRefs, addReferencesFromText, resetHighlights } =
     useGoldenThreadHighlighting();
 
+  // TTS state management
+  /* global HTMLAudioElement */
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stop any playing audio
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setPlayingMessageId(null);
+  }, []);
+
+  // Handle TTS playback
+  const handleTTS = useCallback(
+    async (messageId: string, text: string) => {
+      // If this message is already playing, stop it
+      if (playingMessageId === messageId) {
+        stopAudio();
+        return;
+      }
+
+      // Stop any other audio that might be playing
+      stopAudio();
+
+      try {
+        /* global URL, Audio */
+        const response = await fetch("http://localhost:3001/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: text.substring(0, 4000),
+            voice: "onyx",
+            model: "tts-1",
+            speed: 1.0,
+          }),
+        });
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        audioRef.current = audio;
+        setPlayingMessageId(messageId);
+
+        // Cleanup when audio finishes
+        audio.onended = () => {
+          setPlayingMessageId(null);
+          audioRef.current = null;
+        };
+
+        // Cleanup on error
+        audio.onerror = () => {
+          setPlayingMessageId(null);
+          audioRef.current = null;
+        };
+
+        audio.play();
+      } catch (error) {
+        void error;
+        setPlayingMessageId(null);
+        audioRef.current = null;
+      }
+    },
+    [playingMessageId, stopAudio],
+  );
+
   // Handler for map_data events from backend
   // Now stores the bundle but doesn't display it automatically
   const handleMapData = useCallback((bundle: VisualContextBundle) => {
@@ -1417,50 +1486,53 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       <div className="ml-[2.625rem] mt-3 flex items-center gap-2">
                         {/* Voice/TTS button */}
                         <button
-                          onClick={async () => {
-                            // Simple TTS implementation - can be enhanced later
-                            /* global URL, Audio */
-                            try {
-                              const response = await fetch(
-                                "http://localhost:3001/api/tts",
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    text: message.content.substring(0, 4000),
-                                    voice: "onyx",
-                                    model: "tts-1",
-                                    speed: 1.0,
-                                  }),
-                                },
-                              );
-                              const audioBlob = await response.blob();
-                              const audioUrl = URL.createObjectURL(audioBlob);
-                              const audio = new Audio(audioUrl);
-                              audio.play();
-                            } catch (error) {
-                              // TTS error - silently fail
-                              void error;
-                            }
-                          }}
-                          className="p-1 rounded-md hover:bg-neutral-800/60 text-neutral-500 hover:text-neutral-300 transition-colors"
-                          title="Read aloud"
+                          onClick={() => handleTTS(message.id, message.content)}
+                          className={`p-1 rounded-md transition-colors ${
+                            playingMessageId === message.id
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                              : "hover:bg-neutral-800/60 text-neutral-500 hover:text-neutral-300"
+                          }`}
+                          title={
+                            playingMessageId === message.id
+                              ? "Stop playback"
+                              : "Read aloud"
+                          }
                         >
-                          <svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                            />
-                          </svg>
+                          {playingMessageId === message.id ? (
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 10h6v4H9z"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                              />
+                            </svg>
+                          )}
                         </button>
 
                         {/* Copy button */}
