@@ -12,6 +12,7 @@ import { ENV } from "./env";
 import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
 import bookmarksRouter from "./routes/bookmarks";
+import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
 // import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
@@ -106,6 +107,9 @@ app.use("/api/synopsis", optionalAuth, synopsisRouter);
 
 // Mount bookmark routes
 app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
+
+// Mount verse routes (fetch individual verses by reference)
+app.use("/api/verse", optionalAuth, verseRouter);
 
 // File endpoints (temporarily optional auth for testing)
 app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);

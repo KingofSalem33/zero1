@@ -12,7 +12,9 @@
       "Bash(npm run build:*)",
       "Bash(npm run lint)",
       "Bash(cat:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

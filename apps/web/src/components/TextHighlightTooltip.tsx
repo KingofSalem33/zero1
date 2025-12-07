@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
-/* global MouseEvent, Element, AbortController */
+/* global MouseEvent, Element, AbortController, HTMLElement */
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string) => void;
@@ -30,98 +30,7 @@ export function TextHighlightTooltip({
   const abortControllerRef = useRef<AbortController | null>(null);
   const isStreamingRef = useRef(false);
 
-  useEffect(() => {
-    const handleMouseUp = async () => {
-      const selection = window.getSelection();
-      const text = selection?.toString().trim();
-
-      if (text && text.length > 0) {
-        const range = selection?.getRangeAt(0);
-        const rect = range?.getBoundingClientRect();
-
-        if (rect) {
-          // Cancel any ongoing streaming
-          if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-          }
-          isStreamingRef.current = false;
-
-          // Reset all state for new selection
-          setSelectedText(text);
-          setDescription("");
-          setIsLoadingDescription(true);
-          setIsVisible(false);
-
-          // Position tooltip directly below the highlighted text
-          const spacing = 12;
-          const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
-
-          // Position below selection
-          const top = rect.bottom + window.scrollY + spacing;
-
-          // Center horizontally on the selection
-          let left = rect.left + window.scrollX + rect.width / 2;
-
-          // Keep tooltip within viewport horizontally
-          const rightEdge = left + tooltipEstimatedWidth / 2;
-          const leftEdge = left - tooltipEstimatedWidth / 2;
-
-          if (rightEdge > window.innerWidth - 16) {
-            left = window.innerWidth - tooltipEstimatedWidth / 2 - 16;
-          } else if (leftEdge < 16) {
-            left = tooltipEstimatedWidth / 2 + 16;
-          }
-
-          setPosition({
-            top,
-            left,
-          });
-          setBookmarkSuccess(false); // Reset bookmark state for new selection
-
-          setTimeout(() => setIsVisible(true), 10);
-          await generateAISynopsis(text);
-        }
-      } else {
-        // Only close if not clicking inside the tooltip
-        const clickedElement = document.activeElement;
-        const isClickInsideTooltip =
-          tooltipRef.current &&
-          clickedElement &&
-          tooltipRef.current.contains(clickedElement);
-
-        if (!isClickInsideTooltip && position) {
-          closeTooltip();
-        }
-      }
-    };
-
-    const handleMouseDown = (e: MouseEvent) => {
-      // Close tooltip if clicking outside
-      const target = e.target;
-      if (
-        tooltipRef.current &&
-        target instanceof Element &&
-        !tooltipRef.current.contains(target)
-      ) {
-        closeTooltip();
-      }
-    };
-
-    document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("mousedown", handleMouseDown);
-
-    return () => {
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("mousedown", handleMouseDown);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      isStreamingRef.current = false;
-    };
-  }, []); // Empty dependency array - listeners set up once
-
-  const closeTooltip = () => {
+  const closeTooltip = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -134,47 +43,11 @@ export function TextHighlightTooltip({
       setIsLoadingDescription(false);
       setBookmarkSuccess(false);
     }, 150);
-  };
+  }, []);
 
-  const handleBookmark = async () => {
-    if (!selectedText || isBookmarking || bookmarkSuccess) return;
-
-    try {
-      setIsBookmarking(true);
-
-      const response = await fetch(`${API_URL}/api/bookmarks`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: selectedText,
-          userId,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        if (error.error?.code === "duplicate_bookmark") {
-          // Already bookmarked - show success state anyway
-          setBookmarkSuccess(true);
-        } else {
-          throw new Error("Failed to bookmark");
-        }
-      } else {
-        setBookmarkSuccess(true);
-      }
-    } catch {
-      // Silent failure; tooltip UI remains available
-    } finally {
-      setIsBookmarking(false);
-    }
-  };
-
-  const generateAISynopsis = async (text: string) => {
+  const generateAISynopsis = useCallback(async (text: string) => {
     try {
       // Create new abort controller for this request
-
       abortControllerRef.current = new AbortController();
       isStreamingRef.current = true;
 
@@ -244,6 +117,146 @@ export function TextHighlightTooltip({
       isStreamingRef.current = false;
       abortControllerRef.current = null;
     }
+  }, []);
+
+  useEffect(() => {
+    const handleMouseUp = async (e: MouseEvent) => {
+      // Don't interfere with verse citation clicks
+      const target = e.target as HTMLElement;
+      if (target && target.closest('button[class*="text-[#B5942F]"]')) {
+        // eslint-disable-next-line no-console
+        console.log("[TextHighlight] Ignoring verse citation click");
+        return;
+      }
+
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+
+      // eslint-disable-next-line no-console
+      console.log("[TextHighlight] Mouse up, selected text:", text);
+
+      if (text && text.length > 0) {
+        const range = selection?.getRangeAt(0);
+        const rect = range?.getBoundingClientRect();
+
+        // eslint-disable-next-line no-console
+        console.log("[TextHighlight] Showing tooltip for:", text);
+
+        if (rect) {
+          // Cancel any ongoing streaming
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+          }
+          isStreamingRef.current = false;
+
+          // Reset all state for new selection
+          setSelectedText(text);
+          setDescription("");
+          setIsLoadingDescription(true);
+          setIsVisible(false);
+
+          // Position tooltip directly below the highlighted text
+          const spacing = 12;
+          const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
+
+          // Position below selection - use viewport coordinates only (no scrollY for fixed positioning)
+          const top = rect.bottom + spacing;
+
+          // Center horizontally on the selection - use viewport coordinates only (no scrollX for fixed positioning)
+          let left = rect.left + rect.width / 2;
+
+          // Keep tooltip within viewport horizontally
+          const rightEdge = left + tooltipEstimatedWidth / 2;
+          const leftEdge = left - tooltipEstimatedWidth / 2;
+
+          if (rightEdge > window.innerWidth - 16) {
+            left = window.innerWidth - tooltipEstimatedWidth / 2 - 16;
+          } else if (leftEdge < 16) {
+            left = tooltipEstimatedWidth / 2 + 16;
+          }
+
+          setPosition({
+            top,
+            left,
+          });
+          setBookmarkSuccess(false); // Reset bookmark state for new selection
+
+          setTimeout(() => setIsVisible(true), 10);
+          await generateAISynopsis(text);
+        }
+      } else {
+        // Only close if not clicking inside the tooltip
+        const clickedElement = document.activeElement;
+        const isClickInsideTooltip =
+          tooltipRef.current &&
+          clickedElement &&
+          tooltipRef.current.contains(clickedElement);
+
+        if (!isClickInsideTooltip) {
+          closeTooltip();
+        }
+      }
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Close tooltip if clicking outside
+      const target = e.target;
+      if (
+        tooltipRef.current &&
+        target instanceof Element &&
+        !tooltipRef.current.contains(target)
+      ) {
+        closeTooltip();
+      }
+    };
+
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("mousedown", handleMouseDown);
+
+    return () => {
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("mousedown", handleMouseDown);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      isStreamingRef.current = false;
+    };
+  }, [closeTooltip, generateAISynopsis]);
+
+  const handleBookmark = async () => {
+    if (!selectedText || isBookmarking || bookmarkSuccess) return;
+
+    try {
+      setIsBookmarking(true);
+
+      const response = await fetch(`${API_URL}/api/bookmarks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: selectedText,
+          userId,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        if (error.error?.code === "duplicate_bookmark") {
+          // Already bookmarked - show success state anyway
+          setBookmarkSuccess(true);
+        } else {
+          throw new Error("Failed to bookmark");
+        }
+      } else {
+        setBookmarkSuccess(true);
+      }
+    } catch {
+      // Silent failure; tooltip UI remains available
+    } finally {
+      setIsBookmarking(false);
+    }
   };
 
   const handleGoDeeper = () => {
@@ -297,9 +310,9 @@ export function TextHighlightTooltip({
           {/* Synopsis - compact single area */}
           {isLoadingDescription ? (
             <div className="flex items-center gap-2 py-1.5">
-              <div className="w-1 h-1 rounded-full bg-blue-400 animate-pulse" />
-              <div className="w-1 h-1 rounded-full bg-blue-400 animate-pulse [animation-delay:150ms]" />
-              <div className="w-1 h-1 rounded-full bg-blue-400 animate-pulse [animation-delay:300ms]" />
+              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
+              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
+              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
               <span className="text-xs text-neutral-400 ml-1 font-medium">
                 Analyzing
               </span>
@@ -309,7 +322,7 @@ export function TextHighlightTooltip({
               <p className="text-[13px] leading-relaxed text-neutral-200 font-normal">
                 {description}
                 {description && isStreamingRef.current && (
-                  <span className="inline-block w-1 h-3 ml-0.5 bg-blue-400 animate-pulse" />
+                  <span className="inline-block w-1 h-3 ml-0.5 bg-[#D4AF37] animate-pulse" />
                 )}
               </p>
 
@@ -317,7 +330,7 @@ export function TextHighlightTooltip({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleGoDeeper}
-                  className="group px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 hover:text-blue-300 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
+                  className="group px-3 py-1.5 bg-[#D4AF37]/20 hover:bg-[#D4AF37]/30 text-[#D4AF37] hover:text-[#E5C158] text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
                 >
                   <span>Go Deeper</span>
                   <svg
@@ -340,7 +353,7 @@ export function TextHighlightTooltip({
                   disabled={isBookmarking || bookmarkSuccess}
                   className={`group px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
                     bookmarkSuccess
-                      ? "bg-green-500/20 text-green-400 cursor-default"
+                      ? "bg-[#D4AF37]/20 text-[#D4AF37] cursor-default"
                       : isBookmarking
                         ? "bg-white/5 text-neutral-400 cursor-wait"
                         : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
