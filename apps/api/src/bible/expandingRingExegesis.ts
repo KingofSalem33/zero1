@@ -18,7 +18,14 @@ import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
 import { buildReferenceTree } from "./referenceGenealogy";
-import type { Sim1Mechanism, Sim2Coherence } from "./kernelSimulations";
+import {
+  generateSim1Prompt,
+  generateSim2Prompt,
+  generateSim3Prompt,
+  formatGenealogyTreeForPrompt,
+  type Sim1Mechanism,
+  type Sim2Coherence,
+} from "./kernelSimulations";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -492,14 +499,6 @@ export async function explainScriptureWithKernelStream(
   sim1?: unknown;
   sim2?: unknown;
 }> {
-  // Dynamic import works without .js extension in ts-node-dev
-  const {
-    generateSim1Prompt,
-    generateSim2Prompt,
-    generateSim3Prompt,
-    formatGenealogyTreeForPrompt,
-  } = await import("./kernelSimulations");
-
   const anchorId = await resolveAnchor(userPrompt);
 
   if (!anchorId) {
