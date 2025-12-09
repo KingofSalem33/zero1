@@ -492,12 +492,13 @@ export async function explainScriptureWithKernelStream(
   sim1?: unknown;
   sim2?: unknown;
 }> {
+  // Dynamic import works without .js extension in ts-node-dev
   const {
     generateSim1Prompt,
     generateSim2Prompt,
     generateSim3Prompt,
     formatGenealogyTreeForPrompt,
-  } = await import("./kernelSimulations.js");
+  } = await import("./kernelSimulations");
 
   const anchorId = await resolveAnchor(userPrompt);
 
