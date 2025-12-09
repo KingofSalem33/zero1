@@ -239,21 +239,31 @@ CONSTRAINTS:
 
 FORMAT:
 Write a flowing, natural explanation in 3-5 paragraphs.
-- Begin with the anchor passage and what it reveals
-- Let cross-references flow naturally into the explanation as Scripture interprets Scripture
-- Weave together the testimony of multiple passages into a coherent teaching
-- Show what God's Word says, not what you think about it
-- Close with a humble invitation to see more in Scripture
 
-NO markdown headers. NO sections. NO blockquotes.
-Just flowing paragraphs of Scripture-saturated teaching.
+CRITICAL ORDER:
+- START with the anchor passage (the most relevant verse that directly answers the question)
+- DO NOT start chronologically from Genesis or Old Testament
+- DO NOT build up chronologically through Scripture
+- Begin where the question is MOST DIRECTLY answered
+- Then let earlier and later passages illuminate that central truth
+
+Structure:
+- Paragraph 1: Begin with the anchor passage and what it reveals about the question
+- Paragraphs 2-4: Let cross-references flow naturally as Scripture interprets Scripture
+- Final paragraph: Close with humble invitation to see more
+
+NO markdown headers. NO sections. NO blockquotes. NO chronological build-up.
+Just flowing paragraphs starting from the most relevant passage.
 
 CRITICAL: Every verse reference MUST use the exact format [Book Ch:v] with square brackets so they become clickable links.`;
 
   const user = `USER QUESTION:
 "${userQuestion}"
 
-ANCHOR AND CLOUD OF WITNESSES (DATA):
+THE ANCHOR PASSAGE (START HERE - this is the most relevant verse):
+${sim1Json.anchor_reference}
+
+CLOUD OF WITNESSES (supporting context):
 ${genealogyBlock}
 
 INTERNAL REASONING (DO NOT EXPOSE DIRECTLY TO USER, BUT RESPECT IT):
@@ -262,6 +272,11 @@ ${JSON.stringify(sim1Json, null, 2)}
 
 - Coherence Model (SIM-2):
 ${JSON.stringify(sim2Json, null, 2)}
+
+CRITICAL INSTRUCTION:
+Begin your teaching with the ANCHOR PASSAGE (${sim1Json.anchor_reference}).
+This is the verse that most directly answers "${userQuestion}".
+Do NOT start chronologically from Genesis. Start from the anchor, then illuminate it with other Scripture.
 
 Now:
 Run the ROBUSTNESS RESIDUE simulation and return ONLY the teaching in the specified format.`;
