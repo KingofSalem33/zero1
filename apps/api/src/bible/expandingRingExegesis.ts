@@ -18,6 +18,7 @@ import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
 import { buildReferenceTree } from "./referenceGenealogy";
+import type { Sim1Mechanism, Sim2Coherence } from "./kernelSimulations";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -31,7 +32,7 @@ const EMPTY_VERSE: Verse = {
   text: "",
 };
 
-interface ReferenceTreeNode {
+export interface ReferenceTreeNode {
   id: number;
   depth: number;
   book_abbrev: string;
@@ -41,12 +42,12 @@ interface ReferenceTreeNode {
   text: string;
 }
 
-interface ReferenceTreeEdge {
+export interface ReferenceTreeEdge {
   from: number;
   to: number;
 }
 
-interface ReferenceVisualBundle {
+export interface ReferenceVisualBundle {
   nodes: ReferenceTreeNode[];
   edges: ReferenceTreeEdge[];
 }
@@ -476,8 +477,201 @@ export async function explainScriptureWithGenealogy(
 }
 
 /**
+ * KERNEL 3-SIM Pipeline: Streaming genealogy-tree exegesis with epistemic rigor
+ * Runs SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching) in sequence.
+ * Only SIM-3 output is streamed to the user.
+ */
+export async function explainScriptureWithKernelStream(
+  res: Response,
+  userPrompt: string,
+): Promise<{
+  anchor: Verse;
+  anchorId: number | null;
+  treeStats: TreeStats;
+  visualBundle: ReferenceVisualBundle | null;
+  sim1?: unknown;
+  sim2?: unknown;
+}> {
+  const {
+    generateSim1Prompt,
+    generateSim2Prompt,
+    generateSim3Prompt,
+    formatGenealogyTreeForPrompt,
+  } = await import("./kernelSimulations.js");
+
+  const anchorId = await resolveAnchor(userPrompt);
+
+  if (!anchorId) {
+    res.write("event: content\n");
+    res.write(
+      `data: ${JSON.stringify({ delta: ANCHOR_NOT_FOUND_MESSAGE })}\n\n`,
+    );
+    res.write("event: done\n");
+    res.write(`data: ${JSON.stringify({ citations: [] })}\n\n`);
+
+    return {
+      anchor: EMPTY_VERSE,
+      anchorId: null,
+      treeStats: { ...EMPTY_TREE_STATS },
+      visualBundle: null,
+    };
+  }
+
+  const visualBundle = (await buildReferenceTree(
+    anchorId,
+    DEFAULT_TREE_OPTIONS,
+  )) as ReferenceVisualBundle;
+
+  const treeStats = computeTreeStats(visualBundle);
+  const anchor = buildAnchorFromTree(visualBundle, anchorId);
+
+  // Send map data first
+  res.write("event: map_data\n");
+  res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
+
+  // Format genealogy block for all 3 SIMs
+  const genealogyBlock = formatGenealogyTreeForPrompt(visualBundle);
+  const anchorReference = `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
+  const anchorText = anchor.text;
+
+  // === SIM-1: Extract Mechanism (non-streaming JSON) ===
+  console.log("[KERNEL SIM-1] Extracting mechanism...");
+  const sim1Prompts = generateSim1Prompt(
+    anchorReference,
+    anchorText,
+    userPrompt,
+  );
+
+  const sim1Result = await runModel(
+    [
+      { role: "system", content: sim1Prompts.system },
+      { role: "user", content: sim1Prompts.user },
+    ],
+    {
+      toolSpecs: [],
+      toolMap: {},
+      reasoningEffort: "low",
+    },
+  );
+
+  let sim1Json: Sim1Mechanism;
+  try {
+    sim1Json = JSON.parse(sim1Result.text) as Sim1Mechanism;
+    console.log(
+      "[KERNEL SIM-1] Mechanism extracted:",
+      sim1Json.anchor_reference,
+    );
+  } catch (error) {
+    console.error("[KERNEL SIM-1] Failed to parse mechanism JSON:", error);
+    // Fallback: send error and use old single-pass method
+    res.write("event: content\n");
+    res.write(
+      `data: ${JSON.stringify({ delta: "Error in mechanism extraction. Falling back to single-pass mode.\n\n" })}\n\n`,
+    );
+    // Fall through to old implementation below
+    const systemPrompt = generateSystemPrompt();
+    const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
+    await runModelStream(
+      res,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      {
+        toolSpecs: [],
+        toolMap: {},
+        reasoningEffort: "low",
+      },
+    );
+    return { anchor, anchorId, treeStats, visualBundle };
+  }
+
+  // === SIM-2: Check Coherence (non-streaming JSON) ===
+  console.log("[KERNEL SIM-2] Checking canonical coherence...");
+  const sim2Prompts = generateSim2Prompt(userPrompt, sim1Json, genealogyBlock);
+
+  const sim2Result = await runModel(
+    [
+      { role: "system", content: sim2Prompts.system },
+      { role: "user", content: sim2Prompts.user },
+    ],
+    {
+      toolSpecs: [],
+      toolMap: {},
+      reasoningEffort: "medium",
+    },
+  );
+
+  let sim2Json: Sim2Coherence;
+  try {
+    sim2Json = JSON.parse(sim2Result.text) as Sim2Coherence;
+    console.log(
+      "[KERNEL SIM-2] Coherence model built:",
+      sim2Json.refined_mechanism_summary.substring(0, 100),
+    );
+  } catch (error) {
+    console.error("[KERNEL SIM-2] Failed to parse coherence JSON:", error);
+    res.write("event: content\n");
+    res.write(
+      `data: ${JSON.stringify({ delta: "Error in coherence checking. Falling back to single-pass mode.\n\n" })}\n\n`,
+    );
+    const systemPrompt = generateSystemPrompt();
+    const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
+    await runModelStream(
+      res,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      {
+        toolSpecs: [],
+        toolMap: {},
+        reasoningEffort: "low",
+      },
+    );
+    return { anchor, anchorId, treeStats, visualBundle, sim1: sim1Json };
+  }
+
+  // === SIM-3: Generate Teaching (streaming markdown) ===
+  console.log("[KERNEL SIM-3] Generating teaching from robustness residue...");
+  const sim3Prompts = generateSim3Prompt(
+    userPrompt,
+    genealogyBlock,
+    sim1Json,
+    sim2Json,
+  );
+
+  await runModelStream(
+    res,
+    [
+      { role: "system", content: sim3Prompts.system },
+      { role: "user", content: sim3Prompts.user },
+    ],
+    {
+      toolSpecs: [],
+      toolMap: {},
+      reasoningEffort: "low",
+    },
+  );
+
+  console.log("[KERNEL 3-SIM] Pipeline complete");
+
+  return {
+    anchor,
+    anchorId,
+    treeStats,
+    visualBundle,
+    sim1: sim1Json,
+    sim2: sim2Json,
+  };
+}
+
+/**
  * Streaming genealogy-tree exegesis (Server-Sent Events).
  * Sends map first, then streams explanation optimized for user clarity.
+ *
+ * NOTE: This is the OLD single-pass implementation.
+ * Use explainScriptureWithKernelStream() for the new 3-SIM KERNEL pipeline.
  */
 export async function explainScriptureWithGenealogyStream(
   res: Response,

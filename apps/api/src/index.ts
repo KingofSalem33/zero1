@@ -16,7 +16,10 @@ import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
 // import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
-import { explainScriptureWithGenealogyStream } from "./bible/expandingRingExegesis";
+import {
+  // explainScriptureWithGenealogyStream, // OLD single-pass implementation
+  explainScriptureWithKernelStream,
+} from "./bible/expandingRingExegesis";
 import {
   chatRequestSchema,
   chatJsonResponseSchema,
@@ -343,12 +346,11 @@ app.post(
       // Send initial heartbeat
       res.write(`:\n\n`);
 
-      // Use the STREAMING Reference Genealogy exegesis pipeline
-      // This will stream the LLM response as it generates (token-by-token)
-      // instead of waiting for the full response
-      console.log("[Exegesis STREAM] Running Reference Genealogy pipeline...");
-      await explainScriptureWithGenealogyStream(res, message);
-      console.log("[Exegesis STREAM] Stream completed");
+      // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
+      // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)
+      console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
+      await explainScriptureWithKernelStream(res, message);
+      console.log("[Exegesis STREAM] KERNEL pipeline completed");
 
       // Note: In streaming mode, we don't store the conversation in memory
       // because we don't have access to the full response text
