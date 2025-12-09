@@ -32,6 +32,7 @@ import {
   startMemoryCleanup,
   stopMemoryCleanup,
 } from "./memory";
+import { destroyCache } from "./infrastructure/cache/cacheInstance";
 import { optionalAuth } from "./middleware/auth";
 import { checkConnectionHealth } from "./db";
 import {
@@ -557,6 +558,10 @@ async function gracefulShutdown(signal: string) {
 
     // Stop memory cleanup interval
     stopMemoryCleanup();
+
+    // Destroy cache instance
+    console.log("Destroying cache...");
+    destroyCache();
 
     // Flush pending memory changes to disk
     console.log("Flushing memory store...");

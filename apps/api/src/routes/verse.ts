@@ -1,9 +1,13 @@
 import { Router } from "express";
 import { readOnlyLimiter } from "../middleware/rateLimit";
-import { getVerse } from "../bible/bibleService";
 import { VerseRef } from "../bible/types";
+import { CachedBibleService } from "../bible/CachedBibleService";
+import { getCache } from "../infrastructure/cache/cacheInstance";
 
 const router = Router();
+
+// Create cached Bible service instance
+const cachedBibleService = new CachedBibleService(getCache(), 3600); // 1 hour TTL
 
 /**
  * Parse a verse reference string like "John 3:16" or "1 Peter 5:7"
@@ -53,7 +57,7 @@ router.get("/:reference", readOnlyLimiter, async (req, res) => {
     }
 
     // Fetch the verse
-    const verse = await getVerse(verseRef);
+    const verse = await cachedBibleService.getVerse(verseRef);
 
     if (!verse) {
       return res.status(404).json({
