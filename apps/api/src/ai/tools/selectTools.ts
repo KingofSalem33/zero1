@@ -1,5 +1,30 @@
 import { toolSpecs, toolMap } from "./index";
 import type { ToolMap } from "./index";
+import { RegexToolSelectionStrategy } from "../strategies";
+import type { IToolSelectionStrategy } from "../strategies";
+
+/**
+ * Default strategy for tool selection
+ * Can be swapped with other strategies (e.g., ML-based) in the future
+ */
+let strategy: IToolSelectionStrategy = new RegexToolSelectionStrategy();
+
+/**
+ * Set the tool selection strategy
+ * Allows dependency injection for testing or switching strategies
+ */
+export function setToolSelectionStrategy(
+  newStrategy: IToolSelectionStrategy,
+): void {
+  strategy = newStrategy;
+}
+
+/**
+ * Get the current tool selection strategy
+ */
+export function getToolSelectionStrategy(): IToolSelectionStrategy {
+  return strategy;
+}
 
 /**
  * Dynamically select relevant tools based on user query intent.
@@ -16,42 +41,8 @@ export function selectRelevantTools(
   toolSpecs: typeof toolSpecs;
   toolMap: Partial<ToolMap>;
 } {
-  const query = userQuery.toLowerCase();
-  const selectedTools: string[] = [];
-
-  // Heuristics for tool selection
-  const needsWebSearch =
-    /\b(search|find|look up|what is|who is|when|where|latest|current|news|today|recent)\b/.test(
-      query,
-    ) ||
-    /\?/.test(query) || // Questions often need web search
-    /\b(google|duckduckgo|bing)\b/.test(query);
-
-  const needsHttpFetch =
-    /\b(fetch|get|read|load|download|url|http|https|link|page|website|article)\b/.test(
-      query,
-    ) || /https?:\/\//.test(query); // Contains URL
-
-  const needsCalculator =
-    /\b(calculate|compute|math|number|sum|total|multiply|divide|subtract|add|equation|formula|\d+\s*[+\-*/]\s*\d+)\b/.test(
-      query,
-    );
-
-  const needsFileSearch =
-    /\b(file|document|doc|uploaded|attachment|pdf|text file|my file|the file|search file|in the doc)\b/.test(
-      query,
-    ) ||
-    conversationHistory?.some((msg) =>
-      /\b(uploaded|file|document|attachment)\b/.test(msg.content.toLowerCase()),
-    );
-
-  // Add selected tools
-  if (needsWebSearch) selectedTools.push("web_search");
-  if (needsHttpFetch) selectedTools.push("http_fetch");
-  if (needsCalculator) selectedTools.push("calculator");
-  if (needsFileSearch) selectedTools.push("file_search");
-
-  // Do NOT default to web_search. If nothing matches, provide no tools.
+  // Use strategy to select tool names
+  const selectedTools = strategy.selectTools(userQuery, conversationHistory);
 
   // Build filtered toolSpecs and toolMap
   const filteredSpecs = toolSpecs.filter(
