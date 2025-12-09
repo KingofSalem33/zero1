@@ -10,8 +10,10 @@ export class InMemoryVerseRepository implements IVerseRepository {
   private readonly kjvPath: string;
 
   constructor(dataPath?: string) {
+    // When running from dist/, __dirname points to dist/repositories
+    // We need to go up to dist/, then to apps/api/, then to data/
     this.kjvPath =
-      dataPath || path.join(__dirname, "..", "..", "..", "data", "kjv.json");
+      dataPath || path.join(__dirname, "..", "..", "data", "kjv.json");
   }
 
   async initialize(): Promise<void> {
