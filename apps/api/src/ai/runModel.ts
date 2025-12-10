@@ -155,14 +155,21 @@ export async function runModel(
     toolSpecs = [],
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
-    model = ENV.OPENAI_MODEL_NAME, // Use configured model (gpt-5-mini)
-    reasoningEffort = "high", // Leverage GPT-5's reasoning capabilities
+    model = ENV.OPENAI_MODEL_NAME,
+    reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
     onToolCall,
     onToolResult,
     onToolError,
     responseFormat,
   } = options;
+
+  // Set reasoning effort based on model capabilities
+  // Nano doesn't support reasoning mode - only mini/pro/opus do
+  const effectiveReasoningEffort =
+    model.startsWith("gpt-5") && !model.includes("nano")
+      ? (reasoningEffort ?? "high")
+      : undefined;
 
   const client = makeOpenAI();
   if (!client) {
@@ -184,6 +191,16 @@ export async function runModel(
     iterations++;
 
     try {
+      logger.info(
+        {
+          model,
+          effectiveReasoningEffort,
+          willSendReasoning: !!effectiveReasoningEffort,
+          iteration: iterations,
+        },
+        "Model configuration for iteration",
+      );
+
       const response = await client.responses.create({
         model,
         input: conversationMessages,
@@ -204,10 +221,10 @@ export async function runModel(
           : {
               verbosity: verbosity,
             },
-        // GPT-5 specific reasoning parameters
-        ...(model.startsWith("gpt-5") && {
+        // Only apply reasoning for models that support it (not nano)
+        ...(effectiveReasoningEffort && {
           reasoning: {
-            effort: reasoningEffort,
+            effort: effectiveReasoningEffort,
           },
         }),
       });

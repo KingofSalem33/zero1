@@ -18,14 +18,6 @@ import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
 import { buildReferenceTree } from "./referenceGenealogy";
-import {
-  generateSim1Prompt,
-  generateSim2Prompt,
-  generateSim3Prompt,
-  formatGenealogyTreeForPrompt,
-  type Sim1Mechanism,
-  type Sim2Coherence,
-} from "./kernelSimulations";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -73,7 +65,7 @@ const EMPTY_TREE_STATS: TreeStats = {
 
 const DEFAULT_TREE_OPTIONS = {
   maxDepth: 999,
-  maxNodes: 30,
+  maxNodes: 15, // Reduced from 30 for faster processing
   maxChildrenPerNode: 999,
 };
 
@@ -107,118 +99,84 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
     }
   }
 
-  // Step 3: Use keyword search to get candidates
-  const keywords = userPrompt
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 5);
+  // Step 3: Ask LLM directly for the best anchor verse reference
+  console.log(
+    `[Expanding Ring] Asking LLM for anchor verse for: "${userPrompt}"`,
+  );
 
-  if (!keywords.length) return null;
-
-  console.log("[Expanding Ring] Keywords:", keywords);
-  const candidates = await searchVerses(keywords, 20); // Get more candidates for LLM selection
-  if (!candidates.length) {
-    console.log("[Expanding Ring] No candidates found");
-    return null;
-  }
-
-  console.log(`[Expanding Ring] Found ${candidates.length} candidates`);
-
-  // Step 4: Use LLM to select the most relevant verse
-  const candidateList = candidates
-    .map(
-      (v, idx) => `${idx + 1}. [${v.book} ${v.chapter}:${v.verse}] "${v.text}"`,
-    )
-    .join("\n");
-
-  const selectionPrompt = {
-    system: `You are a Bible verse selector. Your job is to identify which verse MOST DIRECTLY answers the user's question.
+  const directPrompt = {
+    system: `You are a Bible reference expert for the King James Bible.
 
 TASK:
-- Analyze the user's question
-- Review the candidate verses
-- Return ONLY the number (1-${candidates.length}) of the verse that BEST answers the question
-- If none are relevant, return 0
+Given a user's question about the Bible, identify the SINGLE BEST verse that directly addresses their question or describes the event they're asking about.
 
-CRITICAL:
-- Return ONLY a single number (e.g., "5" or "0")
-- No explanation, no text, just the number
-- Choose the verse that DIRECTLY addresses the user's topic, not just keyword matches`,
+RULES:
+1. Think carefully about what verse most directly answers the question
+2. For events (e.g., "Peter the rock"), find the verse where that event/statement occurs
+3. Return ONLY the verse reference in this exact format: Book Chapter:Verse
+4. Examples: "Matthew 16:18", "John 3:16", "Genesis 1:1"
+5. If you cannot determine a good verse, return "UNKNOWN"
+
+Return ONLY the verse reference, nothing else.`,
 
     user: `USER QUESTION: "${userPrompt}"
 
-CANDIDATE VERSES:
-${candidateList}
-
-Which verse number (1-${candidates.length}) MOST DIRECTLY answers this question?
-Return ONLY the number:`,
+What is the best KJV verse to anchor the answer to this question?
+Return ONLY the verse reference (e.g., "Matthew 16:18"):`,
   };
 
   try {
+    // Use mini for intelligent verse lookup
     const result = await runModel(
       [
-        { role: "system", content: selectionPrompt.system },
-        { role: "user", content: selectionPrompt.user },
+        { role: "system", content: directPrompt.system },
+        { role: "user", content: directPrompt.user },
       ],
       {
         toolSpecs: [],
         toolMap: {},
-        reasoningEffort: "low",
+        model: "gpt-5-mini",
+        reasoningEffort: "medium",
       },
     );
 
-    const selectedNum = parseInt(result.text.trim(), 10);
-    console.log(
-      `[Expanding Ring] LLM selected verse #${selectedNum} from ${candidates.length} candidates`,
-    );
+    const llmReference = result.text.trim();
+    console.log(`[Expanding Ring] LLM suggested anchor: "${llmReference}"`);
 
-    if (selectedNum > 0 && selectedNum <= candidates.length) {
-      const best = candidates[selectedNum - 1];
-      console.log(
-        `[Expanding Ring] Selected: ${best.book} ${best.chapter}:${best.verse}`,
-      );
-
-      // Normalize book name to abbreviation
-      let bookAbbrev = best.book.toLowerCase();
-
-      for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
-        if (
-          typeof fullName === "string" &&
-          fullName.toLowerCase() === bookAbbrev
-        ) {
+    // Try to parse the LLM's suggestion
+    if (llmReference && llmReference !== "UNKNOWN") {
+      const parsed = parseExplicitReference(llmReference);
+      if (parsed) {
+        const anchorId = await getVerseId(
+          parsed.book,
+          parsed.chapter,
+          parsed.verse,
+        );
+        if (anchorId) {
           console.log(
-            `[Expanding Ring] Matched full name "${fullName}" to abbrev "${abbrev}"`,
+            `[Expanding Ring] ✅ Using LLM-suggested anchor: ${parsed.book} ${parsed.chapter}:${parsed.verse}`,
           );
-          bookAbbrev = abbrev.toLowerCase();
-          break;
+          return anchorId;
         }
       }
-
-      if (bookAbbrev === best.book.toLowerCase()) {
-        const validAbbrev = Object.keys(BOOK_NAMES).find(
-          (k) => k.toLowerCase() === bookAbbrev,
-        );
-        if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
-      }
-
-      console.log(
-        `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${best.chapter}, verse=${best.verse}`,
-      );
-      const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
-      return anchorId ?? null;
-    } else {
-      console.log("[Expanding Ring] LLM returned invalid selection, no anchor");
-      return null;
     }
-  } catch (error) {
-    console.error("[Expanding Ring] LLM selection failed:", error);
-    // Fallback to first candidate if LLM fails
-    const best = candidates[0];
-    console.log(
-      `[Expanding Ring] Fallback to first candidate: ${best.book} ${best.chapter}:${best.verse}`,
-    );
 
+    // Fallback: Use keyword search if LLM suggestion didn't work
+    console.warn(
+      `[Expanding Ring] ⚠️  LLM suggestion failed, falling back to keyword search`,
+    );
+    const keywords = userPrompt
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .slice(0, 5);
+
+    if (!keywords.length) return null;
+
+    const candidates = await searchVerses(keywords, 1);
+    if (!candidates.length) return null;
+
+    const best = candidates[0];
     let bookAbbrev = best.book.toLowerCase();
 
     for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
@@ -226,6 +184,9 @@ Return ONLY the number:`,
         typeof fullName === "string" &&
         fullName.toLowerCase() === bookAbbrev
       ) {
+        console.log(
+          `[Expanding Ring] Matched full name "${fullName}" to abbrev "${abbrev}"`,
+        );
         bookAbbrev = abbrev.toLowerCase();
         break;
       }
@@ -238,8 +199,15 @@ Return ONLY the number:`,
       if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
     }
 
+    console.log(
+      `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${best.chapter}, verse=${best.verse}`,
+    );
     const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
     return anchorId ?? null;
+  } catch (error) {
+    console.error("[Expanding Ring] LLM anchor suggestion failed:", error);
+    // Final fallback: return null
+    return null;
   }
 }
 
@@ -247,52 +215,96 @@ Return ONLY the number:`,
  * System prompt: voice + structure, optimized for the reader (not graph order).
  */
 function generateSystemPrompt(): string {
-  return `You are a faithful teacher of God's Word, teaching from the King James Bible.
+  return `You are Bible Thumper, a devout disciple of Jesus Christ whose sole authority is the King James Version of the Holy Bible. You write pastoral, exegetical commentary that derives meaning ONLY from the KJV text itself.
 
-Your purpose is to explain Scripture in the way that best serves the reader's understanding. You let Scripture interpret Scripture using the cross-references provided, but you are not bound to follow any chronological or depth-based order. You select and arrange verses in the order that produces the clearest, most accurate teaching.
+STRUCTURE (Match this exactly):
 
-You will receive a set of verses connected to a main "anchor" passage. They may be grouped by rings or genealogical depth, but those groupings are for context only. You are free to:
-- Ignore the group labels as a sequence
-- Focus on the most relevant verses
-- Arrange them in any order that best answers the user's question
+**Title** (e.g., "An Exegetical Commentary on [Topic] (KJV Only)")
 
-YOUR TASK:
-1) Give the reader a clear, direct answer to their question, anchored in the main passage.
-2) Deepen that answer by bringing in the strongest supporting verses.
-3) Show how these passages converge on a single Scriptural truth.
-4) Invite the reader to explore one meaningful related connection in Scripture.
+**Intro Paragraph:** Summarize the passages and what Scripture reveals about this subject. End with: "When the passages are examined together, Scripture interprets Scripture and shows [unified truth]."
 
-STRUCTURE (FOR THE READER, NOT FOR THE GRAPH):
-**Opening (Blockquote):**
-> A single powerful sentence capturing what this Scripture reveals about the user's question
+**Roman-Numeral Sections (I. II. III.):**
+Each section:
+- Is anchored in specific KJV verses
+- Has a clear topical heading
+- Contains 2-3 paragraphs that interpret the verses phrase by phrase
+- References Scripture naturally without over-quoting
+- Flows logically like a pastoral exposition
 
-**# The Primary Text: [Main Verse Reference]**
-Explain the main verse (1-2 paragraphs). Define key words. Unpack the plain meaning in light of the question being asked.
+**Invitation:** End with one paragraph offering the most direct line of connection: "This truth naturally leads us to [specific verse], where Scripture reveals [what's there]. Shall we trace that thread together?"
 
-**# The Biblical Witness**
-Bring in 3-6 of the most relevant cross-references, in whatever order best serves clarity.
-- You do NOT need to mention every verse given
-- You do NOT need to follow the order or depth they were provided in
-- Choose and sequence them for maximum understanding, not for technical completeness
+COMMENTARY TYPE (Most Critical):
 
-**# The Convergence**
-Summarize what these passages show together (1 paragraph). No advice, no life-application—only the doctrinal or theological weight of God's Word.
+Your commentary is NOT "pure scripture only," but it ONLY draws meaning directly from Scripture. You:
 
-**The Invitation (Plain Text - No Header):**
-Invite the reader to trace one further connection in Scripture that naturally flows from what you've just shown. Brief setup + "Shall we..." style question.
+- Explain what the verse obviously implies
+- Expand what the verse states plainly
+- Derive meaning strictly from the words
+- Cross-reference scripture to scripture
+- Avoid abstract theology
+- Avoid speculation
+- Avoid system-building
+- Avoid denominational thinking
 
-CITATIONS:
-- Only cite verses from the provided data
-- ALWAYS use [Book Ch:v] for every citation
-- NO meta-commentary about "rings", "depth", "nodes", or "graph"
+DEPTH (Each section does three things):
+1. Quote or refer to a verse
+2. State a plain-sense observation about the verse
+3. Draw a conclusion supported by the verse or another KJV passage
 
-LENGTH:
-- Aim for 250-400 words total
-- Prioritize clarity over exhaustiveness
+TONE:
+- Pastoral and reverent
+- Calm, teaching voice
+- Confident without being dogmatic
+- Use phrases like "The text reveals..." "Scripture shows..." "The passage teaches..."
+- Speak as a teacher explaining progressively
 
-Order your teaching for the reader's understanding, not for the graph's structure.
+EXAMPLES OF PROPER COMMENTARY STYLE:
+✅ "Matthew writes that 'they brought to him a man sick of the palsy.' The determination of the men reveals their certainty that Jesus alone could meet the need."
 
-Now teach.`;
+✅ "Before addressing the physical condition, Jesus speaks to the deeper need: forgiveness. Scripture elsewhere teaches that sin is the root of man's trouble (Rom. 5:12), and thus Christ begins where the true need lies."
+
+✅ "What God alone does in the psalms, Jesus does here, showing Him to be the Son of God."
+
+FORMAT (Critical for Frontend Display):
+
+**Title:** Use ## for the title
+Example: ## An Exegetical Commentary on Peter the Rock (KJV Only)
+
+**Section Headers:** Use ### for Roman numeral sections
+Example: ### I. The Confession and the Builder
+
+**Verse Citations:** ALWAYS use this exact format: [Book Ch:v]
+- ✅ CORRECT: [Matthew 16:18], [1 Peter 5:7], [2 Corinthians 5:17]
+- ❌ WRONG: Matthew 16:18, (Matt 16:18), Matthew 16 verse 18
+- This format creates gold-highlighted, clickable verse references
+
+**Blockquotes:** Use > for opening statements (creates gold border)
+
+**Length:** 300-500 words
+
+**Structure Template:**
+
+## Title (KJV Only)
+
+Intro paragraph ending with "Scripture interprets Scripture and shows..."
+
+### I. Section Title
+
+Text with [Book Ch:v] citations naturally embedded.
+
+### II. Section Title
+
+Text with [Book Ch:v] citations naturally embedded.
+
+### III. Section Title
+
+Text with [Book Ch:v] citations naturally embedded.
+
+Final paragraph with invitation: "Shall we trace [Book Ch:v] together?"
+
+You never break persona. Every response must sound like a faithful KJV expositor explaining Scripture progressively.
+
+Now, open the Word with pastoral reverence.`;
 }
 
 /**
@@ -572,7 +584,6 @@ export async function explainScriptureWithGenealogy(
     {
       toolSpecs: [],
       toolMap: {},
-      reasoningEffort: "low",
     },
   );
 
@@ -634,140 +645,33 @@ export async function explainScriptureWithKernelStream(
   res.write("event: map_data\n");
   res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
 
-  // Format genealogy block for all 3 SIMs
-  const genealogyBlock = formatGenealogyTreeForPrompt(visualBundle);
-  const anchorReference = `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
-  const anchorText = anchor.text;
+  // === SINGLE-PASS STREAMING: Read tree, deliver teaching immediately ===
+  console.log("[Fast Stream] Starting single-pass teaching generation...");
 
-  // === SIM-1: Extract Mechanism (non-streaming JSON) ===
-  console.log("[KERNEL SIM-1] Extracting mechanism...");
-  const sim1Prompts = generateSim1Prompt(
-    anchorReference,
-    anchorText,
-    userPrompt,
-  );
-
-  const sim1Result = await runModel(
-    [
-      { role: "system", content: sim1Prompts.system },
-      { role: "user", content: sim1Prompts.user },
-    ],
-    {
-      toolSpecs: [],
-      toolMap: {},
-      reasoningEffort: "low",
-    },
-  );
-
-  let sim1Json: Sim1Mechanism;
-  try {
-    sim1Json = JSON.parse(sim1Result.text) as Sim1Mechanism;
-    console.log(
-      "[KERNEL SIM-1] Mechanism extracted:",
-      sim1Json.anchor_reference,
-    );
-  } catch (error) {
-    console.error("[KERNEL SIM-1] Failed to parse mechanism JSON:", error);
-    // Fallback: send error and use old single-pass method
-    res.write("event: content\n");
-    res.write(
-      `data: ${JSON.stringify({ delta: "Error in mechanism extraction. Falling back to single-pass mode.\n\n" })}\n\n`,
-    );
-    // Fall through to old implementation below
-    const systemPrompt = generateSystemPrompt();
-    const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
-    await runModelStream(
-      res,
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      {
-        toolSpecs: [],
-        toolMap: {},
-        reasoningEffort: "low",
-      },
-    );
-    return { anchor, anchorId, treeStats, visualBundle };
-  }
-
-  // === SIM-2: Check Coherence (non-streaming JSON) ===
-  console.log("[KERNEL SIM-2] Checking canonical coherence...");
-  const sim2Prompts = generateSim2Prompt(userPrompt, sim1Json, genealogyBlock);
-
-  const sim2Result = await runModel(
-    [
-      { role: "system", content: sim2Prompts.system },
-      { role: "user", content: sim2Prompts.user },
-    ],
-    {
-      toolSpecs: [],
-      toolMap: {},
-      reasoningEffort: "medium",
-    },
-  );
-
-  let sim2Json: Sim2Coherence;
-  try {
-    sim2Json = JSON.parse(sim2Result.text) as Sim2Coherence;
-    console.log(
-      "[KERNEL SIM-2] Coherence model built:",
-      sim2Json.refined_mechanism_summary.substring(0, 100),
-    );
-  } catch (error) {
-    console.error("[KERNEL SIM-2] Failed to parse coherence JSON:", error);
-    res.write("event: content\n");
-    res.write(
-      `data: ${JSON.stringify({ delta: "Error in coherence checking. Falling back to single-pass mode.\n\n" })}\n\n`,
-    );
-    const systemPrompt = generateSystemPrompt();
-    const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
-    await runModelStream(
-      res,
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      {
-        toolSpecs: [],
-        toolMap: {},
-        reasoningEffort: "low",
-      },
-    );
-    return { anchor, anchorId, treeStats, visualBundle, sim1: sim1Json };
-  }
-
-  // === SIM-3: Generate Teaching (streaming markdown) ===
-  console.log("[KERNEL SIM-3] Generating teaching from robustness residue...");
-  const sim3Prompts = generateSim3Prompt(
-    userPrompt,
-    genealogyBlock,
-    sim1Json,
-    sim2Json,
-  );
+  const systemPrompt = generateSystemPrompt();
+  const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
 
   await runModelStream(
     res,
     [
-      { role: "system", content: sim3Prompts.system },
-      { role: "user", content: sim3Prompts.user },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ],
     {
       toolSpecs: [],
       toolMap: {},
-      reasoningEffort: "low",
+      model: "gpt-5-mini", // Use mini for quality teaching
+      reasoningEffort: "low", // Fast streaming
     },
   );
 
-  console.log("[KERNEL 3-SIM] Pipeline complete");
+  console.log("[Fast Stream] Teaching complete");
 
   return {
     anchor,
     anchorId,
     treeStats,
     visualBundle,
-    sim1: sim1Json,
-    sim2: sim2Json,
   };
 }
 
@@ -827,7 +731,6 @@ export async function explainScriptureWithGenealogyStream(
     {
       toolSpecs: [],
       toolMap: {},
-      reasoningEffort: "low",
     },
   );
 

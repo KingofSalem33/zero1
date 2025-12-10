@@ -228,9 +228,26 @@ export async function runModelStream(
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
     model = ENV.OPENAI_MODEL_NAME,
-    reasoningEffort = "high",
+    reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
   } = options;
+
+  // Set reasoning effort based on model capabilities
+  // Nano doesn't support reasoning mode - only mini/pro/opus do
+  const effectiveReasoningEffort =
+    model.startsWith("gpt-5") && !model.includes("nano")
+      ? (reasoningEffort ?? "high")
+      : undefined;
+
+  logger.info(
+    {
+      model,
+      requestedReasoningEffort: reasoningEffort,
+      effectiveReasoningEffort,
+      isNano: model.includes("nano"),
+    },
+    "Model configuration for streaming",
+  );
 
   const client = makeOpenAI();
   if (!client) {
@@ -301,6 +318,15 @@ export async function runModelStream(
         JSON.stringify(conversationMessages, null, 2),
       );
 
+      console.log(
+        "[runModelStream] Model config:",
+        JSON.stringify({
+          model,
+          effectiveReasoningEffort,
+          willSendReasoning: !!effectiveReasoningEffort,
+        }),
+      );
+
       const stream = await client.responses.create({
         model,
         input: conversationMessages,
@@ -312,9 +338,10 @@ export async function runModelStream(
         text: {
           verbosity: verbosity,
         },
-        ...(model.startsWith("gpt-5") && {
+        // Only apply reasoning for models that support it (not nano)
+        ...(effectiveReasoningEffort && {
           reasoning: {
-            effort: reasoningEffort,
+            effort: effectiveReasoningEffort,
           },
         }),
       });

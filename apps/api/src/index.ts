@@ -14,7 +14,7 @@ import synopsisRouter from "./routes/synopsis";
 import bookmarksRouter from "./routes/bookmarks";
 import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
-// import { runModelStream } from "./ai/runModelStream"; // Disabled in /api/chat/stream - using Expanding Ring instead
+import { runModelStream } from "./ai/runModelStream"; // Used in /api/chat for streaming when Accept: text/event-stream
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
 import {
   // explainScriptureWithGenealogyStream, // OLD single-pass implementation
@@ -441,7 +441,33 @@ app.post(
       const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
         selectRelevantTools(message, history);
 
-      // Use structured outputs for JSON format
+      // Check if client wants streaming response
+      const acceptsStream = req.headers.accept?.includes("text/event-stream");
+
+      // Use streaming for better UX if client supports it
+      if (acceptsStream && format !== "json") {
+        // Set up SSE headers
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+
+        // Stream the response
+        const text = await runModelStream(res, conversationMessages, {
+          toolSpecs: selectedSpecs,
+          toolMap: selectedMap,
+        });
+
+        // Store conversation in memory if userId is provided
+        if (userId && userId !== "anonymous") {
+          await pushToThread(userId, { role: "user", content: message });
+          await pushToThread(userId, { role: "assistant", content: text });
+        }
+
+        return; // Response already sent via SSE
+      }
+
+      // Use structured outputs for JSON format (non-streaming)
       const result = await runModel(conversationMessages, {
         toolSpecs: selectedSpecs,
         toolMap: selectedMap,
