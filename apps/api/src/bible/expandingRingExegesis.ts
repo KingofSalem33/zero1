@@ -82,6 +82,7 @@ const DEFAULT_TREE_OPTIONS = {
  * Order: explicit reference → concept mapping → keyword search.
  */
 async function resolveAnchor(userPrompt: string): Promise<number | null> {
+  // Step 1: Check for explicit reference (e.g., "John 3:16")
   const explicitRef = parseExplicitReference(userPrompt);
   if (explicitRef) {
     const anchorId = await getVerseId(
@@ -92,6 +93,7 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
     if (anchorId) return anchorId;
   }
 
+  // Step 2: Check for known concept references
   const conceptRef = matchConcept(userPrompt);
   if (conceptRef) {
     const parsedConcept = parseExplicitReference(conceptRef);
@@ -105,6 +107,7 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
     }
   }
 
+  // Step 3: Use keyword search to get candidates
   const keywords = userPrompt
     .toLowerCase()
     .split(/\s+/)
@@ -113,29 +116,131 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
 
   if (!keywords.length) return null;
 
-  const candidates = await searchVerses(keywords, 10);
-  if (!candidates.length) return null;
-
-  const best = candidates[0];
-
-  let bookAbbrev = best.book.toLowerCase();
-
-  for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
-    if (typeof fullName === "string" && fullName.toLowerCase() === bookAbbrev) {
-      bookAbbrev = abbrev.toLowerCase();
-      break;
-    }
+  console.log("[Expanding Ring] Keywords:", keywords);
+  const candidates = await searchVerses(keywords, 20); // Get more candidates for LLM selection
+  if (!candidates.length) {
+    console.log("[Expanding Ring] No candidates found");
+    return null;
   }
 
-  if (bookAbbrev === best.book.toLowerCase()) {
-    const validAbbrev = Object.keys(BOOK_NAMES).find(
-      (k) => k.toLowerCase() === bookAbbrev,
+  console.log(`[Expanding Ring] Found ${candidates.length} candidates`);
+
+  // Step 4: Use LLM to select the most relevant verse
+  const candidateList = candidates
+    .map(
+      (v, idx) => `${idx + 1}. [${v.book} ${v.chapter}:${v.verse}] "${v.text}"`,
+    )
+    .join("\n");
+
+  const selectionPrompt = {
+    system: `You are a Bible verse selector. Your job is to identify which verse MOST DIRECTLY answers the user's question.
+
+TASK:
+- Analyze the user's question
+- Review the candidate verses
+- Return ONLY the number (1-${candidates.length}) of the verse that BEST answers the question
+- If none are relevant, return 0
+
+CRITICAL:
+- Return ONLY a single number (e.g., "5" or "0")
+- No explanation, no text, just the number
+- Choose the verse that DIRECTLY addresses the user's topic, not just keyword matches`,
+
+    user: `USER QUESTION: "${userPrompt}"
+
+CANDIDATE VERSES:
+${candidateList}
+
+Which verse number (1-${candidates.length}) MOST DIRECTLY answers this question?
+Return ONLY the number:`,
+  };
+
+  try {
+    const result = await runModel(
+      [
+        { role: "system", content: selectionPrompt.system },
+        { role: "user", content: selectionPrompt.user },
+      ],
+      {
+        toolSpecs: [],
+        toolMap: {},
+        reasoningEffort: "low",
+      },
     );
-    if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
-  }
 
-  const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
-  return anchorId ?? null;
+    const selectedNum = parseInt(result.text.trim(), 10);
+    console.log(
+      `[Expanding Ring] LLM selected verse #${selectedNum} from ${candidates.length} candidates`,
+    );
+
+    if (selectedNum > 0 && selectedNum <= candidates.length) {
+      const best = candidates[selectedNum - 1];
+      console.log(
+        `[Expanding Ring] Selected: ${best.book} ${best.chapter}:${best.verse}`,
+      );
+
+      // Normalize book name to abbreviation
+      let bookAbbrev = best.book.toLowerCase();
+
+      for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+        if (
+          typeof fullName === "string" &&
+          fullName.toLowerCase() === bookAbbrev
+        ) {
+          console.log(
+            `[Expanding Ring] Matched full name "${fullName}" to abbrev "${abbrev}"`,
+          );
+          bookAbbrev = abbrev.toLowerCase();
+          break;
+        }
+      }
+
+      if (bookAbbrev === best.book.toLowerCase()) {
+        const validAbbrev = Object.keys(BOOK_NAMES).find(
+          (k) => k.toLowerCase() === bookAbbrev,
+        );
+        if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
+      }
+
+      console.log(
+        `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${best.chapter}, verse=${best.verse}`,
+      );
+      const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
+      return anchorId ?? null;
+    } else {
+      console.log("[Expanding Ring] LLM returned invalid selection, no anchor");
+      return null;
+    }
+  } catch (error) {
+    console.error("[Expanding Ring] LLM selection failed:", error);
+    // Fallback to first candidate if LLM fails
+    const best = candidates[0];
+    console.log(
+      `[Expanding Ring] Fallback to first candidate: ${best.book} ${best.chapter}:${best.verse}`,
+    );
+
+    let bookAbbrev = best.book.toLowerCase();
+
+    for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+      if (
+        typeof fullName === "string" &&
+        fullName.toLowerCase() === bookAbbrev
+      ) {
+        bookAbbrev = abbrev.toLowerCase();
+        break;
+      }
+    }
+
+    if (bookAbbrev === best.book.toLowerCase()) {
+      const validAbbrev = Object.keys(BOOK_NAMES).find(
+        (k) => k.toLowerCase() === bookAbbrev,
+      );
+      if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
+    }
+
+    const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
+    return anchorId ?? null;
+  }
 }
 
 /**
