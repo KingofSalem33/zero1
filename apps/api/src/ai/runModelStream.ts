@@ -267,11 +267,21 @@ export async function runModelStream(
     );
     res.write(eventStr);
     res.write(dataStr);
+
+    // ✅ CRITICAL: Flush immediately to prevent Node.js buffering
+    // This ensures each SSE event is sent to the client right away
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   };
 
   // Helper to send heartbeat (keeps connection alive through proxies)
   const sendHeartbeat = () => {
     res.write(`:\n\n`);
+    // Flush heartbeat too to ensure it's sent immediately
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   };
 
   // Send initial heartbeat
@@ -653,6 +663,10 @@ export function sendCompletionDetectedEvent(
   try {
     res.write(`event: completion_detected\n`);
     res.write(`data: ${JSON.stringify(detection)}\n\n`);
+    // Flush to ensure immediate delivery
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   } catch (err) {
     logger.warn({ err }, "Failed to emit completion_detected SSE");
   }
@@ -670,6 +684,10 @@ export function sendCompletionNudgeEvent(
   try {
     res.write(`event: completion_nudge\n`);
     res.write(`data: ${JSON.stringify(nudge)}\n\n`);
+    // Flush to ensure immediate delivery
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   } catch (err) {
     logger.warn({ err }, "Failed to emit completion_nudge SSE");
   }

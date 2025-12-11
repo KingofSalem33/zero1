@@ -8,6 +8,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import compression from "compression";
 import { ENV } from "./env";
 import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
@@ -92,6 +93,20 @@ app.use(
   }),
 );
 app.use(morgan("combined"));
+// Add compression with SSE exclusion
+// Skip compression for SSE streams (text/event-stream) to ensure immediate delivery
+app.use(
+  compression({
+    filter: (req, res) => {
+      // Don't compress SSE responses
+      if (res.getHeader("Content-Type") === "text/event-stream") {
+        return false;
+      }
+      // Use default compression filter for everything else
+      return compression.filter(req, res);
+    },
+  }),
+);
 app.use(express.json());
 
 // Apply global API rate limiting
