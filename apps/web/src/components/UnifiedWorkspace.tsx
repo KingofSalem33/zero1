@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { MessageStream } from "./golden-thread/MessageStream";
 import { ToolBadges } from "./ToolBadges";
 import { VoiceSettings } from "./VoiceSettings";
@@ -614,40 +615,43 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       isComplete: streamingMessage?.isComplete,
     });
     if (streamingMessage && streamingMessage.content) {
-      setMessages((prev) => {
-        // Check if last message is the streaming AI message
-        const lastMsg = prev[prev.length - 1];
-        if (lastMsg && lastMsg.type === "ai" && lastMsg.id === "streaming") {
-          // Update existing streaming message
-          // If message is complete, attach the pending visualBundle
-          return prev.map((msg) =>
-            msg.id === "streaming"
-              ? {
-                  ...msg,
-                  content: streamingMessage.content,
-                  visualBundle:
-                    streamingMessage.isComplete && pendingVisualBundle
-                      ? pendingVisualBundle
-                      : msg.visualBundle,
-                }
-              : msg,
-          );
-        } else {
-          // Add new AI message
-          return [
-            ...prev,
-            {
-              id: "streaming",
-              type: "ai" as const,
-              content: streamingMessage.content,
-              timestamp: new Date(),
-              visualBundle:
-                streamingMessage.isComplete && pendingVisualBundle
-                  ? pendingVisualBundle
-                  : undefined,
-            },
-          ];
-        }
+      // Force immediate synchronous update to prevent React batching
+      flushSync(() => {
+        setMessages((prev) => {
+          // Check if last message is the streaming AI message
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.type === "ai" && lastMsg.id === "streaming") {
+            // Update existing streaming message
+            // If message is complete, attach the pending visualBundle
+            return prev.map((msg) =>
+              msg.id === "streaming"
+                ? {
+                    ...msg,
+                    content: streamingMessage.content,
+                    visualBundle:
+                      streamingMessage.isComplete && pendingVisualBundle
+                        ? pendingVisualBundle
+                        : msg.visualBundle,
+                  }
+                : msg,
+            );
+          } else {
+            // Add new AI message
+            return [
+              ...prev,
+              {
+                id: "streaming",
+                type: "ai" as const,
+                content: streamingMessage.content,
+                timestamp: new Date(),
+                visualBundle:
+                  streamingMessage.isComplete && pendingVisualBundle
+                    ? pendingVisualBundle
+                    : undefined,
+              },
+            ];
+          }
+        });
       });
 
       // Update tool badges from streaming message

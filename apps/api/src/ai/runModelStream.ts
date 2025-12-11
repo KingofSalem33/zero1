@@ -364,6 +364,12 @@ export async function runModelStream(
 
       // Process stream chunks - Responses API has different event structure
       for await (const event of stream) {
+        // 🔍 DEBUG: Log EVERY event type to understand what's being emitted
+        console.log(
+          `[runModelStream] 🔍 EVENT: type="${event.type}" | full event:`,
+          JSON.stringify(event, null, 2),
+        );
+
         // Collect all output items as they're added
         if (event.type === "response.output_item.added") {
           outputItems.push(event.item);
@@ -384,7 +390,7 @@ export async function runModelStream(
             currentIterationContent += delta;
             accumulatedResponse += delta; // Also accumulate across iterations
             console.log(
-              `[runModelStream] Iteration ${iterations}: ${event.type} delta received (${delta.length} chars)`,
+              `[runModelStream] Iteration ${iterations}: ✅ ${event.type} delta received (${delta.length} chars)`,
             );
             sendEvent("content", { delta });
           }
