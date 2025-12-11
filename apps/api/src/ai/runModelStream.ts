@@ -373,13 +373,18 @@ export async function runModelStream(
         }
 
         // Stream text deltas to the user in real-time
-        if (event.type === "response.output_text.delta") {
+        // Handle ALL delta types: reasoning, reasoning summary, and output text
+        if (
+          event.type === "response.output_text.delta" ||
+          event.type === "response.reasoning_text.delta" ||
+          event.type === "response.reasoning_summary_text.delta"
+        ) {
           const delta = (event as any).delta;
           if (delta) {
             currentIterationContent += delta;
             accumulatedResponse += delta; // Also accumulate across iterations
             console.log(
-              `[runModelStream] Iteration ${iterations}: Text delta received (${delta.length} chars)`,
+              `[runModelStream] Iteration ${iterations}: ${event.type} delta received (${delta.length} chars)`,
             );
             sendEvent("content", { delta });
           }
