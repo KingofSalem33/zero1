@@ -661,7 +661,7 @@ export async function explainScriptureWithKernelStream(
       toolSpecs: [],
       toolMap: {},
       model: "gpt-5-mini", // Use mini for quality teaching
-      reasoningEffort: "low", // Fast streaming
+      // ✅ NO reasoningEffort - stream text immediately as generated
     },
   );
 

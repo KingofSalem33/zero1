@@ -234,9 +234,12 @@ export async function runModelStream(
 
   // Set reasoning effort based on model capabilities
   // Nano doesn't support reasoning mode - only mini/pro/opus do
+  // IMPORTANT: Only use reasoning if explicitly requested, otherwise undefined for true streaming
   const effectiveReasoningEffort =
-    model.startsWith("gpt-5") && !model.includes("nano")
-      ? (reasoningEffort ?? "high")
+    model.startsWith("gpt-5") &&
+    !model.includes("nano") &&
+    reasoningEffort !== undefined
+      ? reasoningEffort
       : undefined;
 
   logger.info(
