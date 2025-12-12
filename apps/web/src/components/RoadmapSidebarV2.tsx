@@ -7,6 +7,24 @@ interface Chat {
   timestamp: Date;
 }
 
+// Helper function to format time ago
+function getTimeAgo(timestamp: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - new Date(timestamp).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "now";
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 interface RoadmapSidebarV2Props {
   project: any;
   onOpenFileManager: () => void;
@@ -40,13 +58,28 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-neutral-700/50">
-        <h3 className="text-xs font-bold text-neutral-400 tracking-wider">
-          ZERO1 BUILDER <span className="text-green-500">v2.1</span>
-        </h3>
+        <div className="flex items-center gap-2">
+          <svg
+            className="w-5 h-5 text-brand-primary-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+            />
+          </svg>
+          <h3 className="text-sm font-bold text-white tracking-wide">
+            Biblelot
+          </h3>
+        </div>
         <button
           onClick={() => setIsCollapsed(true)}
-          className="text-neutral-400 hover:text-white transition-colors p-1 hover:bg-neutral-700/30 rounded"
-          title="Close"
+          className="text-neutral-400 hover:text-white transition-colors p-1.5 hover:bg-neutral-700/30 rounded"
+          title="Collapse sidebar"
         >
           <svg
             className="w-4 h-4"
@@ -58,7 +91,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
+              d="M15 19l-7-7 7-7"
             />
           </svg>
         </button>
@@ -71,8 +104,18 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           onClick={onNewChat}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-neutral-700 hover:border-brand-primary-500 hover:bg-neutral-800/50 text-neutral-400 hover:text-brand-primary-400 transition-all group"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
           </svg>
           <span className="text-sm font-medium">New Chat</span>
         </button>
@@ -85,38 +128,58 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           <div className="space-y-1">
             {chats.length === 0 ? (
               <div className="text-center py-8 px-2">
-                <div className="text-neutral-600 text-sm">
-                  No chats yet
-                </div>
+                <div className="text-neutral-600 text-sm">No chats yet</div>
               </div>
             ) : (
-              chats.map((chat) => (
-                <button
-                  key={chat.id}
-                  onClick={() => onSelectChat?.(chat.id)}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group ${
-                    currentChatId === chat.id
-                      ? "bg-brand-primary-500/20 border border-brand-primary-500/30"
-                      : "hover:bg-neutral-800/50 border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-medium truncate ${
-                        currentChatId === chat.id ? "text-brand-primary-300" : "text-neutral-300"
-                      }`}>
-                        {chat.title}
-                      </div>
-                      <div className="text-xs text-neutral-500 truncate mt-0.5">
-                        {chat.lastMessage}
+              chats.map((chat) => {
+                const timeAgo = getTimeAgo(chat.timestamp);
+                return (
+                  <button
+                    key={chat.id}
+                    onClick={() => onSelectChat?.(chat.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group ${
+                      currentChatId === chat.id
+                        ? "bg-brand-primary-500/20 border border-brand-primary-500/30"
+                        : "hover:bg-neutral-800/50 border border-transparent"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <svg
+                        className="w-4 h-4 mt-0.5 flex-shrink-0 text-neutral-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                        />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div
+                            className={`text-sm font-medium truncate flex-1 ${
+                              currentChatId === chat.id
+                                ? "text-brand-primary-300"
+                                : "text-neutral-300"
+                            }`}
+                          >
+                            {chat.title}
+                          </div>
+                          <div className="text-xs text-neutral-600 flex-shrink-0">
+                            {timeAgo}
+                          </div>
+                        </div>
+                        <div className="text-xs text-neutral-500 truncate">
+                          {chat.lastMessage || "No messages yet"}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
@@ -131,7 +194,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
         <button
           onClick={() => setIsCollapsed(false)}
           className="fixed left-4 top-20 z-50 p-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg shadow-lg transition-all"
-          title="Open Roadmap"
+          title="Expand sidebar"
         >
           <svg
             className="w-5 h-5 text-neutral-300"

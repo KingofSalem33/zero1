@@ -32,6 +32,14 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
 
+  // Initialize first chat on mount
+  useEffect(() => {
+    if (!currentChatId) {
+      const initialChatId = `chat_${Date.now()}`;
+      setCurrentChatId(initialChatId);
+    }
+  }, []);
+
   // Save chats to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(chats));
