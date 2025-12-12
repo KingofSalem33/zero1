@@ -14,7 +14,18 @@
       "Bash(cat:*)",
       "Bash(git checkout:*)",
       "Bash(npx tsc:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File update-verse.ps1)",
+      "Bash(powershell -ExecutionPolicy Bypass -File update-index.ps1)",
+      "Bash(powershell -ExecutionPolicy Bypass -File update-verse2.ps1)",
+      "Bash(perl -i -pe:*)",
+      "Bash(git rm:*)",
+      "Bash(tasklist:*)",
+      "Bash(powershell \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue; echo ''Killed all node processes''\")",
+      "WebFetch(domain:platform.openai.com)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

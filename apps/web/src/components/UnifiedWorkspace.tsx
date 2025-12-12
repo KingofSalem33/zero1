@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { flushSync } from "react-dom";
 import { MessageStream } from "./golden-thread/MessageStream";
 import { ToolBadges } from "./ToolBadges";
 import { VoiceSettings } from "./VoiceSettings";
@@ -607,54 +606,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
   }, [streamingMessage?.content, addReferencesFromText]);
 
-  // Update messages when streaming message changes
+  // Update tool badges from streaming message
   useEffect(() => {
-    console.log("[UnifiedWorkspace] streamingMessage changed:", {
-      hasContent: !!streamingMessage?.content,
-      contentLength: streamingMessage?.content?.length,
-      isComplete: streamingMessage?.isComplete,
-    });
-    if (streamingMessage && streamingMessage.content) {
-      // Force immediate synchronous update to prevent React batching
-      flushSync(() => {
-        setMessages((prev) => {
-          // Check if last message is the streaming AI message
-          const lastMsg = prev[prev.length - 1];
-          if (lastMsg && lastMsg.type === "ai" && lastMsg.id === "streaming") {
-            // Update existing streaming message
-            // If message is complete, attach the pending visualBundle
-            return prev.map((msg) =>
-              msg.id === "streaming"
-                ? {
-                    ...msg,
-                    content: streamingMessage.content,
-                    visualBundle:
-                      streamingMessage.isComplete && pendingVisualBundle
-                        ? pendingVisualBundle
-                        : msg.visualBundle,
-                  }
-                : msg,
-            );
-          } else {
-            // Add new AI message
-            return [
-              ...prev,
-              {
-                id: "streaming",
-                type: "ai" as const,
-                content: streamingMessage.content,
-                timestamp: new Date(),
-                visualBundle:
-                  streamingMessage.isComplete && pendingVisualBundle
-                    ? pendingVisualBundle
-                    : undefined,
-              },
-            ];
-          }
-        });
-      });
-
-      // Update tool badges from streaming message
+    if (streamingMessage) {
       if (
         streamingMessage.activeTools.length > 0 ||
         streamingMessage.completedTools.length > 0
@@ -674,23 +628,31 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         setToolsUsed(newTools);
       }
     }
+  }, [
+    streamingMessage?.activeTools,
+    streamingMessage?.completedTools,
+    setToolsUsed,
+  ]);
 
-    // When streaming is complete, finalize the message and clear tool badges
-    if (streamingMessage?.isComplete) {
-      setMessages((prev) => {
-        // Only finalize if there's actually a streaming message to finalize
-        const hasStreamingMessage = prev.some((msg) => msg.id === "streaming");
-        if (!hasStreamingMessage) return prev;
-
-        return prev.map((msg) =>
-          msg.id === "streaming" ? { ...msg, id: Date.now().toString() } : msg,
-        );
-      });
+  // When streaming is complete, add it to messages array
+  useEffect(() => {
+    if (streamingMessage?.isComplete && streamingMessage.content) {
+      console.log("[UnifiedWorkspace] Streaming complete, adding to messages");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          type: "ai" as const,
+          content: streamingMessage.content,
+          timestamp: new Date(),
+          visualBundle: pendingVisualBundle || undefined,
+        },
+      ]);
       // Clear tool badges and pending bundle when streaming is complete
       setToolsUsed([]);
       setPendingVisualBundle(null);
     }
-  }, [streamingMessage?.isComplete, setToolsUsed]);
+  }, [streamingMessage?.isComplete]);
 
   const handleSendMessage = async () => {
     if (!currentInput.trim() || isProcessing || isStreaming) return;
@@ -1596,6 +1558,37 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 )}
               </div>
             ))}
+
+            {/* Streaming message (renders progressively as content arrives) */}
+            {streamingMessage &&
+              streamingMessage.content &&
+              !streamingMessage.isComplete && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 10V3L4 14h7v7l9-11h-7z"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="ml-[2.625rem] space-y-2">
+                    <MessageStream
+                      content={streamingMessage.content}
+                      onVerseClick={handleVerseClick}
+                    />
+                  </div>
+                </div>
+              )}
 
             {/* Tool Activity Inline */}
             {toolsUsed.length > 0 && (
