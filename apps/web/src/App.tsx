@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
 import UnifiedWorkspace from "./components/UnifiedWorkspace";
+import BibleReader from "./components/BibleReader";
 import { useAuth } from "./contexts/AuthContext";
 
 interface Chat {
@@ -31,6 +32,7 @@ function App() {
   });
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
+  const [showBible, setShowBible] = useState<boolean>(false);
 
   // Initialize first chat on mount
   useEffect(() => {
@@ -39,6 +41,11 @@ function App() {
       setCurrentChatId(initialChatId);
     }
   }, []);
+
+  // Toggle Bible view
+  const handleToggleBible = () => {
+    setShowBible((prev) => !prev);
+  };
 
   // Save chats to localStorage whenever they change
   useEffect(() => {
@@ -197,22 +204,44 @@ function App() {
           chats={chats}
           onNewChat={handleNewChat}
           onSelectChat={handleSelectChat}
+          showBible={showBible}
+          onToggleBible={handleToggleBible}
         />
 
-        {/* Main Workspace */}
-        <main className="flex-1 min-h-screen">
-          <UnifiedWorkspace
-            project={project}
-            onCreateProject={() => {}}
-            onInspireMe={() => {}}
-            toolsUsed={toolsUsed}
-            setToolsUsed={setToolsUsed}
-            creating={false}
-            inspiring={false}
-            onRefreshProject={() => {}}
-            messages={currentMessages}
-            onMessagesChange={setCurrentMessages}
-          />
+        {/* Main Workspace - Smooth transition between Chat and Bible */}
+        <main className="flex-1 min-h-screen relative overflow-hidden">
+          {/* Chat View */}
+          <div
+            className={`absolute inset-0 transition-all duration-500 ease-in-out ${
+              showBible
+                ? "opacity-0 translate-x-[-100%] pointer-events-none"
+                : "opacity-100 translate-x-0"
+            }`}
+          >
+            <UnifiedWorkspace
+              project={project}
+              onCreateProject={() => {}}
+              onInspireMe={() => {}}
+              toolsUsed={toolsUsed}
+              setToolsUsed={setToolsUsed}
+              creating={false}
+              inspiring={false}
+              onRefreshProject={() => {}}
+              messages={currentMessages}
+              onMessagesChange={setCurrentMessages}
+            />
+          </div>
+
+          {/* Bible View */}
+          <div
+            className={`absolute inset-0 transition-all duration-500 ease-in-out ${
+              showBible
+                ? "opacity-100 translate-x-0"
+                : "opacity-0 translate-x-[100%] pointer-events-none"
+            }`}
+          >
+            <BibleReader />
+          </div>
         </main>
       </div>
     </div>

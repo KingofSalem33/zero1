@@ -25,7 +25,8 @@
       "Bash(tasklist:*)",
       "Bash(powershell \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue; echo ''Killed all node processes''\")",
       "WebFetch(domain:platform.openai.com)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []

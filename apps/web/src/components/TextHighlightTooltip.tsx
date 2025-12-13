@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string) => void;
   userId?: string;
+  onHighlight?: (text: string, color: string, context?: any) => void;
+  enableHighlight?: boolean;
 }
 
 interface Position {
@@ -14,9 +16,19 @@ interface Position {
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
+const HIGHLIGHT_COLORS = [
+  { name: "Yellow", value: "#FEF3C7", textColor: "#92400E" },
+  { name: "Green", value: "#D1FAE5", textColor: "#065F46" },
+  { name: "Blue", value: "#DBEAFE", textColor: "#1E40AF" },
+  { name: "Pink", value: "#FCE7F3", textColor: "#9F1239" },
+  { name: "Purple", value: "#EDE9FE", textColor: "#5B21B6" },
+];
+
 export function TextHighlightTooltip({
   onGoDeeper,
   userId = "anonymous",
+  onHighlight,
+  enableHighlight = false,
 }: TextHighlightTooltipProps) {
   const [selectedText, setSelectedText] = useState("");
   const [position, setPosition] = useState<Position | null>(null);
@@ -25,6 +37,8 @@ export function TextHighlightTooltip({
   const [isVisible, setIsVisible] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [bookmarkSuccess, setBookmarkSuccess] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [highlightSuccess, setHighlightSuccess] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -42,6 +56,8 @@ export function TextHighlightTooltip({
       setDescription("");
       setIsLoadingDescription(false);
       setBookmarkSuccess(false);
+      setShowColorPicker(false);
+      setHighlightSuccess(false);
     }, 150);
   }, []);
 
@@ -259,6 +275,19 @@ export function TextHighlightTooltip({
     }
   };
 
+  const handleHighlight = (color: string) => {
+    if (selectedText && onHighlight) {
+      onHighlight(selectedText, color);
+      setHighlightSuccess(true);
+      setShowColorPicker(false);
+      // Auto-close after highlighting
+      setTimeout(() => {
+        closeTooltip();
+        window.getSelection()?.removeAllRanges();
+      }, 800);
+    }
+  };
+
   const handleGoDeeper = () => {
     if (selectedText) {
       onGoDeeper(selectedText);
@@ -407,6 +436,89 @@ export function TextHighlightTooltip({
                     </>
                   )}
                 </button>
+
+                {/* Highlight Button */}
+                {enableHighlight && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowColorPicker(!showColorPicker)}
+                      disabled={highlightSuccess}
+                      className={`group px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
+                        highlightSuccess
+                          ? "bg-[#D4AF37]/20 text-[#D4AF37] cursor-default"
+                          : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
+                      }`}
+                      title={
+                        highlightSuccess ? "Highlighted" : "Highlight verse"
+                      }
+                    >
+                      {highlightSuccess ? (
+                        <>
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M17.75 7L14 3.25l-10 10V17h3.75l10-10zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29c-.39-.39-1.02-.39-1.41 0L15 2.25 18.75 6l1.96-1.96z" />
+                          </svg>
+                          <svg
+                            className="w-2.5 h-2.5 absolute ml-0.5 mt-0.5"
+                            fill="none"
+                            stroke="white"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </>
+                      ) : (
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                          />
+                        </svg>
+                      )}
+                    </button>
+
+                    {/* Color Picker Dropdown */}
+                    {showColorPicker && !highlightSuccess && (
+                      <div className="absolute bottom-full left-0 mb-2 bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl p-2 z-10 min-w-[140px]">
+                        <div className="text-xs text-neutral-400 px-2 py-1 mb-1">
+                          Pick color:
+                        </div>
+                        <div className="space-y-1">
+                          {HIGHLIGHT_COLORS.map((color) => (
+                            <button
+                              key={color.name}
+                              onClick={() => handleHighlight(color.value)}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-800 transition-colors"
+                            >
+                              <div
+                                className="w-4 h-4 rounded border border-neutral-600"
+                                style={{ backgroundColor: color.value }}
+                              />
+                              <span className="text-xs text-neutral-300">
+                                {color.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

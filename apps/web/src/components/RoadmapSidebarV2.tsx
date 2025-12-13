@@ -36,6 +36,8 @@ interface RoadmapSidebarV2Props {
   chats?: Chat[];
   onNewChat?: () => void;
   onSelectChat?: (chatId: string) => void;
+  showBible?: boolean;
+  onToggleBible?: () => void;
 }
 
 const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
@@ -44,6 +46,8 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   chats = [],
   onNewChat,
   onSelectChat,
+  showBible = false,
+  onToggleBible,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem("roadmapCollapsed");
@@ -118,6 +122,33 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             />
           </svg>
           <span className="text-sm font-medium">New Chat</span>
+        </button>
+
+        {/* Bible Toggle Button */}
+        <button
+          onClick={onToggleBible}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
+            showBible
+              ? "border-brand-primary-500 bg-brand-primary-500/10 text-brand-primary-300"
+              : "border-neutral-700 hover:border-brand-primary-500 hover:bg-neutral-800/50 text-neutral-400 hover:text-brand-primary-400"
+          }`}
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+            />
+          </svg>
+          <span className="text-sm font-medium">
+            {showBible ? "Close Bible" : "Open Bible"}
+          </span>
         </button>
 
         {/* Recent Chats */}
