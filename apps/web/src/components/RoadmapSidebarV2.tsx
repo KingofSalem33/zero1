@@ -103,27 +103,6 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
       {/* Content - Chat History */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {/* New Chat Button */}
-        <button
-          onClick={onNewChat}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-neutral-700 hover:border-brand-primary-500 hover:bg-neutral-800/50 text-neutral-400 hover:text-brand-primary-400 transition-all group"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          <span className="text-sm font-medium">New Chat</span>
-        </button>
-
         {/* Bible Toggle Button */}
         <button
           onClick={onToggleBible}
@@ -149,6 +128,27 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           <span className="text-sm font-medium">
             {showBible ? "Close Bible" : "Open Bible"}
           </span>
+        </button>
+
+        {/* New Chat Button */}
+        <button
+          onClick={onNewChat}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-neutral-700 hover:border-brand-primary-500 hover:bg-neutral-800/50 text-neutral-400 hover:text-brand-primary-400 transition-all group"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+          <span className="text-sm font-medium">New Chat</span>
         </button>
 
         {/* Recent Chats */}

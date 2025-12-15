@@ -116,3 +116,6 @@ logs
 
 # Bible data (too large for git)
 apps/api/data/
+
+# Claude settings (contains API keys)
+.claude/settings.local.json

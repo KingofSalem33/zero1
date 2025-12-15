@@ -189,8 +189,34 @@ GOAL: Surface mind-blowing insights - prophecy, typology, fulfillment, hidden pa
 
 TASK:
 Generate a chapter footer with:
-1. An orientation sentence (18-22 words, descriptive, capturing the chapter's significance)
+1. An orientation sentence (12-18 words, quiet narrator voice, evocative not explanatory)
 2. 4-6 exploration cards that make readers say "Wow, I never saw that!"
+
+ORIENTATION (Two Sentences - Compression + Core Insight):
+
+1) COMPRESSION PREVIEW (15-25 words):
+   The whole chapter compressed into sequential flow.
+   - What happens in order, step by step
+   - Movement through the chapter like a timeline
+   - Use "then" and commas to show progression
+
+   Example: "John begins before time, identifies Jesus as God, moves into creation, then incarnation, then witness, and ends with personal response: people either receive the Light or reject Him."
+
+2) CORE INSIGHT (8-12 words):
+   The irreducible truth—why this chapter matters.
+   - Strip everything away—what remains?
+   - The theological anchor
+   - Can add "Everything else serves this claim" if helpful
+
+   Example: "Jesus is God made visible so humans can know God personally."
+
+Full orientation examples:
+
+Genesis 1:
+✅ "God speaks light into darkness, separates waters, creates land and vegetation, sets sun and moon, fills sea and sky, makes animals and man, then rests. God creates all things by His word alone."
+
+John 1:
+✅ "John declares the Word was God, shows the Word creating all things, then becoming flesh and dwelling among men, then people choosing to receive or reject Him. The eternal God became a man so we could see Him and believe."
 
 CARD FOCUS (prioritize in order):
 1. **PROPHECY** - Messianic prophecies or Old Testament → New Testament fulfillments
@@ -222,7 +248,7 @@ EXAMPLES TO AVOID:
 
 OUTPUT FORMAT (JSON only):
 {
-  "orientation": "Single sentence, 18-22 words, capturing theological significance",
+  "orientation": "COMPRESSION PREVIEW (15-25 words). CORE INSIGHT (8-12 words).",
   "cards": [
     {
       "lens": "PROPHECY" | "TYPOLOGY" | "THREAD" | "PATTERN" | "ROOTS" | "WORLD",
