@@ -33,6 +33,9 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
   const [showBible, setShowBible] = useState<boolean>(false);
+  const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
+    null,
+  );
 
   // Initialize first chat on mount
   useEffect(() => {
@@ -45,6 +48,12 @@ function App() {
   // Toggle Bible view
   const handleToggleBible = () => {
     setShowBible((prev) => !prev);
+  };
+
+  // Navigate from Bible to Chat with a prompt
+  const handleNavigateToChat = (prompt: string) => {
+    setShowBible(false); // Switch to chat view
+    setPendingChatPrompt(prompt); // Queue the prompt
   };
 
   // Save chats to localStorage whenever they change
@@ -229,6 +238,8 @@ function App() {
               onRefreshProject={() => {}}
               messages={currentMessages}
               onMessagesChange={setCurrentMessages}
+              pendingPrompt={pendingChatPrompt}
+              onPromptConsumed={() => setPendingChatPrompt(null)}
             />
           </div>
 
@@ -240,7 +251,7 @@ function App() {
                 : "opacity-0 translate-x-[100%] pointer-events-none"
             }`}
           >
-            <BibleReader />
+            <BibleReader onNavigateToChat={handleNavigateToChat} />
           </div>
         </main>
       </div>

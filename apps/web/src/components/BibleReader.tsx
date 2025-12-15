@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { useBibleHighlights } from "../hooks/useBibleHighlights";
+import { ChapterFooter } from "./ChapterFooter";
 
 interface Verse {
   verse: string;
@@ -87,7 +88,11 @@ const BIBLE_BOOKS = [
   "Revelation",
 ];
 
-const BibleReader: React.FC = () => {
+interface BibleReaderProps {
+  onNavigateToChat?: (prompt: string) => void;
+}
+
+const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
   const [selectedBook, setSelectedBook] = useState<string>("John");
   const [selectedChapter, setSelectedChapter] = useState<number>(1);
   const [bookData, setBookData] = useState<Book | null>(null);
@@ -517,6 +522,17 @@ const BibleReader: React.FC = () => {
                   </svg>
                 </button>
               </div>
+
+              {/* Chapter Footer - Exploration Cards */}
+              <ChapterFooter
+                book={selectedBook}
+                chapter={selectedChapter}
+                onCardTap={(prompt) => {
+                  if (onNavigateToChat) {
+                    onNavigateToChat(prompt);
+                  }
+                }}
+              />
             </div>
           ) : (
             <div className="text-center py-20 text-neutral-500">

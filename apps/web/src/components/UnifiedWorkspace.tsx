@@ -87,6 +87,8 @@ interface UnifiedWorkspaceProps {
   onOpenNewWorkspace?: () => void;
   messages?: ChatMessage[];
   onMessagesChange?: (messages: ChatMessage[]) => void;
+  pendingPrompt?: string;
+  onPromptConsumed?: () => void;
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -102,6 +104,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   onOpenNewWorkspace,
   messages: externalMessages,
   onMessagesChange,
+  pendingPrompt,
+  onPromptConsumed,
 }) => {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
   const messages =
@@ -598,6 +602,49 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Use simple chat stream hook for LLM-only mode
   const { streamingMessage, isStreaming, startStream } =
     useChatStream(handleMapData);
+
+  // Handle pending prompt from Bible reader (auto-start stream)
+  useEffect(() => {
+    if (pendingPrompt && !isStreaming && !isProcessing) {
+      // Auto-start stream with the prompt from Bible footer
+      const startPendingPrompt = async () => {
+        setIsProcessing(true);
+
+        // Add user message to chat
+        const newMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: "user",
+          content: pendingPrompt,
+          timestamp: new Date(),
+        };
+        const updatedMessages = [...messages, newMessage];
+        setMessages(updatedMessages);
+
+        // Convert ChatMessage format to API format (role/content)
+        const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
+          role: msg.type === "user" ? "user" : "assistant",
+          content: msg.content,
+        }));
+
+        // Start streaming AI response
+        await startStream(pendingPrompt, "user", historyForAPI);
+        setIsProcessing(false);
+
+        // Notify parent that prompt has been consumed
+        onPromptConsumed?.();
+      };
+
+      startPendingPrompt();
+    }
+  }, [
+    pendingPrompt,
+    isStreaming,
+    isProcessing,
+    messages,
+    setMessages,
+    startStream,
+    onPromptConsumed,
+  ]);
 
   // Track citations from streaming content for Golden Thread highlighting
   useEffect(() => {

@@ -21,6 +21,9 @@ import {
   // explainScriptureWithGenealogyStream, // OLD single-pass implementation
   explainScriptureWithKernelStream,
 } from "./bible/expandingRingExegesis";
+import { buildReferenceTree } from "./bible/referenceGenealogy";
+import { getVerseId } from "./bible/graphWalker";
+import { parseExplicitReference } from "./bible/referenceParser";
 import {
   chatRequestSchema,
   chatJsonResponseSchema,
@@ -129,6 +132,138 @@ app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
 
 // Mount verse routes (fetch individual verses by reference)
 app.use("/api/verse", optionalAuth, verseRouter);
+
+// Chapter footer endpoint (test for Genesis 1)
+app.get("/api/bible/chapter-footer", optionalAuth, async (req, res) => {
+  try {
+    const book = req.query.book as string;
+    const chapter = parseInt(req.query.chapter as string);
+
+    if (!book || isNaN(chapter)) {
+      res.status(400).json({ error: "Missing book or chapter parameter" });
+      return;
+    }
+
+    // Parse the book reference to get the abbreviation
+    const parsed = parseExplicitReference(`${book} ${chapter}:1`);
+    if (!parsed) {
+      res.status(400).json({ error: `Invalid book name: ${book}` });
+      return;
+    }
+
+    // Get anchor verse (first verse of chapter)
+    const anchorId = await getVerseId(parsed.book, chapter, 1);
+    if (!anchorId) {
+      res.status(404).json({ error: `Could not find ${book} ${chapter}` });
+      return;
+    }
+
+    // Build reference tree from graph
+    const tree = await buildReferenceTree(anchorId, {
+      maxDepth: 2,
+      maxNodes: 20,
+      maxChildrenPerNode: 999,
+    });
+
+    // Format connected verses for LLM
+    const connections = tree.nodes
+      .filter((n: any) => !(n.book_name === book && n.chapter === chapter))
+      .slice(0, 15)
+      .map(
+        (n: any) =>
+          `[${n.book_name} ${n.chapter}:${n.verse}] "${n.text.substring(0, 100)}${n.text.length > 100 ? "..." : ""}"`,
+      )
+      .join("\n");
+
+    const userMessage = `CHAPTER TO ANALYZE:
+${book} ${chapter}
+
+CONNECTED VERSES (from cross-reference graph):
+${connections || "(No cross-references found in graph)"}
+
+Generate a footer for this chapter based ONLY on the connected verses listed above.`;
+
+    const systemPrompt = `You are a biblical scholar creating "aha moment" exploration cards that reveal connections readers would NEVER discover on their own.
+
+GOAL: Surface mind-blowing insights - prophecy, typology, fulfillment, hidden patterns, and deep theological threads.
+
+TASK:
+Generate a chapter footer with:
+1. An orientation sentence (18-22 words, descriptive, capturing the chapter's significance)
+2. 4-6 exploration cards that make readers say "Wow, I never saw that!"
+
+CARD FOCUS (prioritize in order):
+1. **PROPHECY** - Messianic prophecies or Old Testament → New Testament fulfillments
+2. **TYPOLOGY** - Events/people that foreshadow Christ or redemption (e.g., Isaac sacrifice → Christ)
+3. **THREAD** - Major theological arcs (Creation→Fall→Redemption, Exodus pattern, Covenant progression)
+4. **PATTERN** - Literary structures readers miss (chiasms, sevens, repeated phrases revealing meaning)
+5. **ROOTS** - Hebrew/Greek wordplay, double meanings, or lost-in-translation insights
+6. **WORLD** - Historical/cultural context that radically changes interpretation
+
+RULES:
+1. GRAPH-GROUNDED: You can ONLY suggest cards based on the connected verses provided
+2. NO GENERIC CONNECTIONS: Avoid surface-level "both mention light" observations
+3. REVEAL THE HIDDEN: Focus on non-obvious connections that require scholarly insight
+4. SHOW THE STORY: How does this fit into God's larger redemptive narrative?
+5. CARD TITLES: Evocative and specific (3-7 words) - tease the insight
+6. PROMPTS: Frame as discoveries, not lectures. "Trace how...", "Why does...", "See how..."
+7. ORIENTATION: Capture the chapter's role in the biblical story
+
+EXAMPLES OF GREAT CARDS:
+✅ "Let There Be Light → I Am the Light" (John echoing Genesis)
+✅ "Seven Days, Seven Seals" (Creation pattern in Revelation)
+✅ "The Seed Promise Begins" (Gen 3:15 → Christ lineage)
+✅ "Why 'It Was Good' Six Times?" (Literary pattern revealing theology)
+
+EXAMPLES TO AVOID:
+❌ "Creation themes in Scripture" (too generic)
+❌ "Historical context of Genesis" (not specific enough)
+❌ "Compare with other creation accounts" (surface level)
+
+OUTPUT FORMAT (JSON only):
+{
+  "orientation": "Single sentence, 18-22 words, capturing theological significance",
+  "cards": [
+    {
+      "lens": "PROPHECY" | "TYPOLOGY" | "THREAD" | "PATTERN" | "ROOTS" | "WORLD",
+      "title": "Evocative title teasing the insight",
+      "prompt": "Specific exploration question that reveals the connection"
+    }
+  ]
+}
+
+Return ONLY valid JSON.`;
+
+    // Generate with LLM
+    const result = await runModel(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      {
+        toolSpecs: [],
+        toolMap: {},
+        model: "gpt-4o-mini",
+      },
+    );
+
+    // Parse and return (strip markdown code fences if present)
+    let jsonText = result.text.trim();
+
+    // Remove markdown code fences if present
+    if (jsonText.startsWith("```")) {
+      jsonText = jsonText
+        .replace(/^```(?:json)?\s*\n/, "")
+        .replace(/\n```\s*$/, "");
+    }
+
+    const footer = JSON.parse(jsonText);
+    res.json(footer);
+  } catch (error) {
+    console.error("Chapter footer error:", error);
+    res.status(500).json({ error: "Failed to generate chapter footer" });
+  }
+});
 
 // File endpoints (temporarily optional auth for testing)
 app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);
