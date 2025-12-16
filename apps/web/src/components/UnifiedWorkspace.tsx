@@ -89,6 +89,8 @@ interface UnifiedWorkspaceProps {
   onMessagesChange?: (messages: ChatMessage[]) => void;
   pendingPrompt?: string;
   onPromptConsumed?: () => void;
+  oratoryMode?: boolean;
+  onExitOratory?: () => void;
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -106,6 +108,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   onMessagesChange,
   pendingPrompt,
   onPromptConsumed,
+  oratoryMode = false,
+  onExitOratory: _onExitOratory,
 }) => {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
   const messages =
@@ -503,6 +507,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Disable auto-scroll; user controls scroll position manually
 
   const getContextualPlaceholder = (): string => {
+    if (oratoryMode) return "What's on your heart?";
     return "What's on your mind?";
   };
 
@@ -511,10 +516,18 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     null,
   );
   const [showVisualization, setShowVisualization] = useState(false);
+  const [hasEnteredOratory, setHasEnteredOratory] = useState(false);
   const [pendingVisualBundle, setPendingVisualBundle] =
     useState<VisualContextBundle | null>(null); // Store bundle until message is complete
   const { highlightedRefs, addReferencesFromText, resetHighlights } =
     useGoldenThreadHighlighting();
+
+  // Reset hasEnteredOratory when exiting Oratory mode
+  useEffect(() => {
+    if (!oratoryMode) {
+      setHasEnteredOratory(false);
+    }
+  }, [oratoryMode]);
 
   // TTS state management
   /* global HTMLAudioElement */
@@ -627,7 +640,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         }));
 
         // Start streaming AI response
-        await startStream(pendingPrompt, "user", historyForAPI);
+        await startStream(pendingPrompt, "user", historyForAPI, oratoryMode);
         setIsProcessing(false);
 
         // Notify parent that prompt has been consumed
@@ -725,7 +738,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }));
 
     // Start streaming AI response with updated message history
-    await startStream(userMessage, "user", historyForAPI);
+    await startStream(userMessage, "user", historyForAPI, oratoryMode);
     setIsProcessing(false);
   };
 
@@ -761,7 +774,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }));
 
     // Start streaming AI response with updated message history
-    await startStream(prompt, "user", historyForAPI);
+    await startStream(prompt, "user", historyForAPI, oratoryMode);
     setIsProcessing(false);
   };
 
@@ -1335,7 +1348,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           className={`flex-1 overflow-y-auto px-6 py-8 pb-28 ${showVisualization ? "border-r border-neutral-700" : ""}`}
         >
           {/* Centered composer when no messages (ChatGPT-style start) */}
-          {messages.length === 0 ? (
+          {messages.length === 0 && !oratoryMode ? (
             <div className="h-full w-full flex items-center justify-center">
               <div className="w-full max-w-3xl">
                 <h1 className="text-4xl md:text-6xl font-extrabold text-white text-center mb-8">
@@ -1448,6 +1461,28 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     )}
                   </button>
                 </div>
+              </div>
+            </div>
+          ) : oratoryMode && messages.length === 0 && !hasEnteredOratory ? (
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="max-w-md text-center space-y-8 px-8 animate-fade-in">
+                <h2 className="text-3xl font-serif text-neutral-200 tracking-wide">
+                  THE ORATORY
+                </h2>
+                <div className="space-y-4 text-neutral-400 text-sm leading-relaxed">
+                  <p>A quiet place to find Scripture for what you're facing.</p>
+                  <p className="text-neutral-500 text-xs">
+                    This is not a counselor or confessor.
+                    <br />
+                    Just a concordance for your situation.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setHasEnteredOratory(true)}
+                  className="mt-8 px-8 py-3 bg-amber-900/20 hover:bg-amber-900/30 border border-amber-700/50 hover:border-amber-600/70 text-amber-500/90 hover:text-amber-400 rounded-lg transition-all duration-300 text-sm font-medium tracking-wide"
+                >
+                  Enter
+                </button>
               </div>
             </div>
           ) : null}
@@ -1716,14 +1751,28 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       </div>
 
       {/* Input Composer (sticky bottom) */}
-      {/* Bottom composer (shown only after first message) */}
-      {messages.length > 0 && (
+      {/* Bottom composer (shown after first message in normal chat, or always in Oratory after entering) */}
+      {((messages.length > 0 && !oratoryMode) ||
+        (oratoryMode && hasEnteredOratory)) && (
         <div
           ref={composerRef}
-          className="sticky bottom-0 px-6 py-4 bg-neutral-950/40 backdrop-blur-sm"
+          className={`${oratoryMode && messages.length === 0 ? "flex items-center justify-center min-h-[80vh]" : "sticky bottom-0"} px-6 py-4 bg-neutral-950/40 backdrop-blur-sm`}
         >
-          <div className="max-w-4xl mx-auto">
-            <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all shadow-lg">
+          <div
+            className={
+              oratoryMode && messages.length === 0
+                ? "w-full max-w-3xl"
+                : "max-w-4xl mx-auto"
+            }
+          >
+            {oratoryMode && messages.length === 0 && (
+              <h1 className="text-4xl md:text-6xl font-serif text-neutral-200 text-center mb-8 tracking-wide animate-fade-in">
+                The Oratory
+              </h1>
+            )}
+            <div
+              className={`relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg ${oratoryMode ? "focus-within:ring-2 focus-within:ring-amber-500/50 focus-within:border-amber-500/50" : "focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50"}`}
+            >
               <button
                 onClick={() => setShowUploadButton(!showUploadButton)}
                 className="btn-icon-ghost w-8 h-8"
@@ -1805,6 +1854,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
                 rows={1}
                 disabled={isProcessing}
+                autoFocus={oratoryMode && messages.length === 0}
               />
               {/* Bookmark Button */}
               <button

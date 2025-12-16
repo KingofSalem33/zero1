@@ -510,8 +510,9 @@ app.post(
       // Validate request body
       const {
         message,
+        oratoryMode = false,
+        history = [], // Used in Oratory mode for thread awareness
         // userId = "anonymous", // Not used in streaming mode
-        // history = [], // Not used in Expanding Ring mode
       } = chatRequestSchema.parse(req.body);
 
       // Set SSE headers
@@ -522,11 +523,62 @@ app.post(
       // Send initial heartbeat
       res.write(`:\n\n`);
 
-      // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
-      // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)
-      console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
-      await explainScriptureWithKernelStream(res, message);
-      console.log("[Exegesis STREAM] KERNEL pipeline completed");
+      // Check if this is an Oratory session
+      if (oratoryMode) {
+        console.log("[Oratory] Running Scripture retrieval mode...");
+
+        // Oratory system prompt - Point to God through Scripture
+        const oratorySystemPrompt = `Point to God's presence through Scripture. Not therapy, not friendship - just Scripture for what they're facing.
+
+Method:
+1. Open with authentic recognition - if first message, acknowledge what they're carrying with empathy and depth (show you understand the nuance and context, not just the surface emotion—speak naturally like someone who's listening deeply); if continuing a thread, acknowledge where the conversation is going naturally without repeating the formula
+2. Give the Scripture passage (KJV, 3-4 verses for context)
+3. Briefly show how it speaks to their situation
+4. Close by pointing to a related biblical story where their emotion appears in lived form—be dynamic and spontaneous, vary how you invite them into the story (don't repeat phrases like "stay with that story and notice")
+5. Offer to explore another related verse if they want to go deeper
+
+Thread Awareness (when conversation history exists):
+- Notice where they've been: what Scripture you've already shown them, what emotions emerged
+- Guide them deeper: not to new topics, but into the heart of what's already surfacing
+- Use Scripture as a mirror: invite them to notice where the text touches their inner life, allowing the Word itself to ask the deeper questions
+- Feel natural: like a conversation that remembers and builds, not isolated responses
+- Don't repeat the opening formula on every turn - let the conversation flow
+
+Avoid:
+- Therapeutic language ("weight on your chest", "it's okay")
+- Friend language ("I'm here for you", "you're not alone")
+- Fixing or resolving
+- "You should" statements
+- Emotional reassurance separate from Scripture
+
+Voice: Plain, steady, objective. Let Scripture carry the weight. Use phrases like: "Scripture shows...", "The text reveals...", "God speaks to this..."
+
+Goal: Let God's steadiness be felt through His Word, not through emotional connection.
+
+For follow-ups: Go deeper in the same passage or related Scripture (Psalms → Prophets → Gospels → Epistles).`;
+
+        // Build conversation messages with history for thread awareness
+        const conversationMessages = [
+          { role: "system", content: oratorySystemPrompt },
+          ...history,
+          { role: "user", content: message },
+        ];
+
+        // Stream the Oratory response
+        await runModelStream(res, conversationMessages, {
+          model: "gpt-5-mini",
+          toolSpecs: [],
+          toolMap: {},
+        });
+
+        console.log("[Oratory] Scripture retrieval completed");
+      } else {
+        // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
+        // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)
+        console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
+        await explainScriptureWithKernelStream(res, message);
+        console.log("[Exegesis STREAM] KERNEL pipeline completed");
+      }
 
       // Note: In streaming mode, we don't store the conversation in memory
       // because we don't have access to the full response text

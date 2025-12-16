@@ -33,6 +33,7 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
   const [showBible, setShowBible] = useState<boolean>(false);
+  const [oratoryMode, setOratoryMode] = useState<boolean>(false);
   const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
     null,
   );
@@ -56,6 +57,16 @@ function App() {
     setPendingChatPrompt(prompt); // Queue the prompt
   };
 
+  // Enter the Oratory
+  const handleEnterOratory = () => {
+    setShowBible(false); // Close Bible if open
+    setOratoryMode(true); // Enable Oratory mode
+    // Start a new chat session for the Oratory
+    const newChatId = `oratory_${Date.now()}`;
+    setCurrentChatId(newChatId);
+    setCurrentMessages([]);
+  };
+
   // Save chats to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(chats));
@@ -63,6 +74,9 @@ function App() {
 
   // Handle creating a new chat
   const handleNewChat = () => {
+    // Exit Oratory mode when starting a new chat
+    setOratoryMode(false);
+
     // Save current chat if it has messages
     if (currentMessages.length > 0 && currentChatId) {
       const firstUserMessage = currentMessages.find((m) => m.type === "user");
@@ -215,6 +229,7 @@ function App() {
           onSelectChat={handleSelectChat}
           showBible={showBible}
           onToggleBible={handleToggleBible}
+          onEnterOratory={handleEnterOratory}
         />
 
         {/* Main Workspace - Smooth transition between Chat and Bible */}
@@ -240,6 +255,8 @@ function App() {
               onMessagesChange={setCurrentMessages}
               pendingPrompt={pendingChatPrompt}
               onPromptConsumed={() => setPendingChatPrompt(null)}
+              oratoryMode={oratoryMode}
+              onExitOratory={() => setOratoryMode(false)}
             />
           </div>
 

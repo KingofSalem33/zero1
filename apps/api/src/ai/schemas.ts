@@ -41,6 +41,10 @@ export const chatRequestSchema = z.object({
     )
     .optional()
     .describe("Conversation history"),
+  oratoryMode: z
+    .boolean()
+    .optional()
+    .describe("Enable Oratory mode for Scripture retrieval"),
 });
 
 export const chatJsonResponseSchema = z.object({

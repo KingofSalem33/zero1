@@ -53,7 +53,12 @@ export function useChatStream(
   const abortControllerRef = useRef<any>(null);
 
   const startStream = useCallback(
-    async (message: string, userId?: string, history?: unknown[]) => {
+    async (
+      message: string,
+      userId?: string,
+      history?: unknown[],
+      oratoryMode?: boolean,
+    ) => {
       // Cancel any existing stream
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -83,6 +88,7 @@ export function useChatStream(
             message,
             userId: userId || "anonymous",
             history: history || [],
+            oratoryMode: oratoryMode || false,
           }),
           signal: abortController.signal,
         });
