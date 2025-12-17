@@ -7,26 +7,8 @@ interface Chat {
   timestamp: Date;
 }
 
-// Helper function to format time ago
-function getTimeAgo(timestamp: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - new Date(timestamp).getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "now";
-  if (diffMins < 60) return `${diffMins}m`;
-  if (diffHours < 24) return `${diffHours}h`;
-  if (diffDays < 7) return `${diffDays}d`;
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 interface RoadmapSidebarV2Props {
-  project: any;
+  project: unknown;
   onOpenFileManager: () => void;
   onOpenMemoryManager: () => void;
   onAskAI: () => void;
@@ -56,9 +38,18 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
     return saved === "true";
   });
 
+  const [showRecentChats, setShowRecentChats] = useState(() => {
+    const saved = localStorage.getItem("showRecentChats");
+    return saved !== "false"; // Default to true
+  });
+
   useEffect(() => {
     localStorage.setItem("roadmapCollapsed", String(isCollapsed));
   }, [isCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem("showRecentChats", String(showRecentChats));
+  }, [showRecentChats]);
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -105,137 +96,147 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
       {/* Content - Chat History */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {/* Bible Toggle Button */}
-        <button
-          onClick={onToggleBible}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
-            showBible
-              ? "border-brand-primary-500 bg-brand-primary-500/10 text-brand-primary-300"
-              : "border-neutral-700 hover:border-brand-primary-500 hover:bg-neutral-800/50 text-neutral-400 hover:text-brand-primary-400"
-          }`}
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {/* Action Buttons */}
+        <div className="space-y-1 mb-4">
+          {/* Bible Toggle Button */}
+          <button
+            onClick={onToggleBible}
+            className={`w-full flex items-center gap-3 px-3 py-2 transition-colors ${
+              showBible
+                ? "text-brand-primary-300"
+                : "text-neutral-400 hover:text-brand-primary-400"
+            }`}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-            />
-          </svg>
-          <span className="text-sm font-medium">
-            {showBible ? "Close Bible" : "Open Bible"}
-          </span>
-        </button>
+            <svg
+              className="w-4 h-4 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+              />
+            </svg>
+            <span className="text-sm font-medium">
+              {showBible ? "Close Bible" : "Open Bible"}
+            </span>
+          </button>
 
-        {/* The Oratory Button */}
-        <button
-          onClick={onEnterOratory}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-neutral-700 hover:border-amber-600/50 hover:bg-neutral-800/50 text-neutral-400 hover:text-amber-500/70 transition-all"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+          {/* The Oratory Button */}
+          <button
+            onClick={onEnterOratory}
+            className="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-amber-500/70 transition-colors"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-            />
-          </svg>
-          <span className="text-sm font-medium">The Oratory</span>
-        </button>
+            <svg
+              className="w-4 h-4 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"
+              />
+            </svg>
+            <span className="text-sm font-medium">The Oratory</span>
+          </button>
 
-        {/* New Chat Button */}
-        <button
-          onClick={onNewChat}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-neutral-700 hover:border-brand-primary-500 hover:bg-neutral-800/50 text-neutral-400 hover:text-brand-primary-400 transition-all group"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+          {/* New Chat Button */}
+          <button
+            onClick={onNewChat}
+            className="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-brand-primary-400 transition-colors"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          <span className="text-sm font-medium">New Chat</span>
-        </button>
+            <svg
+              className="w-4 h-4 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            <span className="text-sm font-medium">New Chat</span>
+          </button>
+        </div>
 
         {/* Recent Chats */}
         <div className="pt-2">
-          <h4 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-2 mb-2">
-            Recent Chats
-          </h4>
-          <div className="space-y-1">
-            {chats.length === 0 ? (
-              <div className="text-center py-8 px-2">
-                <div className="text-neutral-600 text-sm">No chats yet</div>
-              </div>
-            ) : (
-              chats.map((chat) => {
-                const timeAgo = getTimeAgo(chat.timestamp);
-                return (
-                  <button
-                    key={chat.id}
-                    onClick={() => onSelectChat?.(chat.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group ${
-                      currentChatId === chat.id
-                        ? "bg-brand-primary-500/20 border border-brand-primary-500/30"
-                        : "hover:bg-neutral-800/50 border border-transparent"
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <svg
-                        className="w-4 h-4 mt-0.5 flex-shrink-0 text-neutral-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+          <button
+            onClick={() => setShowRecentChats(!showRecentChats)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-neutral-400 hover:text-neutral-300 transition-colors"
+          >
+            <span className="text-xs font-medium">Recent Chats</span>
+            <svg
+              className={`w-3 h-3 flex-shrink-0 transition-transform ${
+                showRecentChats ? "rotate-90" : ""
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </button>
+          {showRecentChats && (
+            <div className="space-y-1">
+              {chats.length === 0 ? (
+                <div className="text-center py-8 px-2">
+                  <div className="text-neutral-600 text-sm">No chats yet</div>
+                </div>
+              ) : (
+                chats.map((chat) => {
+                  // Capitalize first letter and truncate to 4 words
+                  const words = chat.title.split(" ");
+                  const truncatedTitle = words.slice(0, 4).join(" ");
+                  const capitalizedTitle =
+                    truncatedTitle.charAt(0).toUpperCase() +
+                    truncatedTitle.slice(1);
+
+                  return (
+                    <button
+                      key={chat.id}
+                      onClick={() => onSelectChat?.(chat.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group ${
+                        currentChatId === chat.id
+                          ? "bg-brand-primary-500/20 border border-brand-primary-500/30"
+                          : "hover:bg-neutral-800/50 border border-transparent"
+                      }`}
+                    >
+                      <div
+                        className={`text-sm font-medium truncate ${
+                          currentChatId === chat.id
+                            ? "text-brand-primary-300"
+                            : "text-neutral-300"
+                        }`}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                        />
-                      </svg>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <div
-                            className={`text-sm font-medium truncate flex-1 ${
-                              currentChatId === chat.id
-                                ? "text-brand-primary-300"
-                                : "text-neutral-300"
-                            }`}
-                          >
-                            {chat.title}
-                          </div>
-                          <div className="text-xs text-neutral-600 flex-shrink-0">
-                            {timeAgo}
-                          </div>
-                        </div>
-                        <div className="text-xs text-neutral-500 truncate">
-                          {chat.lastMessage || "No messages yet"}
-                        </div>
+                        {capitalizedTitle}
                       </div>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -270,13 +271,13 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
       {!isCollapsed && (
         <>
           {/* Desktop Sidebar */}
-          <aside className="hidden md:flex flex-col w-80 bg-neutral-900/50 border-r border-neutral-800/50 h-full">
+          <aside className="hidden md:flex flex-col w-64 bg-neutral-900/50 border-r border-neutral-800/50 fixed left-0 top-0 h-screen z-40">
             <SidebarContent />
           </aside>
 
           {/* Mobile Overlay */}
           <div className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
-            <aside className="w-80 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl">
+            <aside className="w-64 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl">
               <SidebarContent />
             </aside>
           </div>

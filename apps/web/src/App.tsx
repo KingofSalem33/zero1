@@ -233,7 +233,7 @@ function App() {
         />
 
         {/* Main Workspace - Smooth transition between Chat and Bible */}
-        <main className="flex-1 min-h-screen relative overflow-hidden">
+        <main className="flex-1 min-h-screen relative overflow-hidden md:ml-64">
           {/* Chat View */}
           <div
             className={`absolute inset-0 transition-all duration-500 ease-in-out ${
