@@ -101,10 +101,10 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           {/* Bible Toggle Button */}
           <button
             onClick={onToggleBible}
-            className={`w-full flex items-center gap-3 px-3 py-2 transition-colors ${
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
               showBible
-                ? "text-brand-primary-300"
-                : "text-neutral-400 hover:text-brand-primary-400"
+                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
             }`}
           >
             <svg
@@ -128,7 +128,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           {/* The Oratory Button */}
           <button
             onClick={onEnterOratory}
-            className="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-amber-500/70 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
           >
             <svg
               className="w-4 h-4 flex-shrink-0"
@@ -155,7 +155,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           {/* New Chat Button */}
           <button
             onClick={onNewChat}
-            className="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-brand-primary-400 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
           >
             <svg
               className="w-4 h-4 flex-shrink-0"
