@@ -3,13 +3,16 @@ import "./App.css";
 import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
 import UnifiedWorkspace from "./components/UnifiedWorkspace";
 import BibleReader from "./components/BibleReader";
+import HighlightsLibrary from "./components/HighlightsLibrary";
 import { useAuth } from "./contexts/AuthContext";
+import { BibleHighlightsProvider } from "./contexts/BibleHighlightsContext";
 
 interface Chat {
   id: string;
   title: string;
   lastMessage: string;
   timestamp: Date;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   messages: any[];
 }
 
@@ -23,6 +26,7 @@ function App() {
     const saved = localStorage.getItem("chatHistory");
     if (saved) {
       const parsed = JSON.parse(saved);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return parsed.map((chat: any) => ({
         ...chat,
         timestamp: new Date(chat.timestamp),
@@ -31,12 +35,23 @@ function App() {
     return [];
   });
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
   const [showBible, setShowBible] = useState<boolean>(false);
   const [oratoryMode, setOratoryMode] = useState<boolean>(false);
+  const [highlightsMode, setHighlightsMode] = useState<boolean>(false);
   const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
     null,
   );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem("roadmapCollapsed");
+    return saved === "true";
+  });
+
+  // Save sidebar collapsed state
+  useEffect(() => {
+    localStorage.setItem("roadmapCollapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   // Initialize first chat on mount
   useEffect(() => {
@@ -48,7 +63,15 @@ function App() {
 
   // Toggle Bible view
   const handleToggleBible = () => {
-    setShowBible((prev) => !prev);
+    setShowBible((prev) => {
+      const newState = !prev;
+      // If opening Bible, close other modes
+      if (newState) {
+        setHighlightsMode(false);
+        setOratoryMode(false);
+      }
+      return newState;
+    });
   };
 
   // Navigate from Bible to Chat with a prompt
@@ -60,11 +83,27 @@ function App() {
   // Enter the Oratory
   const handleEnterOratory = () => {
     setShowBible(false); // Close Bible if open
+    setHighlightsMode(false); // Close Highlights if open
     setOratoryMode(true); // Enable Oratory mode
     // Start a new chat session for the Oratory
     const newChatId = `oratory_${Date.now()}`;
     setCurrentChatId(newChatId);
     setCurrentMessages([]);
+  };
+
+  // Open Highlights in chat area
+  const handleOpenHighlights = () => {
+    setShowBible(false); // Close Bible if open
+    setOratoryMode(false); // Exit Oratory mode
+    setHighlightsMode(true); // Enter Highlights mode
+  };
+
+  // Navigate from Highlights to Bible verse
+  const handleNavigateToVerse = () => {
+    setHighlightsMode(false); // Close highlights
+    setShowBible(true); // Open Bible
+    // TODO: Add logic to navigate to specific verse in BibleReader
+    // For now, BibleReader will open at current position
   };
 
   // Save chats to localStorage whenever they change
@@ -74,8 +113,10 @@ function App() {
 
   // Handle creating a new chat
   const handleNewChat = () => {
-    // Exit Oratory mode when starting a new chat
+    // Exit special modes when starting a new chat
+    setShowBible(false);
     setOratoryMode(false);
+    setHighlightsMode(false);
 
     // Save current chat if it has messages
     if (currentMessages.length > 0 && currentChatId) {
@@ -215,64 +256,84 @@ function App() {
 
   // Main layout: Sidebar + Workspace
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-      <div className="flex">
-        {/* Left Sidebar */}
-        <RoadmapSidebarV2
-          project={project}
-          onOpenFileManager={() => {}}
-          onOpenMemoryManager={() => {}}
-          onAskAI={() => {}}
-          currentChatId={currentChatId || undefined}
-          chats={chats}
-          onNewChat={handleNewChat}
-          onSelectChat={handleSelectChat}
-          showBible={showBible}
-          onToggleBible={handleToggleBible}
-          onEnterOratory={handleEnterOratory}
-        />
+    <BibleHighlightsProvider>
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
+        <div className="flex">
+          {/* Left Sidebar */}
+          <RoadmapSidebarV2
+            project={project}
+            onOpenFileManager={() => {}}
+            onOpenMemoryManager={() => {}}
+            onAskAI={() => {}}
+            currentChatId={currentChatId || undefined}
+            chats={chats}
+            onNewChat={handleNewChat}
+            onSelectChat={handleSelectChat}
+            showBible={showBible}
+            onToggleBible={handleToggleBible}
+            onEnterOratory={handleEnterOratory}
+            onOpenHighlights={handleOpenHighlights}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={setSidebarCollapsed}
+          />
 
-        {/* Main Workspace - Smooth transition between Chat and Bible */}
-        <main className="flex-1 min-h-screen relative overflow-hidden md:ml-64">
-          {/* Chat View */}
-          <div
-            className={`absolute inset-0 transition-all duration-500 ease-in-out ${
-              showBible
-                ? "opacity-0 translate-x-[-100%] pointer-events-none"
-                : "opacity-100 translate-x-0"
+          {/* Main Workspace - Smooth transition between Chat, Bible, and Highlights */}
+          <main
+            className={`flex-1 min-h-screen relative overflow-hidden transition-all duration-300 ${
+              sidebarCollapsed ? "md:ml-16" : "md:ml-64"
             }`}
           >
-            <UnifiedWorkspace
-              project={project}
-              onCreateProject={() => {}}
-              onInspireMe={() => {}}
-              toolsUsed={toolsUsed}
-              setToolsUsed={setToolsUsed}
-              creating={false}
-              inspiring={false}
-              onRefreshProject={() => {}}
-              messages={currentMessages}
-              onMessagesChange={setCurrentMessages}
-              pendingPrompt={pendingChatPrompt}
-              onPromptConsumed={() => setPendingChatPrompt(null)}
-              oratoryMode={oratoryMode}
-              onExitOratory={() => setOratoryMode(false)}
-            />
-          </div>
+            {/* Chat View */}
+            <div
+              className={`absolute inset-0 transition-all duration-500 ease-in-out ${
+                showBible || highlightsMode
+                  ? "opacity-0 scale-95 pointer-events-none"
+                  : "opacity-100 scale-100"
+              }`}
+            >
+              <UnifiedWorkspace
+                project={project}
+                onCreateProject={() => {}}
+                onInspireMe={() => {}}
+                toolsUsed={toolsUsed}
+                setToolsUsed={setToolsUsed}
+                creating={false}
+                inspiring={false}
+                onRefreshProject={() => {}}
+                messages={currentMessages}
+                onMessagesChange={setCurrentMessages}
+                pendingPrompt={pendingChatPrompt}
+                onPromptConsumed={() => setPendingChatPrompt(null)}
+                oratoryMode={oratoryMode}
+                onExitOratory={() => setOratoryMode(false)}
+              />
+            </div>
 
-          {/* Bible View */}
-          <div
-            className={`absolute inset-0 transition-all duration-500 ease-in-out ${
-              showBible
-                ? "opacity-100 translate-x-0"
-                : "opacity-0 translate-x-[100%] pointer-events-none"
-            }`}
-          >
-            <BibleReader onNavigateToChat={handleNavigateToChat} />
-          </div>
-        </main>
+            {/* Highlights Library View */}
+            <div
+              className={`absolute inset-0 transition-all duration-500 ease-in-out ${
+                highlightsMode
+                  ? "opacity-100 scale-100"
+                  : "opacity-0 scale-95 pointer-events-none"
+              }`}
+            >
+              <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
+            </div>
+
+            {/* Bible View */}
+            <div
+              className={`absolute inset-0 transition-all duration-500 ease-in-out ${
+                showBible
+                  ? "opacity-100 scale-100"
+                  : "opacity-0 scale-95 pointer-events-none"
+              }`}
+            >
+              <BibleReader onNavigateToChat={handleNavigateToChat} />
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </BibleHighlightsProvider>
   );
 }
 

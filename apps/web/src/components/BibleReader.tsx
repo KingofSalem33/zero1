@@ -1,6 +1,7 @@
+/* global Range, HTMLElement */
 import React, { useState, useEffect, useRef } from "react";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
-import { useBibleHighlights } from "../hooks/useBibleHighlights";
+import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { ChapterFooter } from "./ChapterFooter";
 
 interface Verse {
@@ -98,15 +99,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
   const [bookData, setBookData] = useState<Book | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [showBookSelector, setShowBookSelector] = useState<boolean>(false);
-  const [showHighlights, setShowHighlights] = useState<boolean>(false);
 
-  const {
-    highlights,
-    addHighlight,
-    getHighlightForVerse,
-    removeHighlight,
-    clearAllHighlights,
-  } = useBibleHighlights();
+  const { addHighlight, getHighlightForVerse } = useBibleHighlightsContext();
   const contentTopRef = useRef<HTMLDivElement>(null);
 
   // Load book data from GitHub
@@ -171,27 +165,96 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
     }
   };
 
-  const handleHighlight = (text: string, color: string) => {
-    // Extract verse number from selected text
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
+  const handleHighlight = (
+    text: string,
+    color: string,
+
+    context?: { range?: Range },
+  ) => {
+    console.log("[BibleReader] handleHighlight called", {
+      text: text.substring(0, 50) + "...",
+      color,
+      selectedBook,
+      selectedChapter,
+      hasContext: !!context,
+      hasRange: !!context?.range,
+    });
+
+    // Use the stored range from context (preferred) or fall back to current selection
+    let range = context?.range;
+    if (!range) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        range = selection.getRangeAt(0);
+
+        console.log("[BibleReader] Using current selection as fallback");
+      }
+    }
+
+    if (!range) {
+      console.error("[BibleReader] No range available");
+      return;
+    }
+
+    // Try multiple approaches to find the verse element
+    let verseElement = null;
+    let verseNum = 0;
+
+    // Approach 1: Check start container
+    const startContainer = range.startContainer;
+    const startElement =
+      startContainer.nodeType === window.Node.TEXT_NODE
+        ? startContainer.parentElement
+        : (startContainer as HTMLElement);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    verseElement = (startElement as any)?.closest?.("[data-verse]");
+
+    // Approach 2: If not found, check end container
+    if (!verseElement) {
+      const endContainer = range.endContainer;
+      const endElement =
+        endContainer.nodeType === window.Node.TEXT_NODE
+          ? endContainer.parentElement
+          : (endContainer as HTMLElement);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      verseElement = (endElement as any)?.closest?.("[data-verse]");
+    }
+
+    // Approach 3: If still not found, check common ancestor
+    if (!verseElement) {
       const container = range.commonAncestorContainer;
       const element =
         container.nodeType === window.Node.TEXT_NODE
           ? container.parentElement
-          : container;
+          : (container as HTMLElement);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const verseElement = (element as any)?.closest?.("[data-verse]");
+      verseElement = (element as any)?.closest?.("[data-verse]");
+    }
 
-      if (verseElement) {
-        const verseNum = parseInt(
-          verseElement.getAttribute("data-verse") || "0",
-        );
-        if (verseNum > 0) {
-          addHighlight(selectedBook, selectedChapter, verseNum, text, color);
-        }
-      }
+    console.log("[BibleReader] Found verse element:", verseElement);
+
+    if (verseElement) {
+      verseNum = parseInt(verseElement.getAttribute("data-verse") || "0");
+
+      console.log("[BibleReader] Verse number:", verseNum);
+    } else {
+      console.error("[BibleReader] Could not find verse element");
+      return;
+    }
+
+    if (verseNum > 0) {
+      console.log("[BibleReader] Saving highlight:", {
+        book: selectedBook,
+        chapter: selectedChapter,
+        verse: verseNum,
+        color,
+      });
+      addHighlight(selectedBook, selectedChapter, verseNum, text, color);
+
+      console.log("[BibleReader] ✅ Highlight saved successfully!");
+    } else {
+      console.error("[BibleReader] Invalid verse number:", verseNum);
     }
   };
 
@@ -199,12 +262,6 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
     // For Bible mode, we could open chat with this verse as context
     // TODO: Implement chat integration
     void text;
-  };
-
-  const handleJumpToHighlight = (book: string, chapter: number) => {
-    setSelectedBook(book);
-    setSelectedChapter(chapter);
-    setShowHighlights(false);
   };
 
   return (
@@ -363,32 +420,6 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
                 </svg>
               </button>
             </div>
-
-            {/* Highlights Button */}
-            <button
-              onClick={() => setShowHighlights(!showHighlights)}
-              className="relative flex items-center gap-2 px-4 py-2 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-700/50 rounded-lg transition-colors"
-              title="View Highlights"
-            >
-              <svg
-                className="w-5 h-5 text-brand-primary-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
-                />
-              </svg>
-              {highlights.length > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-brand-primary-500 text-white text-xs font-semibold rounded-full">
-                  {highlights.length}
-                </span>
-              )}
-            </button>
           </div>
         </div>
       </div>
@@ -548,194 +579,6 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
         onHighlight={handleHighlight}
         enableHighlight={true}
       />
-
-      {/* Highlights Panel */}
-      {showHighlights && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center pt-20">
-          <div className="w-full max-w-2xl bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700/50">
-              <div className="flex items-center gap-3">
-                <svg
-                  className="w-6 h-6 text-brand-primary-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
-                  />
-                </svg>
-                <h2 className="text-xl font-semibold text-white">
-                  Your Highlights
-                </h2>
-                <span className="px-2 py-1 bg-neutral-800 text-neutral-400 text-sm rounded-md">
-                  {highlights.length}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {highlights.length > 0 && (
-                  <button
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Are you sure you want to clear all highlights?",
-                        )
-                      ) {
-                        clearAllHighlights();
-                      }
-                    }}
-                    className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-colors"
-                  >
-                    Clear All
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowHighlights(false)}
-                  className="text-neutral-400 hover:text-white transition-colors p-1.5 hover:bg-neutral-700/30 rounded"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Highlights List */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {highlights.length === 0 ? (
-                <div className="text-center py-12">
-                  <svg
-                    className="w-16 h-16 text-neutral-700 mx-auto mb-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
-                    />
-                  </svg>
-                  <p className="text-neutral-500 text-lg mb-2">
-                    No highlights yet
-                  </p>
-                  <p className="text-neutral-600 text-sm">
-                    Select text in the Bible and click the highlighter to create
-                    your first highlight
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {highlights
-                    .sort(
-                      (a, b) =>
-                        new Date(b.createdAt).getTime() -
-                        new Date(a.createdAt).getTime(),
-                    )
-                    .map((highlight) => (
-                      <div
-                        key={highlight.id}
-                        className="group bg-neutral-800/50 border border-neutral-700/50 rounded-lg p-4 hover:bg-neutral-800/70 transition-all"
-                      >
-                        <div className="flex items-start gap-3">
-                          {/* Color Indicator */}
-                          <div
-                            className="w-3 h-3 rounded-full flex-shrink-0 mt-1.5"
-                            style={{ backgroundColor: highlight.color }}
-                          />
-
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            {/* Reference */}
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                              <button
-                                onClick={() =>
-                                  handleJumpToHighlight(
-                                    highlight.book,
-                                    highlight.chapter,
-                                  )
-                                }
-                                className="text-brand-primary-400 hover:text-brand-primary-300 font-medium text-sm flex items-center gap-1 transition-colors"
-                              >
-                                {highlight.book} {highlight.chapter}:
-                                {highlight.verse}
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M13 7l5 5m0 0l-5 5m5-5H6"
-                                  />
-                                </svg>
-                              </button>
-                              <span className="text-xs text-neutral-600">
-                                {new Date(
-                                  highlight.createdAt,
-                                ).toLocaleDateString()}
-                              </span>
-                            </div>
-
-                            {/* Highlighted Text */}
-                            <p
-                              className="text-neutral-300 text-sm leading-relaxed mb-2 px-2 py-1 rounded"
-                              style={{
-                                backgroundColor: highlight.color + "30",
-                                borderLeft: `3px solid ${highlight.color}`,
-                              }}
-                            >
-                              {highlight.text}
-                            </p>
-                          </div>
-
-                          {/* Delete Button */}
-                          <button
-                            onClick={() => removeHighlight(highlight.id)}
-                            className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-red-400 transition-all p-1.5 hover:bg-red-500/10 rounded flex-shrink-0"
-                            title="Delete highlight"
-                          >
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-/* global MouseEvent, Element, AbortController, HTMLElement */
+/* global MouseEvent, Element, AbortController, HTMLElement, Range */
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string) => void;
   userId?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onHighlight?: (text: string, color: string, context?: any) => void;
   enableHighlight?: boolean;
 }
@@ -26,7 +27,6 @@ const HIGHLIGHT_COLORS = [
 
 export function TextHighlightTooltip({
   onGoDeeper,
-  userId = "anonymous",
   onHighlight,
   enableHighlight = false,
 }: TextHighlightTooltipProps) {
@@ -35,11 +35,10 @@ export function TextHighlightTooltip({
   const [description, setDescription] = useState("");
   const [isLoadingDescription, setIsLoadingDescription] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
-  const [isBookmarking, setIsBookmarking] = useState(false);
-  const [bookmarkSuccess, setBookmarkSuccess] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const [highlightSuccess, setHighlightSuccess] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const selectionRangeRef = useRef<Range | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isStreamingRef = useRef(false);
@@ -49,14 +48,13 @@ export function TextHighlightTooltip({
       abortControllerRef.current.abort();
     }
     isStreamingRef.current = false;
+    selectionRangeRef.current = null;
     setIsVisible(false);
     setTimeout(() => {
       setPosition(null);
       setSelectedText("");
       setDescription("");
       setIsLoadingDescription(false);
-      setBookmarkSuccess(false);
-      setShowColorPicker(false);
       setHighlightSuccess(false);
     }, 150);
   }, []);
@@ -140,25 +138,35 @@ export function TextHighlightTooltip({
       // Don't interfere with verse citation clicks
       const target = e.target as HTMLElement;
       if (target && target.closest('button[class*="text-[#B5942F]"]')) {
-        // eslint-disable-next-line no-console
         console.log("[TextHighlight] Ignoring verse citation click");
+        return;
+      }
+
+      // Ignore clicks inside the tooltip itself
+      if (
+        tooltipRef.current &&
+        target instanceof Element &&
+        tooltipRef.current.contains(target)
+      ) {
+        console.log("[TextHighlight] Ignoring click inside tooltip");
         return;
       }
 
       const selection = window.getSelection();
       const text = selection?.toString().trim();
 
-      // eslint-disable-next-line no-console
       console.log("[TextHighlight] Mouse up, selected text:", text);
 
       if (text && text.length > 0) {
         const range = selection?.getRangeAt(0);
         const rect = range?.getBoundingClientRect();
 
-        // eslint-disable-next-line no-console
         console.log("[TextHighlight] Showing tooltip for:", text);
 
-        if (rect) {
+        if (rect && range) {
+          // Store the selection range for later use
+          selectionRangeRef.current = range.cloneRange();
+
           // Cancel any ongoing streaming
           if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -196,7 +204,6 @@ export function TextHighlightTooltip({
             top,
             left,
           });
-          setBookmarkSuccess(false); // Reset bookmark state for new selection
 
           setTimeout(() => setIsVisible(true), 10);
           await generateAISynopsis(text);
@@ -240,52 +247,63 @@ export function TextHighlightTooltip({
     };
   }, [closeTooltip, generateAISynopsis]);
 
-  const handleBookmark = async () => {
-    if (!selectedText || isBookmarking || bookmarkSuccess) return;
+  const handleHighlight = (color?: string) => {
+    console.log("[TextHighlight] handleHighlight called", {
+      selectedText,
+      hasOnHighlight: !!onHighlight,
+      color,
+      hasStoredRange: !!selectionRangeRef.current,
+    });
 
-    try {
-      setIsBookmarking(true);
-
-      const response = await fetch(`${API_URL}/api/bookmarks`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: selectedText,
-          userId,
-        }),
+    if (!selectedText || !onHighlight) {
+      console.warn("[TextHighlight] Cannot highlight:", {
+        hasSelectedText: !!selectedText,
+        hasOnHighlight: !!onHighlight,
       });
+      return;
+    }
 
-      if (!response.ok) {
-        const error = await response.json();
-        if (error.error?.code === "duplicate_bookmark") {
-          // Already bookmarked - show success state anyway
-          setBookmarkSuccess(true);
-        } else {
-          throw new Error("Failed to bookmark");
-        }
-      } else {
-        setBookmarkSuccess(true);
+    // Use default yellow color if no color specified
+    const highlightColor = color || HIGHLIGHT_COLORS[0].value;
+
+    // Try to use stored range, but fall back to current selection if needed
+    let range = selectionRangeRef.current;
+
+    // If no stored range or it's invalid, try to get current selection
+    if (!range) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        range = selection.getRangeAt(0);
+
+        console.log(
+          "[TextHighlight] Using current selection range as fallback",
+        );
       }
-    } catch {
-      // Silent failure; tooltip UI remains available
-    } finally {
-      setIsBookmarking(false);
     }
-  };
 
-  const handleHighlight = (color: string) => {
-    if (selectedText && onHighlight) {
-      onHighlight(selectedText, color);
-      setHighlightSuccess(true);
-      setShowColorPicker(false);
-      // Auto-close after highlighting
-      setTimeout(() => {
-        closeTooltip();
-        window.getSelection()?.removeAllRanges();
-      }, 800);
+    if (!range) {
+      console.error("[TextHighlight] No range available for highlighting");
+      return;
     }
+
+    console.log("[TextHighlight] Calling onHighlight with:", {
+      text: selectedText,
+      color: highlightColor,
+      hasRange: !!range,
+    });
+
+    // Pass the range as context
+    onHighlight(selectedText, highlightColor, {
+      range: range,
+    });
+
+    setHighlightSuccess(true);
+
+    // Auto-close after highlighting
+    setTimeout(() => {
+      closeTooltip();
+      window.getSelection()?.removeAllRanges();
+    }, 800);
   };
 
   const handleGoDeeper = () => {
@@ -377,51 +395,48 @@ export function TextHighlightTooltip({
                   </svg>
                 </button>
 
-                <button
-                  onClick={handleBookmark}
-                  disabled={isBookmarking || bookmarkSuccess}
-                  className={`group px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
-                    bookmarkSuccess
-                      ? "bg-[#D4AF37]/20 text-[#D4AF37] cursor-default"
-                      : isBookmarking
-                        ? "bg-white/5 text-neutral-400 cursor-wait"
+                {/* Highlight Button */}
+                {enableHighlight && (
+                  <button
+                    onClick={() => handleHighlight()}
+                    disabled={highlightSuccess}
+                    className={`group px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
+                      highlightSuccess
+                        ? "bg-[#D4AF37]/20 text-[#D4AF37] cursor-default"
                         : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
-                  }`}
-                  title={
-                    bookmarkSuccess ? "Saved to bookmarks" : "Save to bookmarks"
-                  }
-                >
-                  {bookmarkSuccess ? (
-                    <>
+                    }`}
+                    title={
+                      highlightSuccess
+                        ? "Saved to highlights"
+                        : "Save to highlights"
+                    }
+                  >
+                    {highlightSuccess ? (
+                      <>
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M17.75 7L14 3.25l-10 10V17h3.75l10-10zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29c-.39-.39-1.02-.39-1.41 0L15 2.25 18.75 6l1.96-1.96z" />
+                        </svg>
+                        <svg
+                          className="w-2.5 h-2.5 absolute ml-0.5 mt-0.5"
+                          fill="none"
+                          stroke="white"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </>
+                    ) : (
                       <svg
-                        className="w-3.5 h-3.5 transition-transform scale-110"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
-                      </svg>
-                      <svg
-                        className="w-2.5 h-2.5 absolute ml-0.5 mt-0.5"
-                        fill="none"
-                        stroke="white"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </>
-                  ) : isBookmarking ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
-                    </>
-                  ) : (
-                    <>
-                      <svg
-                        className="w-3.5 h-3.5 transition-all group-hover:scale-110"
+                        className="w-3.5 h-3.5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -430,94 +445,11 @@ export function TextHighlightTooltip({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
                         />
                       </svg>
-                    </>
-                  )}
-                </button>
-
-                {/* Highlight Button */}
-                {enableHighlight && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowColorPicker(!showColorPicker)}
-                      disabled={highlightSuccess}
-                      className={`group px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
-                        highlightSuccess
-                          ? "bg-[#D4AF37]/20 text-[#D4AF37] cursor-default"
-                          : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
-                      }`}
-                      title={
-                        highlightSuccess ? "Highlighted" : "Highlight verse"
-                      }
-                    >
-                      {highlightSuccess ? (
-                        <>
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path d="M17.75 7L14 3.25l-10 10V17h3.75l10-10zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29c-.39-.39-1.02-.39-1.41 0L15 2.25 18.75 6l1.96-1.96z" />
-                          </svg>
-                          <svg
-                            className="w-2.5 h-2.5 absolute ml-0.5 mt-0.5"
-                            fill="none"
-                            stroke="white"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={3}
-                              d="M5 13l4 4L19 7"
-                            />
-                          </svg>
-                        </>
-                      ) : (
-                        <svg
-                          className="w-3.5 h-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                          />
-                        </svg>
-                      )}
-                    </button>
-
-                    {/* Color Picker Dropdown */}
-                    {showColorPicker && !highlightSuccess && (
-                      <div className="absolute bottom-full left-0 mb-2 bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl p-2 z-10 min-w-[140px]">
-                        <div className="text-xs text-neutral-400 px-2 py-1 mb-1">
-                          Pick color:
-                        </div>
-                        <div className="space-y-1">
-                          {HIGHLIGHT_COLORS.map((color) => (
-                            <button
-                              key={color.name}
-                              onClick={() => handleHighlight(color.value)}
-                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-800 transition-colors"
-                            >
-                              <div
-                                className="w-4 h-4 rounded border border-neutral-600"
-                                style={{ backgroundColor: color.value }}
-                              />
-                              <span className="text-xs text-neutral-300">
-                                {color.name}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     )}
-                  </div>
+                  </button>
                 )}
               </div>
             </div>

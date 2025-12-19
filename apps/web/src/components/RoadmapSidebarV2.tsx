@@ -21,6 +21,9 @@ interface RoadmapSidebarV2Props {
   showBible?: boolean;
   onToggleBible?: () => void;
   onEnterOratory?: () => void;
+  onOpenHighlights?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: (collapsed: boolean) => void;
 }
 
 const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
@@ -32,24 +35,23 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   showBible = false,
   onToggleBible,
   onEnterOratory,
+  onOpenHighlights,
+  isCollapsed = false,
+  onToggleCollapse,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("roadmapCollapsed");
-    return saved === "true";
-  });
-
   const [showRecentChats, setShowRecentChats] = useState(() => {
     const saved = localStorage.getItem("showRecentChats");
     return saved !== "false"; // Default to true
   });
 
   useEffect(() => {
-    localStorage.setItem("roadmapCollapsed", String(isCollapsed));
-  }, [isCollapsed]);
-
-  useEffect(() => {
     localStorage.setItem("showRecentChats", String(showRecentChats));
   }, [showRecentChats]);
+
+  const handleToggleCollapse = (collapsed: boolean) => {
+    localStorage.setItem("roadmapCollapsed", String(collapsed));
+    onToggleCollapse?.(collapsed);
+  };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -74,7 +76,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           </h3>
         </div>
         <button
-          onClick={() => setIsCollapsed(true)}
+          onClick={() => handleToggleCollapse(true)}
           className="text-neutral-400 hover:text-white transition-colors p-1.5 hover:bg-neutral-700/30 rounded"
           title="Collapse sidebar"
         >
@@ -172,6 +174,27 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             </svg>
             <span className="text-sm font-medium">New Chat</span>
           </button>
+
+          {/* Highlights Button */}
+          <button
+            onClick={onOpenHighlights}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+          >
+            <svg
+              className="w-4 h-4 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+              />
+            </svg>
+            <span className="text-sm font-medium">Highlights</span>
+          </button>
         </div>
 
         {/* Recent Chats */}
@@ -244,44 +267,146 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
   return (
     <>
-      {/* Collapsed State - Floating Expand Button */}
-      {isCollapsed && (
-        <button
-          onClick={() => setIsCollapsed(false)}
-          className="fixed left-4 top-20 z-50 p-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg shadow-lg transition-all"
-          title="Expand sidebar"
-        >
-          <svg
-            className="w-5 h-5 text-neutral-300"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-        </button>
-      )}
+      {/* Desktop Sidebar - Always visible, toggles between narrow and wide */}
+      <aside
+        className={`hidden md:flex flex-col bg-neutral-900/50 border-r border-neutral-800/50 fixed left-0 top-0 h-screen z-40 transition-all duration-300 ${
+          isCollapsed ? "w-16" : "w-64"
+        }`}
+      >
+        {isCollapsed ? (
+          // Collapsed: Icon-only view
+          <div className="flex flex-col h-full py-4">
+            {/* Expand button at top */}
+            <button
+              onClick={() => handleToggleCollapse(false)}
+              className="mx-auto mb-6 p-2 text-neutral-400 hover:text-white transition-colors"
+              title="Expand sidebar"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
 
-      {/* Expanded Sidebar */}
+            {/* Icon-only buttons */}
+            <div className="flex-1 flex flex-col items-center gap-4 px-2">
+              {/* Bible Toggle */}
+              <button
+                onClick={onToggleBible}
+                className={`p-3 rounded-lg transition-all ${
+                  showBible
+                    ? "bg-brand-primary-500/20 text-brand-primary-300"
+                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+                }`}
+                title={showBible ? "Close Bible" : "Open Bible"}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+              </button>
+
+              {/* The Oratory */}
+              <button
+                onClick={onEnterOratory}
+                className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+                title="The Oratory"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"
+                  />
+                </svg>
+              </button>
+
+              {/* New Chat */}
+              <button
+                onClick={onNewChat}
+                className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+                title="New Chat"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+              </button>
+
+              {/* Highlights */}
+              <button
+                onClick={onOpenHighlights}
+                className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+                title="Highlights"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ) : (
+          // Expanded: Full sidebar
+          <SidebarContent />
+        )}
+      </aside>
+
+      {/* Mobile Overlay - Only when expanded */}
       {!isCollapsed && (
-        <>
-          {/* Desktop Sidebar */}
-          <aside className="hidden md:flex flex-col w-64 bg-neutral-900/50 border-r border-neutral-800/50 fixed left-0 top-0 h-screen z-40">
+        <div className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
+          <aside className="w-64 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl">
             <SidebarContent />
           </aside>
-
-          {/* Mobile Overlay */}
-          <div className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
-            <aside className="w-64 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl">
-              <SidebarContent />
-            </aside>
-          </div>
-        </>
+        </div>
       )}
     </>
   );

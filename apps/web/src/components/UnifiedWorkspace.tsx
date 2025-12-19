@@ -1352,7 +1352,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             <div className="h-full w-full flex items-center justify-center">
               <div className="w-full max-w-3xl">
                 <h1 className="text-4xl md:text-6xl font-extrabold text-white text-center mb-8">
-                  Let's Build
+                  What's on your heart today?
                 </h1>
                 <div className="relative flex gap-2 items-center bg-neutral-800/60 border border-neutral-700/50 rounded-2xl px-4 py-3 shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50 transition-all">
                   <button
