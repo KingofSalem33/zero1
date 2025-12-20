@@ -354,11 +354,11 @@ export function TextHighlightTooltip({
           const spacing = 12;
           const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
 
-          // Position below selection - use absolute positioning so tooltip scrolls with page
-          const top = rect.bottom + window.scrollY + spacing;
+          // Position below selection - use viewport coordinates for fixed positioning
+          const top = rect.bottom + spacing;
 
-          // Center horizontally on the selection
-          let left = rect.left + window.scrollX + rect.width / 2;
+          // Center horizontally on the selection - use viewport coordinates
+          let left = rect.left + rect.width / 2;
 
           // Keep tooltip within viewport horizontally
           const rightEdge = left + tooltipEstimatedWidth / 2;
@@ -416,46 +416,6 @@ export function TextHighlightTooltip({
       isStreamingRef.current = false;
     };
   }, [closeTooltip, generateAISynopsis]);
-
-  // Auto-scroll to ensure tooltip is visible when it appears
-  useEffect(() => {
-    if (isVisible && tooltipRef.current && position) {
-      // Small delay to ensure tooltip is rendered with content
-      const checkAndScroll = () => {
-        const tooltip = tooltipRef.current;
-        if (!tooltip) return;
-
-        const tooltipRect = tooltip.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-
-        // Calculate how much of the tooltip extends below the viewport
-        const tooltipBottom = tooltipRect.bottom;
-        const overflowAmount = tooltipBottom - viewportHeight;
-
-        // If tooltip extends below viewport, scroll to bring it into view
-        if (overflowAmount > 0) {
-          // Add some padding (20px) so the tooltip isn't right at the edge
-          const scrollAmount = overflowAmount + 20;
-
-          window.scrollBy({
-            top: scrollAmount,
-            behavior: "smooth",
-          });
-
-          console.log("[TextHighlight] Auto-scrolled to show tooltip:", {
-            overflowAmount,
-            scrollAmount,
-          });
-        }
-      };
-
-      // Check immediately and after a short delay (for content that's still loading/streaming)
-      checkAndScroll();
-      const timeoutId = setTimeout(checkAndScroll, 100);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isVisible, position, viewMode]); // Re-check when switching between synopsis/root
 
   const handleHighlight = (color?: string) => {
     console.log("[TextHighlight] handleHighlight called", {
@@ -550,16 +510,17 @@ export function TextHighlightTooltip({
   const tooltipElement = (
     <div
       ref={tooltipRef}
-      className={`absolute z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
+      className={`fixed z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
         isVisible ? "opacity-100" : "opacity-0 -translate-y-2"
       }`}
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
+        maxHeight: `calc(100vh - ${position.top}px - 20px)`, // Don't exceed viewport
       }}
     >
       {/* Compact, dynamic card */}
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm flex flex-col max-h-full">
         {/* Close button */}
         <button
           onClick={closeTooltip}
@@ -581,8 +542,8 @@ export function TextHighlightTooltip({
           </svg>
         </button>
 
-        {/* Content */}
-        <div className="p-3 pr-8">
+        {/* Content - scrollable if too tall */}
+        <div className="p-3 pr-8 overflow-y-auto">
           {viewMode === "synopsis" ? (
             <>
               {/* Synopsis View */}
