@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 /* global MouseEvent, Element, AbortController, HTMLElement, Range, Node */
 
@@ -546,7 +547,7 @@ export function TextHighlightTooltip({
     return null;
   }
 
-  return (
+  const tooltipElement = (
     <div
       ref={tooltipRef}
       className={`absolute z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
@@ -776,4 +777,7 @@ export function TextHighlightTooltip({
       </div>
     </div>
   );
+
+  // Render tooltip at document body level using portal to avoid positioning issues
+  return createPortal(tooltipElement, document.body);
 }
