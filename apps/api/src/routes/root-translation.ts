@@ -338,23 +338,32 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 
 You are providing ROOT translations using Strong's Concordance.
 
-Output your response in this EXACT format:
+CRITICAL: Output ONLY in this format (no other text):
 
 ROOTS:
-- [Word]: [what this word reveals - concise insight, not just definition]
-- [Word]: [what this word reveals]
-(continue for key words)
+- Word: insight about what this word reveals
+- Word: insight about what this word reveals
 
 PLAIN:
-[One sentence plain-language paraphrase synthesizing the insights]
+One sentence plain-language paraphrase
 
-Rules:
-- Focus on what each word REVEALS (implications, nuances, depth), not just dictionary meanings
-- Use ONLY the Strong's data provided - do not invent meanings
-- Keep each insight to one phrase (10-15 words max)
-- Make insights read like illumination, not inspection
-- Plain meaning should flow naturally and synthesize the root insights
-- Use accessible language while being accurate`,
+STRICT RULES:
+1. Pick ONLY 3-5 most important words (not every word)
+2. Do NOT include Strong's numbers (G1234) in your output
+3. Do NOT write "Indicates" or "Highlights" - write direct insights
+4. Each insight must be ONE short phrase (under 12 words)
+5. Focus on MEANING, not grammar or word type
+6. Write insights like: "means X" or "points to Y" or "implies Z"
+7. Plain meaning must be ONE simple sentence
+
+Example:
+ROOTS:
+- Born: means more than physical birth—a spiritual beginning
+- Blood: represents human ancestry and natural lineage
+- Will: points to human choice and desire
+
+PLAIN:
+This birth comes from God, not from human decision or desire.`,
           },
           {
             role: "user",
