@@ -426,7 +426,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
       </div>
 
       {/* Bible Text Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="relative flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-8 py-12">
           {loading ? (
             <div className="flex items-center justify-center py-20">
