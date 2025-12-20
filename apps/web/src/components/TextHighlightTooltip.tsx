@@ -353,11 +353,12 @@ export function TextHighlightTooltip({
           const spacing = 12;
           const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
 
-          // Position below selection - absolute positioning so you can scroll to see more
-          const top = rect.bottom + window.scrollY + spacing;
+          // Position below selection - use rect coordinates directly (no window.scrollY needed)
+          // since tooltip is in the same scrolling container
+          const top = rect.bottom + spacing;
 
           // Center horizontally on the selection
-          let left = rect.left + window.scrollX + rect.width / 2;
+          let left = rect.left + rect.width / 2;
 
           // Keep tooltip within viewport horizontally
           const rightEdge = left + tooltipEstimatedWidth / 2;
