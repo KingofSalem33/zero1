@@ -707,7 +707,7 @@ export function TextHighlightTooltip({
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
+                      d="M15 19l-7-7 7-7"
                     />
                   </svg>
                   <span>Back to synopsis</span>
