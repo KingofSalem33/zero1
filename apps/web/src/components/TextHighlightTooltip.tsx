@@ -353,11 +353,11 @@ export function TextHighlightTooltip({
           const spacing = 12;
           const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
 
-          // Position below selection - use viewport coordinates only (no scrollY for fixed positioning)
-          const top = rect.bottom + spacing;
+          // Position below selection - use absolute positioning so tooltip scrolls with page
+          const top = rect.bottom + window.scrollY + spacing;
 
-          // Center horizontally on the selection - use viewport coordinates only (no scrollX for fixed positioning)
-          let left = rect.left + rect.width / 2;
+          // Center horizontally on the selection
+          let left = rect.left + window.scrollX + rect.width / 2;
 
           // Keep tooltip within viewport horizontally
           const rightEdge = left + tooltipEstimatedWidth / 2;
@@ -549,7 +549,7 @@ export function TextHighlightTooltip({
   return (
     <div
       ref={tooltipRef}
-      className={`fixed z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
+      className={`absolute z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
         isVisible ? "opacity-100" : "opacity-0 -translate-y-2"
       }`}
       style={{
