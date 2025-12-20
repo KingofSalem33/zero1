@@ -353,27 +353,45 @@ export function TextHighlightTooltip({
           const spacing = 12;
           const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
 
-          // Position below selection - use rect coordinates directly (no window.scrollY needed)
-          // since tooltip is in the same scrolling container
-          const top = rect.bottom + spacing;
+          // Find the scrolling container (has overflow-y-auto class)
+          const scrollContainer = range.startContainer.parentElement?.closest?.(
+            ".overflow-y-auto",
+          ) as HTMLElement;
 
-          // Center horizontally on the selection
-          let left = rect.left + rect.width / 2;
+          if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
 
-          // Keep tooltip within viewport horizontally
-          const rightEdge = left + tooltipEstimatedWidth / 2;
-          const leftEdge = left - tooltipEstimatedWidth / 2;
+            // Calculate position relative to the scrolling container
+            // rect.bottom is viewport-relative, so we subtract containerRect.top and add scrollTop
+            const top =
+              rect.bottom -
+              containerRect.top +
+              scrollContainer.scrollTop +
+              spacing;
 
-          if (rightEdge > window.innerWidth - 16) {
-            left = window.innerWidth - tooltipEstimatedWidth / 2 - 16;
-          } else if (leftEdge < 16) {
-            left = tooltipEstimatedWidth / 2 + 16;
+            // Center horizontally on the selection, relative to container
+            let left =
+              rect.left -
+              containerRect.left +
+              scrollContainer.scrollLeft +
+              rect.width / 2;
+
+            // Keep tooltip within container horizontally
+            const containerWidth = containerRect.width;
+            const rightEdge = left + tooltipEstimatedWidth / 2;
+            const leftEdge = left - tooltipEstimatedWidth / 2;
+
+            if (rightEdge > containerWidth - 16) {
+              left = containerWidth - tooltipEstimatedWidth / 2 - 16;
+            } else if (leftEdge < 16) {
+              left = tooltipEstimatedWidth / 2 + 16;
+            }
+
+            setPosition({
+              top,
+              left,
+            });
           }
-
-          setPosition({
-            top,
-            left,
-          });
 
           setTimeout(() => setIsVisible(true), 10);
           await generateAISynopsis(text);
