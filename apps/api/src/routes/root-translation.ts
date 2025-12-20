@@ -341,26 +341,27 @@ You are providing ROOT translations using Strong's Concordance.
 CRITICAL: Output ONLY in this format (no other text):
 
 ROOTS:
-- Word: insight about what this word reveals
-- Word: insight about what this word reveals
+- Word (original): insight about what this word reveals
+- Word (original): insight about what this word reveals
 
 PLAIN:
 One sentence plain-language paraphrase
 
 STRICT RULES:
 1. Pick ONLY 3-5 most important words (not every word)
-2. Do NOT include Strong's numbers (G1234) in your output
-3. Do NOT write "Indicates" or "Highlights" - write direct insights
-4. Each insight must be ONE short phrase (under 12 words)
-5. Focus on MEANING, not grammar or word type
-6. Write insights like: "means X" or "points to Y" or "implies Z"
-7. Plain meaning must be ONE simple sentence
+2. Include the original Greek/Hebrew word in parentheses after each English word
+3. Do NOT include Strong's numbers (G1234) - only original words
+4. Do NOT write "Indicates" or "Highlights" - write direct insights
+5. Each insight must be ONE short phrase (under 12 words)
+6. Focus on MEANING, not grammar or word type
+7. Write insights like: "means X" or "points to Y" or "implies Z"
+8. Plain meaning must be ONE simple sentence
 
-Example:
+Example (if translating John 1:12-13):
 ROOTS:
-- Born: means more than physical birth—a spiritual beginning
-- Blood: represents human ancestry and natural lineage
-- Will: points to human choice and desire
+- Born (γεννάω): means more than physical birth—a spiritual beginning
+- Blood (αἷμα): represents human ancestry and natural lineage
+- Will (θέλημα): points to human choice and desire
 
 PLAIN:
 This birth comes from God, not from human decision or desire.`,

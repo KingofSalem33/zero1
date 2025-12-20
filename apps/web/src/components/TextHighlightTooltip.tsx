@@ -47,12 +47,10 @@ export function TextHighlightTooltip({
   const [rootTranslation, setRootTranslation] = useState("");
   const [rootLanguage, setRootLanguage] = useState<string>("");
   const [isLoadingRoot, setIsLoadingRoot] = useState(false);
-  const [showStrongsDetails, setShowStrongsDetails] = useState(false);
   const [rootInsights, setRootInsights] = useState<
-    Array<{ word: string; insight: string }>
+    Array<{ word: string; original: string; insight: string }>
   >([]);
   const [plainMeaning, setPlainMeaning] = useState("");
-  const [strongsUsed, setStrongsUsed] = useState<string[]>([]);
   const [detectedVerseContext, setDetectedVerseContext] = useState<
     | {
         book: string;
@@ -85,10 +83,8 @@ export function TextHighlightTooltip({
       setRootTranslation("");
       setRootLanguage("");
       setIsLoadingRoot(false);
-      setShowStrongsDetails(false);
       setRootInsights([]);
       setPlainMeaning("");
-      setStrongsUsed([]);
       setDetectedVerseContext(undefined);
     }, 150);
   }, []);
@@ -214,10 +210,8 @@ export function TextHighlightTooltip({
         const fullTranslation =
           data.translation || "Unable to generate translation.";
         const language = data.language || "";
-        const strongsNumbers = data.strongsUsed || [];
 
         setRootLanguage(language);
-        setStrongsUsed(strongsNumbers);
 
         // Parse the structured response
         const parseRootTranslation = (text: string) => {
@@ -231,10 +225,26 @@ export function TextHighlightTooltip({
             .split("\n")
             .filter((line) => line.trim().startsWith("-"))
             .map((line) => {
-              const match = line.match(/- (.+?):\s*(.+)/);
-              return match ? { word: match[1], insight: match[2] } : null;
+              // Match: "- Word (original): insight"
+              const match = line.match(/- (.+?)\s*\(([^)]+)\):\s*(.+)/);
+              if (match) {
+                return {
+                  word: match[1].trim(),
+                  original: match[2].trim(),
+                  insight: match[3].trim(),
+                };
+              }
+              // Fallback for old format without parentheses
+              const oldMatch = line.match(/- (.+?):\s*(.+)/);
+              return oldMatch
+                ? { word: oldMatch[1], original: "", insight: oldMatch[2] }
+                : null;
             })
-            .filter(Boolean) as Array<{ word: string; insight: string }>;
+            .filter(Boolean) as Array<{
+            word: string;
+            original: string;
+            insight: string;
+          }>;
 
           return { insights, plain };
         };
@@ -752,14 +762,20 @@ export function TextHighlightTooltip({
                         What the roots reveal
                       </h4>
                       <div className="space-y-1.5">
-                        {rootInsights.map(({ word, insight }) => (
+                        {rootInsights.map(({ word, original, insight }) => (
                           <p
                             key={word}
                             className="text-[13px] text-neutral-200 leading-relaxed"
                           >
                             <span className="font-medium text-[#D4AF37]">
                               {word}
-                            </span>{" "}
+                            </span>
+                            {original && (
+                              <span className="text-neutral-400 font-normal">
+                                {" "}
+                                ({original})
+                              </span>
+                            )}{" "}
                             {insight}
                           </p>
                         ))}
@@ -775,24 +791,6 @@ export function TextHighlightTooltip({
                         {plainMeaning}
                       </p>
                     </div>
-
-                    {/* Show roots toggle */}
-                    <button
-                      onClick={() => setShowStrongsDetails(!showStrongsDetails)}
-                      className="flex items-center gap-1.5 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1"
-                    >
-                      <span>{showStrongsDetails ? "▾" : "▸"}</span>
-                      <span>Show roots</span>
-                    </button>
-
-                    {/* Strong's details (collapsible) */}
-                    {showStrongsDetails && strongsUsed.length > 0 && (
-                      <div className="pl-4 space-y-0.5 text-[11px] text-neutral-400 font-mono">
-                        {strongsUsed.map((num) => (
-                          <div key={num}>{num}</div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <p className="text-[13px] leading-relaxed text-neutral-200 font-normal">
