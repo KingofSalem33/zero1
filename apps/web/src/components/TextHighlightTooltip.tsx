@@ -354,11 +354,11 @@ export function TextHighlightTooltip({
           const spacing = 12;
           const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
 
-          // Position below selection - use viewport coordinates for fixed positioning
-          const top = rect.bottom + spacing;
+          // Position below selection - absolute positioning so you can scroll to see more
+          const top = rect.bottom + window.scrollY + spacing;
 
-          // Center horizontally on the selection - use viewport coordinates
-          let left = rect.left + rect.width / 2;
+          // Center horizontally on the selection
+          let left = rect.left + window.scrollX + rect.width / 2;
 
           // Keep tooltip within viewport horizontally
           const rightEdge = left + tooltipEstimatedWidth / 2;
@@ -510,17 +510,16 @@ export function TextHighlightTooltip({
   const tooltipElement = (
     <div
       ref={tooltipRef}
-      className={`fixed z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
+      className={`absolute z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
         isVisible ? "opacity-100" : "opacity-0 -translate-y-2"
       }`}
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
-        maxHeight: `calc(100vh - ${position.top}px - 20px)`, // Don't exceed viewport
       }}
     >
       {/* Compact, dynamic card */}
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm flex flex-col max-h-full">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
         {/* Close button */}
         <button
           onClick={closeTooltip}
@@ -542,8 +541,8 @@ export function TextHighlightTooltip({
           </svg>
         </button>
 
-        {/* Content - scrollable if too tall */}
-        <div className="p-3 pr-8 overflow-y-auto">
+        {/* Content */}
+        <div className="p-3 pr-8">
           {viewMode === "synopsis" ? (
             <>
               {/* Synopsis View */}
