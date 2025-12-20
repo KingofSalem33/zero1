@@ -572,19 +572,19 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Text Highlight Tooltip */}
-      <TextHighlightTooltip
-        onGoDeeper={handleGoDeeper}
-        onHighlight={handleHighlight}
-        enableHighlight={true}
-        bibleContext={{
-          book: selectedBook,
-          chapter: selectedChapter,
-          verse: 0, // Will be detected from selection by tooltip
-        }}
-      />
+        {/* Text Highlight Tooltip - inside scrolling container */}
+        <TextHighlightTooltip
+          onGoDeeper={handleGoDeeper}
+          onHighlight={handleHighlight}
+          enableHighlight={true}
+          bibleContext={{
+            book: selectedBook,
+            chapter: selectedChapter,
+            verse: 0, // Will be detected from selection by tooltip
+          }}
+        />
+      </div>
     </div>
   );
 };
