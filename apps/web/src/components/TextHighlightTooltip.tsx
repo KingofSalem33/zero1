@@ -47,6 +47,12 @@ export function TextHighlightTooltip({
   const [rootTranslation, setRootTranslation] = useState("");
   const [rootLanguage, setRootLanguage] = useState<string>("");
   const [isLoadingRoot, setIsLoadingRoot] = useState(false);
+  const [showStrongsDetails, setShowStrongsDetails] = useState(false);
+  const [rootInsights, setRootInsights] = useState<
+    Array<{ word: string; insight: string }>
+  >([]);
+  const [plainMeaning, setPlainMeaning] = useState("");
+  const [strongsUsed, setStrongsUsed] = useState<string[]>([]);
   const [detectedVerseContext, setDetectedVerseContext] = useState<
     | {
         book: string;
@@ -79,6 +85,10 @@ export function TextHighlightTooltip({
       setRootTranslation("");
       setRootLanguage("");
       setIsLoadingRoot(false);
+      setShowStrongsDetails(false);
+      setRootInsights([]);
+      setPlainMeaning("");
+      setStrongsUsed([]);
       setDetectedVerseContext(undefined);
     }, 150);
   }, []);
@@ -204,33 +214,44 @@ export function TextHighlightTooltip({
         const fullTranslation =
           data.translation || "Unable to generate translation.";
         const language = data.language || "";
+        const strongsNumbers = data.strongsUsed || [];
 
         setRootLanguage(language);
+        setStrongsUsed(strongsNumbers);
+
+        // Parse the structured response
+        const parseRootTranslation = (text: string) => {
+          const rootsMatch = text.match(/ROOTS:\s*([\s\S]*?)\n\nPLAIN:/);
+          const plainMatch = text.match(/PLAIN:\s*([\s\S]*?)$/);
+
+          const rootsText = rootsMatch?.[1] || "";
+          const plain = plainMatch?.[1]?.trim() || text; // Fallback to full text
+
+          const insights = rootsText
+            .split("\n")
+            .filter((line) => line.trim().startsWith("-"))
+            .map((line) => {
+              const match = line.match(/- (.+?):\s*(.+)/);
+              return match ? { word: match[1], insight: match[2] } : null;
+            })
+            .filter(Boolean) as Array<{ word: string; insight: string }>;
+
+          return { insights, plain };
+        };
+
+        const parsed = parseRootTranslation(fullTranslation);
 
         // Check if we were cancelled before starting to stream
         if (!isStreamingRef.current) {
           return;
         }
 
-        // Stream the text word by word
         setIsLoadingRoot(false);
-        setRootTranslation("");
 
-        const words = fullTranslation.split(" ");
-        let currentText = "";
-
-        for (let i = 0; i < words.length; i++) {
-          if (!isStreamingRef.current) {
-            // Streaming was cancelled
-            return;
-          }
-
-          currentText += (i > 0 ? " " : "") + words[i];
-          setRootTranslation(currentText);
-
-          // Wait between words for streaming effect
-          await new Promise((resolve) => setTimeout(resolve, 30));
-        }
+        // Set the parsed data immediately (no streaming for structured content)
+        setRootInsights(parsed.insights);
+        setPlainMeaning(parsed.plain);
+        setRootTranslation(fullTranslation); // Keep for fallback
 
         isStreamingRef.current = false;
         abortControllerRef.current = null;
@@ -723,12 +744,59 @@ export function TextHighlightTooltip({
                       ...
                     </span>
                   </div>
+                ) : rootInsights.length > 0 ? (
+                  <div className="space-y-3">
+                    {/* What the roots reveal */}
+                    <div>
+                      <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                        What the roots reveal
+                      </h4>
+                      <div className="space-y-1.5">
+                        {rootInsights.map(({ word, insight }) => (
+                          <p
+                            key={word}
+                            className="text-[13px] text-neutral-200 leading-relaxed"
+                          >
+                            <span className="font-medium text-[#D4AF37]">
+                              {word}
+                            </span>{" "}
+                            {insight}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Plain meaning */}
+                    <div className="pt-2 border-t border-white/5">
+                      <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                        Plain-language meaning
+                      </h4>
+                      <p className="text-[13px] text-neutral-200 leading-relaxed italic">
+                        {plainMeaning}
+                      </p>
+                    </div>
+
+                    {/* Show roots toggle */}
+                    <button
+                      onClick={() => setShowStrongsDetails(!showStrongsDetails)}
+                      className="flex items-center gap-1.5 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors pt-1"
+                    >
+                      <span>{showStrongsDetails ? "▾" : "▸"}</span>
+                      <span>Show roots</span>
+                    </button>
+
+                    {/* Strong's details (collapsible) */}
+                    {showStrongsDetails && strongsUsed.length > 0 && (
+                      <div className="pl-4 space-y-0.5 text-[11px] text-neutral-400 font-mono">
+                        {strongsUsed.map((num) => (
+                          <div key={num}>{num}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-[13px] leading-relaxed text-neutral-200 font-normal">
                     {rootTranslation}
-                    {rootTranslation && isStreamingRef.current && (
-                      <span className="inline-block w-1 h-3 ml-0.5 bg-[#D4AF37] animate-pulse" />
-                    )}
                   </p>
                 )}
               </div>

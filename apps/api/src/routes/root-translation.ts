@@ -176,7 +176,7 @@ function stripStrongsNumbers(text: string): string {
 // POST /api/root-translation - Generate translation using Strong's Concordance
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
-    const { selectedText, maxWords, book, chapter, verse } =
+    const { selectedText, book, chapter, verse } =
       rootTranslationRequestSchema.parse(req.body);
 
     console.log("[Root Translation] Request received:", {
@@ -336,17 +336,29 @@ router.post("/", readOnlyLimiter, async (req, res) => {
             role: "system",
             content: `${BIBLE_STUDY_IDENTITY}
 
-You are providing ROOT translations using Strong's Concordance. Your responses should:
-- Explain the original ${language} meaning of key words
-- Reference the Strong's numbers and original words provided
-- Be concise (maximum ${maxWords} words)
-- Focus on what the original language reveals about the meaning
-- Use accessible language while being scholarly accurate
-- ONLY use the Strong's definitions provided - do not invent or guess meanings`,
+You are providing ROOT translations using Strong's Concordance.
+
+Output your response in this EXACT format:
+
+ROOTS:
+- [Word]: [what this word reveals - concise insight, not just definition]
+- [Word]: [what this word reveals]
+(continue for key words)
+
+PLAIN:
+[One sentence plain-language paraphrase synthesizing the insights]
+
+Rules:
+- Focus on what each word REVEALS (implications, nuances, depth), not just dictionary meanings
+- Use ONLY the Strong's data provided - do not invent meanings
+- Keep each insight to one phrase (10-15 words max)
+- Make insights read like illumination, not inspection
+- Plain meaning should flow naturally and synthesize the root insights
+- Use accessible language while being accurate`,
           },
           {
             role: "user",
-            content: `Using ONLY the Strong's Concordance data below, provide a translation insight (maximum ${maxWords} words) explaining what the original ${language} reveals about this text:
+            content: `Using ONLY the Strong's Concordance data below, provide ROOT translation insight:
 
 Selected text: "${selectedText}"
 
@@ -355,7 +367,7 @@ Verse with Strong's numbers: ${verseWithStrongs}
 Strong's Concordance Data:
 ${groundingData}
 
-Provide a concise translation insight (${maxWords} words or less) using ONLY the Strong's data provided above:`,
+Generate the response in the format specified (ROOTS: then PLAIN:):`,
           },
         ],
       }),
