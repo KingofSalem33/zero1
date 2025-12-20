@@ -416,6 +416,46 @@ export function TextHighlightTooltip({
     };
   }, [closeTooltip, generateAISynopsis]);
 
+  // Auto-scroll to ensure tooltip is visible when it appears
+  useEffect(() => {
+    if (isVisible && tooltipRef.current && position) {
+      // Small delay to ensure tooltip is rendered with content
+      const checkAndScroll = () => {
+        const tooltip = tooltipRef.current;
+        if (!tooltip) return;
+
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+
+        // Calculate how much of the tooltip extends below the viewport
+        const tooltipBottom = tooltipRect.bottom;
+        const overflowAmount = tooltipBottom - viewportHeight;
+
+        // If tooltip extends below viewport, scroll to bring it into view
+        if (overflowAmount > 0) {
+          // Add some padding (20px) so the tooltip isn't right at the edge
+          const scrollAmount = overflowAmount + 20;
+
+          window.scrollBy({
+            top: scrollAmount,
+            behavior: "smooth",
+          });
+
+          console.log("[TextHighlight] Auto-scrolled to show tooltip:", {
+            overflowAmount,
+            scrollAmount,
+          });
+        }
+      };
+
+      // Check immediately and after a short delay (for content that's still loading/streaming)
+      checkAndScroll();
+      const timeoutId = setTimeout(checkAndScroll, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isVisible, position, viewMode]); // Re-check when switching between synopsis/root
+
   const handleHighlight = (color?: string) => {
     console.log("[TextHighlight] handleHighlight called", {
       selectedText,
