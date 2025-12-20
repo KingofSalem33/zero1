@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Strong's Concordance Functions</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        .test { margin: 20px 0; padding: 10px; background: #2a2a2a; border-left: 3px solid #4a9eff; }
+        .pass { border-left-color: #4ade80; }
+        .fail { border-left-color: #ef4444; }
+        pre { background: #0a0a0a; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Strong's Concordance Utility Test</h1>
+    <div id="results"></div>
+
+    <script type="module">
+        // Test the extraction function
+        function testExtractStrongsWords() {
+            const input = "In[G1722] the[G3588] beginning[G746] was[G2258] the Word[G3056]";
+
+            // Inline version of extractStrongsWords for testing
+            const words = [];
+            const regex = /(\S+?)(?:\[([HG]\d+)\])?(?:\s|$)/g;
+            let match;
+            while ((match = regex.exec(input)) !== null) {
+                words.push({ text: match[1], strongs: match[2] });
+            }
+
+            return {
+                name: "extractStrongsWords",
+                pass: words.length === 5 && words[0].strongs === "G1722",
+                result: JSON.stringify(words, null, 2)
+            };
+        }
+
+        function testStripStrongsNumbers() {
+            const input = "In[G1722] the[G3588] beginning[G746] was[G2258] the Word[G3056]";
+            const expected = "In the beginning was the Word";
+            const result = input.replace(/\[([HG]\d+)\]/g, "");
+
+            return {
+                name: "stripStrongsNumbers",
+                pass: result === expected,
+                result: result
+            };
+        }
+
+        function testExtractUniqueStrongsNumbers() {
+            const input = "In[G1722] the[G3588] beginning[G746] was[G2258] the[G3588] Word[G3056]";
+            const regex = /\[([HG]\d+)\]/g;
+            const numbers = new Set();
+            let match;
+            while ((match = regex.exec(input)) !== null) {
+                numbers.add(match[1]);
+            }
+            const result = Array.from(numbers);
+
+            return {
+                name: "extractUniqueStrongsNumbers",
+                pass: result.length === 5, // G3588 appears twice but should be counted once
+                result: JSON.stringify(result)
+            };
+        }
+
+        async function testGetStrongsVerse() {
+            try {
+                const response = await fetch("/bible/strongs/Jhn.json");
+                const data = await response.json();
+                const verse = data.Jhn["Jhn|1"]["Jhn|1|1"].en;
+
+                return {
+                    name: "getStrongsVerse (John 1:1)",
+                    pass: verse && verse.includes("[G1722]"),
+                    result: verse
+                };
+            } catch (error) {
+                return {
+                    name: "getStrongsVerse",
+                    pass: false,
+                    result: "Error: " + error.message
+                };
+            }
+        }
+
+        async function testGetStrongsDefinitions() {
+            try {
+                const response = await fetch("/bible/strongs/lexicon.json");
+                const lexicon = await response.json();
+                const entry = lexicon.G1722;
+
+                return {
+                    name: "getStrongsDefinitions (G1722)",
+                    pass: entry && entry.transliteration,
+                    result: JSON.stringify(entry, null, 2)
+                };
+            } catch (error) {
+                return {
+                    name: "getStrongsDefinitions",
+                    pass: false,
+                    result: "Error: " + error.message
+                };
+            }
+        }
+
+        // Run all tests
+        async function runTests() {
+            const results = document.getElementById("results");
+
+            const tests = [
+                testExtractStrongsWords(),
+                testStripStrongsNumbers(),
+                testExtractUniqueStrongsNumbers(),
+                await testGetStrongsVerse(),
+                await testGetStrongsDefinitions()
+            ];
+
+            for (const test of tests) {
+                const div = document.createElement("div");
+                div.className = `test ${test.pass ? "pass" : "fail"}`;
+                div.innerHTML = `
+                    <h3>${test.pass ? "✓" : "✗"} ${test.name}</h3>
+                    <pre>${test.result}</pre>
+                `;
+                results.appendChild(div);
+            }
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

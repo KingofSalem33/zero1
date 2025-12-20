@@ -14,3 +14,26 @@
 }
 
 /* App-specific utility classes can go here if needed */
+
+/* Subtle golden cross pattern for Christ - used across chat spaces */
+.golden-cross-bg {
+  position: relative;
+}
+
+.golden-cross-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    /* Horizontal beam - positioned at 35% from top (Christian cross style) */
+    linear-gradient(to bottom, transparent 0%, transparent 30%, #FEF3C703 33%, #FEF3C705 35%, #FEF3C703 37%, transparent 40%, transparent 100%),
+    /* Vertical beam - centered left to right */
+    linear-gradient(to right, transparent 0%, transparent 45%, #FEF3C703 48%, #FEF3C705 50%, #FEF3C703 52%, transparent 55%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.golden-cross-bg > * {
+  position: relative;
+  z-index: 1;
+}

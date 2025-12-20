@@ -250,6 +250,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
         verse: verseNum,
         color,
       });
+
       addHighlight(selectedBook, selectedChapter, verseNum, text, color);
 
       console.log("[BibleReader] ✅ Highlight saved successfully!");
@@ -265,7 +266,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-gray-950 via-black to-gray-950">
+    <div className="h-full flex flex-col bg-black">
       {/* Header with Navigation */}
       <div className="flex-shrink-0 border-b border-neutral-800/50 bg-neutral-900/50 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto px-6 py-4">
@@ -578,6 +579,11 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
         onGoDeeper={handleGoDeeper}
         onHighlight={handleHighlight}
         enableHighlight={true}
+        bibleContext={{
+          book: selectedBook,
+          chapter: selectedChapter,
+          verse: 0, // Will be detected from selection by tooltip
+        }}
       />
     </div>
   );

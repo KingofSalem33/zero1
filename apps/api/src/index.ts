@@ -12,6 +12,7 @@ import compression from "compression";
 import { ENV } from "./env";
 import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
+import rootTranslationRouter from "./routes/root-translation";
 import bookmarksRouter from "./routes/bookmarks";
 import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
@@ -126,6 +127,9 @@ app.use("/api/tts", optionalAuth, ttsRouter);
 
 // Mount synopsis routes (text analysis for highlighting)
 app.use("/api/synopsis", optionalAuth, synopsisRouter);
+
+// Mount root translation routes (Strong's Concordance)
+app.use("/api/root-translation", optionalAuth, rootTranslationRouter);
 
 // Mount bookmark routes
 app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
