@@ -744,6 +744,19 @@ export function TextHighlightTooltip({
                   <span>Back to synopsis</span>
                 </button>
 
+                {/* Selected text for comparison */}
+                <div className="mb-3 pb-3 border-b border-white/5">
+                  <p className="text-[13px] text-neutral-300 leading-relaxed italic">
+                    "{selectedText}"
+                  </p>
+                  {detectedVerseContext && (
+                    <p className="text-[10px] text-neutral-500 mt-1">
+                      {detectedVerseContext.book} {detectedVerseContext.chapter}
+                      :{detectedVerseContext.verse} (KJV)
+                    </p>
+                  )}
+                </div>
+
                 {isLoadingRoot ? (
                   <div className="flex items-center gap-2 py-1.5">
                     <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
