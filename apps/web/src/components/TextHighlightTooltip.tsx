@@ -258,11 +258,27 @@ export function TextHighlightTooltip({
 
         setIsLoadingRoot(false);
 
-        // Set the parsed data immediately (no streaming for structured content)
-        setRootInsights(parsed.insights);
-        setPlainMeaning(parsed.plain);
-        setRootTranslation(fullTranslation); // Keep for fallback
+        // Stream the structured content
+        // Stream insights one by one
+        for (let i = 0; i < parsed.insights.length; i++) {
+          if (!isStreamingRef.current) break;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          setRootInsights((prev) => [...prev, parsed.insights[i]]);
+        }
 
+        // Stream plain meaning word by word
+        if (isStreamingRef.current && parsed.plain) {
+          const words = parsed.plain.split(" ");
+          for (let i = 0; i < words.length; i++) {
+            if (!isStreamingRef.current) break;
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            setPlainMeaning((prev) =>
+              prev ? prev + " " + words[i] : words[i],
+            );
+          }
+        }
+
+        setRootTranslation(fullTranslation); // Keep for fallback
         isStreamingRef.current = false;
         abortControllerRef.current = null;
       } catch (error: unknown) {
@@ -464,7 +480,7 @@ export function TextHighlightTooltip({
       }
       isStreamingRef.current = false;
     };
-  }, [closeTooltip, generateAISynopsis]);
+  }, [closeTooltip, generateAISynopsis, bibleContext]);
 
   const handleHighlight = (color?: string) => {
     console.log("[TextHighlight] handleHighlight called", {
@@ -536,6 +552,9 @@ export function TextHighlightTooltip({
   const handleRootTranslation = async () => {
     if (selectedText) {
       setViewMode("root");
+      // Reset state before streaming new content
+      setRootInsights([]);
+      setPlainMeaning("");
       await generateRootTranslation(selectedText);
     }
   };
@@ -550,6 +569,8 @@ export function TextHighlightTooltip({
     setRootTranslation("");
     setRootLanguage("");
     setIsLoadingRoot(false);
+    setRootInsights([]);
+    setPlainMeaning("");
   };
 
   if (!position || !selectedText) {
@@ -795,10 +816,10 @@ export function TextHighlightTooltip({
                       </div>
                     </div>
 
-                    {/* Plain meaning */}
+                    {/* Direct Translation */}
                     <div className="pt-2 border-t border-white/5">
                       <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                        Plain-language meaning
+                        Direct Translation
                       </h4>
                       <p className="text-[13px] text-neutral-200 leading-relaxed italic">
                         {plainMeaning}

@@ -338,33 +338,35 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 
 You are providing ROOT translations using Strong's Concordance.
 
+Your goal: Show what assumptions the original Greek/Hebrew makes that English quietly removes.
+
 CRITICAL: Output ONLY in this format (no other text):
 
 ROOTS:
-- Word (original): insight about what this word reveals
-- Word (original): insight about what this word reveals
+- Word (original): what English loses—name the temporal, qualitative, or experiential shift
+- Word (original): what English loses—name the temporal, qualitative, or experiential shift
 
 PLAIN:
-One sentence plain-language paraphrase
+Literal word-by-word translation using Strong's definitions (plain English, one sentence)
 
 STRICT RULES:
 1. Pick ONLY 3-5 most important words (not every word)
 2. Include the original Greek/Hebrew word in parentheses after each English word
 3. Do NOT include Strong's numbers (G1234) - only original words
-4. Do NOT write "Indicates" or "Highlights" - write direct insights
-5. Each insight must be ONE short phrase (under 12 words)
-6. Focus on MEANING, not grammar or word type
-7. Write insights like: "means X" or "points to Y" or "implies Z"
-8. Plain meaning must be ONE simple sentence
+4. Every root bullet must answer: "What assumption does the original language make that English quietly removes?"
+5. No bullet should merely define a word—each must explain a shift in meaning or force
+6. Identify temporal, qualitative, or experiential losses specifically
+7. PLAIN must be a LITERAL translation—translate each word using its Strong's definition into plain English
 
-Example (if translating John 1:12-13):
+Example (translating John 1:9):
 ROOTS:
-- Born (γεννάω): means more than physical birth—a spiritual beginning
-- Blood (αἷμα): represents human ancestry and natural lineage
-- Will (θέλημα): points to human choice and desire
+- Was (ἦν): is not a simple past tense. It signals continuous existence—this Light already was and still is, not something that began at a point in time.
+- True (ἀληθινός): means genuine or ultimate, not merely accurate. It contrasts this Light with all lesser, partial, or derivative lights.
+- Light (φῶς): is not just illumination but presence—something that reveals reality and alters what it touches.
+- Lighteth (φωτίζω): describes an active, ongoing action. The Light is continually illuminating, not offering a one-time flash of insight.
 
 PLAIN:
-This birth comes from God, not from human decision or desire.`,
+This has always been the real Light—the one that continually shines on every human life as it enters the world.`,
           },
           {
             role: "user",
