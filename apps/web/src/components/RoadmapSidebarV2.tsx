@@ -27,7 +27,6 @@ interface RoadmapSidebarV2Props {
 }
 
 const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
-  project: _project,
   currentChatId,
   chats = [],
   onNewChat,
@@ -154,7 +153,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             <span className="text-sm font-medium">The Oratory</span>
           </button>
 
-          {/* New Chat Button */}
+          {/* Trace Button */}
           <button
             onClick={onNewChat}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
@@ -172,7 +171,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            <span className="text-sm font-medium">New Chat</span>
+            <span className="text-sm font-medium">Trace</span>
           </button>
 
           {/* Highlights Button */}
@@ -351,11 +350,11 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 </svg>
               </button>
 
-              {/* New Chat */}
+              {/* Trace */}
               <button
                 onClick={onNewChat}
                 className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
-                title="New Chat"
+                title="Trace"
               >
                 <svg
                   className="w-5 h-5"

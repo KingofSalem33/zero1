@@ -94,8 +94,15 @@ interface BibleReaderProps {
 }
 
 const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
-  const [selectedBook, setSelectedBook] = useState<string>("John");
-  const [selectedChapter, setSelectedChapter] = useState<number>(1);
+  // Restore last Bible position from localStorage
+  const [selectedBook, setSelectedBook] = useState<string>(() => {
+    const saved = localStorage.getItem("lastBibleBook");
+    return saved || "John";
+  });
+  const [selectedChapter, setSelectedChapter] = useState<number>(() => {
+    const saved = localStorage.getItem("lastBibleChapter");
+    return saved ? parseInt(saved, 10) : 1;
+  });
   const [bookData, setBookData] = useState<Book | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [showBookSelector, setShowBookSelector] = useState<boolean>(false);
@@ -123,6 +130,15 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
 
     loadBook();
   }, [selectedBook]);
+
+  // Save Bible position to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem("lastBibleBook", selectedBook);
+  }, [selectedBook]);
+
+  useEffect(() => {
+    localStorage.setItem("lastBibleChapter", String(selectedChapter));
+  }, [selectedChapter]);
 
   // Scroll to top when chapter changes
   useEffect(() => {
@@ -260,9 +276,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
   };
 
   const handleGoDeeper = (text: string) => {
-    // For Bible mode, we could open chat with this verse as context
-    // TODO: Implement chat integration
-    void text;
+    if (!onNavigateToChat) return;
+
+    // Format the prompt with verse reference and selected text
+    const prompt = `${selectedBook} ${selectedChapter}\n\n"${text}"\n\nHelp me understand this passage.`;
+
+    // Navigate to chat with this verse as context
+    onNavigateToChat(prompt);
   };
 
   return (

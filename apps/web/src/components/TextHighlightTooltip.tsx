@@ -161,7 +161,7 @@ export function TextHighlightTooltip({
         return;
       }
       setDescription(
-        'Highlight insight unavailable right now. Click "Go Deeper" to continue.',
+        'Highlight insight unavailable right now. Click "Trace" to continue.',
       );
       setIsLoadingDescription(false);
       isStreamingRef.current = false;
@@ -665,7 +665,7 @@ export function TextHighlightTooltip({
                       onClick={handleGoDeeper}
                       className="group px-3 py-1.5 bg-[#D4AF37]/20 hover:bg-[#D4AF37]/30 text-[#D4AF37] hover:text-[#E5C158] text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
                     >
-                      <span>Go Deeper</span>
+                      <span>Trace</span>
                       <svg
                         className="w-3 h-3 transition-transform group-hover:translate-x-0.5"
                         fill="none"
