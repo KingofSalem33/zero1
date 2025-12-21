@@ -48,7 +48,13 @@ export function TextHighlightTooltip({
   const [rootLanguage, setRootLanguage] = useState<string>("");
   const [isLoadingRoot, setIsLoadingRoot] = useState(false);
   const [rootInsights, setRootInsights] = useState<
-    Array<{ word: string; original: string; insight: string }>
+    Array<{
+      word: string;
+      original: string;
+      strongsNumber: string;
+      definition: string;
+      insight: string;
+    }>
   >([]);
   const [plainMeaning, setPlainMeaning] = useState("");
   const [detectedVerseContext, setDetectedVerseContext] = useState<
@@ -213,7 +219,7 @@ export function TextHighlightTooltip({
 
         setRootLanguage(language);
 
-        // Parse the structured response
+        // Parse the structured response with Strong's numbers
         const parseRootTranslation = (text: string) => {
           const rootsMatch = text.match(/ROOTS:\s*([\s\S]*?)\n\nPLAIN:/);
           const plainMatch = text.match(/PLAIN:\s*([\s\S]*?)$/);
@@ -221,28 +227,47 @@ export function TextHighlightTooltip({
           const rootsText = rootsMatch?.[1] || "";
           const plain = plainMatch?.[1]?.trim() || text; // Fallback to full text
 
-          const insights = rootsText
-            .split("\n")
-            .filter((line) => line.trim().startsWith("-"))
-            .map((line) => {
-              // Match: "- Word (original): insight"
-              const match = line.match(/- (.+?)\s*\(([^)]+)\):\s*(.+)/);
-              if (match) {
-                return {
-                  word: match[1].trim(),
-                  original: match[2].trim(),
-                  insight: match[3].trim(),
-                };
-              }
-              // Fallback for old format without parentheses
-              const oldMatch = line.match(/- (.+?):\s*(.+)/);
-              return oldMatch
-                ? { word: oldMatch[1], original: "", insight: oldMatch[2] }
-                : null;
+          // Split by word entries (lines starting with "- ")
+          const wordBlocks = rootsText
+            .split(/\n- /)
+            .filter((block) => block.trim());
+
+          const insights = wordBlocks
+            .map((block) => {
+              // Match: "Word — original (Strong's GXXXX)\ndefinition\n\ninsight"
+              const headerMatch = block.match(
+                /^(.+?)\s*[—-]\s*(.+?)\s*\(Strong's\s+([^)]+)\)/m,
+              );
+              if (!headerMatch) return null;
+
+              const word = headerMatch[1].trim();
+              const original = headerMatch[2].trim();
+              const strongsNumber = headerMatch[3].trim();
+
+              // Get everything after the header
+              const restOfBlock = block.substring(block.indexOf("\n") + 1);
+
+              // First line is the definition, rest is insight
+              const lines = restOfBlock.split("\n").filter((l) => l.trim());
+              const definition = lines[0]?.trim() || "";
+
+              // Everything after the definition (skip empty lines)
+              const insightLines = lines.slice(1).filter((l) => l.trim());
+              const insight = insightLines.join(" ").trim();
+
+              return {
+                word,
+                original,
+                strongsNumber,
+                definition,
+                insight,
+              };
             })
             .filter(Boolean) as Array<{
             word: string;
             original: string;
+            strongsNumber: string;
+            definition: string;
             insight: string;
           }>;
 
@@ -795,24 +820,52 @@ export function TextHighlightTooltip({
                       <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
                         What the roots reveal
                       </h4>
-                      <div className="space-y-1.5">
-                        {rootInsights.map(({ word, original, insight }) => (
-                          <p
-                            key={word}
-                            className="text-[13px] text-neutral-200 leading-relaxed"
-                          >
-                            <span className="font-medium text-[#D4AF37]">
-                              {word}
-                            </span>
-                            {original && (
-                              <span className="text-neutral-400 font-normal">
-                                {" "}
-                                ({original})
-                              </span>
-                            )}{" "}
-                            {insight}
-                          </p>
-                        ))}
+                      <div className="space-y-5">
+                        {rootInsights.map(
+                          ({
+                            word,
+                            original,
+                            strongsNumber,
+                            definition,
+                            insight,
+                          }) => (
+                            <div key={word} className="space-y-1.5">
+                              {/* Word header with Strong's number */}
+                              <div className="text-[13px]">
+                                <span className="font-semibold text-[#D4AF37]">
+                                  {word}
+                                </span>
+                                {original && (
+                                  <>
+                                    <span className="text-neutral-400 mx-1">
+                                      —
+                                    </span>
+                                    <span className="text-neutral-400 italic">
+                                      {original}
+                                    </span>
+                                  </>
+                                )}
+                                {strongsNumber && (
+                                  <span className="text-neutral-500 text-[11px] ml-2">
+                                    (Strong's {strongsNumber})
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Definition and insight */}
+                              <div className="space-y-2 text-[12px] leading-relaxed">
+                                {definition && (
+                                  <p className="text-neutral-300 italic">
+                                    {definition}
+                                  </p>
+                                )}
+                                {insight && (
+                                  <p className="text-neutral-200">{insight}</p>
+                                )}
+                              </div>
+                            </div>
+                          ),
+                        )}
                       </div>
                     </div>
 
