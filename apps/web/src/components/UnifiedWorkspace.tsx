@@ -21,7 +21,7 @@ interface RoadmapStep {
   title: string;
   description: string;
   master_prompt: string;
-  context: any;
+  context: unknown;
   acceptance_criteria: string[];
   estimated_complexity: number;
   status: "pending" | "active" | "completed" | "skipped";
@@ -95,6 +95,7 @@ interface UnifiedWorkspaceProps {
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
+   
   onCreateProject: _onCreateProject,
   onInspireMe,
   toolsUsed,
@@ -109,6 +110,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   pendingPrompt,
   onPromptConsumed,
   oratoryMode = false,
+   
   onExitOratory: _onExitOratory,
 }) => {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
@@ -175,7 +177,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       );
       if (response.ok) {
         const data = await response.json();
-        const threadMessages: ChatMessage[] = data.data.map((msg: any) => ({
+        const threadMessages: ChatMessage[] = data.data.map((msg: unknown) => ({
           id: msg.id,
           type: msg.role === "user" ? "user" : "ai",
           content: msg.content,
@@ -427,7 +429,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   const completionMessage: ChatMessage = {
                     id: (Date.now() + 3).toString(),
                     type: "ai",
-                    content: `✅ **Artifact Analysis Complete**\n\nCompleted ${artifactData.completed_substeps.length} substep(s):\n${artifactData.completed_substeps.map((s: any) => `- P${s.phase_number}.${s.substep_number} (${s.status}, ${s.confidence}% confidence)`).join("\n")}\n\nProgress: ${artifactData.progress}%`,
+                    content: `✅ **Artifact Analysis Complete**\n\nCompleted ${artifactData.completed_substeps.length} substep(s):\n${artifactData.completed_substeps.map((s: unknown) => `- P${s.phase_number}.${s.substep_number} (${s.status}, ${s.confidence}% confidence)`).join("\n")}\n\nProgress: ${artifactData.progress}%`,
                     timestamp: new Date(),
                   };
                   setMessages((prev) => [...prev, completionMessage]);

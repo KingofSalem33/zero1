@@ -61,7 +61,7 @@ export function BibleHighlightsProvider({
   // Save to localStorage whenever highlights change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(highlights));
-    // eslint-disable-next-line no-console
+
     console.log(
       "[BibleHighlightsContext] Saved highlights to localStorage:",
       highlights.length,
@@ -96,7 +96,6 @@ export function BibleHighlightsProvider({
         return [...filtered, newHighlight];
       });
 
-      // eslint-disable-next-line no-console
       console.log("[BibleHighlightsContext] Added highlight:", newHighlight);
 
       return newHighlight;
@@ -107,7 +106,7 @@ export function BibleHighlightsProvider({
   // Remove a highlight
   const removeHighlight = useCallback((id: string) => {
     setHighlights((prev) => prev.filter((h) => h.id !== id));
-    // eslint-disable-next-line no-console
+
     console.log("[BibleHighlightsContext] Removed highlight:", id);
   }, []);
 
@@ -132,7 +131,7 @@ export function BibleHighlightsProvider({
   // Clear all highlights
   const clearAllHighlights = useCallback(() => {
     setHighlights([]);
-    // eslint-disable-next-line no-console
+
     console.log("[BibleHighlightsContext] Cleared all highlights");
   }, []);
 
@@ -152,6 +151,7 @@ export function BibleHighlightsProvider({
   );
 }
 
+ 
 export function useBibleHighlightsContext() {
   const context = useContext(BibleHighlightsContext);
   if (!context) {

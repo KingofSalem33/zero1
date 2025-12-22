@@ -277,20 +277,17 @@ function App() {
             onToggleCollapse={setSidebarCollapsed}
           />
 
-          {/* Main Workspace - Smooth transition between Chat, Bible, and Highlights */}
+          {/* Main Workspace - Renders only the active view */}
           <main
-            className={`flex-1 min-h-screen relative overflow-hidden transition-all duration-300 ${
+            className={`flex-1 min-h-screen relative transition-all duration-300 ${
               sidebarCollapsed ? "md:ml-16" : "md:ml-64"
             }`}
           >
-            {/* Chat View */}
-            <div
-              className={`absolute inset-0 transition-all duration-500 ease-in-out ${
-                showBible || highlightsMode
-                  ? "opacity-0 scale-95 pointer-events-none"
-                  : "opacity-100 scale-100"
-              }`}
-            >
+            {showBible ? (
+              <BibleReader onNavigateToChat={handleNavigateToChat} />
+            ) : highlightsMode ? (
+              <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
+            ) : (
               <UnifiedWorkspace
                 project={project}
                 onCreateProject={() => {}}
@@ -307,29 +304,7 @@ function App() {
                 oratoryMode={oratoryMode}
                 onExitOratory={() => setOratoryMode(false)}
               />
-            </div>
-
-            {/* Highlights Library View */}
-            <div
-              className={`absolute inset-0 transition-all duration-500 ease-in-out ${
-                highlightsMode
-                  ? "opacity-100 scale-100"
-                  : "opacity-0 scale-95 pointer-events-none"
-              }`}
-            >
-              <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
-            </div>
-
-            {/* Bible View */}
-            <div
-              className={`absolute inset-0 transition-all duration-500 ease-in-out ${
-                showBible
-                  ? "opacity-100 scale-100"
-                  : "opacity-0 scale-95 pointer-events-none"
-              }`}
-            >
-              <BibleReader onNavigateToChat={handleNavigateToChat} />
-            </div>
+            )}
           </main>
         </div>
       </div>

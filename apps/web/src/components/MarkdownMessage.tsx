@@ -21,7 +21,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   content,
   isStreaming = false,
   onCopy,
+   
   onRegenerate: _onRegenerate,
+   
   onEdit: _onEdit,
   showActions = true,
 }) => {

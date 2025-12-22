@@ -1,28 +1,33 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 
-/* global MouseEvent, HTMLElement, Node */
+// --- 1. MAIN TITLE (H2) ---
+// The exegesis title - large, authoritative, serif
+const MainTitle = ({ children }: { children: React.ReactNode }) => (
+  <h2 className="mt-8 mb-6 font-serif text-3xl font-bold text-slate-900 leading-tight tracking-tight">
+    {children}
+  </h2>
+);
 
-// --- 1. THE CORE TRUTH (Blockquote) ---
-// Renders as a distinct, serif, italicized statement with a gold border.
-const CoreTruth = ({ children }: { children: React.ReactNode }) => (
-  <blockquote className="border-l-4 border-[#D4AF37] pl-6 py-3 my-8 font-serif text-xl italic text-slate-800 leading-relaxed">
+// --- 2. SECTION HEADERS (H3) ---
+// Roman numeral sections - clear hierarchy, refined spacing
+const SectionHeader = ({ children }: { children: React.ReactNode }) => (
+  <h3 className="mt-10 mb-4 font-sans text-lg font-semibold text-slate-800 tracking-tight">
+    {children}
+  </h3>
+);
+
+// --- 3. THE INVITATION (Blockquote) ---
+// Renders as a distinct, elegant statement with gold accent
+const Invitation = ({ children }: { children: React.ReactNode }) => (
+  <blockquote className="border-l-4 border-[#D4AF37] pl-6 py-4 my-10 font-serif text-lg italic text-slate-700 leading-relaxed">
     {children}
   </blockquote>
 );
 
-// --- 2. SECTION HEADERS (H1) ---
-// Renders as small, uppercase, tracking-wide dividers.
-// Used for: "# The Primary Text", "# The Biblical Witness", "# The Convergence"
-const SectionHeader = ({ children }: { children: React.ReactNode }) => (
-  <h1 className="mt-12 mb-6 text-xs font-bold uppercase tracking-[0.2em] text-slate-400 border-b border-slate-100 pb-2">
-    {children}
-  </h1>
-);
-
-// --- 3. CITATION PARSER (Paragraph) ---
+// --- 4. CITATION PARSER (Paragraph) ---
 // Scans text for [Book Ch:v] patterns and turns them into interactive Gold links.
-// This connects the Text Stream to the Narrative Map.
+// Professional typography with optimal readability
 const InteractiveText = ({
   children,
   onVerseClick,
@@ -35,7 +40,7 @@ const InteractiveText = ({
     const parts = children.split(/(\[(?:[123]\s)?[A-Za-z]+\s\d+:\d+\])/g);
 
     return (
-      <p className="mb-6 leading-7 text-slate-700 font-sans text-base">
+      <p className="mb-5 leading-[1.8] text-slate-600 font-sans text-[17px] tracking-[-0.01em]">
         {parts.map((part, i) => {
           if (part.match(/^\[.*\]$/)) {
             // Extract reference without brackets
@@ -44,7 +49,7 @@ const InteractiveText = ({
             return (
               <button
                 key={i}
-                className="text-[#B5942F] font-bold hover:text-[#D4AF37] hover:underline decoration-[#D4AF37] underline-offset-4 transition-colors mx-1 cursor-pointer"
+                className="text-[#B5942F] font-semibold hover:text-[#D4AF37] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-colors mx-0.5 cursor-pointer"
                 onClick={(e) => {
                   onVerseClick?.(reference, e);
                 }}
@@ -58,32 +63,38 @@ const InteractiveText = ({
       </p>
     );
   }
-  return <p className="mb-6 leading-7 text-slate-700 font-sans">{children}</p>;
+  return (
+    <p className="mb-5 leading-[1.8] text-slate-600 font-sans text-[17px] tracking-[-0.01em]">
+      {children}
+    </p>
+  );
 };
 
-// --- 4. THE INVITATION (Final Paragraph) ---
-// Detects "Shall we..." pattern and styles it as an invitation
-const MaybeInvitation = ({
+// --- 5. THESIS DETECTOR ---
+// Detects "**Thesis:**" pattern and styles it prominently
+const MaybeThesis = ({
   children,
   onVerseClick,
 }: {
   children: React.ReactNode;
   onVerseClick?: (reference: string, event: React.MouseEvent) => void;
 }) => {
-  if (typeof children === "string" && children.includes("Shall we")) {
-    // This is an invitation - style it specially
-    // Still need to parse citations within it
+  if (typeof children === "string" && children.startsWith("Thesis:")) {
+    // This is the thesis statement - style it prominently
     const parts = children.split(/(\[(?:[123]\s)?[A-Za-z]+\s\d+:\d+\])/g);
 
     return (
-      <p className="mt-8 pt-6 border-t border-slate-100 text-slate-600 italic font-sans text-base leading-7">
-        {parts.map((part, i) => {
+      <p className="mb-6 mt-2 leading-[1.7] text-slate-800 font-serif text-lg italic">
+        <span className="font-bold text-[#B5942F] not-italic uppercase tracking-wide text-sm">
+          Thesis:{" "}
+        </span>
+        {parts.slice(1).map((part, i) => {
           if (part.match(/^\[.*\]$/)) {
             const reference = part.slice(1, -1);
             return (
               <button
                 key={i}
-                className="text-[#B5942F] font-bold hover:text-[#D4AF37] hover:underline decoration-[#D4AF37] underline-offset-4 transition-colors mx-1 cursor-pointer"
+                className="text-[#B5942F] font-semibold hover:text-[#D4AF37] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-colors mx-0.5 cursor-pointer"
                 onClick={(e) => {
                   onVerseClick?.(reference, e);
                 }}
@@ -98,7 +109,7 @@ const MaybeInvitation = ({
     );
   }
 
-  // Not an invitation - render as normal interactive text
+  // Not a thesis - render as normal interactive text
   return (
     <InteractiveText onVerseClick={onVerseClick}>{children}</InteractiveText>
   );
@@ -135,7 +146,6 @@ const VerseTooltip = ({
         setVerseText(data.text);
         setIsLoading(false);
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.error("Error fetching verse:", error);
         setVerseText("Could not load verse text");
         setIsLoading(false);
@@ -247,6 +257,7 @@ const VerseTooltip = ({
 // --- MAIN EXPORT ---
 export function MessageStream({
   content,
+   
   onVerseClick: _onVerseClick,
 }: {
   content: string;
@@ -259,7 +270,7 @@ export function MessageStream({
 
   const handleVerseClick = (reference: string, event: React.MouseEvent) => {
     event.preventDefault();
-    // eslint-disable-next-line no-console
+
     console.log("[MessageStream] Verse clicked:", reference);
 
     // Get click position for tooltip
@@ -271,7 +282,6 @@ export function MessageStream({
     const top = rect.bottom + spacing;
     const left = rect.left + rect.width / 2;
 
-    // eslint-disable-next-line no-console
     console.log("[MessageStream] Setting tooltip data:", {
       reference,
       position: { top, left },
@@ -287,23 +297,48 @@ export function MessageStream({
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 pb-24">
+    <div className="max-w-3xl mx-auto px-6 pb-24">
       <ReactMarkdown
         components={{
-          blockquote: CoreTruth,
-          h1: SectionHeader,
+          // Main title (##)
+          h2: MainTitle,
+          // Section headers (###)
+          h3: SectionHeader,
+          // Blockquotes (invitations with >)
+          blockquote: Invitation,
+          // Paragraphs with citation parsing and thesis detection
           p: ({ children }) => (
-            <MaybeInvitation onVerseClick={handleVerseClick}>
+            <MaybeThesis onVerseClick={handleVerseClick}>
               {children}
-            </MaybeInvitation>
+            </MaybeThesis>
           ),
+          // Strong emphasis - refined for readability
           strong: ({ children }) => (
-            <span className="font-semibold text-slate-900">{children}</span>
+            <span className="font-bold text-slate-900">{children}</span>
           ),
+          // Italic emphasis - elegant serif styling
           em: ({ children }) => (
-            <span className="font-serif text-lg text-slate-900 italic">
+            <span className="font-serif text-[17px] text-slate-800 italic">
               {children}
             </span>
+          ),
+          // Unordered lists - clean, well-spaced
+          ul: ({ children }) => (
+            <ul className="mb-5 ml-6 space-y-2 list-disc marker:text-[#D4AF37]">
+              {children}
+            </ul>
+          ),
+          // Ordered lists - clean, well-spaced
+          ol: ({ children }) => (
+            <ol className="mb-5 ml-6 space-y-2 list-decimal marker:text-[#D4AF37] marker:font-semibold">
+              {children}
+            </ol>
+          ),
+          // List items - optimal line height
+          li: ({ children }) => (
+            <li className="leading-[1.8] text-slate-700 text-[17px] pl-2">
+              {children}
+            </li>
           ),
         }}
       >
