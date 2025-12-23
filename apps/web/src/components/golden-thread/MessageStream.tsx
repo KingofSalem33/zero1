@@ -79,13 +79,14 @@ const MaybeThesis = ({
   children: React.ReactNode;
   onVerseClick?: (reference: string, event: React.MouseEvent) => void;
 }) => {
-  if (typeof children === "string" && children.startsWith("Thesis:")) {
-    // This is the thesis statement - style it prominently
-    const parts = children.split(/(\[(?:[123]\s)?[A-Za-z]+\s\d+:\d+\])/g);
+  if (typeof children === "string" && children.includes("Thesis:")) {
+    const thesisIndex = children.indexOf("Thesis:");
+    const thesisContent = children.substring(thesisIndex + "Thesis:".length);
+    const parts = thesisContent.split(/(\[(?:[123]\s)?[A-Za-z]+\s\d+:\d+\])/g);
 
     return (
       <p className="mb-6 mt-2 leading-[1.7] text-slate-800 font-serif text-lg italic">
-        {parts.slice(1).map((part, i) => {
+        {parts.map((part, i) => {
           if (part.match(/^\[.*\]$/)) {
             const reference = part.slice(1, -1);
             return (
@@ -363,13 +364,23 @@ const VerseTooltip = ({
 
         // --- MAIN EXPORT ---
 
+        
+
         export function MessageStream({
+
+        
 
           content,
 
-           
+        
+
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
+        
 
           onVerseClick: _onVerseClick,
+
+        
 
         }: {
 
