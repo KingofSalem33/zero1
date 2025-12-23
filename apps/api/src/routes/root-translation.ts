@@ -18,6 +18,7 @@ const rootTranslationRequestSchema = z.object({
   book: z.string().optional(),
   chapter: z.number().optional(),
   verse: z.number().optional(),
+  verses: z.array(z.number().min(1)).optional(),
 });
 
 interface StrongsLexiconEntry {
@@ -178,7 +179,7 @@ function stripStrongsNumbers(text: string): string {
 // POST /api/root-translation - Generate translation using Strong's Concordance
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
-    const { selectedText, book, chapter, verse } =
+    const { selectedText, book, chapter, verse, verses } =
       rootTranslationRequestSchema.parse(req.body);
 
     console.log("[Root Translation] Request received:", {
@@ -186,6 +187,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       book,
       chapter,
       verse,
+      verses,
     });
 
     // Check if OpenAI client is available
@@ -209,8 +211,16 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 
     let verseWithStrongs: string | null = null;
 
-    // If book/chapter/verse provided, load directly from Strong's Bible
-    if (book && chapter && verse) {
+    const verseNumbers =
+      Array.isArray(verses) && verses.length ? verses : verse ? [verse] : [];
+    const normalizedVerses = Array.from(
+      new Set(verseNumbers.filter((num) => Number.isFinite(num) && num > 0)),
+    ).sort((a, b) => a - b);
+
+    const verseTexts: Array<{ number: number; text: string }> = [];
+
+    // If book/chapter/verse(s) provided, load directly from Strong's Bible
+    if (book && chapter && normalizedVerses.length) {
       try {
         const bookAbbrev = BOOK_TO_ABBREV[book];
 
@@ -218,13 +228,21 @@ router.post("/", readOnlyLimiter, async (req, res) => {
           const bookPath = path.join(dataPath, `${bookAbbrev}.json`);
           const bookData = JSON.parse(await fs.readFile(bookPath, "utf-8"));
           const chapterKey = `${bookAbbrev}|${chapter}`;
-          const verseKey = `${bookAbbrev}|${chapter}|${verse}`;
 
-          const verseData = bookData[bookAbbrev]?.[chapterKey]?.[verseKey];
-          if (verseData?.en) {
-            verseWithStrongs = verseData.en;
+          for (const verseNum of normalizedVerses) {
+            const verseKey = `${bookAbbrev}|${chapter}|${verseNum}`;
+            const verseData = bookData[bookAbbrev]?.[chapterKey]?.[verseKey];
+            if (verseData?.en) {
+              verseTexts.push({ number: verseNum, text: verseData.en });
+            }
+          }
+
+          if (verseTexts.length) {
+            verseWithStrongs = verseTexts
+              .map((v) => `[${book} ${chapter}:${v.number}] ${v.text}`)
+              .join(" ");
             console.log(
-              `[Strong's] Loaded verse directly: ${book} ${chapter}:${verse}`,
+              `[Strong's] Loaded verses directly: ${book} ${chapter}:${normalizedVerses.join(",")}`,
             );
           }
         }
@@ -331,7 +349,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const response = await Promise.race([
       client.chat.completions.create({
         model: "gpt-4o-mini",
-        max_tokens: 250,
+        max_tokens: 420,
         temperature: 0.7,
         messages: [
           {
@@ -342,10 +360,10 @@ You are providing ROOT translations using Strong's Concordance.
 
 Your goal: Build a revelation surface, not a study tool.
 
-CRITICAL: Output ONLY in this format (no other text):
+CRITICAL: Output ONLY in this format (no other text before ROOTS:):
 
 ROOTS:
-- Word — original (Strong's GXXXX or HXXXX, list all if multiple)
+- Word - original (Strong's GXXXX or HXXXX, list all if multiple)
 basic definition from Strong's lexicon
 
 2-3 short insight sentences revealing what this means in this specific verse.
@@ -355,16 +373,22 @@ Literal word-by-word translation using Strong's definitions (plain English, one 
 
 STRICT RULES:
 1. Pick ONLY 3-5 most important words (not every word)
-2. Format: Word — original (Strong's GXXXX)
-3. If multiple Strong's numbers apply to one word, list all: (Strong's G1234, G5678)
-4. First line after header: Use the exact strongs_def from the lexicon as the basic definition
-5. Then 2-3 SHORT insight sentences about what this reveals in this verse
-6. Use short, punchy sentences—not compound sentences with commas
-7. Every sentence must reveal contextual meaning or causal force
-8. If a sentence does neither, cut it
-9. No explanatory connectors—no "but this means" or "which indicates"
-10. Write like uncovering truth, not being taught
-11. PLAIN must be a LITERAL translation—translate each word using its Strong's definition into plain English
+2. For multiple verses, prefer 3-4 words to preserve space for PLAIN
+3. Each ROOTS entry MUST start on a new line with "- "
+4. If multiple Strong's numbers apply to one word, list all: (Strong's G1234, G5678)
+5. First line after header: Use the exact strongs_def from the lexicon as the basic definition
+6. Then 2-3 SHORT insight sentences about the nuance that is lost in translation from original text to English and illuminate the true meaning of the text using precise English so the user gains a deeper understanding of the verse
+7. Use short, punchy sentences - not compound sentences with commas
+8. Every sentence must reveal contextual meaning or causal force
+9. If a sentence does neither, cut it
+10. No explanatory connectors - no "but this means" or "which indicates"
+11. Write like uncovering truth, not being taught
+12. PLAIN must be a LITERAL translation - translate each word using its Strong's definition into plain English
+13. You may combine adjacent words into short phrases if it preserves meaning and saves space
+14. Finish the full PLAIN translation even if you must reduce ROOTS entries
+15. ROOTS: and PLAIN: must each appear on their own line
+16. Separate each ROOTS entry with a blank line
+17. Do NOT add verse labels, references, or any text outside ROOTS/PLAIN
 
 Example (translating John 1:12-13):
 ROOTS:
@@ -413,16 +437,27 @@ Generate the response in the format specified (ROOTS: then PLAIN:):`,
     const completion = response as OpenAI.Chat.Completions.ChatCompletion;
 
     // Extract the translation from the response
-    const translation =
+    let translation =
       completion.choices[0]?.message?.content?.trim() ||
       "Unable to generate root translation.";
+    const rootsIndex = translation.indexOf("ROOTS:");
+    if (rootsIndex > 0) {
+      translation = translation.slice(rootsIndex).trim();
+    }
+    translation = translation
+      .replace(/ROOTS:\s*/g, "ROOTS:\n")
+      .replace(/\s+PLAIN:\s*/g, "\n\nPLAIN:\n")
+      .replace(/\s+-\s+(?=[A-Za-z][^\n]*\(Strong's [HG]\d+\))/g, "\n\n- ")
+      .replace(/\n(?!- )-\s*/g, "\n- ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
 
     // Return the translation
     return res.json({
       translation,
       language: language,
       strongsUsed: strongsNumbers,
-      versesIncluded: 1,
+      versesIncluded: verseTexts.length || 1,
       totalWords: translation.split(/\s+/).length,
     });
   } catch (error) {

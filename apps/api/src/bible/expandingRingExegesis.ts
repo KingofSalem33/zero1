@@ -237,8 +237,6 @@ Use this precise markdown structure:
 \`\`\`
 ## [Thematic Title - MUST be specific to the topic, not generic]
 
-**Thesis:** [1-sentence spiritual principle]
-
 ### [First Thematic Heading - specific to content, e.g., "Before Time", "The Divine Pattern", etc.]
 
 Primary phrase analysis. Cross-reference defines terms. "As Paul confirms in [Romans 3:23], this universal state..." (NOT "See also [Romans 3:23]")
@@ -270,8 +268,6 @@ End the final section by guiding the reader toward deeper exploration:
 **EXAMPLE OUTPUT**
 
 ## The Eternal Word
-
-**Thesis:** Christ is eternal God, not created.
 
 ### Before Time
 

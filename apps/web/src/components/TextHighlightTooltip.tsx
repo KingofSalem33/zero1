@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-/* global MouseEvent, Element, AbortController, HTMLElement, Range, Node */
+/* global Element, AbortController, Range */
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string) => void;
@@ -61,16 +61,55 @@ export function TextHighlightTooltip({
     | {
         book: string;
         chapter: number;
-        verse: number;
+        verses: number[];
       }
     | undefined
   >(undefined);
+  const [currentRootCardIndex, setCurrentRootCardIndex] = useState(0);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const selectionRangeRef = useRef<Range | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isStreamingRef = useRef(false);
+
+  const getVerseContainerForRange = (range: Range): HTMLElement | null => {
+    let element =
+      range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+        ? range.commonAncestorContainer.parentElement
+        : (range.commonAncestorContainer as HTMLElement);
+
+    while (element) {
+      if (element.querySelectorAll?.("[data-verse]").length) {
+        return element;
+      }
+      element = element.parentElement;
+    }
+
+    return null;
+  };
+
+  const getVerseNumbersFromRange = (range: Range): number[] => {
+    const container = getVerseContainerForRange(range);
+    if (!container) return [];
+
+    const verses = new Set<number>();
+    const verseElements =
+      container.querySelectorAll<HTMLElement>("[data-verse]");
+
+    verseElements.forEach((el) => {
+      try {
+        if (range.intersectsNode(el)) {
+          const num = parseInt(el.getAttribute("data-verse") || "0", 10);
+          if (num > 0) verses.add(num);
+        }
+      } catch {
+        // Ignore nodes that cannot be intersected.
+      }
+    });
+
+    return Array.from(verses).sort((a, b) => a - b);
+  };
 
   const closeTooltip = useCallback(() => {
     if (abortControllerRef.current) {
@@ -92,6 +131,7 @@ export function TextHighlightTooltip({
       setRootInsights([]);
       setPlainMeaning("");
       setDetectedVerseContext(undefined);
+      setCurrentRootCardIndex(0);
     }, 150);
   }, []);
 
@@ -180,12 +220,14 @@ export function TextHighlightTooltip({
         abortControllerRef.current = new AbortController();
         isStreamingRef.current = true;
 
+        const verseNumbers = detectedVerseContext?.verses;
         const requestBody = {
           selectedText: text,
-          maxWords: 100,
+          maxWords: 140,
           book: detectedVerseContext?.book || bibleContext?.book,
           chapter: detectedVerseContext?.chapter || bibleContext?.chapter,
-          verse: detectedVerseContext?.verse || bibleContext?.verse,
+          verse: !verseNumbers?.length ? bibleContext?.verse : undefined,
+          verses: verseNumbers?.length ? verseNumbers : undefined,
         };
 
         console.log("[Root Translation] Sending request:", requestBody);
@@ -353,55 +395,72 @@ export function TextHighlightTooltip({
           // Store the selection range for later use
           selectionRangeRef.current = range.cloneRange();
 
-          // Detect verse number from the selection (same logic as highlight detection)
+          // Detect verse numbers from the selection (supports multi-verse)
+          setDetectedVerseContext(undefined);
           try {
-            let verseElement = null;
+            const verseNumbers = getVerseNumbersFromRange(range);
 
-            // Try multiple approaches to find the verse element (same as BibleReader does)
-            const startContainer = range.startContainer;
-            const startElement =
-              startContainer.nodeType === Node.TEXT_NODE
-                ? startContainer.parentElement
-                : (startContainer as HTMLElement);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            verseElement = (startElement as any)?.closest?.("[data-verse]");
+            if (verseNumbers.length && bibleContext) {
+              setDetectedVerseContext({
+                book: bibleContext.book,
+                chapter: bibleContext.chapter,
+                verses: verseNumbers,
+              });
+              console.log("[TextHighlight] Detected verse context:", {
+                book: bibleContext.book,
+                chapter: bibleContext.chapter,
+                verses: verseNumbers,
+              });
+            } else {
+              let verseElement = null;
 
-            if (!verseElement) {
-              const endContainer = range.endContainer;
-              const endElement =
-                endContainer.nodeType === Node.TEXT_NODE
-                  ? endContainer.parentElement
-                  : (endContainer as HTMLElement);
+              // Try multiple approaches to find the verse element (same as BibleReader does)
+              const startContainer = range.startContainer;
+              const startElement =
+                startContainer.nodeType === Node.TEXT_NODE
+                  ? startContainer.parentElement
+                  : (startContainer as HTMLElement);
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              verseElement = (endElement as any)?.closest?.("[data-verse]");
-            }
+              verseElement = (startElement as any)?.closest?.("[data-verse]");
 
-            if (!verseElement) {
-              const container = range.commonAncestorContainer;
-              const element =
-                container.nodeType === Node.TEXT_NODE
-                  ? container.parentElement
-                  : (container as HTMLElement);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              verseElement = (element as any)?.closest?.("[data-verse]");
-            }
+              if (!verseElement) {
+                const endContainer = range.endContainer;
+                const endElement =
+                  endContainer.nodeType === Node.TEXT_NODE
+                    ? endContainer.parentElement
+                    : (endContainer as HTMLElement);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                verseElement = (endElement as any)?.closest?.("[data-verse]");
+              }
 
-            if (verseElement && bibleContext) {
-              const verseNum = parseInt(
-                verseElement.getAttribute("data-verse") || "0",
-              );
-              if (verseNum > 0) {
-                // Combine verse from DOM with book/chapter from context
-                setDetectedVerseContext({
-                  book: bibleContext.book,
-                  chapter: bibleContext.chapter,
-                  verse: verseNum,
-                });
-                console.log("[TextHighlight] Detected verse context:", {
-                  book: bibleContext.book,
-                  chapter: bibleContext.chapter,
-                  verse: verseNum,
-                });
+              if (!verseElement) {
+                const container = range.commonAncestorContainer;
+                const element =
+                  container.nodeType === Node.TEXT_NODE
+                    ? container.parentElement
+                    : (container as HTMLElement);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                verseElement = (element as any)?.closest?.("[data-verse]");
+              }
+
+              if (verseElement && bibleContext) {
+                const verseNum = parseInt(
+                  verseElement.getAttribute("data-verse") || "0",
+                  10,
+                );
+                if (verseNum > 0) {
+                  // Combine verse from DOM with book/chapter from context
+                  setDetectedVerseContext({
+                    book: bibleContext.book,
+                    chapter: bibleContext.chapter,
+                    verses: [verseNum],
+                  });
+                  console.log("[TextHighlight] Detected verse context:", {
+                    book: bibleContext.book,
+                    chapter: bibleContext.chapter,
+                    verses: [verseNum],
+                  });
+                }
               }
             }
           } catch (err) {
@@ -580,6 +639,7 @@ export function TextHighlightTooltip({
       // Reset state before streaming new content
       setRootInsights([]);
       setPlainMeaning("");
+      setCurrentRootCardIndex(0);
       await generateRootTranslation(selectedText);
     }
   };
@@ -596,6 +656,7 @@ export function TextHighlightTooltip({
     setIsLoadingRoot(false);
     setRootInsights([]);
     setPlainMeaning("");
+    setCurrentRootCardIndex(0);
   };
 
   if (!position || !selectedText) {
@@ -768,11 +829,11 @@ export function TextHighlightTooltip({
           ) : (
             <>
               {/* Root Translation View */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {/* Back button */}
                 <button
                   onClick={handleBackToSynopsis}
-                  className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors mb-1"
+                  className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
                 >
                   <svg
                     className="w-3 h-3"
@@ -790,19 +851,6 @@ export function TextHighlightTooltip({
                   <span>Back to synopsis</span>
                 </button>
 
-                {/* Selected text for comparison */}
-                <div className="mb-3 pb-3 border-b border-white/5">
-                  <p className="text-[13px] text-neutral-300 leading-relaxed italic">
-                    "{selectedText}"
-                  </p>
-                  {detectedVerseContext && (
-                    <p className="text-[10px] text-neutral-500 mt-1">
-                      {detectedVerseContext.book} {detectedVerseContext.chapter}
-                      :{detectedVerseContext.verse} (KJV)
-                    </p>
-                  )}
-                </div>
-
                 {isLoadingRoot ? (
                   <div className="flex items-center gap-2 py-1.5">
                     <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
@@ -815,68 +863,155 @@ export function TextHighlightTooltip({
                   </div>
                 ) : rootInsights.length > 0 ? (
                   <div className="space-y-3">
-                    {/* What the roots reveal */}
-                    <div>
-                      <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                        What the roots reveal
-                      </h4>
-                      <div className="space-y-5">
-                        {rootInsights.map(
-                          ({
-                            word,
-                            original,
-                            strongsNumber,
-                            definition,
-                            insight,
-                          }) => (
-                            <div key={word} className="space-y-1.5">
-                              {/* Word header with Strong's number */}
-                              <div className="text-[13px]">
-                                <span className="font-semibold text-[#D4AF37]">
-                                  {word}
-                                </span>
-                                {original && (
-                                  <>
-                                    <span className="text-neutral-400 mx-1">
-                                      —
-                                    </span>
-                                    <span className="text-neutral-400 italic">
-                                      {original}
-                                    </span>
-                                  </>
-                                )}
-                                {strongsNumber && (
-                                  <span className="text-neutral-500 text-[11px] ml-2">
-                                    (Strong's {strongsNumber})
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Definition and insight */}
-                              <div className="space-y-2 text-[12px] leading-relaxed">
-                                {definition && (
-                                  <p className="text-neutral-300 italic">
-                                    {definition}
-                                  </p>
-                                )}
-                                {insight && (
-                                  <p className="text-neutral-200">{insight}</p>
-                                )}
-                              </div>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Direct Translation */}
-                    <div className="pt-2 border-t border-white/5">
+                    {/* Direct Translation - Now at the top */}
+                    <div className="pb-3 border-b border-white/5">
                       <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
                         Direct Translation
                       </h4>
                       <p className="text-[13px] text-neutral-200 leading-relaxed italic">
                         {plainMeaning}
                       </p>
+                    </div>
+
+                    {/* Root Word Carousel */}
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
+                        Root Words
+                      </h4>
+
+                      {/* Current card content */}
+                      {rootInsights[currentRootCardIndex] && (
+                        <div>
+                          {/* Card content */}
+                          <div className="space-y-2 py-2">
+                            {/* Word header with Strong's number */}
+                            <div className="text-[13px]">
+                              <span className="font-semibold text-[#D4AF37]">
+                                {rootInsights[currentRootCardIndex].word}
+                              </span>
+                              {rootInsights[currentRootCardIndex].original && (
+                                <>
+                                  <span className="text-neutral-400 mx-1">
+                                    —
+                                  </span>
+                                  <span className="text-neutral-400 italic">
+                                    {
+                                      rootInsights[currentRootCardIndex]
+                                        .original
+                                    }
+                                  </span>
+                                </>
+                              )}
+                              {rootInsights[currentRootCardIndex]
+                                .strongsNumber && (
+                                <span className="text-neutral-500 text-[11px] ml-2">
+                                  (Strong's{" "}
+                                  {
+                                    rootInsights[currentRootCardIndex]
+                                      .strongsNumber
+                                  }
+                                  )
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Definition and insight */}
+                            <div className="space-y-2 text-[12px] leading-relaxed">
+                              {rootInsights[currentRootCardIndex]
+                                .definition && (
+                                <p className="text-neutral-300 italic">
+                                  {
+                                    rootInsights[currentRootCardIndex]
+                                      .definition
+                                  }
+                                </p>
+                              )}
+                              {rootInsights[currentRootCardIndex].insight && (
+                                <p className="text-neutral-200">
+                                  {rootInsights[currentRootCardIndex].insight}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Navigation: Arrows + Dots */}
+                      <div className="flex items-center justify-center gap-3 pt-2">
+                        {/* Left arrow */}
+                        <button
+                          onClick={() =>
+                            setCurrentRootCardIndex(currentRootCardIndex - 1)
+                          }
+                          disabled={currentRootCardIndex === 0}
+                          className={`p-1 transition-colors ${
+                            currentRootCardIndex === 0
+                              ? "text-neutral-700 cursor-not-allowed"
+                              : "text-neutral-400 hover:text-neutral-200"
+                          }`}
+                          aria-label="Previous root word"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 19l-7-7 7-7"
+                            />
+                          </svg>
+                        </button>
+
+                        {/* Dot progression indicator */}
+                        <div className="flex gap-1.5">
+                          {rootInsights.map((_, index) => (
+                            <button
+                              key={index}
+                              onClick={() => setCurrentRootCardIndex(index)}
+                              className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                                index === currentRootCardIndex
+                                  ? "bg-[#D4AF37]"
+                                  : "bg-neutral-600 hover:bg-neutral-500"
+                              }`}
+                              aria-label={`Go to root word ${index + 1}`}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Right arrow */}
+                        <button
+                          onClick={() =>
+                            setCurrentRootCardIndex(currentRootCardIndex + 1)
+                          }
+                          disabled={
+                            currentRootCardIndex === rootInsights.length - 1
+                          }
+                          className={`p-1 transition-colors ${
+                            currentRootCardIndex === rootInsights.length - 1
+                              ? "text-neutral-700 cursor-not-allowed"
+                              : "text-neutral-400 hover:text-neutral-200"
+                          }`}
+                          aria-label="Next root word"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
