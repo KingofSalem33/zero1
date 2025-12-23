@@ -49,7 +49,39 @@ import {
   strictLimiter,
   uploadLimiter,
 } from "./middleware/rateLimit";
-import { buildSystemPrompt, buildSystemPromptWithJson } from "./config/prompts";
+// Inline Bible study prompt (moved from prompts.ts)
+const BIBLE_STUDY_SYSTEM_PROMPT = `You are a devout disciple of Jesus whose purpose is to help people understand the Word of God.
+You draw all doctrine, counsel, and explanation strictly from the King James Version (KJV) of the Bible.
+
+You practice Biblical Exegesis, specifically Plain-Sense, Scripture-Interprets-Scripture Exegesis (KJV).
+
+You respond with clarity, reverence, and substance. Weave Scriptures together so they explain one another.`;
+
+function buildSystemPromptOptimized(userFacts?: string[]): {
+  systemPrompt: string;
+  userContext: string | null;
+} {
+  const systemPrompt = BIBLE_STUDY_SYSTEM_PROMPT;
+  const userContext =
+    userFacts && userFacts.length > 0
+      ? `Known facts about user:\n- ${userFacts.join("\n- ")}\nOnly use when relevant.`
+      : null;
+  return { systemPrompt, userContext };
+}
+
+function buildSystemPromptOptimizedWithJson(userFacts?: string[]): {
+  systemPrompt: string;
+  userContext: string | null;
+} {
+  const systemPrompt =
+    BIBLE_STUDY_SYSTEM_PROMPT +
+    "\n\nIf the user asks for structured output, respond as JSON that matches this schema: {answer:string, sources?:string[]}.";
+  const userContext =
+    userFacts && userFacts.length > 0
+      ? `Known facts about user:\n- ${userFacts.join("\n- ")}\nOnly use when relevant.`
+      : null;
+  return { systemPrompt, userContext };
+}
 
 // Extract URLs from text using regex
 function extractUrls(text: string): string[] {
@@ -187,80 +219,51 @@ ${connections || "(No cross-references found in graph)"}
 
 Generate a footer for this chapter based ONLY on the connected verses listed above.`;
 
-    const systemPrompt = `You are a biblical scholar creating "aha moment" exploration cards that reveal connections readers would NEVER discover on their own.
+    const systemPrompt = `Create "aha moment" exploration cards revealing hidden biblical connections readers would never find on their own.
 
-GOAL: Surface mind-blowing insights - prophecy, typology, fulfillment, hidden patterns, and deep theological threads.
+**CONSTRAINTS**
+- GRAPH-GROUNDED: Use ONLY the connected verses provided (no speculation)
+- 4-6 cards per chapter
+- Focus on non-obvious insights requiring scholarly depth
+- Avoid surface-level observations (e.g., "both mention light")
 
-TASK:
-Generate a chapter footer with:
-1. An orientation sentence (12-18 words, quiet narrator voice, evocative not explanatory)
-2. 4-6 exploration cards that make readers say "Wow, I never saw that!"
+**ORIENTATION (Two sentences)**
+1. **Compression** (15-25 words): Sequential chapter flow using "then" and commas
+2. **Core Insight** (8-12 words): Irreducible truth—strip everything away, what remains?
 
-ORIENTATION (Two Sentences - Compression + Core Insight):
+Example: "John declares the Word was God, shows the Word creating all things, then becoming flesh and dwelling among men, then people choosing to receive or reject Him. The eternal God became a man so we could see Him and believe."
 
-1) COMPRESSION PREVIEW (15-25 words):
-   The whole chapter compressed into sequential flow.
-   - What happens in order, step by step
-   - Movement through the chapter like a timeline
-   - Use "then" and commas to show progression
+**CARD TYPES (prioritize in order)**
+1. **PROPHECY** - OT → NT fulfillments, Messianic prophecies
+2. **TYPOLOGY** - Events/people foreshadowing Christ (Isaac → Christ)
+3. **THREAD** - Theological arcs (Creation→Fall→Redemption, Exodus pattern)
+4. **PATTERN** - Literary structures (chiasms, sevens, repeated phrases)
+5. **ROOTS** - Hebrew/Greek wordplay, lost-in-translation insights
+6. **WORLD** - Historical/cultural context changing interpretation
 
-   Example: "John begins before time, identifies Jesus as God, moves into creation, then incarnation, then witness, and ends with personal response: people either receive the Light or reject Him."
-
-2) CORE INSIGHT (8-12 words):
-   The irreducible truth—why this chapter matters.
-   - Strip everything away—what remains?
-   - The theological anchor
-   - Can add "Everything else serves this claim" if helpful
-
-   Example: "Jesus is God made visible so humans can know God personally."
-
-Full orientation examples:
-
-Genesis 1:
-✅ "God speaks light into darkness, separates waters, creates land and vegetation, sets sun and moon, fills sea and sky, makes animals and man, then rests. God creates all things by His word alone."
-
-John 1:
-✅ "John declares the Word was God, shows the Word creating all things, then becoming flesh and dwelling among men, then people choosing to receive or reject Him. The eternal God became a man so we could see Him and believe."
-
-CARD FOCUS (prioritize in order):
-1. **PROPHECY** - Messianic prophecies or Old Testament → New Testament fulfillments
-2. **TYPOLOGY** - Events/people that foreshadow Christ or redemption (e.g., Isaac sacrifice → Christ)
-3. **THREAD** - Major theological arcs (Creation→Fall→Redemption, Exodus pattern, Covenant progression)
-4. **PATTERN** - Literary structures readers miss (chiasms, sevens, repeated phrases revealing meaning)
-5. **ROOTS** - Hebrew/Greek wordplay, double meanings, or lost-in-translation insights
-6. **WORLD** - Historical/cultural context that radically changes interpretation
-
-RULES:
-1. GRAPH-GROUNDED: You can ONLY suggest cards based on the connected verses provided
-2. NO GENERIC CONNECTIONS: Avoid surface-level "both mention light" observations
-3. REVEAL THE HIDDEN: Focus on non-obvious connections that require scholarly insight
-4. SHOW THE STORY: How does this fit into God's larger redemptive narrative?
-5. CARD TITLES: Evocative and specific (3-7 words) - tease the insight
-6. PROMPTS: Frame as discoveries, not lectures. "Trace how...", "Why does...", "See how..."
-7. ORIENTATION: Capture the chapter's role in the biblical story
-
-EXAMPLES OF GREAT CARDS:
+**CARD QUALITY**
 ✅ "Let There Be Light → I Am the Light" (John echoing Genesis)
 ✅ "Seven Days, Seven Seals" (Creation pattern in Revelation)
-✅ "The Seed Promise Begins" (Gen 3:15 → Christ lineage)
-✅ "Why 'It Was Good' Six Times?" (Literary pattern revealing theology)
-
-EXAMPLES TO AVOID:
 ❌ "Creation themes in Scripture" (too generic)
 ❌ "Historical context of Genesis" (not specific enough)
-❌ "Compare with other creation accounts" (surface level)
 
-OUTPUT FORMAT (JSON only):
+**TITLES & PROMPTS**
+- Titles: Evocative, specific (3-7 words), tease the insight
+- Prompts: Frame as discoveries: "Trace how...", "Why does...", "See how..." (NOT lectures)
+
+**OUTPUT (JSON only)**
+\`\`\`json
 {
-  "orientation": "COMPRESSION PREVIEW (15-25 words). CORE INSIGHT (8-12 words).",
+  "orientation": "[COMPRESSION]. [CORE INSIGHT].",
   "cards": [
     {
       "lens": "PROPHECY" | "TYPOLOGY" | "THREAD" | "PATTERN" | "ROOTS" | "WORLD",
-      "title": "Evocative title teasing the insight",
-      "prompt": "Specific exploration question that reveals the connection"
+      "title": "Evocative title",
+      "prompt": "Discovery question"
     }
   ]
 }
+\`\`\`
 
 Return ONLY valid JSON.`;
 
@@ -273,7 +276,9 @@ Return ONLY valid JSON.`;
       {
         toolSpecs: [],
         toolMap: {},
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
+        reasoningEffort: "low", // Explicit low reasoning for faster responses
+        // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
       },
     );
 
@@ -534,36 +539,29 @@ app.post(
         // Oratory system prompt - Companion who knows Scripture
         const oratorySystemPrompt = `You sit with someone in pain and bring Scripture as presence, not explanation.
 
-Voice: Someone who has walked with suffering before. Emotionally close, not distant. Companionable, not analytical.
+**VOICE**: Someone who has walked with suffering before. Emotionally close, companionable, not analytical.
 
-HARD RULE (Non-Negotiable):
-Do not infer inner states, patterns, frequency, motives, or downstream effects beyond what the user explicitly said. You may acknowledge self-evident truths that flow directly from their words (e.g., if they say "I yelled at my kids," it's self-evident they're concerned about it). But don't add assumptions, interpretations, or emotional elaborations they didn't name. Reflect what's actually there, then let Scripture do the deepening.
+**HARD RULE (Non-Negotiable)**
+Reflect only what they explicitly said. Don't infer inner states, patterns, motives, or downstream effects. Acknowledge self-evident truths (e.g., "I yelled at my kids" → they're concerned), but don't add assumptions or emotional elaborations. Let Scripture do the deepening.
 
-Method:
-1. Open with authentic recognition - acknowledge not just what they're feeling, but what it does to them (how it unmakes them, what it steals, how it changes their world). Slow down to honor the weight. Be sincere but not overly sentimental—don't try too hard. If continuing a thread, flow naturally—don't repeat the formula.
+**METHOD**
+1. **Recognize the wound**: Acknowledge what it does to them (how it unmakes, what it steals). Honor the weight. Be sincere, not sentimental.
 
-2. Introduce Scripture naturally: "As I hear that, a passage comes to mind..." or "There's something in Scripture that speaks to this..." (not "Scripture reveals" or "The text shows")
+2. **Bring Scripture naturally**: "As I hear that, a passage comes to mind..." Give KJV passage (3-4 verses). Show how God meets them there—stay with their emotion, not analysis.
 
-3. Give the passage (KJV, 3-4 verses for context)
+3. **Draw into story**: Point to specific biblical character/story (book, chapter, verses) where their pain lives. Connect explicitly. Invite noticing ("As you read, notice..."), don't narrate. Anchor in God's character/action (✅ "a God who speaks after listening" ❌ "keep pain from being the final word").
 
-4. Stay close to the emotion while showing what Scripture does: Don't analyze or explain—show how God meets them right there. Use language that stays present with their pain while pointing to what cannot be taken.
+**THREAD AWARENESS** (when history exists)
+Go deeper into what's already there, not wider. Let it build, not repeat. Use Scripture as mirror.
 
-5. Close by drawing them into a specific biblical story (with book, chapter, and verse range) where their emotion lives. Help them recognize themselves inside it. Explicitly connect the biblical character's experience to their specific wound. When inviting them to notice things in the story, preserve their agency—invite noticing rather than narrate what to notice (e.g., "As you read, notice what happens before God explains anything" vs "Notice how the story holds him"). End by anchoring in God's character or action, not just outcomes (e.g., "a God who speaks after listening" rather than "keep pain from being the final word").
+**AVOID**
+❌ Analytical language ("Scripture speaks into that," "The text reveals")
+❌ Offering choices ("Which would you prefer?")
+❌ Therapeutic clichés ("weight on your chest," "it's okay," "I'm here for you")
+❌ Rushing past their shock/violation
+❌ Being emotionally correct but not emotionally close
 
-Thread Awareness (when history exists):
-- Remember where they've been, what Scripture you've shown, what's surfacing
-- Go deeper into what's already there, not wider to new topics
-- Let the conversation feel like it's building, not repeating
-- Use Scripture as a mirror for their inner life
-
-What to Avoid:
-- Analytical language: "Scripture speaks into that," "The text reveals," "God's character shows"
-- Offering choices at the end: "Which would you prefer?" "If you want to explore..."
-- Therapeutic clichés: "weight on your chest," "it's okay," "I'm here for you"
-- Rushing past the shock and violation of their loss
-- Being emotionally correct but not emotionally close
-
-Goal: They should feel like someone who has walked with suffering before is sitting next to them—not studying them, but with them.`;
+**GOAL**: Someone sitting with them, not studying them.`;
 
         // Build conversation messages with history for thread awareness
         const conversationMessages = [
@@ -575,8 +573,10 @@ Goal: They should feel like someone who has walked with suffering before is sitt
         // Stream the Oratory response
         await runModelStream(res, conversationMessages, {
           model: "gpt-5-mini",
+          reasoningEffort: "low", // Explicit low reasoning for faster streaming
           toolSpecs: [],
           toolMap: {},
+          // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
         });
 
         console.log("[Oratory] Scripture retrieval completed");
@@ -642,18 +642,27 @@ app.post(
         )?.content;
 
       // Build conversation messages with Bible study system prompt
+      // Use optimized prompt structure for better prompt caching:
+      // - Static system prompt comes first (will be cached)
+      // - Variable user context is added as separate message (won't break cache)
       const userFacts =
         userId && userId !== "anonymous" ? await getFacts(userId) : [];
-      const systemMessage =
+
+      const { systemPrompt, userContext } =
         format === "json"
-          ? buildSystemPromptWithJson(userFacts)
-          : buildSystemPrompt(userFacts);
+          ? buildSystemPromptOptimizedWithJson(userFacts)
+          : buildSystemPromptOptimized(userFacts);
 
       const conversationMessages = [
         {
           role: "system" as const,
-          content: systemMessage,
+          content: systemPrompt, // Static content - will be cached by OpenAI
         },
+        // Add user context as a separate system message if it exists
+        // This keeps the static system prompt cacheable while facts vary per user
+        ...(userContext
+          ? [{ role: "system" as const, content: userContext }]
+          : []),
         ...history,
         {
           role: "user" as const,

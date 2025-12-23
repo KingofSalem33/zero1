@@ -1,0 +1,14 @@
+Fix: Bible book selection dropdown not interactive
+
+This commit addresses the issue where the Bible book selection dropdown was not interactive, preventing users from selecting books or scrolling through the list.
+
+The problem was diagnosed as a complex interaction of z-index and stacking contexts, specifically exacerbated by the `backdrop-blur-sm` CSS property. The dropdown, despite having a high z-index, was not correctly capturing pointer events due to these stacking context issues.
+
+The fix involved several steps:
+1.  **Resolved race condition:** Moved book selection logic from `onClick` to `onMouseDown` to prevent the dropdown from closing before a selection could be registered. (This was the first fix attempt).
+2.  **Removed `overflow-hidden`:** Removed `overflow-hidden` from the `<main>` element in `App.tsx` to ensure the dropdown was not being clipped. (Second fix attempt).
+3.  **Explicit Z-index management:** Implemented a more robust z-index strategy in `App.tsx` to ensure the active view was always on top. (Third fix attempt).
+4.  **Conditional Rendering:** Changed `App.tsx` to conditionally render only the active view, completely removing inactive components from the DOM to prevent any interference. (Fourth fix attempt).
+5.  **Removed `backdrop-blur-sm`:** Removed the `backdrop-blur-sm` class from the header div in `BibleReader.tsx`. This was the ultimate fix, as this property was creating a new stacking context that caused pointer events to "fall through" the dropdown.
+
+This series of changes, culminating in the removal of `backdrop-blur-sm`, has resolved the issue, making the Bible book selection dropdown fully interactive.

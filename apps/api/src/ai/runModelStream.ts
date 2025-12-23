@@ -206,6 +206,11 @@ export interface RunModelStreamOptions {
   model?: string;
   reasoningEffort?: "low" | "medium" | "high";
   verbosity?: "low" | "medium" | "high";
+  // Prompt caching optimization (OpenAI API)
+  // Note: Prompt caching is automatic for prompts > 1024 tokens
+  // These parameters are for advanced optimization
+  promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
+  promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
 }
 
 /**
@@ -230,6 +235,8 @@ export async function runModelStream(
     model = ENV.OPENAI_MODEL_NAME,
     reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
+    promptCacheRetention, // Optional: "24h" for extended cache retention
+    promptCacheKey, // Optional: Custom key for cache routing
   } = options;
 
   // Set reasoning effort based on model capabilities
@@ -357,6 +364,11 @@ export async function runModelStream(
             effort: effectiveReasoningEffort,
           },
         }),
+        // Note: OpenAI prompt caching parameters (if supported by SDK version)
+        // Prompt caching is automatic for prompts > 1024 tokens
+        // These parameters are for advanced optimization when supported
+        ...(promptCacheRetention && { prompt_cache_retention: promptCacheRetention }),
+        ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
       });
 
       let currentIterationContent = ""; // Content from THIS iteration only

@@ -139,6 +139,11 @@ export interface RunModelOptions {
       schema: Record<string, unknown>;
     };
   };
+  // Prompt caching optimization (OpenAI API)
+  // Note: Prompt caching is automatic for prompts > 1024 tokens
+  // These parameters are for advanced optimization
+  promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
+  promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
 }
 
 export interface RunModelResult {
@@ -162,6 +167,8 @@ export async function runModel(
     onToolResult,
     onToolError,
     responseFormat,
+    promptCacheRetention, // Optional: "24h" for extended cache retention
+    promptCacheKey, // Optional: Custom key for cache routing
   } = options;
 
   // Set reasoning effort based on model capabilities
@@ -230,7 +237,28 @@ export async function runModel(
             effort: effectiveReasoningEffort,
           },
         }),
+        // Note: OpenAI prompt caching parameters (if supported by SDK version)
+        // Prompt caching is automatic for prompts > 1024 tokens
+        // These parameters are for advanced optimization when supported
+        ...(promptCacheRetention && { prompt_cache_retention: promptCacheRetention }),
+        ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
       });
+
+      // Log prompt cache performance if available
+      if ((response as any).usage?.prompt_tokens_details?.cached_tokens) {
+        const cached = (response as any).usage.prompt_tokens_details.cached_tokens;
+        const total = (response as any).usage?.prompt_tokens || 0;
+        const cacheHitRate = total > 0 ? ((cached / total) * 100).toFixed(1) : "0";
+        logger.info(
+          {
+            cached_tokens: cached,
+            total_prompt_tokens: total,
+            cache_hit_rate: `${cacheHitRate}%`,
+            model,
+          },
+          "Prompt cache hit",
+        );
+      }
 
       // Extract assistant message from output array
       const assistantMessage = response.output.find(

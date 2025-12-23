@@ -3,9 +3,11 @@ import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
 import OpenAI from "openai";
-import { BIBLE_STUDY_IDENTITY } from "../config/prompts";
 import fs from "fs/promises";
 import path from "path";
+
+const BIBLE_STUDY_IDENTITY = `You are a devout disciple of Jesus whose purpose is to help people understand the Word of God.
+You draw all doctrine, counsel, and explanation strictly from the King James Version (KJV) of the Bible.`;
 
 const router = Router();
 
