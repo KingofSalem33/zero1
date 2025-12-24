@@ -14,11 +14,36 @@
 import { supabase } from "../db";
 import type { Verse } from "./graphWalker";
 import type { ThreadNode, VisualEdge, VisualContextBundle } from "./types";
+import OpenAI from "openai";
+import { ENV } from "../env";
 
 interface BuildTreeOptions {
   maxDepth?: number; // How many levels deep to traverse (default: 6)
   maxNodes?: number; // Total node limit (default: 100)
   maxChildrenPerNode?: number; // Limit children per verse to prevent explosion (default: 5)
+  userQuery?: string; // Optional: user's question for smart reference scoring
+  similarityThreshold?: number; // Minimum similarity score to follow a reference (default: 0.4)
+}
+
+/**
+ * Compute cosine similarity between two vectors
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  if (normA === 0 || normB === 0) return 0;
+
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 /**
@@ -29,14 +54,47 @@ export async function buildReferenceTree(
   anchorId: number,
   options: BuildTreeOptions = {},
 ): Promise<VisualContextBundle> {
-  const { maxDepth = 6, maxNodes = 100, maxChildrenPerNode = 5 } = options;
+  const {
+    maxDepth = 6,
+    maxNodes = 100,
+    maxChildrenPerNode = 5,
+    userQuery,
+    similarityThreshold = 0.4,
+  } = options;
 
   console.log(`[Reference Tree] Building genealogy from verse ${anchorId}`);
   console.log(
     `[Reference Tree] Limits: depth=${maxDepth}, nodes=${maxNodes}, children/node=${maxChildrenPerNode}`,
   );
+  if (userQuery) {
+    console.log(
+      `[Reference Tree] Smart scoring enabled with threshold=${similarityThreshold}`,
+    );
+  }
 
   const startTime = Date.now();
+
+  // Generate query embedding if user query provided
+  let queryEmbedding: number[] | null = null;
+  if (userQuery && ENV.OPENAI_API_KEY) {
+    try {
+      const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+      const response = await client.embeddings.create({
+        model: "text-embedding-3-small",
+        input: userQuery,
+        dimensions: 1536,
+      });
+      queryEmbedding = response.data[0].embedding;
+      console.log(
+        `[Reference Tree] Generated query embedding for smart scoring`,
+      );
+    } catch (error) {
+      console.error(
+        "[Reference Tree] Failed to generate query embedding:",
+        error,
+      );
+    }
+  }
 
   // ========================================
   // STEP 1: Fetch anchor verse
@@ -220,12 +278,73 @@ export async function buildReferenceTree(
       if (!visited.has(verseId)) continue;
 
       const refs = crossRefs.get(verseId) || [];
-      const limitedRefs = refs.slice(0, maxChildrenPerNode);
+      let limitedRefs = refs;
 
-      if (refs.length > maxChildrenPerNode) {
-        console.log(
-          `[Reference Tree] Verse ${verseId} has ${refs.length} refs, limiting to ${maxChildrenPerNode}`,
-        );
+      // If we have a query embedding, score and filter references
+      if (queryEmbedding && refs.length > 0) {
+        // Fetch embeddings for all potential reference verses
+        const { data: refVerses, error: refError } = await supabase
+          .from("verses")
+          .select("id, embedding")
+          .in("id", refs);
+
+        if (!refError && refVerses) {
+          // Score each reference by similarity
+          const scoredRefs: Array<{ id: number; similarity: number }> = [];
+
+          for (const refVerse of refVerses) {
+            if (refVerse.embedding) {
+              try {
+                const embedding =
+                  typeof refVerse.embedding === "string"
+                    ? JSON.parse(refVerse.embedding)
+                    : refVerse.embedding;
+
+                const similarity = cosineSimilarity(queryEmbedding, embedding);
+                scoredRefs.push({ id: refVerse.id, similarity });
+              } catch {
+                // Skip if embedding parse fails
+                scoredRefs.push({ id: refVerse.id, similarity: 0 });
+              }
+            } else {
+              scoredRefs.push({ id: refVerse.id, similarity: 0 });
+            }
+          }
+
+          // Filter by threshold and sort by similarity
+          const filteredRefs = scoredRefs
+            .filter((r) => r.similarity >= similarityThreshold)
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, maxChildrenPerNode);
+
+          limitedRefs = filteredRefs.map((r) => r.id);
+
+          if (filteredRefs.length < refs.length) {
+            const kept = filteredRefs.length;
+            const filtered = refs.length - kept;
+            console.log(
+              `[Reference Tree] Verse ${verseId}: ${refs.length} refs → kept ${kept} above ${similarityThreshold} threshold (filtered ${filtered})`,
+            );
+            if (filteredRefs.length > 0) {
+              const topSim = (filteredRefs[0].similarity * 100).toFixed(1);
+              console.log(
+                `[Reference Tree]   Top reference similarity: ${topSim}%`,
+              );
+            }
+          }
+        } else {
+          // Fallback to naive slicing if embedding fetch fails
+          limitedRefs = refs.slice(0, maxChildrenPerNode);
+        }
+      } else {
+        // No query embedding - use naive slicing
+        limitedRefs = refs.slice(0, maxChildrenPerNode);
+
+        if (refs.length > maxChildrenPerNode) {
+          console.log(
+            `[Reference Tree] Verse ${verseId} has ${refs.length} refs, limiting to ${maxChildrenPerNode}`,
+          );
+        }
       }
 
       for (const refId of limitedRefs) {

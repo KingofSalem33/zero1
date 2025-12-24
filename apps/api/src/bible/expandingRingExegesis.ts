@@ -3,21 +3,18 @@
  * KJV-only exegesis over a Bible graph, optimized for user clarity (not graph order).
  */
 
-import { runModel } from "../ai/runModel";
 import { runModelStream } from "../ai/runModelStream";
 import type { Response } from "express";
-import {
-  buildContextBundle,
-  getVerseId,
-  formatVerse,
-  type ContextBundle,
-  type Verse,
-} from "./graphWalker";
+import { getVerseId, type Verse } from "./graphWalker";
 import { searchVerses } from "./bibleService";
 import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
 import { buildReferenceTree } from "./referenceGenealogy";
+import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
+import { supabase } from "../db";
+import OpenAI from "openai";
+import { ENV } from "../env";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -39,6 +36,7 @@ export interface ReferenceTreeNode {
   chapter: number;
   verse: number;
   text: string;
+  similarity?: number; // Semantic similarity to user query (0-1)
 }
 
 export interface ReferenceTreeEdge {
@@ -70,10 +68,253 @@ const DEFAULT_TREE_OPTIONS = {
 };
 
 /**
- * Resolve the anchor verse from the user prompt.
- * Order: explicit reference → concept mapping → keyword search.
+ * Compute cosine similarity between two vectors
  */
-async function resolveAnchor(userPrompt: string): Promise<number | null> {
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  if (normA === 0 || normB === 0) return 0;
+
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+/**
+ * Rank verses in the reference tree by semantic similarity to user query.
+ * Adds similarity scores to each node and sorts within depth levels.
+ *
+ * @param visualBundle - The reference tree to rank
+ * @param userQuery - The user's original question
+ * @returns The same bundle with similarity scores added and nodes sorted by relevance
+ */
+export async function rankVersesBySimilarity(
+  visualBundle: ReferenceVisualBundle,
+  userQuery: string,
+): Promise<ReferenceVisualBundle> {
+  if (!visualBundle.nodes.length || !ENV.OPENAI_API_KEY) {
+    console.log("[Verse Ranking] Skipping ranking (no nodes or no API key)");
+    return visualBundle;
+  }
+
+  const startTime = Date.now();
+  console.log(
+    `[Verse Ranking] Ranking ${visualBundle.nodes.length} verses by similarity to query`,
+  );
+
+  try {
+    // Step 1: Generate embedding for user query
+    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+    const response = await client.embeddings.create({
+      model: "text-embedding-3-small",
+      input: userQuery,
+      dimensions: 1536,
+    });
+    const queryEmbedding = response.data[0].embedding;
+
+    // Step 2: Fetch embeddings for all verses in the bundle
+    const verseIds = visualBundle.nodes.map((n) => n.id);
+    const { data: verses, error } = await supabase
+      .from("verses")
+      .select("id, embedding")
+      .in("id", verseIds);
+
+    if (error || !verses) {
+      console.error("[Verse Ranking] Failed to fetch verse embeddings:", error);
+      return visualBundle;
+    }
+
+    // Create a map of verse ID to embedding
+    const embeddingMap = new Map<number, number[]>();
+    for (const verse of verses) {
+      if (verse.embedding) {
+        try {
+          const embedding =
+            typeof verse.embedding === "string"
+              ? JSON.parse(verse.embedding)
+              : verse.embedding;
+          embeddingMap.set(verse.id, embedding);
+        } catch {
+          console.error(
+            `[Verse Ranking] Failed to parse embedding for verse ${verse.id}`,
+          );
+        }
+      }
+    }
+
+    // Step 3: Compute similarity for each node
+    let scoredCount = 0;
+    for (const node of visualBundle.nodes) {
+      const verseEmbedding = embeddingMap.get(node.id);
+      if (verseEmbedding) {
+        node.similarity = cosineSimilarity(queryEmbedding, verseEmbedding);
+        scoredCount++;
+      } else {
+        node.similarity = 0; // No embedding available
+      }
+    }
+
+    // Step 4: Sort nodes within each depth level by similarity (highest first)
+    // This preserves the tree structure while prioritizing relevant verses
+    const nodesByDepth: Record<number, ReferenceTreeNode[]> = {};
+    for (const node of visualBundle.nodes) {
+      (nodesByDepth[node.depth] ??= []).push(node);
+    }
+
+    for (const depth in nodesByDepth) {
+      nodesByDepth[depth].sort(
+        (a, b) => (b.similarity || 0) - (a.similarity || 0),
+      );
+    }
+
+    // Reconstruct nodes array with sorted nodes
+    visualBundle.nodes = Object.values(nodesByDepth).flat();
+
+    const elapsed = Date.now() - startTime;
+    console.log(
+      `[Verse Ranking] ✅ Ranked ${scoredCount}/${visualBundle.nodes.length} verses in ${elapsed}ms`,
+    );
+
+    if (visualBundle.nodes.length > 0) {
+      const topNode = visualBundle.nodes[0];
+      console.log(
+        `[Verse Ranking] Top verse: ${topNode.book_name} ${topNode.chapter}:${topNode.verse} (${((topNode.similarity || 0) * 100).toFixed(1)}% match)`,
+      );
+    }
+
+    return visualBundle;
+  } catch (error) {
+    console.error("[Verse Ranking] Ranking failed:", error);
+    return visualBundle; // Return unranked on error
+  }
+}
+
+/**
+ * Remove duplicate/parallel passages from the reference tree.
+ * Detects verses with high semantic similarity (>92%) and keeps only the most relevant.
+ *
+ * @param visualBundle - The reference tree to deduplicate
+ * @returns The bundle with duplicates removed
+ */
+async function deduplicateVerses(
+  visualBundle: ReferenceVisualBundle,
+): Promise<ReferenceVisualBundle> {
+  if (visualBundle.nodes.length < 2) {
+    return visualBundle; // Nothing to deduplicate
+  }
+
+  const startTime = Date.now();
+  console.log(
+    `[Deduplication] Checking ${visualBundle.nodes.length} verses for duplicates...`,
+  );
+
+  const DUPLICATE_THRESHOLD = 0.92; // 92% similarity = likely parallel passage
+  const duplicateIds = new Set<number>();
+
+  // Fetch embeddings for all verses
+  const verseIds = visualBundle.nodes.map((n) => n.id);
+  const { data: verses, error } = await supabase
+    .from("verses")
+    .select("id, embedding")
+    .in("id", verseIds);
+
+  if (error || !verses) {
+    console.error("[Deduplication] Failed to fetch embeddings:", error);
+    return visualBundle; // Return unchanged on error
+  }
+
+  // Build embedding map
+  const embeddingMap = new Map<number, number[]>();
+  for (const verse of verses) {
+    if (verse.embedding) {
+      try {
+        const embedding =
+          typeof verse.embedding === "string"
+            ? JSON.parse(verse.embedding)
+            : verse.embedding;
+        embeddingMap.set(verse.id, embedding);
+      } catch {
+        // Skip if embedding parse fails
+      }
+    }
+  }
+
+  // Compare all pairs
+  for (let i = 0; i < visualBundle.nodes.length; i++) {
+    if (duplicateIds.has(visualBundle.nodes[i].id)) continue;
+
+    const node1 = visualBundle.nodes[i];
+    const emb1 = embeddingMap.get(node1.id);
+    if (!emb1) continue;
+
+    for (let j = i + 1; j < visualBundle.nodes.length; j++) {
+      if (duplicateIds.has(visualBundle.nodes[j].id)) continue;
+
+      const node2 = visualBundle.nodes[j];
+      const emb2 = embeddingMap.get(node2.id);
+      if (!emb2) continue;
+
+      const similarity = cosineSimilarity(emb1, emb2);
+
+      if (similarity >= DUPLICATE_THRESHOLD) {
+        // These are duplicates/parallels
+        // Keep the one with higher relevance to query (or first if no scores)
+        const keep =
+          (node1.similarity || 0) >= (node2.similarity || 0) ? node1 : node2;
+        const remove = keep === node1 ? node2 : node1;
+
+        duplicateIds.add(remove.id);
+        console.log(
+          `[Deduplication] Found parallel: ${node1.book_name} ${node1.chapter}:${node1.verse} ≈ ` +
+            `${node2.book_name} ${node2.chapter}:${node2.verse} (${(similarity * 100).toFixed(1)}% similar) - ` +
+            `Keeping ${keep.book_name} ${keep.chapter}:${keep.verse}`,
+        );
+      }
+    }
+  }
+
+  // Filter out duplicates
+  const originalCount = visualBundle.nodes.length;
+  visualBundle.nodes = visualBundle.nodes.filter(
+    (n) => !duplicateIds.has(n.id),
+  );
+
+  // Also remove edges that reference removed nodes
+  visualBundle.edges = visualBundle.edges.filter(
+    (e) => !duplicateIds.has(e.from) && !duplicateIds.has(e.to),
+  );
+
+  const elapsed = Date.now() - startTime;
+  const removedCount = originalCount - visualBundle.nodes.length;
+
+  if (removedCount > 0) {
+    console.log(
+      `[Deduplication] ✅ Removed ${removedCount} duplicate(s) in ${elapsed}ms ` +
+        `(${visualBundle.nodes.length} verses remaining)`,
+    );
+  } else {
+    console.log(`[Deduplication] No duplicates found (${elapsed}ms)`);
+  }
+
+  return visualBundle;
+}
+
+/**
+ * Resolve multiple anchor verses from the user prompt for multi-perspective synthesis.
+ * Returns top N semantically similar verses when no explicit reference is given.
+ */
+async function resolveMultipleAnchors(
+  userPrompt: string,
+  maxAnchors: number = 3,
+): Promise<number[]> {
   // Step 1: Check for explicit reference (e.g., "John 3:16")
   const explicitRef = parseExplicitReference(userPrompt);
   if (explicitRef) {
@@ -82,7 +323,12 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
       explicitRef.chapter,
       explicitRef.verse,
     );
-    if (anchorId) return anchorId;
+    if (anchorId) {
+      console.log(
+        `[Multi-Anchor] ✅ Using explicit reference: ${explicitRef.book} ${explicitRef.chapter}:${explicitRef.verse}`,
+      );
+      return [anchorId]; // Explicit reference = single anchor
+    }
   }
 
   // Step 2: Check for known concept references
@@ -95,121 +341,146 @@ async function resolveAnchor(userPrompt: string): Promise<number | null> {
         parsedConcept.chapter,
         parsedConcept.verse,
       );
-      if (anchorId) return anchorId;
+      if (anchorId) {
+        console.log(
+          `[Multi-Anchor] ✅ Using concept mapping: ${parsedConcept.book} ${parsedConcept.chapter}:${parsedConcept.verse}`,
+        );
+        return [anchorId]; // Concept mapping = single anchor
+      }
     }
   }
 
-  // Step 3: Ask LLM directly for the best anchor verse reference
+  // Step 3: Use semantic search to find multiple relevant verses
   console.log(
-    `[Expanding Ring] Asking LLM for anchor verse for: "${userPrompt}"`,
+    `[Multi-Anchor] Using semantic search for top ${maxAnchors} anchor verses: "${userPrompt}"`,
   );
 
-  const directPrompt = {
-    system: `You are a Bible reference expert for the King James Bible.
+  try {
+    const anchorIds = await findMultipleAnchorVerses(userPrompt, maxAnchors);
 
-TASK:
-Given a user's question about the Bible, identify the SINGLE BEST verse that directly addresses their question or describes the event they're asking about.
+    if (anchorIds.length > 0) {
+      console.log(
+        `[Multi-Anchor] ✅ Found ${anchorIds.length} anchors via semantic search`,
+      );
+      return anchorIds;
+    }
 
-RULES:
-1. Think carefully about what verse most directly answers the question
-2. For events (e.g., "Peter the rock"), find the verse where that event/statement occurs
-3. Return ONLY the verse reference in this exact format: Book Chapter:Verse
-4. Examples: "Matthew 16:18", "John 3:16", "Genesis 1:1"
-5. If you cannot determine a good verse, return "UNKNOWN"
+    console.warn(
+      `[Multi-Anchor] ⚠️  Semantic search found no results, falling back to single anchor`,
+    );
+  } catch (error) {
+    console.error("[Multi-Anchor] Semantic search failed:", error);
+  }
 
-Return ONLY the verse reference, nothing else.`,
+  // Step 4: Fallback - use single anchor resolution
+  const singleAnchor = await resolveAnchor(userPrompt);
+  return singleAnchor ? [singleAnchor] : [];
+}
 
-    user: `USER QUESTION: "${userPrompt}"
+/**
+ * Resolve the anchor verse from the user prompt.
+ * Order: explicit reference → concept mapping → semantic search → keyword search fallback.
+ */
+async function resolveAnchor(userPrompt: string): Promise<number | null> {
+  // Step 1: Check for explicit reference (e.g., "John 3:16")
+  const explicitRef = parseExplicitReference(userPrompt);
+  if (explicitRef) {
+    const anchorId = await getVerseId(
+      explicitRef.book,
+      explicitRef.chapter,
+      explicitRef.verse,
+    );
+    if (anchorId) {
+      console.log(
+        `[Expanding Ring] ✅ Using explicit reference: ${explicitRef.book} ${explicitRef.chapter}:${explicitRef.verse}`,
+      );
+      return anchorId;
+    }
+  }
 
-What is the best KJV verse to anchor the answer to this question?
-Return ONLY the verse reference (e.g., "Matthew 16:18"):`,
-  };
+  // Step 2: Check for known concept references
+  const conceptRef = matchConcept(userPrompt);
+  if (conceptRef) {
+    const parsedConcept = parseExplicitReference(conceptRef);
+    if (parsedConcept) {
+      const anchorId = await getVerseId(
+        parsedConcept.book,
+        parsedConcept.chapter,
+        parsedConcept.verse,
+      );
+      if (anchorId) {
+        console.log(
+          `[Expanding Ring] ✅ Using concept mapping: ${parsedConcept.book} ${parsedConcept.chapter}:${parsedConcept.verse}`,
+        );
+        return anchorId;
+      }
+    }
+  }
+
+  // Step 3: Use semantic search (embeddings) for best match
+  console.log(
+    `[Expanding Ring] Using semantic search for anchor verse: "${userPrompt}"`,
+  );
 
   try {
-    // Use mini for intelligent verse lookup
-    const result = await runModel(
-      [
-        { role: "system", content: directPrompt.system },
-        { role: "user", content: directPrompt.user },
-      ],
-      {
-        toolSpecs: [],
-        toolMap: {},
-        model: "gpt-5-mini",
-        reasoningEffort: "low", // Explicit low reasoning for faster responses
-        // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
-      },
-    );
+    const anchorId = await findAnchorVerse(userPrompt);
 
-    const llmReference = result.text.trim();
-    console.log(`[Expanding Ring] LLM suggested anchor: "${llmReference}"`);
-
-    // Try to parse the LLM's suggestion
-    if (llmReference && llmReference !== "UNKNOWN") {
-      const parsed = parseExplicitReference(llmReference);
-      if (parsed) {
-        const anchorId = await getVerseId(
-          parsed.book,
-          parsed.chapter,
-          parsed.verse,
-        );
-        if (anchorId) {
-          console.log(
-            `[Expanding Ring] ✅ Using LLM-suggested anchor: ${parsed.book} ${parsed.chapter}:${parsed.verse}`,
-          );
-          return anchorId;
-        }
-      }
+    if (anchorId) {
+      console.log(`[Expanding Ring] ✅ Found anchor via semantic search`);
+      return anchorId;
     }
 
-    // Fallback: Use keyword search if LLM suggestion didn't work
+    // If semantic search fails, fall back to keyword search
     console.warn(
-      `[Expanding Ring] ⚠️  LLM suggestion failed, falling back to keyword search`,
+      `[Expanding Ring] ⚠️  Semantic search found no results, falling back to keyword search`,
     );
-    const keywords = userPrompt
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 3)
-      .slice(0, 5);
-
-    if (!keywords.length) return null;
-
-    const candidates = await searchVerses(keywords, 1);
-    if (!candidates.length) return null;
-
-    const best = candidates[0];
-    let bookAbbrev = best.book.toLowerCase();
-
-    for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
-      if (
-        typeof fullName === "string" &&
-        fullName.toLowerCase() === bookAbbrev
-      ) {
-        console.log(
-          `[Expanding Ring] Matched full name "${fullName}" to abbrev "${abbrev}"`,
-        );
-        bookAbbrev = abbrev.toLowerCase();
-        break;
-      }
-    }
-
-    if (bookAbbrev === best.book.toLowerCase()) {
-      const validAbbrev = Object.keys(BOOK_NAMES).find(
-        (k) => k.toLowerCase() === bookAbbrev,
-      );
-      if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
-    }
-
-    console.log(
-      `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${best.chapter}, verse=${best.verse}`,
-    );
-    const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
-    return anchorId ?? null;
   } catch (error) {
-    console.error("[Expanding Ring] LLM anchor suggestion failed:", error);
-    // Final fallback: return null
-    return null;
+    console.error("[Expanding Ring] Semantic search failed:", error);
+    console.log("[Expanding Ring] Falling back to keyword search");
   }
+
+  // Step 4: Fallback - Use keyword search
+  const keywords = userPrompt
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 5);
+
+  if (!keywords.length) return null;
+
+  const candidates = await searchVerses(keywords, 1);
+  if (!candidates.length) return null;
+
+  const best = candidates[0];
+  let bookAbbrev = best.book.toLowerCase();
+
+  for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+    if (typeof fullName === "string" && fullName.toLowerCase() === bookAbbrev) {
+      console.log(
+        `[Expanding Ring] Matched full name "${fullName}" to abbrev "${abbrev}"`,
+      );
+      bookAbbrev = abbrev.toLowerCase();
+      break;
+    }
+  }
+
+  if (bookAbbrev === best.book.toLowerCase()) {
+    const validAbbrev = Object.keys(BOOK_NAMES).find(
+      (k) => k.toLowerCase() === bookAbbrev,
+    );
+    if (validAbbrev) bookAbbrev = validAbbrev.toLowerCase();
+  }
+
+  console.log(
+    `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${best.chapter}, verse=${best.verse}`,
+  );
+  const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
+
+  if (anchorId) {
+    console.log(`[Expanding Ring] ✅ Using keyword search fallback`);
+  }
+
+  return anchorId ?? null;
 }
 
 /**
@@ -279,49 +550,6 @@ Distinct person ("with God"), yet unified essence ("was God"). This is not contr
 }
 
 /**
- * Ring-based context for the LLM.
- * Rings are for context, not required narrative order.
- */
-function generateUserMessage(
-  userPrompt: string,
-  bundle: ContextBundle,
-): string {
-  const formatRing = (verses: Verse[]) =>
-    verses.map((v) => formatVerse(v)).join("\n");
-
-  return `USER QUESTION:
-"${userPrompt}"
-
-Your goal is to give the clearest, most accurate teaching for the reader's question, even if that means ignoring some verses or rearranging them.
-
----
-BIBLE DATA (KJV)
----
-
-== ANCHOR PASSAGE (Core Text) ==
-${formatRing(bundle.ring0)}
-
-== NEAR WITNESSES (Most Closely Linked) ==
-${bundle.ring1.length ? formatRing(bundle.ring1) : "(none provided)"}
-
-== SUPPORTING WITNESSES (Additional Light) ==
-${bundle.ring2.length ? formatRing(bundle.ring2) : "(none provided)"}
-
-== DISTANT ECHOES (Broader Canonical Parallels) ==
-${bundle.ring3.length ? formatRing(bundle.ring3) : "(none provided)"}
-
-GUIDANCE FOR HOW TO USE THIS DATA:
-- Treat these verses as a "cloud of witnesses," not a script you must follow.
-- You are free to:
-  - Focus only on the most relevant verses
-  - Ignore verses that do not add clarity
-  - Arrange verses in any order that best answers the question
-- Always make the anchor passage the center of your explanation.
-
-First, answer the reader's question in a clear, user-facing way, anchored in the anchor passage. Then, deepen that answer by weaving in the most relevant witnesses from above.`;
-}
-
-/**
  * Genealogy tree context for the LLM.
  * Depth is informative, not prescriptive for order.
  */
@@ -348,10 +576,13 @@ No cross-reference data was found for this anchor.`;
   const formatBlock = (label: string, verses: ReferenceTreeNode[]) =>
     verses.length
       ? `${label}\n${verses
-          .map(
-            (v) =>
-              `ID:${v.id} [${v.book_name} ${v.chapter}:${v.verse}] "${v.text}"`,
-          )
+          .map((v) => {
+            const similarity =
+              v.similarity !== undefined
+                ? ` [${(v.similarity * 100).toFixed(0)}% relevant]`
+                : "";
+            return `ID:${v.id} [${v.book_name} ${v.chapter}:${v.verse}]${similarity} "${v.text}"`;
+          })
           .join("\n")}\n\n`
       : "";
 
@@ -445,133 +676,86 @@ function buildAnchorFromTree(
 }
 
 /**
- * Non-streaming ring-based exegesis.
- * Uses ring context but lets the model order content purely for user clarity.
+ * Build a combined reference tree from multiple anchor verses.
+ * This enables multi-perspective synthesis by exploring Scripture from multiple entry points.
+ *
+ * @param anchorIds - Array of anchor verse IDs
+ * @param userPrompt - User's query for semantic ranking
+ * @returns Combined visual bundle with nodes and edges from all anchors
  */
-export async function explainScripture(userPrompt: string): Promise<{
-  answer: string;
-  anchor: Verse;
-  anchorId: number | null;
-  contextStats: {
-    ring0: number;
-    ring1: number;
-    ring2: number;
-    ring3: number;
-    total: number;
-  };
-}> {
-  const anchorId = await resolveAnchor(userPrompt);
-
-  if (!anchorId) {
-    return {
-      answer: ANCHOR_NOT_FOUND_MESSAGE,
-      anchor: EMPTY_VERSE,
-      anchorId: null,
-      contextStats: {
-        ring0: 0,
-        ring1: 0,
-        ring2: 0,
-        ring3: 0,
-        total: 0,
-      },
-    };
-  }
-
-  const bundle = await buildContextBundle(anchorId);
-
-  const systemPrompt = generateSystemPrompt();
-  const userMessage = generateUserMessage(userPrompt, bundle);
-
-  const result = await runModel(
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    {
-      toolSpecs: [],
-      toolMap: {},
-      model: "gpt-5-mini",
-      reasoningEffort: "low", // Explicit low reasoning for faster responses
-      // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
-    },
-  );
-
-  const contextStats = {
-    ring0: bundle.ring0.length,
-    ring1: bundle.ring1.length,
-    ring2: bundle.ring2.length,
-    ring3: bundle.ring3.length,
-    total:
-      bundle.ring0.length +
-      bundle.ring1.length +
-      bundle.ring2.length +
-      bundle.ring3.length,
-  };
-
-  return {
-    answer: result.text,
-    anchor: bundle.anchor,
-    anchorId,
-    contextStats,
-  };
-}
-
-/**
- * Non-streaming genealogy-tree exegesis.
- * Uses tree context but lets the model order content purely for user clarity.
- */
-export async function explainScriptureWithGenealogy(
+async function buildMultiAnchorTree(
+  anchorIds: number[],
   userPrompt: string,
-): Promise<{
-  answer: string;
-  anchor: Verse;
-  anchorId: number | null;
-  treeStats: TreeStats;
-  visualBundle: ReferenceVisualBundle | null;
-}> {
-  const anchorId = await resolveAnchor(userPrompt);
+): Promise<ReferenceVisualBundle> {
+  const startTime = Date.now();
 
-  if (!anchorId) {
-    return {
-      answer: ANCHOR_NOT_FOUND_MESSAGE,
-      anchor: EMPTY_VERSE,
-      anchorId: null,
-      treeStats: { ...EMPTY_TREE_STATS },
-      visualBundle: null,
-    };
-  }
-
-  const visualBundle = (await buildReferenceTree(
-    anchorId,
-    DEFAULT_TREE_OPTIONS,
-  )) as ReferenceVisualBundle;
-
-  const systemPrompt = generateSystemPrompt();
-  const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
-
-  const result = await runModel(
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    {
-      toolSpecs: [],
-      toolMap: {},
-      model: "gpt-5-mini",
-      reasoningEffort: "low", // Explicit low reasoning for faster responses
-      // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
-    },
+  console.log(
+    `[Multi-Anchor] Building combined tree from ${anchorIds.length} anchors`,
   );
 
-  const treeStats = computeTreeStats(visualBundle);
-  const anchor = buildAnchorFromTree(visualBundle, anchorId);
+  // Adjust tree depth based on number of anchors to stay within node limits
+  // More anchors = shallower trees per anchor
+  const depthPerAnchor =
+    anchorIds.length === 1 ? 6 : anchorIds.length === 2 ? 4 : 3;
+  const nodesPerAnchor = Math.floor(100 / anchorIds.length);
 
+  console.log(
+    `[Multi-Anchor] Building trees with depth=${depthPerAnchor}, nodes=${nodesPerAnchor} per anchor`,
+  );
+
+  // Build a tree from each anchor
+  const trees: ReferenceVisualBundle[] = [];
+
+  for (let i = 0; i < anchorIds.length; i++) {
+    const anchorId = anchorIds[i];
+    console.log(
+      `[Multi-Anchor] Building tree ${i + 1}/${anchorIds.length} from verse ${anchorId}...`,
+    );
+
+    const tree = (await buildReferenceTree(anchorId, {
+      maxDepth: depthPerAnchor,
+      maxNodes: nodesPerAnchor,
+      maxChildrenPerNode: 5,
+      userQuery: userPrompt,
+      similarityThreshold: 0.4,
+    })) as ReferenceVisualBundle;
+
+    trees.push(tree);
+  }
+
+  // Combine all nodes and edges
+  const allNodes: ReferenceTreeNode[] = [];
+  const allEdges: ReferenceTreeEdge[] = [];
+  const seenNodeIds = new Set<number>();
+
+  for (const tree of trees) {
+    // Add nodes (skip duplicates)
+    for (const node of tree.nodes) {
+      if (!seenNodeIds.has(node.id)) {
+        allNodes.push(node);
+        seenNodeIds.add(node.id);
+      }
+    }
+
+    // Add edges (skip duplicates)
+    for (const edge of tree.edges) {
+      const edgeKey = `${edge.from}-${edge.to}`;
+      if (!allEdges.some((e) => `${e.from}-${e.to}` === edgeKey)) {
+        allEdges.push(edge);
+      }
+    }
+  }
+
+  const elapsed = Date.now() - startTime;
+  console.log(
+    `[Multi-Anchor] ✅ Combined tree built in ${elapsed}ms: ` +
+      `${allNodes.length} nodes, ${allEdges.length} edges from ${trees.length} anchors`,
+  );
+
+  // Return combined bundle
   return {
-    answer: result.text,
-    anchor,
-    anchorId,
-    treeStats,
-    visualBundle,
+    nodes: allNodes,
+    edges: allEdges,
   };
 }
 
@@ -583,6 +767,7 @@ export async function explainScriptureWithGenealogy(
 export async function explainScriptureWithKernelStream(
   res: Response,
   userPrompt: string,
+  useMultiAnchor: boolean = true, // Enable multi-anchor synthesis by default
 ): Promise<{
   anchor: Verse;
   anchorId: number | null;
@@ -591,9 +776,23 @@ export async function explainScriptureWithKernelStream(
   sim1?: unknown;
   sim2?: unknown;
 }> {
-  const anchorId = await resolveAnchor(userPrompt);
+  // Try multi-anchor synthesis first for richer context
+  let anchorIds: number[] = [];
+  let visualBundle: ReferenceVisualBundle;
 
-  if (!anchorId) {
+  if (useMultiAnchor) {
+    anchorIds = await resolveMultipleAnchors(userPrompt, 3);
+  }
+
+  // Fallback to single anchor if multi-anchor fails or is disabled
+  if (anchorIds.length === 0) {
+    const singleAnchor = await resolveAnchor(userPrompt);
+    if (singleAnchor) {
+      anchorIds = [singleAnchor];
+    }
+  }
+
+  if (anchorIds.length === 0) {
     res.write("event: content\n");
     res.write(
       `data: ${JSON.stringify({ delta: ANCHOR_NOT_FOUND_MESSAGE })}\n\n`,
@@ -609,10 +808,27 @@ export async function explainScriptureWithKernelStream(
     };
   }
 
-  const visualBundle = (await buildReferenceTree(
-    anchorId,
-    DEFAULT_TREE_OPTIONS,
-  )) as ReferenceVisualBundle;
+  const anchorId = anchorIds[0]; // Primary anchor for compatibility
+
+  // Build tree(s) - use multi-anchor if we have multiple
+  if (anchorIds.length > 1) {
+    console.log(
+      `[KERNEL Stream] Using multi-anchor synthesis with ${anchorIds.length} anchors`,
+    );
+    visualBundle = await buildMultiAnchorTree(anchorIds, userPrompt);
+  } else {
+    console.log(`[KERNEL Stream] Using single anchor: ${anchorId}`);
+    visualBundle = (await buildReferenceTree(anchorId, {
+      ...DEFAULT_TREE_OPTIONS,
+      userQuery: userPrompt,
+    })) as ReferenceVisualBundle;
+  }
+
+  // Rank verses by semantic similarity to user query
+  visualBundle = await rankVersesBySimilarity(visualBundle, userPrompt);
+
+  // Remove duplicate/parallel passages
+  visualBundle = await deduplicateVerses(visualBundle);
 
   const treeStats = computeTreeStats(visualBundle);
   const anchor = buildAnchorFromTree(visualBundle, anchorId);
@@ -643,78 +859,6 @@ export async function explainScriptureWithKernelStream(
   );
 
   console.log("[Fast Stream] Teaching complete");
-
-  return {
-    anchor,
-    anchorId,
-    treeStats,
-    visualBundle,
-  };
-}
-
-/**
- * Streaming genealogy-tree exegesis (Server-Sent Events).
- * Sends map first, then streams explanation optimized for user clarity.
- *
- * NOTE: This is the OLD single-pass implementation.
- * Use explainScriptureWithKernelStream() for the new 3-SIM KERNEL pipeline.
- */
-export async function explainScriptureWithGenealogyStream(
-  res: Response,
-  userPrompt: string,
-): Promise<{
-  anchor: Verse;
-  anchorId: number | null;
-  treeStats: TreeStats;
-  visualBundle: ReferenceVisualBundle | null;
-}> {
-  const anchorId = await resolveAnchor(userPrompt);
-
-  if (!anchorId) {
-    res.write("event: content\n");
-    res.write(
-      `data: ${JSON.stringify({ delta: ANCHOR_NOT_FOUND_MESSAGE })}\n\n`,
-    );
-    res.write("event: done\n");
-    res.write(`data: ${JSON.stringify({ citations: [] })}\n\n`);
-
-    return {
-      anchor: EMPTY_VERSE,
-      anchorId: null,
-      treeStats: { ...EMPTY_TREE_STATS },
-      visualBundle: null,
-    };
-  }
-
-  const visualBundle = (await buildReferenceTree(
-    anchorId,
-    DEFAULT_TREE_OPTIONS,
-  )) as ReferenceVisualBundle;
-
-  const treeStats = computeTreeStats(visualBundle);
-
-  res.write("event: map_data\n");
-  res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
-
-  const systemPrompt = generateSystemPrompt();
-  const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
-
-  await runModelStream(
-    res,
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    {
-      toolSpecs: [],
-      toolMap: {},
-      model: "gpt-5-mini",
-      reasoningEffort: "low", // Explicit low reasoning for faster streaming
-      // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
-    },
-  );
-
-  const anchor = buildAnchorFromTree(visualBundle, anchorId);
 
   return {
     anchor,

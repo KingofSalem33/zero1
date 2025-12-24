@@ -13,15 +13,19 @@ import { ENV } from "./env";
 import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
 import rootTranslationRouter from "./routes/root-translation";
+import { generateSuggestedCards } from "./bible/suggestedTopics";
+import {
+  rankVersesBySimilarity,
+  type ReferenceVisualBundle,
+  type ReferenceTreeNode,
+} from "./bible/expandingRingExegesis";
+import { findResonantScripture } from "./bible/oratoryValidation";
 import bookmarksRouter from "./routes/bookmarks";
 import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream"; // Used in /api/chat for streaming when Accept: text/event-stream
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
-import {
-  // explainScriptureWithGenealogyStream, // OLD single-pass implementation
-  explainScriptureWithKernelStream,
-} from "./bible/expandingRingExegesis";
+import { explainScriptureWithKernelStream } from "./bible/expandingRingExegesis";
 import { buildReferenceTree } from "./bible/referenceGenealogy";
 import { getVerseId } from "./bible/graphWalker";
 import { parseExplicitReference } from "./bible/referenceParser";
@@ -194,19 +198,29 @@ app.get("/api/bible/chapter-footer", optionalAuth, async (req, res) => {
       return;
     }
 
-    // Build reference tree from graph
+    // Build reference tree from graph (get more candidates for ranking)
     const tree = await buildReferenceTree(anchorId, {
       maxDepth: 2,
-      maxNodes: 20,
+      maxNodes: 50, // Get 50 candidates instead of 20
       maxChildrenPerNode: 999,
+      userQuery: `${book} ${chapter}`, // Enable semantic ranking
     });
 
-    // Format connected verses for LLM
-    const connections = tree.nodes
-      .filter((n: any) => !(n.book_name === book && n.chapter === chapter))
-      .slice(0, 15)
+    // Rank verses by semantic similarity to this chapter
+    const rankedTree = await rankVersesBySimilarity(
+      tree as ReferenceVisualBundle,
+      `${book} ${chapter}`,
+    );
+
+    // Format top 15 MOST RELEVANT connected verses for LLM
+    const connections = rankedTree.nodes
+      .filter(
+        (n: ReferenceTreeNode) =>
+          !(n.book_name === book && n.chapter === chapter),
+      )
+      .slice(0, 15) // Now these are the BEST 15, not just the first 15
       .map(
-        (n: any) =>
+        (n: ReferenceTreeNode) =>
           `[${n.book_name} ${n.chapter}:${n.verse}] "${n.text.substring(0, 100)}${n.text.length > 100 ? "..." : ""}"`,
       )
       .join("\n");
@@ -293,6 +307,42 @@ Return ONLY valid JSON.`;
     }
 
     const footer = JSON.parse(jsonText);
+
+    console.log(
+      `[Footer] LLM generated ${footer.cards.length} cards for ${book} ${chapter}`,
+    );
+
+    // Generate and append semantic-search-based suggested topic cards
+    try {
+      console.log(
+        `[Footer] Generating suggested cards for ${parsed.book} ${chapter}...`,
+      );
+
+      const suggestedCards = await generateSuggestedCards(parsed.book, chapter);
+
+      console.log(
+        `[Footer] Generated ${suggestedCards.length} suggested cards`,
+      );
+
+      if (suggestedCards.length > 0) {
+        footer.cards = [...footer.cards, ...suggestedCards];
+        console.log(
+          `[Footer] ✅ Total cards: ${footer.cards.length} (${footer.cards.length - suggestedCards.length} LLM + ${suggestedCards.length} suggested)`,
+        );
+      } else {
+        console.warn("[Footer] No suggested cards generated");
+      }
+    } catch (error) {
+      console.error("[Footer] Failed to generate suggested cards:", error);
+      if (error instanceof Error) {
+        console.error("[Footer] Error details:", error.message, error.stack);
+      }
+      // Continue without suggested cards - footer is still valid
+    }
+
+    // Add version to footer for cache busting
+    footer._version = "2.1"; // Increment this to invalidate old caches
+
     res.json(footer);
   } catch (error) {
     console.error("Chapter footer error:", error);
@@ -570,16 +620,50 @@ Go deeper into what's already there, not wider. Let it build, not repeat. Use Sc
           { role: "user", content: message },
         ];
 
-        // Stream the Oratory response
-        await runModelStream(res, conversationMessages, {
-          model: "gpt-5-mini",
-          reasoningEffort: "low", // Explicit low reasoning for faster streaming
-          toolSpecs: [],
-          toolMap: {},
-          // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
-        });
+        // Stream the Oratory response and capture full text
+        const pastoralResponse = await runModelStream(
+          res,
+          conversationMessages,
+          {
+            model: "gpt-5-mini",
+            reasoningEffort: "low", // Explicit low reasoning for faster streaming
+            toolSpecs: [],
+            toolMap: {},
+            // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
+          },
+        );
 
-        console.log("[Oratory] Scripture retrieval completed");
+        console.log(
+          "[Oratory] Pastoral response completed, finding resonant Scripture...",
+        );
+
+        // Find Scripture that addresses the user's actual issue (not the pastoral response)
+        try {
+          const resonantVerses = await findResonantScripture(
+            message, // User's original issue
+            pastoralResponse, // Pastoral response (for context)
+            3,
+          );
+
+          if (resonantVerses.length > 0) {
+            // Send resonant Scripture as additional SSE event
+            res.write("event: scripture_resonance\n");
+            res.write(
+              `data: ${JSON.stringify({ verses: resonantVerses })}\n\n`,
+            );
+
+            console.log(
+              `[Oratory] ✅ Sent ${resonantVerses.length} resonant verses to validate pastoral response`,
+            );
+          } else {
+            console.log("[Oratory] No resonant verses found");
+          }
+        } catch (error) {
+          console.error("[Oratory] Failed to find resonant Scripture:", error);
+          // Continue without validation - pastoral response is still valid
+        }
+
+        console.log("[Oratory] Session completed");
       } else {
         // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
         // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)

@@ -318,6 +318,10 @@ export function TextHighlightTooltip({
 
         const parsed = parseRootTranslation(fullTranslation);
 
+        console.log("[ROOT] Full translation:", fullTranslation);
+        console.log("[ROOT] Parsed insights:", parsed.insights);
+        console.log("[ROOT] Parsed plain:", parsed.plain);
+
         // Check if we were cancelled before starting to stream
         if (!isStreamingRef.current) {
           return;

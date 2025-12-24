@@ -176,6 +176,9 @@ function stripStrongsNumbers(text: string): string {
   return text.replace(/\[([HG]\d+)\]/g, "");
 }
 
+// "Where Else?" feature temporarily disabled - was causing 30+ second delays
+// TODO: Re-enable once database population is complete and optimized
+
 // POST /api/root-translation - Generate translation using Strong's Concordance
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
@@ -451,6 +454,8 @@ Generate the response in the format specified (ROOTS: then PLAIN:):`,
       .replace(/\n(?!- )-\s*/g, "\n- ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+
+    console.log("[ROOT] Formatted translation:", translation);
 
     // Return the translation
     return res.json({

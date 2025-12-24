@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from "react";
 
 interface Card {
-  lens: "PROPHECY" | "TYPOLOGY" | "THREAD" | "PATTERN" | "ROOTS" | "WORLD";
+  lens:
+    | "PROPHECY"
+    | "TYPOLOGY"
+    | "THREAD"
+    | "PATTERN"
+    | "ROOTS"
+    | "WORLD"
+    | "EXPLORE"
+    | "GOLDEN";
   title: string;
   prompt: string;
 }
@@ -9,6 +17,7 @@ interface Card {
 interface ChapterFooterData {
   orientation: string;
   cards: Card[];
+  _version?: string;
 }
 
 interface ChapterFooterProps {
@@ -27,6 +36,8 @@ const LENS_COLORS = {
   PATTERN: "text-cyan-300/70 border-cyan-500/20 bg-cyan-500/5",
   ROOTS: "text-emerald-300/70 border-emerald-500/20 bg-emerald-500/5",
   WORLD: "text-slate-300/70 border-slate-500/20 bg-slate-500/5",
+  EXPLORE: "text-blue-300/70 border-blue-500/20 bg-blue-500/5",
+  GOLDEN: "text-yellow-300/70 border-yellow-500/20 bg-yellow-500/5",
 };
 
 export function ChapterFooter({
@@ -48,11 +59,24 @@ export function ChapterFooter({
       // Check cache first
       const cacheKey = `footer-${book}-${chapter}`;
       const cached = localStorage.getItem(cacheKey);
+      const REQUIRED_VERSION = "2.1"; // Must match API version
+
       if (cached) {
         try {
           const cachedData = JSON.parse(cached);
-          setFooter(cachedData);
-          return;
+          // Invalidate old cache versions
+          if (cachedData._version === REQUIRED_VERSION) {
+            console.log(
+              `[Footer] Using cached v${REQUIRED_VERSION} for ${book} ${chapter}`,
+            );
+            setFooter(cachedData);
+            return;
+          } else {
+            console.log(
+              `[Footer] Cache outdated (v${cachedData._version || "1.0"} → v${REQUIRED_VERSION}), fetching fresh...`,
+            );
+            localStorage.removeItem(cacheKey);
+          }
         } catch {
           // Invalid cache, continue to fetch
           localStorage.removeItem(cacheKey);
@@ -68,6 +92,13 @@ export function ChapterFooter({
           return;
         }
         const data = await response.json();
+
+        console.log(`[Footer] Fetched ${book} ${chapter}:`, {
+          orientation: data.orientation?.substring(0, 50) + "...",
+          cardCount: data.cards?.length,
+          cardTypes: data.cards?.map((c: Card) => c.lens),
+          version: data._version,
+        });
 
         // Cache the result
         localStorage.setItem(cacheKey, JSON.stringify(data));
