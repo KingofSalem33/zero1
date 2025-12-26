@@ -91,10 +91,12 @@ const VerseTooltip = ({
   reference,
   position,
   onClose,
+  onTrace,
 }: {
   reference: string;
   position: { top: number; left: number };
   onClose: () => void;
+  onTrace?: (reference: string) => void;
 }) => {
   const [verseText, setVerseText] = React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState(true);
@@ -211,9 +213,27 @@ const VerseTooltip = ({
               </span>
             </div>
           ) : (
-            <p className="text-[15px] leading-relaxed text-white font-serif italic">
-              {verseText}
-            </p>
+            <>
+              <p className="text-[15px] leading-relaxed text-white font-serif italic">
+                {verseText}
+              </p>
+
+              {/* Trace button */}
+              {onTrace && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={() => {
+                      onTrace(reference);
+                      onClose();
+                    }}
+                    className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#F0D77F] text-black text-sm font-medium rounded transition-colors"
+                    title="Explore with AI"
+                  >
+                    Trace
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -250,10 +270,12 @@ export function MessageStream({
   content,
 
   onVerseClick: _onVerseClick,
+  onTrace,
 }: {
   content: string;
 
   onVerseClick?: (reference: string) => void;
+  onTrace?: (reference: string) => void;
 }) {
   const [tooltipData, setTooltipData] = React.useState<{
     reference: string;
@@ -362,6 +384,7 @@ export function MessageStream({
           reference={tooltipData.reference}
           position={tooltipData.position}
           onClose={() => setTooltipData(null)}
+          onTrace={onTrace}
         />
       )}
     </div>

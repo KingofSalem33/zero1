@@ -95,7 +95,7 @@ interface UnifiedWorkspaceProps {
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
-   
+
   onCreateProject: _onCreateProject,
   onInspireMe,
   toolsUsed,
@@ -110,7 +110,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   pendingPrompt,
   onPromptConsumed,
   oratoryMode = false,
-   
+
   onExitOratory: _onExitOratory,
 }) => {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
@@ -1643,6 +1643,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         <MessageStream
                           content={message.content}
                           onVerseClick={handleVerseClick}
+                          onTrace={handleGoDeeper}
                         />
                       )}
                     </div>
@@ -1784,6 +1785,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     <MessageStream
                       content={streamingMessage.content}
                       onVerseClick={handleVerseClick}
+                      onTrace={handleGoDeeper}
                     />
                   </div>
                 </div>

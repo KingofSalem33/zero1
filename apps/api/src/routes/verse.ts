@@ -3,6 +3,7 @@ import { readOnlyLimiter } from "../middleware/rateLimit";
 import { VerseRef } from "../bible/types";
 import { CachedBibleService } from "../bible/CachedBibleService";
 import { getCache } from "../infrastructure/cache/cacheInstance";
+import { getCrossReferences } from "../bible/crossReferences";
 
 const router = Router();
 
@@ -87,5 +88,51 @@ router.get("/:reference", readOnlyLimiter, async (req, res) => {
     });
   }
 });
+
+// GET /api/verse/:reference/cross-references - Get cross-references for a verse
+router.get(
+  "/:reference/cross-references",
+  readOnlyLimiter,
+  async (req, res) => {
+    try {
+      const { reference } = req.params;
+
+      // Decode URL encoding (spaces become %20)
+      const decodedRef = decodeURIComponent(reference);
+
+      // Parse the reference
+      const verseRef = parseReference(decodedRef);
+
+      if (!verseRef) {
+        return res.status(400).json({
+          error: {
+            message: `Invalid verse reference format: "${decodedRef}". Expected format: "Book Chapter:Verse" (e.g., "John 3:16")`,
+            type: "validation_error",
+            code: "invalid_reference",
+          },
+        });
+      }
+
+      // Get cross-references from OpenBible.info dataset
+      const crossRefs = await getCrossReferences(verseRef);
+
+      // Return the references
+      return res.json({
+        reference: `${verseRef.book} ${verseRef.chapter}:${verseRef.verse}`,
+        crossReferences: crossRefs,
+        count: crossRefs.length,
+      });
+    } catch (error) {
+      console.error("Get cross-references error:", error);
+      return res.status(500).json({
+        error: {
+          message: "Failed to get cross-references",
+          type: "internal_server_error",
+          code: "get_cross_references_failed",
+        },
+      });
+    }
+  },
+);
 
 export default router;

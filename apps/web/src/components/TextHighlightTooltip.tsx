@@ -37,10 +37,12 @@ const VerseTooltip = ({
   reference,
   position,
   onClose,
+  onTrace,
 }: {
   reference: string;
   position: { top: number; left: number };
   onClose: () => void;
+  onTrace?: (reference: string) => void;
 }) => {
   const [verseText, setVerseText] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
@@ -142,9 +144,27 @@ const VerseTooltip = ({
               </span>
             </div>
           ) : (
-            <p className="text-[15px] leading-relaxed text-white font-serif italic">
-              {verseText}
-            </p>
+            <>
+              <p className="text-[15px] leading-relaxed text-white font-serif italic">
+                {verseText}
+              </p>
+
+              {/* Trace button */}
+              {onTrace && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={() => {
+                      onTrace(reference);
+                      onClose();
+                    }}
+                    className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#F0D77F] text-black text-sm font-medium rounded transition-colors"
+                    title="Explore with AI"
+                  >
+                    Trace
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1275,6 +1295,7 @@ export function TextHighlightTooltip({
           reference={verseTooltipData.reference}
           position={verseTooltipData.position}
           onClose={() => setVerseTooltipData(null)}
+          onTrace={onGoDeeper}
         />
       )}
     </div>
