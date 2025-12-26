@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 /* global Element, AbortController, Range */
 
@@ -30,6 +30,203 @@ const HIGHLIGHT_COLORS = [
   { name: "Pink", value: "#FCE7F3", textColor: "#9F1239" },
   { name: "Purple", value: "#EDE9FE", textColor: "#5B21B6" },
 ];
+
+// --- VERSE TOOLTIP ---
+// Shows verse text in a tooltip when clicking a Scripture citation
+const VerseTooltip = ({
+  reference,
+  position,
+  onClose,
+}: {
+  reference: string;
+  position: { top: number; left: number };
+  onClose: () => void;
+}) => {
+  const [verseText, setVerseText] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Fetch verse text from API
+    const fetchVerse = async () => {
+      try {
+        const response = await fetch(
+          `http://localhost:3001/api/verse/${encodeURIComponent(reference)}`,
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch verse");
+        }
+
+        const data = await response.json();
+        setVerseText(data.text);
+        setIsLoading(false);
+      } catch {
+        setVerseText("Could not load verse text");
+        setIsLoading(false);
+      }
+    };
+
+    fetchVerse();
+  }, [reference]);
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        tooltipRef.current &&
+        !tooltipRef.current.contains(event.target as Node)
+      ) {
+        onClose();
+      }
+    };
+
+    // Small delay to prevent immediate closure on the same click that opened it
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={tooltipRef}
+      className="fixed z-[80] transform -translate-x-1/2 transition-all duration-150 ease-out"
+      style={{
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+      }}
+    >
+      {/* Compact card matching highlight tooltip */}
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
+          aria-label="Close"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+
+        {/* Content */}
+        <div className="p-3 pr-8">
+          {/* Reference header */}
+          <div className="font-bold text-[#D4AF37] text-xs mb-2 uppercase tracking-wide">
+            {reference}
+          </div>
+
+          {/* Verse text */}
+          {isLoading ? (
+            <div className="flex items-center gap-2 py-1.5">
+              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
+              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
+              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
+              <span className="text-xs text-neutral-400 ml-1 font-medium">
+                Loading
+              </span>
+            </div>
+          ) : (
+            <p className="text-[15px] leading-relaxed text-white font-serif italic">
+              {verseText}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Arrow pointer - always points up to clicked text */}
+      <div
+        className="absolute left-1/2 transform -translate-x-1/2"
+        style={{ top: "0", transform: "translate(-50%, -100%)" }}
+      >
+        {/* Arrow shadow */}
+        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2 translate-y-1">
+          <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-black/20 blur-sm" />
+        </div>
+
+        {/* Main arrow */}
+        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/[0.08]" />
+
+        {/* Arrow border */}
+        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2">
+          <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-b-[9px] border-b-white/10" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- INTERACTIVE TEXT WITH SCRIPTURE PARSING ---
+// Parses text for Scripture references and makes them clickable gold links
+const InteractiveText = ({
+  children,
+  onVerseClick,
+}: {
+  children: React.ReactNode;
+  onVerseClick?: (reference: string, event: React.MouseEvent) => void;
+}) => {
+  if (typeof children === "string") {
+    // Regex catches ALL Scripture references with or without brackets:
+    // - [John 3:16] (with brackets)
+    // - John 3:16 (without brackets)
+    // - 1 Timothy 3:16 (multi-word books)
+    // - Galatians 2:11-14 (verse ranges)
+    // - Song of Solomon 2:1 (long book names)
+    const parts = children.split(
+      /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g,
+    );
+
+    return (
+      <span className="text-[13px] leading-relaxed text-neutral-200 font-normal">
+        {parts.map((part, i) => {
+          // Check if this part is a Scripture reference
+          const scriptureMatch = part.match(
+            /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/,
+          );
+
+          if (scriptureMatch) {
+            // Extract reference (remove brackets if present)
+            const reference = scriptureMatch[1];
+
+            return (
+              <button
+                key={i}
+                className="text-[#D4AF37] font-bold hover:text-[#F0D77F] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-all duration-200 mx-0.5 cursor-pointer inline-flex items-center gap-0.5"
+                onClick={(e) => {
+                  onVerseClick?.(reference, e);
+                }}
+                title="Click to view verse"
+              >
+                {reference}
+              </button>
+            );
+          }
+          return <span key={i}>{part}</span>;
+        })}
+      </span>
+    );
+  }
+  return (
+    <span className="text-[13px] leading-relaxed text-neutral-200 font-normal">
+      {children}
+    </span>
+  );
+};
 
 export function TextHighlightTooltip({
   onGoDeeper,
@@ -69,6 +266,12 @@ export function TextHighlightTooltip({
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const selectionRangeRef = useRef<Range | null>(null);
+
+  // State for verse tooltip
+  const [verseTooltipData, setVerseTooltipData] = useState<{
+    reference: string;
+    position: { top: number; left: number };
+  } | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isStreamingRef = useRef(false);
@@ -663,6 +866,26 @@ export function TextHighlightTooltip({
     setCurrentRootCardIndex(0);
   };
 
+  const handleVerseClick = (reference: string, event: React.MouseEvent) => {
+    event.preventDefault();
+
+    // Get click position for tooltip
+    const rect = (event.target as HTMLElement).getBoundingClientRect();
+
+    // Position below the clicked reference
+    const spacing = 12;
+    const top = rect.bottom + spacing;
+    const left = rect.left + rect.width / 2;
+
+    setVerseTooltipData({
+      reference,
+      position: {
+        top,
+        left,
+      },
+    });
+  };
+
   if (!position || !selectedText) {
     return null;
   }
@@ -717,12 +940,12 @@ export function TextHighlightTooltip({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-[13px] leading-relaxed text-neutral-200 font-normal">
+                  <InteractiveText onVerseClick={handleVerseClick}>
                     {description}
-                    {description && isStreamingRef.current && (
-                      <span className="inline-block w-1 h-3 ml-0.5 bg-[#D4AF37] animate-pulse" />
-                    )}
-                  </p>
+                  </InteractiveText>
+                  {description && isStreamingRef.current && (
+                    <span className="inline-block w-1 h-3 ml-0.5 bg-[#D4AF37] animate-pulse" />
+                  )}
 
                   {/* Action buttons */}
                   <div className="flex items-center gap-2">
@@ -1045,6 +1268,15 @@ export function TextHighlightTooltip({
           <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-b-[9px] border-b-white/10" />
         </div>
       </div>
+
+      {/* Verse tooltip for Scripture references in synopsis */}
+      {verseTooltipData && (
+        <VerseTooltip
+          reference={verseTooltipData.reference}
+          position={verseTooltipData.position}
+          onClose={() => setVerseTooltipData(null)}
+        />
+      )}
     </div>
   );
 }

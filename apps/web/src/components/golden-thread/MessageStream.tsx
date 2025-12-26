@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 // --- 1. MAIN TITLE (H2) ---
 // The exegesis title - large, authoritative, serif
 const MainTitle = ({ children }: { children: React.ReactNode }) => (
-  <h2 className="mt-8 mb-6 font-serif text-3xl font-bold text-slate-900 leading-tight tracking-tight">
+  <h2 className="mt-10 mb-8 font-serif text-4xl font-bold text-white leading-tight tracking-tight">
     {children}
   </h2>
 );
@@ -12,7 +12,7 @@ const MainTitle = ({ children }: { children: React.ReactNode }) => (
 // --- 2. SECTION HEADERS (H3) ---
 // Roman numeral sections - clear hierarchy, refined spacing
 const SectionHeader = ({ children }: { children: React.ReactNode }) => (
-  <h3 className="mt-10 mb-4 font-sans text-lg font-semibold text-slate-800 tracking-tight">
+  <h3 className="mt-12 mb-6 font-sans text-xl font-semibold text-white tracking-tight">
     {children}
   </h3>
 );
@@ -20,7 +20,7 @@ const SectionHeader = ({ children }: { children: React.ReactNode }) => (
 // --- 3. THE INVITATION (Blockquote) ---
 // Renders as a distinct, elegant statement with gold accent
 const Invitation = ({ children }: { children: React.ReactNode }) => (
-  <blockquote className="border-l-4 border-[#D4AF37] pl-6 py-4 my-10 font-serif text-lg italic text-slate-700 leading-relaxed">
+  <blockquote className="border-l-4 border-[#D4AF37] pl-8 py-6 my-12 font-serif text-xl italic text-white/95 leading-relaxed bg-[#D4AF37]/5 rounded-r-lg">
     {children}
   </blockquote>
 );
@@ -37,25 +37,39 @@ const InteractiveText = ({
 }) => {
   if (typeof children === "string") {
     const cleaned = children.replace(/\bThesis:\s*/g, "");
-    // Regex matches [John 3:16] or [1 Peter 5:7]
-    const parts = cleaned.split(/(\[(?:[123]\s)?[A-Za-z]+\s\d+:\d+\])/g);
+
+    // Regex catches ALL Scripture references with or without brackets:
+    // - [John 3:16] (with brackets)
+    // - John 3:16 (without brackets)
+    // - 1 Timothy 3:16 (multi-word books)
+    // - Galatians 2:11-14 (verse ranges)
+    // - Song of Solomon 2:1 (long book names)
+    const parts = cleaned.split(
+      /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g,
+    );
 
     return (
-      <p className="mb-5 leading-[1.8] text-slate-600 font-sans text-[17px] tracking-[-0.01em]">
+      <p className="mb-6 leading-[1.9] text-white font-sans text-[18px] tracking-[-0.01em]">
         {parts.map((part, i) => {
-          if (part.match(/^\[.*\]$/)) {
-            // Extract reference without brackets
-            const reference = part.slice(1, -1);
+          // Check if this part is a Scripture reference
+          const scriptureMatch = part.match(
+            /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/,
+          );
+
+          if (scriptureMatch) {
+            // Extract reference (remove brackets if present)
+            const reference = scriptureMatch[1];
 
             return (
               <button
                 key={i}
-                className="text-[#B5942F] font-semibold hover:text-[#D4AF37] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-colors mx-0.5 cursor-pointer"
+                className="text-[#D4AF37] font-bold hover:text-[#F0D77F] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-all duration-200 mx-1 cursor-pointer inline-flex items-center gap-0.5"
                 onClick={(e) => {
                   onVerseClick?.(reference, e);
                 }}
+                title="Click to view verse"
               >
-                {part}
+                {reference}
               </button>
             );
           }
@@ -65,7 +79,7 @@ const InteractiveText = ({
     );
   }
   return (
-    <p className="mb-5 leading-[1.8] text-slate-600 font-sans text-[17px] tracking-[-0.01em]">
+    <p className="mb-6 leading-[1.9] text-white font-sans text-[18px] tracking-[-0.01em]">
       {children}
     </p>
   );
@@ -197,7 +211,7 @@ const VerseTooltip = ({
               </span>
             </div>
           ) : (
-            <p className="text-[13px] leading-relaxed text-neutral-200 font-serif italic">
+            <p className="text-[15px] leading-relaxed text-white font-serif italic">
               {verseText}
             </p>
           )}
@@ -234,8 +248,6 @@ const VerseTooltip = ({
 
 export function MessageStream({
   content,
-
-   
 
   onVerseClick: _onVerseClick,
 }: {
@@ -304,13 +316,13 @@ export function MessageStream({
           // Strong emphasis - refined for readability
 
           strong: ({ children }) => (
-            <span className="font-bold text-slate-900">{children}</span>
+            <span className="font-bold text-white">{children}</span>
           ),
 
           // Italic emphasis - elegant serif styling
 
           em: ({ children }) => (
-            <span className="font-serif text-[17px] text-slate-800 italic">
+            <span className="font-serif text-[17px] text-white italic">
               {children}
             </span>
           ),
@@ -318,7 +330,7 @@ export function MessageStream({
           // Unordered lists - clean, well-spaced
 
           ul: ({ children }) => (
-            <ul className="mb-5 ml-6 space-y-2 list-disc marker:text-[#D4AF37]">
+            <ul className="mb-8 ml-8 space-y-3 list-disc marker:text-[#D4AF37]">
               {children}
             </ul>
           ),
@@ -326,7 +338,7 @@ export function MessageStream({
           // Ordered lists - clean, well-spaced
 
           ol: ({ children }) => (
-            <ol className="mb-5 ml-6 space-y-2 list-decimal marker:text-[#D4AF37] marker:font-semibold">
+            <ol className="mb-8 ml-8 space-y-3 list-decimal marker:text-[#D4AF37] marker:font-semibold">
               {children}
             </ol>
           ),
@@ -334,7 +346,7 @@ export function MessageStream({
           // List items - optimal line height
 
           li: ({ children }) => (
-            <li className="leading-[1.8] text-slate-700 text-[17px] pl-2">
+            <li className="leading-[1.9] text-white text-[18px] pl-3">
               {children}
             </li>
           ),

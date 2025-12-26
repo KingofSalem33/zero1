@@ -211,6 +211,7 @@ export interface RunModelStreamOptions {
   // These parameters are for advanced optimization
   promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
   promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
+  keepAlive?: boolean; // If true, don't send done event or close response (caller will handle)
 }
 
 /**
@@ -237,6 +238,7 @@ export async function runModelStream(
     verbosity = "medium",
     promptCacheRetention, // Optional: "24h" for extended cache retention
     promptCacheKey, // Optional: Custom key for cache routing
+    keepAlive = false, // If true, caller will handle done event and closing response
   } = options;
 
   // Set reasoning effort based on model capabilities
@@ -367,7 +369,9 @@ export async function runModelStream(
         // Note: OpenAI prompt caching parameters (if supported by SDK version)
         // Prompt caching is automatic for prompts > 1024 tokens
         // These parameters are for advanced optimization when supported
-        ...(promptCacheRetention && { prompt_cache_retention: promptCacheRetention }),
+        ...(promptCacheRetention && {
+          prompt_cache_retention: promptCacheRetention,
+        }),
         ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
       });
 
@@ -484,8 +488,12 @@ export async function runModelStream(
           `[runModelStream] No tool calls in iteration ${iterations}. Ending stream with ${accumulatedResponse.length} total chars.`,
         );
         cleanup(); // ✅ Use cleanup function
-        sendEvent("done", { citations: [...new Set(allCitations)] });
-        res.end();
+
+        // Only send done event and close response if keepAlive is false
+        if (!keepAlive) {
+          sendEvent("done", { citations: [...new Set(allCitations)] });
+          res.end();
+        }
         return accumulatedResponse; // Return accumulated response across all iterations
       }
 
@@ -512,8 +520,12 @@ export async function runModelStream(
       if (validToolCalls.length === 0) {
         logger.warn("All tool calls were malformed, ending stream");
         cleanup(); // ✅ Use cleanup function
-        sendEvent("done", { citations: [...new Set(allCitations)] });
-        res.end();
+
+        // Only send done event and close response if keepAlive is false
+        if (!keepAlive) {
+          sendEvent("done", { citations: [...new Set(allCitations)] });
+          res.end();
+        }
         return accumulatedResponse;
       }
 
