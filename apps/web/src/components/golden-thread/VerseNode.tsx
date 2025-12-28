@@ -14,6 +14,29 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   const { verse, isHighlighted, isAnchor, collapsedChildCount, onExpand } =
     data;
 
+  console.log(
+    "[VerseNode] Rendering node:",
+    verse.book_abbrev,
+    verse.chapter + ":" + verse.verse,
+    { isAnchor, isHighlighted, collapsedChildCount },
+  );
+
+  // Log when component mounts
+  React.useEffect(() => {
+    console.log(
+      "[VerseNode] MOUNTED in DOM:",
+      verse.book_abbrev,
+      verse.chapter + ":" + verse.verse,
+    );
+    return () => {
+      console.log(
+        "[VerseNode] UNMOUNTED from DOM:",
+        verse.book_abbrev,
+        verse.chapter + ":" + verse.verse,
+      );
+    };
+  }, []);
+
   // Compact styling for at-a-glance tree view
   const baseClasses =
     "px-2 py-1 rounded border transition-all duration-300 cursor-pointer relative";
@@ -27,7 +50,20 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   return (
     <>
       <Handle type="target" position={Position.Top} className="opacity-0" />
-      <div className={`${baseClasses} ${stateClasses}`}>
+      <div
+        className={`${baseClasses} ${stateClasses}`}
+        style={{
+          width: "120px",
+          height: "50px",
+          minWidth: "120px",
+          minHeight: "50px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "flex-start",
+          boxSizing: "border-box",
+        }}
+      >
         <div className="text-[11px] font-mono font-semibold whitespace-nowrap">
           {verse.book_abbrev.toUpperCase()} {verse.chapter}:{verse.verse}
         </div>

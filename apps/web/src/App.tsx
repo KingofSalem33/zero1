@@ -108,7 +108,25 @@ function App() {
 
   // Save chats to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem("chatHistory", JSON.stringify(chats));
+    try {
+      // Keep only the last 10 chats to prevent storage overflow
+      const chatsToSave = chats.slice(-10);
+      localStorage.setItem("chatHistory", JSON.stringify(chatsToSave));
+    } catch (error) {
+      // If localStorage is full, clear old data and try again
+      if (error instanceof Error && error.name === "QuotaExceededError") {
+        console.warn("localStorage quota exceeded, clearing old chat history");
+        try {
+          // Keep only the current chat
+          const currentChatOnly = chats.slice(-1);
+          localStorage.setItem("chatHistory", JSON.stringify(currentChatOnly));
+        } catch {
+          // If still failing, just clear it completely
+          localStorage.removeItem("chatHistory");
+          console.error("Failed to save chat history - localStorage cleared");
+        }
+      }
+    }
   }, [chats]);
 
   // Handle creating a new chat

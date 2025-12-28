@@ -5,12 +5,11 @@
 
 import { runModelStream } from "../ai/runModelStream";
 import type { Response } from "express";
-import { getVerseId, type Verse } from "./graphWalker";
+import { getVerseId, buildVisualBundle, type Verse } from "./graphWalker";
 import { searchVerses } from "./bibleService";
 import { parseExplicitReference } from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
-import { buildReferenceTree } from "./referenceGenealogy";
 import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
 import { supabase } from "../db";
 import OpenAI from "openai";
@@ -59,12 +58,6 @@ const EMPTY_TREE_STATS: TreeStats = {
   totalNodes: 0,
   maxDepth: 0,
   depthDistribution: {},
-};
-
-const DEFAULT_TREE_OPTIONS = {
-  maxDepth: 999,
-  maxNodes: 15, // Reduced from 30 for faster processing
-  maxChildrenPerNode: 999,
 };
 
 /**
@@ -690,7 +683,7 @@ function buildAnchorFromTree(
  */
 async function buildMultiAnchorTree(
   anchorIds: number[],
-  userPrompt: string,
+  _userPrompt: string, // Kept for API compatibility
 ): Promise<ReferenceVisualBundle> {
   const startTime = Date.now();
 
@@ -717,13 +710,22 @@ async function buildMultiAnchorTree(
       `[Multi-Anchor] Building tree ${i + 1}/${anchorIds.length} from verse ${anchorId}...`,
     );
 
-    const tree = (await buildReferenceTree(anchorId, {
-      maxDepth: depthPerAnchor,
-      maxNodes: nodesPerAnchor,
-      maxChildrenPerNode: 5,
-      userQuery: userPrompt,
-      similarityThreshold: 0.4,
-    })) as ReferenceVisualBundle;
+    const tree = (await buildVisualBundle(
+      anchorId,
+      {
+        ring0Radius: depthPerAnchor,
+        ring1Limit: 5,
+        ring2Limit: 5,
+        ring3Limit: 5,
+      },
+      {
+        includeDEEPER: true,
+        includeROOTS: true,
+        includeECHOES: true,
+        includePROPHECY: false,
+        includeGENEALOGY: false,
+      },
+    )) as ReferenceVisualBundle;
 
     trees.push(tree);
   }
@@ -823,10 +825,22 @@ export async function explainScriptureWithKernelStream(
     visualBundle = await buildMultiAnchorTree(anchorIds, userPrompt);
   } else {
     console.log(`[KERNEL Stream] Using single anchor: ${anchorId}`);
-    visualBundle = (await buildReferenceTree(anchorId, {
-      ...DEFAULT_TREE_OPTIONS,
-      userQuery: userPrompt,
-    })) as ReferenceVisualBundle;
+    visualBundle = (await buildVisualBundle(
+      anchorId,
+      {
+        ring0Radius: 3,
+        ring1Limit: 20,
+        ring2Limit: 30,
+        ring3Limit: 40,
+      },
+      {
+        includeDEEPER: true,
+        includeROOTS: true,
+        includeECHOES: true,
+        includePROPHECY: false,
+        includeGENEALOGY: false,
+      },
+    )) as ReferenceVisualBundle;
   }
 
   // Rank verses by semantic similarity to user query

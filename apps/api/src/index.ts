@@ -13,6 +13,7 @@ import { ENV } from "./env";
 import ttsRouter from "./routes/tts";
 import synopsisRouter from "./routes/synopsis";
 import rootTranslationRouter from "./routes/root-translation";
+import semanticConnectionRouter from "./routes/semantic-connection";
 import { generateSuggestedCards } from "./bible/suggestedTopics";
 import {
   rankVersesBySimilarity,
@@ -171,6 +172,9 @@ app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
 
 // Mount verse routes (fetch individual verses by reference)
 app.use("/api/verse", optionalAuth, verseRouter);
+
+// Mount semantic connection routes (AI synopsis of verse connections)
+app.use("/api/semantic-connection", optionalAuth, semanticConnectionRouter);
 
 // Chapter footer endpoint (test for Genesis 1)
 app.get("/api/bible/chapter-footer", optionalAuth, async (req, res) => {

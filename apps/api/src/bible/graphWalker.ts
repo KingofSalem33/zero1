@@ -12,6 +12,7 @@
  */
 
 import { supabase } from "../db";
+import { fetchAllEdges } from "./edgeFetchers";
 
 export interface Verse {
   id: number;
@@ -283,14 +284,26 @@ export function formatVerse(verse: Verse): string {
 /**
  * Build visual context bundle with parent-child relationships for graph visualization
  * This is used by the Golden Thread UI to render the hierarchical tree
+ *
+ * @param anchorId - The verse ID to build the bundle around
+ * @param config - Ring configuration (radius, limits)
+ * @param edgeOptions - Which edge types to include (DEEPER, ROOTS, ECHOES, etc.)
  */
 export async function buildVisualBundle(
   anchorId: number,
   config: Partial<RingConfig> = {},
+  edgeOptions: {
+    includeDEEPER?: boolean;
+    includeROOTS?: boolean;
+    includeECHOES?: boolean;
+    includePROPHECY?: boolean;
+    includeGENEALOGY?: boolean;
+  } = { includeDEEPER: true, includeROOTS: true, includeECHOES: true },
 ): Promise<import("./types").VisualContextBundle> {
   console.log(
     `[Visual Bundle] Building visual bundle for verse ID ${anchorId}`,
   );
+  console.log(`[Visual Bundle] Edge options:`, edgeOptions);
 
   // ========================================
   // STEP 1: Build standard context bundle
@@ -341,6 +354,7 @@ export async function buildVisualBundle(
       from: bundle.anchor.id,
       to: v.id,
       weight: 0.9, // High weight for immediate context
+      type: "DEEPER",
     });
   });
 
@@ -390,6 +404,7 @@ export async function buildVisualBundle(
       from: parentId,
       to: v.id,
       weight: 0.8,
+      type: "DEEPER",
     });
   });
 
@@ -433,6 +448,7 @@ export async function buildVisualBundle(
       from: parentId,
       to: v.id,
       weight: 0.6,
+      type: "DEEPER",
     });
   });
 
@@ -476,6 +492,7 @@ export async function buildVisualBundle(
       from: parentId,
       to: v.id,
       weight: 0.5,
+      type: "DEEPER",
     });
   });
 
@@ -486,12 +503,48 @@ export async function buildVisualBundle(
   calculateSpinePath(nodes, edges, bundle.anchor.id);
 
   console.log(
-    `[Visual Bundle] Complete: ${nodes.length} nodes, ${edges.length} edges`,
+    `[Visual Bundle] Standard edges complete: ${nodes.length} nodes, ${edges.length} edges`,
   );
+
+  // ========================================
+  // STEP 9: Add Multi-Strand Edges (ROOTS, ECHOES, etc.)
+  // ========================================
+
+  // Get all verse IDs from the bundle
+  const allVerseIds = nodes.map((n) => n.id);
+
+  // Fetch additional edge types
+  const additionalEdges = await fetchAllEdges(allVerseIds, {
+    includeDEEPER: false, // Already have these from cross_references
+    includeROOTS: edgeOptions.includeROOTS,
+    includeECHOES: edgeOptions.includeECHOES,
+    includePROPHECY: edgeOptions.includePROPHECY,
+    includeGENEALOGY: edgeOptions.includeGENEALOGY,
+  });
+
+  // Tag existing edges as DEEPER type
+  const taggedExistingEdges = edges.map((e) => ({
+    ...e,
+    type: "DEEPER" as const,
+  }));
+
+  // Merge all edges
+  const allEdges = [...taggedExistingEdges, ...additionalEdges];
+
+  console.log(
+    `[Visual Bundle] Complete with multi-strand: ${nodes.length} nodes, ${allEdges.length} total edges`,
+  );
+  console.log(`[Visual Bundle] Edge breakdown:`, {
+    DEEPER: allEdges.filter((e) => e.type === "DEEPER").length,
+    ROOTS: allEdges.filter((e) => e.type === "ROOTS").length,
+    ECHOES: allEdges.filter((e) => e.type === "ECHOES").length,
+    PROPHECY: allEdges.filter((e) => e.type === "PROPHECY").length,
+    GENEALOGY: allEdges.filter((e) => e.type === "GENEALOGY").length,
+  });
 
   return {
     nodes,
-    edges,
+    edges: allEdges,
     rootId: bundle.anchor.id,
     lens: "NONE",
   };

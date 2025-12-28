@@ -5,6 +5,11 @@
  * Expanding Ring exegesis graph
  */
 
+/**
+ * Edge types for multi-strand visualization
+ */
+export type EdgeType = "DEEPER" | "ROOTS" | "ECHOES" | "PROPHECY" | "GENEALOGY";
+
 export interface ThreadNode {
   id: number;
   book_abbrev: string;
@@ -24,11 +29,13 @@ export interface VisualEdge {
   from: number;
   to: number;
   weight: number; // 1.0 = strongest, 0.5 = weakest
+  type: EdgeType; // Type of connection
+  metadata?: Record<string, any>; // Optional metadata (e.g., Strong's number, citation type)
 }
 
 export interface VisualContextBundle {
   nodes: ThreadNode[]; // Flat list of all verses with graph metadata
-  edges: VisualEdge[]; // Parent-child relationships
+  edges: VisualEdge[]; // Parent-child relationships with types
   rootId: number; // Anchor verse ID
   lens: string; // "NONE" | "MESSIANIC" | "NARRATIVE" | "THEOLOGY"
 }

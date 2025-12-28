@@ -254,6 +254,7 @@ export async function buildReferenceTree(
           from: parentId,
           to: verseId,
           weight: 1.0 - depth * 0.15,
+          type: "DEEPER",
         });
       }
     }

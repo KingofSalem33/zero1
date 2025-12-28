@@ -1859,10 +1859,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 </svg>
               </button>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto relative">
               <NarrativeMap
                 bundle={visualBundle}
                 highlightedRefs={highlightedRefs}
+                onTrace={handleGoDeeper}
               />
             </div>
           </div>
