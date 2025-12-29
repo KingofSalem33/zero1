@@ -178,7 +178,13 @@ app.use("/api/verse", optionalAuth, verseRouter);
 app.use("/api/semantic-connection", optionalAuth, semanticConnectionRouter);
 
 // Mount connection discovery routes (LLM-discovered theological connections)
-app.use("/api/discover-connections", optionalAuth, discoverConnectionsRouter);
+// Use aiLimiter (50/min) instead of apiLimiter (100/15min) for better dev experience
+app.use(
+  "/api/discover-connections",
+  optionalAuth,
+  aiLimiter,
+  discoverConnectionsRouter,
+);
 
 // Chapter footer endpoint (test for Genesis 1)
 app.get("/api/bible/chapter-footer", optionalAuth, async (req, res) => {

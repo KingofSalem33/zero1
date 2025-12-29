@@ -26,6 +26,7 @@ interface SemanticConnectionModalProps {
   onTrace: (prompt: string) => void;
   explanation?: string;
   isLLMDiscovered?: boolean;
+  connectedVerseIds?: number[];
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -60,11 +61,12 @@ export function SemanticConnectionModal({
   position,
   onClose,
   onTrace,
-  explanation,
+  explanation: _explanation, // Unused - we always fetch fresh synopsis
   isLLMDiscovered,
+  connectedVerseIds,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
-  const [loading, setLoading] = useState(!isLLMDiscovered);
+  const [loading, setLoading] = useState(true); // Always load synopsis for comprehensive analysis
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -97,34 +99,33 @@ export function SemanticConnectionModal({
     setAdjustedPosition({ x: newX, y: newY });
   }, [position]);
 
-  // Fetch synopsis on mount (or use LLM explanation if available)
+  // Fetch comprehensive synopsis considering all connected verses
   useEffect(() => {
-    // If this is an LLM-discovered connection, use the explanation directly
-    if (isLLMDiscovered && explanation) {
-      console.log(
-        "[SemanticConnectionModal] Using LLM explanation:",
-        explanation,
-      );
-      setSynopsis(explanation);
-      setLoading(false);
-      return;
-    }
-
     const fetchSynopsis = async () => {
       setLoading(true);
       setError(null);
 
       try {
+        // Use all connected verse IDs if available, otherwise just the two endpoints
+        const verseIds =
+          connectedVerseIds && connectedVerseIds.length > 2
+            ? connectedVerseIds
+            : [fromVerse.id, toVerse.id];
+
+        console.log(
+          `[SemanticConnectionModal] Fetching synopsis for ${verseIds.length} connected verses`,
+        );
+
         const response = await fetch(
           `${API_URL}/api/semantic-connection/synopsis`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              fromVerseId: fromVerse.id,
-              toVerseId: toVerse.id,
+              verseIds, // Pass all connected verse IDs
               connectionType,
               similarity,
+              isLLMDiscovered,
             }),
           },
         );
@@ -153,8 +154,8 @@ export function SemanticConnectionModal({
     toVerse.id,
     connectionType,
     similarity,
-    explanation,
     isLLMDiscovered,
+    connectedVerseIds,
   ]);
 
   // Close on click outside
@@ -174,8 +175,8 @@ export function SemanticConnectionModal({
 
   // Close on Escape
   useEffect(() => {
-    const handleEscape = (event: any) => {
-      if (event.key === "Escape") onClose();
+    const handleEscape = (event: Event) => {
+      if ("key" in event && event.key === "Escape") onClose();
     };
 
     document.addEventListener("keydown", handleEscape);

@@ -109,6 +109,22 @@ interface BranchCluster {
   pathPreview: string;
 }
 
+interface EdgeData {
+  styleType?: keyof typeof EDGE_STYLES;
+  edgeType?: EdgeType;
+  explanation?: string;
+  confidence?: number;
+  isLLMDiscovered?: boolean;
+}
+
+interface DiscoveredConnection {
+  from: number;
+  to: number;
+  type: string;
+  explanation: string;
+  confidence: number;
+}
+
 const nodeTypes = {
   verseNode: VerseNode,
 };
@@ -147,6 +163,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
     explanation?: string;
     confidence?: number;
     isLLMDiscovered?: boolean;
+    connectedVerseIds?: number[];
   } | null>(null);
 
   // Branch highlighting state
@@ -212,7 +229,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           const currentEdge = allEdges.find((e) => e.id === currentEdgeId);
           if (!currentEdge) continue;
 
-          const edgeStyleType = (currentEdge.data as any)?.styleType;
+          const edgeStyleType = (currentEdge.data as EdgeData)?.styleType;
           if (edgeStyleType !== styleType) continue;
 
           branchEdgeIds.add(currentEdgeId);
@@ -247,8 +264,8 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           .join(" → ");
 
         const edgeType =
-          (allEdges.find((e) => e.id === startEdgeId)?.data as any)?.edgeType ||
-          "DEEPER";
+          (allEdges.find((e) => e.id === startEdgeId)?.data as EdgeData)
+            ?.edgeType || "DEEPER";
 
         return {
           edgeIds: branchEdgeIds,
@@ -261,7 +278,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
 
       // Compute cluster for each edge
       allEdges.forEach((edge) => {
-        const styleType = (edge.data as any)
+        const styleType = (edge.data as EdgeData)
           ?.styleType as keyof typeof EDGE_STYLES;
         if (!styleType) return;
 
@@ -567,7 +584,16 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           throw new Error("Failed to discover connections");
         }
 
-        const { connections, fromCache } = await response.json();
+        const data = await response.json();
+
+        // Check if this is an error response
+        if (data.error) {
+          console.warn("[LLM Discovery] API error:", data.error, data.message);
+          console.warn("[LLM Discovery] Rate limited - try again later");
+          return;
+        }
+
+        const { connections, fromCache } = data;
         console.log(
           `[LLM Discovery] Found ${connections.length} connections (${fromCache ? "cached" : "new"})`,
         );
@@ -578,13 +604,13 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
         }
 
         // Add discovered edges to the map
-        const newEdges = connections.map((conn: any) => {
+        const newEdges = (connections as DiscoveredConnection[]).map((conn) => {
           const styleType =
             TYPE_TO_STYLE_MAP[conn.type] || TYPE_TO_STYLE_MAP.DEEPER;
           const edgeStyle = EDGE_STYLES[styleType];
 
           return {
-            id: `llm-${conn.from}-${conn.to}`,
+            id: `llm-${conn.type}-${conn.from}-${conn.to}`,
             source: conn.from.toString(),
             target: conn.to.toString(),
             type: "smoothstep",
@@ -617,7 +643,22 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
         console.log(
           `[LLM Discovery] Adding ${newEdges.length} new edges to map`,
         );
-        setEdges((prev) => [...prev, ...newEdges]);
+
+        // Deduplicate edges by ID when adding
+        setEdges((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          const uniqueNewEdges = newEdges.filter((e) => !existingIds.has(e.id));
+
+          if (uniqueNewEdges.length === 0) {
+            console.log("[LLM Discovery] All edges already exist, skipping");
+            return prev;
+          }
+
+          console.log(
+            `[LLM Discovery] Adding ${uniqueNewEdges.length} unique edges (${newEdges.length - uniqueNewEdges.length} duplicates filtered)`,
+          );
+          return [...prev, ...uniqueNewEdges];
+        });
       } catch (error) {
         console.error("[LLM Discovery] Error:", error);
         // Silent fail - user still gets algorithmic connections
@@ -627,7 +668,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
     };
 
     discoverAdditionalConnections();
-  }, [bundle, discovering]);
+  }, [bundle]);
 
   // Pre-compute branch clusters when edges change
   useEffect(() => {
@@ -663,7 +704,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
             opacity: 0.7,
             filter: "none",
             strokeWidth:
-              EDGE_STYLES[(edge.data as any)?.styleType || "PURPLE"].width,
+              EDGE_STYLES[(edge.data as EdgeData)?.styleType || "PURPLE"].width,
           },
         })),
       );
@@ -702,7 +743,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
     setEdges((eds) =>
       eds.map((edge) => {
         const isInBranch = hoveredBranch.edgeIds.has(edge.id);
-        const styleType = (edge.data as any)?.styleType || "PURPLE";
+        const styleType = (edge.data as EdgeData)?.styleType || "PURPLE";
         const edgeStyle = EDGE_STYLES[styleType];
         const isColoredBranch = styleType !== "GREY"; // Only colored branches get glow
 
@@ -755,7 +796,8 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
   // Handle edge click for colored branches
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      const styleType = (edge.data as any)?.styleType;
+      const edgeData = edge.data as EdgeData;
+      const styleType = edgeData?.styleType;
 
       // Only handle colored branches (not GREY)
       if (styleType === "GREY" || !styleType) return;
@@ -777,10 +819,15 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
         bundleEdge?.metadata?.similarity || bundleEdge?.weight || 0;
 
       // Check if this is an LLM-discovered connection
-      const edgeData = edge.data as any;
       const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
       const llmExplanation = edgeData?.explanation;
       const llmConfidence = edgeData?.confidence;
+
+      // Get the cluster for this edge (contains all connected verses)
+      const cluster = branchClusters.get(edge.id);
+      const connectedVerseIds = cluster
+        ? Array.from(cluster.nodeIds)
+        : [fromId, toId];
 
       // Calculate position relative to the map container (for absolute positioning)
       const mapContainer = (event.target as HTMLElement).closest(".react-flow");
@@ -804,15 +851,16 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           reference: `${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}`,
           text: toVerse.text,
         },
-        connectionType: styleType as any,
+        connectionType: styleType,
         similarity: isLLMDiscovered ? llmConfidence || 0 : similarity,
         position: { x: posX, y: posY },
         explanation: llmExplanation,
         confidence: llmConfidence,
         isLLMDiscovered,
+        connectedVerseIds, // All verses in this cluster
       });
     },
-    [bundle],
+    [bundle, branchClusters],
   );
 
   const handleEdgeMouseEnter = useCallback(
@@ -991,6 +1039,7 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           onTrace={onTrace}
           explanation={clickedConnection.explanation}
           isLLMDiscovered={clickedConnection.isLLMDiscovered}
+          connectedVerseIds={clickedConnection.connectedVerseIds}
         />
       )}
     </div>

@@ -10,39 +10,41 @@ const openai = new OpenAI({
 
 /**
  * POST /api/semantic-connection/synopsis
- * Generate AI synopsis explaining why two verses are semantically connected
+ * Generate AI synopsis explaining semantic connections between verses
+ * Supports both pairwise (2 verses) and cluster (multiple verses) analysis
  */
 router.post("/synopsis", async (req, res) => {
   try {
-    const { fromVerseId, toVerseId, connectionType, similarity } = req.body;
+    const { verseIds, connectionType, similarity, isLLMDiscovered } = req.body;
 
-    if (!fromVerseId || !toVerseId) {
+    // Support legacy format (fromVerseId, toVerseId) for backwards compatibility
+    const ids = verseIds || [req.body.fromVerseId, req.body.toVerseId];
+
+    if (!ids || ids.length < 2) {
       return res
         .status(400)
-        .json({ error: "fromVerseId and toVerseId are required" });
+        .json({ error: "At least two verse IDs are required" });
     }
 
     console.log(
-      `[Semantic Connection] Generating synopsis for ${fromVerseId} → ${toVerseId} (${connectionType}, ${similarity})`,
+      `[Semantic Connection] Generating synopsis for ${ids.length} verses (${connectionType}, ${similarity})`,
     );
 
-    // Fetch both verses from database
+    // Fetch all verses from database
     const { data: verses, error } = await supabase
       .from("verses")
       .select("id, book_name, chapter, verse, text")
-      .in("id", [fromVerseId, toVerseId]);
+      .in("id", ids);
 
-    if (error || !verses || verses.length !== 2) {
+    if (error || !verses || verses.length < 2) {
       console.error("[Semantic Connection] Error fetching verses:", error);
       return res.status(404).json({ error: "Verses not found" });
     }
 
-    const fromVerse = verses.find((v) => v.id === fromVerseId);
-    const toVerse = verses.find((v) => v.id === toVerseId);
-
-    if (!fromVerse || !toVerse) {
-      return res.status(404).json({ error: "Verses not found" });
-    }
+    // Sort verses by their position in the verseIds array to maintain order
+    const sortedVerses = ids
+      .map((id: number) => verses.find((v) => v.id === id))
+      .filter((v): v is NonNullable<typeof v> => v !== undefined);
 
     // Determine connection description
     const connectionDescriptions = {
@@ -50,6 +52,11 @@ router.post("/synopsis", async (req, res) => {
       PURPLE:
         "theological connection (cross-testament, expressing the same truth)",
       CYAN: "prophetic connection (Old Testament prophecy pointing to New Testament fulfillment)",
+      TYPOLOGY: "typological pattern (shadow → substance)",
+      FULFILLMENT: "prophetic fulfillment (prophecy → event)",
+      CONTRAST: "theological contrast (inversion or opposition)",
+      PROGRESSION: "doctrinal progression (covenant development)",
+      PATTERN: "structural pattern (chiastic, numerical, or literary)",
     };
 
     const connectionDesc =
@@ -57,22 +64,37 @@ router.post("/synopsis", async (req, res) => {
         connectionType as keyof typeof connectionDescriptions
       ] || "semantic connection";
 
+    // Build verse list for prompt
+    const verseList = sortedVerses
+      .map((v) => `**${v.book_name} ${v.chapter}:${v.verse}**\n"${v.text}"`)
+      .join("\n\n");
+
     // Generate synopsis using AI
-    const prompt = `Analyze this ${connectionDesc} between two Bible verses:
+    const prompt =
+      sortedVerses.length === 2
+        ? `Analyze this ${connectionDesc} between two Bible verses:
 
-**${fromVerse.book_name} ${fromVerse.chapter}:${fromVerse.verse}**
-"${fromVerse.text}"
+${verseList}
 
-**${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}**
-"${toVerse.text}"
-
-These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : "prophetic"} connection.
+These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
 
 Provide a brief (2-3 sentences) analysis of:
 1. What shared themes or concepts connect these verses
 2. The theological or spiritual significance of this connection
 
-Be concise and insightful. Focus on the "why" of the connection rather than just describing what each verse says.`;
+Be concise and insightful. Focus on the "why" of the connection rather than just describing what each verse says.`
+        : `Analyze this ${connectionDesc} connecting ${sortedVerses.length} Bible verses:
+
+${verseList}
+
+These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} thread.
+
+Provide a comprehensive (3-4 sentences) analysis of:
+1. The overarching theme or pattern connecting ALL these verses
+2. How the verses build on or relate to each other
+3. The theological or spiritual significance of this connection as a whole
+
+Be insightful and synthesize the connections across all verses, not just pairwise relationships.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -88,28 +110,25 @@ Be concise and insightful. Focus on the "why" of the connection rather than just
         },
       ],
       temperature: 0.7,
-      max_tokens: 200,
+      max_tokens: sortedVerses.length > 2 ? 300 : 200, // More tokens for cluster analysis
     });
 
     const synopsis =
       completion.choices[0]?.message?.content || "Unable to generate synopsis.";
 
     console.log(
-      `[Semantic Connection] Synopsis generated: ${synopsis.substring(0, 100)}...`,
+      `[Semantic Connection] Synopsis generated for ${sortedVerses.length} verses: ${synopsis.substring(0, 100)}...`,
     );
 
     res.json({
       synopsis,
-      fromVerse: {
-        reference: `${fromVerse.book_name} ${fromVerse.chapter}:${fromVerse.verse}`,
-        text: fromVerse.text,
-      },
-      toVerse: {
-        reference: `${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}`,
-        text: toVerse.text,
-      },
+      verses: sortedVerses.map((v) => ({
+        reference: `${v.book_name} ${v.chapter}:${v.verse}`,
+        text: v.text,
+      })),
       connectionType,
       similarity,
+      verseCount: sortedVerses.length,
     });
   } catch (error) {
     console.error("[Semantic Connection] Error generating synopsis:", error);

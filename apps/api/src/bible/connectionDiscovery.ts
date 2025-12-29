@@ -24,6 +24,14 @@ export interface DiscoveredConnection {
   confidence: number; // 0.85-1.0
 }
 
+interface RawConnection {
+  from: number; // verse number (1-indexed)
+  to: number;
+  type: string;
+  explanation: string;
+  confidence: number;
+}
+
 interface Verse {
   id: number;
   reference: string;
@@ -211,7 +219,7 @@ Return as:
         {
           role: "system",
           content:
-            "You are a biblical scholar analyzing theological connections between verses. Focus on typology, fulfillment, and structural patterns that lexical similarity cannot capture.",
+            "You are a biblical scholar analyzing theological connections between verses. Focus on typology, fulfillment, and structural patterns that lexical similarity cannot capture. Return your response in JSON format.",
         },
         {
           role: "user",
@@ -237,8 +245,8 @@ Return as:
     );
 
     // Map verse numbers back to IDs and validate
-    const discovered: DiscoveredConnection[] = connections
-      .filter((conn: any) => {
+    const discovered: DiscoveredConnection[] = (connections as RawConnection[])
+      .filter((conn) => {
         // Validate structure
         if (
           !conn.from ||
@@ -277,10 +285,10 @@ Return as:
 
         return true;
       })
-      .map((conn: any) => ({
+      .map((conn) => ({
         from: verses[conn.from - 1].id,
         to: verses[conn.to - 1].id,
-        type: conn.type,
+        type: conn.type as DiscoveredConnection["type"],
         explanation: conn.explanation,
         confidence: conn.confidence,
       }));
