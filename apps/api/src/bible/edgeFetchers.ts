@@ -307,8 +307,8 @@ export async function fetchAllEdges(
   // Use semantic threads if enabled, otherwise try table-based fetchers
   if (useSemanticThreads) {
     if (includeROOTS) fetchers.push(findGoldThreads(sourceIds, 0.75)); // High same-testament similarity
-    if (includeECHOES) fetchers.push(findPurpleThreads(sourceIds, 0.7)); // High cross-testament similarity
-    if (includePROPHECY) fetchers.push(findCyanThreads(sourceIds, 0.65)); // Prophetic patterns
+    if (includeECHOES) fetchers.push(findPurpleThreads(sourceIds, 0.55)); // Cross-testament theological similarity
+    if (includePROPHECY) fetchers.push(findCyanThreads(sourceIds, 0.5)); // Prophetic patterns
   } else {
     // Fallback to table-based fetchers (will be empty until populated)
     if (includeROOTS) fetchers.push(fetchRootsEdges(sourceIds));

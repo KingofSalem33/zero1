@@ -722,7 +722,7 @@ async function buildMultiAnchorTree(
         includeDEEPER: true,
         includeROOTS: true,
         includeECHOES: true,
-        includePROPHECY: false,
+        includePROPHECY: true,
         includeGENEALOGY: false,
       },
     )) as ReferenceVisualBundle;
@@ -837,7 +837,7 @@ export async function explainScriptureWithKernelStream(
         includeDEEPER: true,
         includeROOTS: true,
         includeECHOES: true,
-        includePROPHECY: false,
+        includePROPHECY: true,
         includeGENEALOGY: false,
       },
     )) as ReferenceVisualBundle;

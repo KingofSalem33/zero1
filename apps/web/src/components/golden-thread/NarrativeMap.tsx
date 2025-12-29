@@ -48,15 +48,57 @@ const EDGE_STYLES = {
     label: "Prophetic Flow",
     description: "Prophecy & lineage",
   },
+  // LLM-Discovered Connection Types
+  TYPOLOGY: {
+    color: "#F97316", // Orange
+    glowColor: "#FDBA74",
+    width: 3,
+    label: "Typology",
+    description: "Shadow → substance patterns",
+  },
+  FULFILLMENT: {
+    color: "#14B8A6", // Teal
+    glowColor: "#5EEAD4",
+    width: 3,
+    label: "Fulfillment",
+    description: "Prophecy → event",
+  },
+  CONTRAST: {
+    color: "#EF4444", // Red
+    glowColor: "#FCA5A5",
+    width: 3,
+    label: "Contrast",
+    description: "Inversion or opposition",
+  },
+  PROGRESSION: {
+    color: "#22C55E", // Green
+    glowColor: "#86EFAC",
+    width: 3,
+    label: "Progression",
+    description: "Covenant development",
+  },
+  PATTERN: {
+    color: "#3B82F6", // Blue
+    glowColor: "#93C5FD",
+    width: 3,
+    label: "Pattern",
+    description: "Structural patterns",
+  },
 } as const;
 
 // Map edge types to visual categories
-const TYPE_TO_STYLE_MAP: Record<EdgeType, keyof typeof EDGE_STYLES> = {
+const TYPE_TO_STYLE_MAP: Record<string, keyof typeof EDGE_STYLES> = {
   DEEPER: "GREY", // Regular cross-references = subtle grey
   ROOTS: "GOLD", // Semantic lexical threads = gold highlight
   ECHOES: "PURPLE", // Semantic theological threads = purple highlight
   PROPHECY: "CYAN", // Semantic prophetic threads = cyan highlight
   GENEALOGY: "CYAN",
+  // LLM-discovered types
+  TYPOLOGY: "TYPOLOGY",
+  FULFILLMENT: "FULFILLMENT",
+  CONTRAST: "CONTRAST",
+  PROGRESSION: "PROGRESSION",
+  PATTERN: "PATTERN",
 };
 
 interface BranchCluster {
@@ -85,14 +127,26 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
+  const [discovering, setDiscovering] = useState(false);
 
   // Semantic connection modal state
   const [clickedConnection, setClickedConnection] = useState<{
     fromVerse: { id: number; reference: string; text: string };
     toVerse: { id: number; reference: string; text: string };
-    connectionType: "GOLD" | "PURPLE" | "CYAN";
+    connectionType:
+      | "GOLD"
+      | "PURPLE"
+      | "CYAN"
+      | "TYPOLOGY"
+      | "FULFILLMENT"
+      | "CONTRAST"
+      | "PROGRESSION"
+      | "PATTERN";
     similarity: number;
     position: { x: number; y: number };
+    explanation?: string;
+    confidence?: number;
+    isLLMDiscovered?: boolean;
   } | null>(null);
 
   // Branch highlighting state
@@ -448,6 +502,133 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
     setEdges(layoutedEdges);
   }, [bundle, highlightedRefs, expandedNodes, handleExpandNode]);
 
+  // Discover additional LLM connections automatically
+  useEffect(() => {
+    if (!bundle || discovering) return;
+
+    const discoverAdditionalConnections = async () => {
+      try {
+        setDiscovering(true);
+        console.log("[LLM Discovery] Starting automatic discovery...");
+
+        // Select core verses (top 12 or all if <12)
+        const allNodes = bundle.nodes || [];
+        let coreVerses = allNodes;
+
+        if (allNodes.length > 12) {
+          // Priority: anchor + spine + centrality
+          const selected = new Set<number>();
+
+          // 1. Anchor (depth 0)
+          const anchor = allNodes.find((n) => n.depth === 0);
+          if (anchor) selected.add(anchor.id);
+
+          // 2. Spine nodes
+          const spineNodes = allNodes.filter((n) => n.isSpine);
+          spineNodes.forEach((n) => selected.add(n.id));
+
+          // 3. Fill with highest centrality
+          const centrality = new Map<number, number>();
+          allNodes.forEach((n) => {
+            const connections = (bundle.edges || []).filter(
+              (e) => e.from === n.id || e.to === n.id,
+            ).length;
+            centrality.set(n.id, connections);
+          });
+
+          const remaining = allNodes
+            .filter((n) => !selected.has(n.id))
+            .sort((a, b) => {
+              const aCentrality = centrality.get(a.id) || 0;
+              const bCentrality = centrality.get(b.id) || 0;
+              return bCentrality - aCentrality;
+            })
+            .slice(0, 12 - selected.size);
+
+          remaining.forEach((n) => selected.add(n.id));
+          coreVerses = allNodes.filter((n) => selected.has(n.id));
+        }
+
+        console.log(
+          `[LLM Discovery] Analyzing ${coreVerses.length} core verses`,
+        );
+
+        const API_URL =
+          import.meta.env?.VITE_API_URL || "http://localhost:3001";
+        const response = await fetch(`${API_URL}/api/discover-connections`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            verseIds: coreVerses.map((v) => v.id),
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to discover connections");
+        }
+
+        const { connections, fromCache } = await response.json();
+        console.log(
+          `[LLM Discovery] Found ${connections.length} connections (${fromCache ? "cached" : "new"})`,
+        );
+
+        if (connections.length === 0) {
+          console.log("[LLM Discovery] No new connections discovered");
+          return;
+        }
+
+        // Add discovered edges to the map
+        const newEdges = connections.map((conn: any) => {
+          const styleType =
+            TYPE_TO_STYLE_MAP[conn.type] || TYPE_TO_STYLE_MAP.DEEPER;
+          const edgeStyle = EDGE_STYLES[styleType];
+
+          return {
+            id: `llm-${conn.from}-${conn.to}`,
+            source: conn.from.toString(),
+            target: conn.to.toString(),
+            type: "smoothstep",
+            data: {
+              styleType,
+              edgeType: conn.type,
+              explanation: conn.explanation,
+              confidence: conn.confidence,
+              isLLMDiscovered: true,
+            },
+            style: {
+              stroke: edgeStyle.color,
+              strokeWidth: edgeStyle.width,
+              strokeDasharray:
+                conn.type === "TYPOLOGY"
+                  ? "5,5"
+                  : conn.type === "FULFILLMENT"
+                    ? "10,5"
+                    : conn.type === "CONTRAST"
+                      ? "8,4"
+                      : conn.type === "PATTERN"
+                        ? "3,3"
+                        : "0",
+              opacity: 0.7,
+            },
+            animated: true,
+          };
+        });
+
+        console.log(
+          `[LLM Discovery] Adding ${newEdges.length} new edges to map`,
+        );
+        setEdges((prev) => [...prev, ...newEdges]);
+      } catch (error) {
+        console.error("[LLM Discovery] Error:", error);
+        // Silent fail - user still gets algorithmic connections
+      } finally {
+        setDiscovering(false);
+      }
+    };
+
+    discoverAdditionalConnections();
+  }, [bundle, discovering]);
+
   // Pre-compute branch clusters when edges change
   useEffect(() => {
     if (!bundle || edges.length === 0) return;
@@ -595,6 +776,12 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
       const similarity =
         bundleEdge?.metadata?.similarity || bundleEdge?.weight || 0;
 
+      // Check if this is an LLM-discovered connection
+      const edgeData = edge.data as any;
+      const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
+      const llmExplanation = edgeData?.explanation;
+      const llmConfidence = edgeData?.confidence;
+
       // Calculate position relative to the map container (for absolute positioning)
       const mapContainer = (event.target as HTMLElement).closest(".react-flow");
       let posX = event.clientX;
@@ -617,9 +804,12 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           reference: `${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}`,
           text: toVerse.text,
         },
-        connectionType: styleType as "GOLD" | "PURPLE" | "CYAN",
-        similarity,
+        connectionType: styleType as any,
+        similarity: isLLMDiscovered ? llmConfidence || 0 : similarity,
         position: { x: posX, y: posY },
+        explanation: llmExplanation,
+        confidence: llmConfidence,
+        isLLMDiscovered,
       });
     },
     [bundle],
@@ -799,6 +989,8 @@ export const NarrativeMap: React.FC<NarrativeMapProps> = ({
           position={clickedConnection.position}
           onClose={() => setClickedConnection(null)}
           onTrace={onTrace}
+          explanation={clickedConnection.explanation}
+          isLLMDiscovered={clickedConnection.isLLMDiscovered}
         />
       )}
     </div>

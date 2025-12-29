@@ -11,11 +11,21 @@ interface SemanticConnectionModalProps {
     reference: string;
     text: string;
   };
-  connectionType: "GOLD" | "PURPLE" | "CYAN";
+  connectionType:
+    | "GOLD"
+    | "PURPLE"
+    | "CYAN"
+    | "TYPOLOGY"
+    | "FULFILLMENT"
+    | "CONTRAST"
+    | "PROGRESSION"
+    | "PATTERN";
   similarity: number;
   position: { x: number; y: number };
   onClose: () => void;
   onTrace: (prompt: string) => void;
+  explanation?: string;
+  isLLMDiscovered?: boolean;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -24,12 +34,22 @@ const CONNECTION_LABELS = {
   GOLD: "Lexical Connection",
   PURPLE: "Theological Connection",
   CYAN: "Prophetic Connection",
+  TYPOLOGY: "Typological Pattern",
+  FULFILLMENT: "Prophetic Fulfillment",
+  CONTRAST: "Theological Contrast",
+  PROGRESSION: "Doctrinal Progression",
+  PATTERN: "Structural Pattern",
 };
 
 const CONNECTION_COLORS = {
   GOLD: "#F59E0B",
   PURPLE: "#8B5CF6",
   CYAN: "#06B6D4",
+  TYPOLOGY: "#F97316",
+  FULFILLMENT: "#14B8A6",
+  CONTRAST: "#EF4444",
+  PROGRESSION: "#22C55E",
+  PATTERN: "#3B82F6",
 };
 
 export function SemanticConnectionModal({
@@ -40,9 +60,11 @@ export function SemanticConnectionModal({
   position,
   onClose,
   onTrace,
+  explanation,
+  isLLMDiscovered,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isLLMDiscovered);
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -75,8 +97,19 @@ export function SemanticConnectionModal({
     setAdjustedPosition({ x: newX, y: newY });
   }, [position]);
 
-  // Fetch synopsis on mount
+  // Fetch synopsis on mount (or use LLM explanation if available)
   useEffect(() => {
+    // If this is an LLM-discovered connection, use the explanation directly
+    if (isLLMDiscovered && explanation) {
+      console.log(
+        "[SemanticConnectionModal] Using LLM explanation:",
+        explanation,
+      );
+      setSynopsis(explanation);
+      setLoading(false);
+      return;
+    }
+
     const fetchSynopsis = async () => {
       setLoading(true);
       setError(null);
@@ -115,7 +148,14 @@ export function SemanticConnectionModal({
     };
 
     fetchSynopsis();
-  }, [fromVerse.id, toVerse.id, connectionType, similarity]);
+  }, [
+    fromVerse.id,
+    toVerse.id,
+    connectionType,
+    similarity,
+    explanation,
+    isLLMDiscovered,
+  ]);
 
   // Close on click outside
   useEffect(() => {
