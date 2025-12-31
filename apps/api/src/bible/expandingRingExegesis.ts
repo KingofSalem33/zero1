@@ -46,6 +46,8 @@ export interface ReferenceTreeEdge {
 export interface ReferenceVisualBundle {
   nodes: ReferenceTreeNode[];
   edges: ReferenceTreeEdge[];
+  rootId?: number; // Anchor verse ID for circular layout
+  lens?: string; // Lens type (e.g., "NONE", "MESSIANIC")
 }
 
 interface TreeStats {
@@ -197,7 +199,7 @@ export async function rankVersesBySimilarity(
  * @param visualBundle - The reference tree to deduplicate
  * @returns The bundle with duplicates removed
  */
-async function deduplicateVerses(
+export async function deduplicateVerses(
   visualBundle: ReferenceVisualBundle,
 ): Promise<ReferenceVisualBundle> {
   if (visualBundle.nodes.length < 2) {
@@ -304,7 +306,7 @@ async function deduplicateVerses(
  * Resolve multiple anchor verses from the user prompt for multi-perspective synthesis.
  * Returns top N semantically similar verses when no explicit reference is given.
  */
-async function resolveMultipleAnchors(
+export async function resolveMultipleAnchors(
   userPrompt: string,
   maxAnchors: number = 3,
 ): Promise<number[]> {
@@ -374,7 +376,9 @@ async function resolveMultipleAnchors(
  * Resolve the anchor verse from the user prompt.
  * Order: explicit reference → concept mapping → semantic search → keyword search fallback.
  */
-async function resolveAnchor(userPrompt: string): Promise<number | null> {
+export async function resolveAnchor(
+  userPrompt: string,
+): Promise<number | null> {
   // Step 1: Check for explicit reference (e.g., "John 3:16")
   const explicitRef = parseExplicitReference(userPrompt);
   if (explicitRef) {
@@ -681,21 +685,32 @@ function buildAnchorFromTree(
  * @param userPrompt - User's query for semantic ranking
  * @returns Combined visual bundle with nodes and edges from all anchors
  */
-async function buildMultiAnchorTree(
+export async function buildMultiAnchorTree(
   anchorIds: number[],
   _userPrompt: string, // Kept for API compatibility
 ): Promise<ReferenceVisualBundle> {
   const startTime = Date.now();
 
+  // Deduplicate anchor IDs to prevent multiple trees from the same verse
+  console.log(`[Multi-Anchor DEBUG] Original anchors:`, anchorIds);
+  const uniqueAnchorIds = Array.from(new Set(anchorIds));
+  console.log(`[Multi-Anchor DEBUG] After dedup:`, uniqueAnchorIds);
+
+  if (uniqueAnchorIds.length < anchorIds.length) {
+    console.log(
+      `[Multi-Anchor] ⚠️ Removed ${anchorIds.length - uniqueAnchorIds.length} duplicate anchor(s)`,
+    );
+  }
+
   console.log(
-    `[Multi-Anchor] Building combined tree from ${anchorIds.length} anchors`,
+    `[Multi-Anchor] Building combined tree from ${uniqueAnchorIds.length} anchors`,
   );
 
   // Adjust tree depth based on number of anchors to stay within node limits
   // More anchors = shallower trees per anchor
   const depthPerAnchor =
-    anchorIds.length === 1 ? 6 : anchorIds.length === 2 ? 4 : 3;
-  const nodesPerAnchor = Math.floor(100 / anchorIds.length);
+    uniqueAnchorIds.length === 1 ? 6 : uniqueAnchorIds.length === 2 ? 4 : 3;
+  const nodesPerAnchor = Math.floor(100 / uniqueAnchorIds.length);
 
   console.log(
     `[Multi-Anchor] Building trees with depth=${depthPerAnchor}, nodes=${nodesPerAnchor} per anchor`,
@@ -704,10 +719,10 @@ async function buildMultiAnchorTree(
   // Build a tree from each anchor
   const trees: ReferenceVisualBundle[] = [];
 
-  for (let i = 0; i < anchorIds.length; i++) {
-    const anchorId = anchorIds[i];
+  for (let i = 0; i < uniqueAnchorIds.length; i++) {
+    const anchorId = uniqueAnchorIds[i];
     console.log(
-      `[Multi-Anchor] Building tree ${i + 1}/${anchorIds.length} from verse ${anchorId}...`,
+      `[Multi-Anchor] Building tree ${i + 1}/${uniqueAnchorIds.length} from verse ${anchorId}...`,
     );
 
     const tree = (await buildVisualBundle(
@@ -736,12 +751,27 @@ async function buildMultiAnchorTree(
   const seenNodeIds = new Set<number>();
 
   for (const tree of trees) {
+    console.log(
+      `[Multi-Anchor DEBUG] Processing tree with ${tree.nodes.length} nodes`,
+    );
+
     // Add nodes (skip duplicates)
+    let duplicateCount = 0;
     for (const node of tree.nodes) {
       if (!seenNodeIds.has(node.id)) {
         allNodes.push(node);
         seenNodeIds.add(node.id);
+      } else {
+        duplicateCount++;
+        console.log(
+          `[Multi-Anchor DEBUG] Skipping duplicate node: ${node.id} (${node.book_abbrev} ${node.chapter}:${node.verse})`,
+        );
       }
+    }
+    if (duplicateCount > 0) {
+      console.log(
+        `[Multi-Anchor DEBUG] Skipped ${duplicateCount} duplicate nodes from this tree`,
+      );
     }
 
     // Add edges (skip duplicates)
@@ -753,6 +783,10 @@ async function buildMultiAnchorTree(
     }
   }
 
+  console.log(
+    `[Multi-Anchor DEBUG] Final node count: ${allNodes.length}, Root ID will be: ${uniqueAnchorIds[0]}`,
+  );
+
   const elapsed = Date.now() - startTime;
   console.log(
     `[Multi-Anchor] ✅ Combined tree built in ${elapsed}ms: ` +
@@ -763,6 +797,8 @@ async function buildMultiAnchorTree(
   return {
     nodes: allNodes,
     edges: allEdges,
+    rootId: uniqueAnchorIds[0], // First anchor is the root for circular layout
+    lens: "NONE",
   };
 }
 

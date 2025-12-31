@@ -93,9 +93,13 @@ const BIBLE_BOOKS = [
 
 interface BibleReaderProps {
   onNavigateToChat?: (prompt: string) => void;
+  onTrace?: (text: string) => void;
 }
 
-const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
+const BibleReader: React.FC<BibleReaderProps> = ({
+  onNavigateToChat,
+  onTrace,
+}) => {
   // Restore last Bible position from localStorage
   const [selectedBook, setSelectedBook] = useState<string>(() => {
     const saved = localStorage.getItem("lastBibleBook");
@@ -285,13 +289,10 @@ const BibleReader: React.FC<BibleReaderProps> = ({ onNavigateToChat }) => {
   };
 
   const handleGoDeeper = (text: string) => {
-    if (!onNavigateToChat) return;
-
-    // Format the prompt with verse reference and selected text
-    const prompt = `${selectedBook} ${selectedChapter}\n\n"${text}"\n\nHelp me understand this passage.`;
-
-    // Navigate to chat with this verse as context
-    onNavigateToChat(prompt);
+    // Use the canonical trace handler to show map visualization
+    if (onTrace) {
+      onTrace(text);
+    }
   };
 
   const handleVerseNumberClick = (

@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense, useCallback } from "react";
 import "./App.css";
 import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
-import UnifiedWorkspace from "./components/UnifiedWorkspace";
-import BibleReader from "./components/BibleReader";
-import HighlightsLibrary from "./components/HighlightsLibrary";
 import { useAuth } from "./contexts/AuthContext";
 import { BibleHighlightsProvider } from "./contexts/BibleHighlightsContext";
+import type { VisualContextBundle } from "./types/goldenThread";
+import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
+
+// Lazy load heavy components for code splitting
+const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
+const BibleReader = lazy(() => import("./components/BibleReader"));
+const HighlightsLibrary = lazy(() => import("./components/HighlightsLibrary"));
 
 interface Chat {
   id: string;
@@ -21,32 +25,69 @@ function App() {
   const [project] = useState(null); // No project management for clean slate
   const [toolsUsed, setToolsUsed] = useState([]);
 
-  // Chat history state
-  const [chats, setChats] = useState<Chat[]>(() => {
-    const saved = localStorage.getItem("chatHistory");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return parsed.map((chat: any) => ({
-        ...chat,
-        timestamp: new Date(chat.timestamp),
-      }));
-    }
-    return [];
-  });
+  // Chat history state - initialized empty, loaded async
+  const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
   const [showBible, setShowBible] = useState<boolean>(false);
-  const [oratoryMode, setOratoryMode] = useState<boolean>(false);
+  const [bibleStudyMode, setBibleStudyMode] = useState<boolean>(false);
   const [highlightsMode, setHighlightsMode] = useState<boolean>(false);
   const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
     null,
   );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem("roadmapCollapsed");
-    return saved === "true";
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Trace visualization state (lifted to App level for use from any context)
+  const [showVisualization, setShowVisualization] = useState(false);
+  const [visualBundle, setVisualBundle] = useState<VisualContextBundle | null>(
+    null,
+  );
+
+  // Load chat history from localStorage after mount (async, non-blocking)
+  useEffect(() => {
+    const loadChatHistory = () => {
+      try {
+        const saved = localStorage.getItem("chatHistory");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const hydrated = parsed.map((chat: any) => ({
+            ...chat,
+            timestamp: new Date(chat.timestamp),
+          }));
+          setChats(hydrated);
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+      }
+    };
+
+    const loadSidebarState = () => {
+      try {
+        const saved = localStorage.getItem("roadmapCollapsed");
+        if (saved === "true") {
+          setSidebarCollapsed(true);
+        }
+      } catch (error) {
+        console.error("Failed to load sidebar state:", error);
+      }
+    };
+
+    // Load in next tick to not block hydration
+    if (typeof requestIdleCallback !== "undefined") {
+      // eslint-disable-next-line no-undef
+      requestIdleCallback(() => {
+        loadChatHistory();
+        loadSidebarState();
+      });
+    } else {
+      setTimeout(() => {
+        loadChatHistory();
+        loadSidebarState();
+      }, 0);
+    }
+  }, []);
 
   // Save sidebar collapsed state
   useEffect(() => {
@@ -68,7 +109,7 @@ function App() {
       // If opening Bible, close other modes
       if (newState) {
         setHighlightsMode(false);
-        setOratoryMode(false);
+        setBibleStudyMode(false);
       }
       return newState;
     });
@@ -80,13 +121,55 @@ function App() {
     setPendingChatPrompt(prompt); // Queue the prompt
   };
 
-  // Enter the Oratory
-  const handleEnterOratory = () => {
+  // Canonical trace handler - shows map visualization (used from any context)
+  const handleTrace = useCallback(async (selectedText: string) => {
+    try {
+      console.log("[App] Trace requested for:", selectedText);
+
+      // Show visualization panel immediately with loading state
+      setShowVisualization(true);
+      setVisualBundle(null); // Clear previous bundle
+
+      // Call the trace API endpoint
+      const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+      const response = await fetch(`${API_URL}/api/trace`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: selectedText }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("[App] Trace API error:", error);
+        // Keep visualization panel open to show error state
+        return;
+      }
+
+      const bundle: VisualContextBundle = await response.json();
+      console.log(
+        "[App] ✅ Received trace bundle:",
+        bundle.nodes.length,
+        "nodes",
+      );
+
+      // Set the visual bundle to display the map
+      setVisualBundle(bundle);
+    } catch (error) {
+      console.error("[App] Failed to fetch trace visualization:", error);
+      // Close visualization panel on error
+      setShowVisualization(false);
+    }
+  }, []);
+
+  // Enter Bible Study
+  const handleEnterBibleStudy = () => {
     setShowBible(false); // Close Bible if open
     setHighlightsMode(false); // Close Highlights if open
-    setOratoryMode(true); // Enable Oratory mode
-    // Start a new chat session for the Oratory
-    const newChatId = `oratory_${Date.now()}`;
+    setBibleStudyMode(true); // Enable Bible Study mode
+    // Start a new chat session for Bible Study
+    const newChatId = `biblestudy_${Date.now()}`;
     setCurrentChatId(newChatId);
     setCurrentMessages([]);
   };
@@ -94,7 +177,7 @@ function App() {
   // Open Highlights in chat area
   const handleOpenHighlights = () => {
     setShowBible(false); // Close Bible if open
-    setOratoryMode(false); // Exit Oratory mode
+    setBibleStudyMode(false); // Exit Bible Study mode
     setHighlightsMode(true); // Enter Highlights mode
   };
 
@@ -133,7 +216,7 @@ function App() {
   const handleNewChat = () => {
     // Exit special modes when starting a new chat
     setShowBible(false);
-    setOratoryMode(false);
+    setBibleStudyMode(false);
     setHighlightsMode(false);
 
     // Save current chat if it has messages
@@ -289,7 +372,7 @@ function App() {
             onSelectChat={handleSelectChat}
             showBible={showBible}
             onToggleBible={handleToggleBible}
-            onEnterOratory={handleEnterOratory}
+            onEnterBibleStudy={handleEnterBibleStudy}
             onOpenHighlights={handleOpenHighlights}
             isCollapsed={sidebarCollapsed}
             onToggleCollapse={setSidebarCollapsed}
@@ -301,30 +384,97 @@ function App() {
               sidebarCollapsed ? "md:ml-16" : "md:ml-64"
             }`}
           >
-            {showBible ? (
-              <BibleReader onNavigateToChat={handleNavigateToChat} />
-            ) : highlightsMode ? (
-              <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
-            ) : (
-              <UnifiedWorkspace
-                project={project}
-                onCreateProject={() => {}}
-                onInspireMe={() => {}}
-                toolsUsed={toolsUsed}
-                setToolsUsed={setToolsUsed}
-                creating={false}
-                inspiring={false}
-                onRefreshProject={() => {}}
-                messages={currentMessages}
-                onMessagesChange={setCurrentMessages}
-                pendingPrompt={pendingChatPrompt}
-                onPromptConsumed={() => setPendingChatPrompt(null)}
-                oratoryMode={oratoryMode}
-                onExitOratory={() => setOratoryMode(false)}
-              />
-            )}
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center min-h-screen">
+                  <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+                </div>
+              }
+            >
+              {showBible ? (
+                <BibleReader
+                  onNavigateToChat={handleNavigateToChat}
+                  onTrace={handleTrace}
+                />
+              ) : highlightsMode ? (
+                <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
+              ) : (
+                <UnifiedWorkspace
+                  project={project}
+                  onCreateProject={() => {}}
+                  onInspireMe={() => {}}
+                  toolsUsed={toolsUsed}
+                  setToolsUsed={setToolsUsed}
+                  creating={false}
+                  inspiring={false}
+                  onRefreshProject={() => {}}
+                  messages={currentMessages}
+                  onMessagesChange={setCurrentMessages}
+                  pendingPrompt={pendingChatPrompt}
+                  onPromptConsumed={() => setPendingChatPrompt(null)}
+                  bibleStudyMode={bibleStudyMode}
+                  onExitBibleStudy={() => setBibleStudyMode(false)}
+                  onTrace={handleTrace}
+                />
+              )}
+            </Suspense>
           </main>
         </div>
+
+        {/* Trace Visualization Panel - Global overlay */}
+        {showVisualization && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+            <div className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
+                <h3 className="text-sm font-semibold text-neutral-200">
+                  Theological Thread Explorer
+                  {visualBundle &&
+                    ` (${visualBundle.nodes?.length || 0} verses)`}
+                </h3>
+                <button
+                  onClick={() => setShowVisualization(false)}
+                  className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+                  title="Close visualization"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Map Container */}
+              <div className="flex-1 overflow-hidden relative">
+                {visualBundle ? (
+                  <NarrativeMap
+                    bundle={visualBundle}
+                    highlightedRefs={[]}
+                    onTrace={handleTrace}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center space-y-4">
+                      <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin mx-auto" />
+                      <p className="text-neutral-400 text-sm">
+                        Loading trace visualization...
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </BibleHighlightsProvider>
   );
