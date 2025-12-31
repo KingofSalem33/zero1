@@ -662,10 +662,10 @@ app.post(
       );
 
       // Return the visual bundle
-      res.json(visualBundle);
+      return res.json(visualBundle);
     } catch (error) {
       console.error("[Trace] Error:", error);
-      res.status(500).json({
+      return res.status(500).json({
         error:
           error instanceof Error
             ? error.message

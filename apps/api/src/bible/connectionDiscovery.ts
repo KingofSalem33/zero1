@@ -146,10 +146,10 @@ export function selectCoreVerses(
   };
 
   const selectedNodes = nodes.filter((n) => selected.has(n.id));
-  const hasOT = selectedNodes.some((n) => isOT(n.bookName));
+  const hasOT = selectedNodes.some((n) => isOT(n.book_name));
 
   if (!hasOT && selected.size < limit) {
-    const otVerse = nodes.find((n) => !selected.has(n.id) && isOT(n.bookName));
+    const otVerse = nodes.find((n) => !selected.has(n.id) && isOT(n.book_name));
     if (otVerse) {
       selected.add(otVerse.id);
       console.log(

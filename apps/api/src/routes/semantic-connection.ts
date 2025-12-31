@@ -42,9 +42,16 @@ router.post("/synopsis", async (req, res) => {
     }
 
     // Sort verses by their position in the verseIds array to maintain order
+    type VerseType = {
+      id: number;
+      book_name: string;
+      chapter: number;
+      verse: number;
+      text: string;
+    };
     const sortedVerses = ids
-      .map((id: number) => verses.find((v) => v.id === id))
-      .filter((v): v is NonNullable<typeof v> => v !== undefined);
+      .map((id: number) => verses.find((v: { id: number }) => v.id === id))
+      .filter((v: VerseType | undefined): v is VerseType => v !== undefined);
 
     // Determine connection description
     const connectionDescriptions = {
@@ -66,7 +73,14 @@ router.post("/synopsis", async (req, res) => {
 
     // Build verse list for prompt
     const verseList = sortedVerses
-      .map((v) => `**${v.book_name} ${v.chapter}:${v.verse}**\n"${v.text}"`)
+      .map(
+        (v: {
+          book_name: string;
+          chapter: number;
+          verse: number;
+          text: string;
+        }) => `**${v.book_name} ${v.chapter}:${v.verse}**\n"${v.text}"`,
+      )
       .join("\n\n");
 
     // Generate synopsis using AI
@@ -120,19 +134,26 @@ Be insightful and synthesize the connections across all verses, not just pairwis
       `[Semantic Connection] Synopsis generated for ${sortedVerses.length} verses: ${synopsis.substring(0, 100)}...`,
     );
 
-    res.json({
+    return res.json({
       synopsis,
-      verses: sortedVerses.map((v) => ({
-        reference: `${v.book_name} ${v.chapter}:${v.verse}`,
-        text: v.text,
-      })),
+      verses: sortedVerses.map(
+        (v: {
+          book_name: string;
+          chapter: number;
+          verse: number;
+          text: string;
+        }) => ({
+          reference: `${v.book_name} ${v.chapter}:${v.verse}`,
+          text: v.text,
+        }),
+      ),
       connectionType,
       similarity,
       verseCount: sortedVerses.length,
     });
   } catch (error) {
     console.error("[Semantic Connection] Error generating synopsis:", error);
-    res.status(500).json({ error: "Failed to generate synopsis" });
+    return res.status(500).json({ error: "Failed to generate synopsis" });
   }
 });
 

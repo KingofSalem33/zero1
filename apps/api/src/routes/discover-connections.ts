@@ -80,13 +80,13 @@ router.post("/", async (req, res) => {
       `[Discover Connections] Found ${connections.length} connections, cached for future use`,
     );
 
-    res.json({
+    return res.json({
       connections,
       fromCache: false,
     });
   } catch (error) {
     console.error("[Discover Connections] Error:", error);
-    res.status(500).json({ error: "Failed to discover connections" });
+    return res.status(500).json({ error: "Failed to discover connections" });
   }
 });
 
@@ -94,8 +94,8 @@ router.post("/", async (req, res) => {
  * GET /api/discover-connections/stats
  * Get cache statistics
  */
-router.get("/stats", (req, res) => {
-  res.json({
+router.get("/stats", (_req, res) => {
+  return res.json({
     cacheSize: cache.size,
     cacheTTL: CACHE_TTL / (24 * 60 * 60 * 1000) + " days",
   });
