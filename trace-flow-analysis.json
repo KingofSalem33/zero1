@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-12-30T15:29:36.975Z",
+  "currentFlow": {
+    "sidebarTrace": {
+      "showsMap": false,
+      "showsChatSpace": true,
+      "providesGuidance": false
+    }
+  },
+  "observations": [
+    "Trace button requires additional user action to see map",
+    "Trace mode includes chat interface - purpose unclear to new user"
+  ],
+  "recommendations": ["Remove Trace sidebar button - it adds friction"]
+}

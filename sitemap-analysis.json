@@ -1,0 +1,33 @@
+{
+  "timestamp": "2025-12-30T14:44:02.088Z",
+  "baseUrl": "http://localhost:5174",
+  "totalRoutes": 1,
+  "routes": [
+    {
+      "url": "http://localhost:5174/",
+      "domComplexity": {
+        "totalElements": 111,
+        "maxDepth": 13,
+        "interactiveElements": 15,
+        "images": 16
+      },
+      "performance": {
+        "domContentLoaded": 3483.7999999523163,
+        "loadComplete": 3559.7999999523163,
+        "hydrationTime": 1234.8000000715256
+      },
+      "bundleSize": {
+        "js": 3886875,
+        "css": 43569,
+        "total": 3930444
+      }
+    }
+  ],
+  "summary": {
+    "avgDOMElements": 111,
+    "avgJSBundle": 3795.8,
+    "avgCSSBundle": 42.5,
+    "avgDOMContentLoaded": 3484,
+    "avgHydration": 1235
+  }
+}

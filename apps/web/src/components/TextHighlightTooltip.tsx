@@ -154,6 +154,10 @@ const VerseTooltip = ({
                 <div className="mt-3 flex justify-end">
                   <button
                     onClick={() => {
+                      console.log(
+                        "[VerseTooltip] Trace button clicked, reference:",
+                        reference,
+                      );
                       onTrace(reference);
                       onClose();
                     }}

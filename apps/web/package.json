@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^10.32.1",
     "@supabase/supabase-js": "^2.57.4",
     "@xyflow/react": "^12.9.3",
     "dagre": "^0.8.5",

@@ -8,68 +8,148 @@ interface VerseNodeData {
   isAnchor: boolean;
   collapsedChildCount: number;
   onExpand: () => void;
+  depth?: number; // Depth from anchor for size scaling
 }
 
 export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
-  const { verse, isHighlighted, isAnchor, collapsedChildCount, onExpand } =
-    data;
+  const {
+    verse,
+    isHighlighted,
+    isAnchor,
+    collapsedChildCount,
+    onExpand,
+    depth,
+  } = data;
+  const [hasEntered, setHasEntered] = React.useState(false);
 
-  console.log(
-    "[VerseNode] Rendering node:",
-    verse.book_abbrev,
-    verse.chapter + ":" + verse.verse,
-    { isAnchor, isHighlighted, collapsedChildCount },
-  );
-
-  // Log when component mounts
+  // Trigger entrance animation on mount
   React.useEffect(() => {
-    console.log(
-      "[VerseNode] MOUNTED in DOM:",
-      verse.book_abbrev,
-      verse.chapter + ":" + verse.verse,
-    );
+    // Stagger entrance based on depth (if available)
+    const depth = verse.depth || 0;
+    const delay = Math.min(depth * 80, 800); // Cap at 800ms for deep nodes
+
+    const timer = setTimeout(() => {
+      setHasEntered(true);
+    }, delay);
+
     return () => {
-      console.log(
-        "[VerseNode] UNMOUNTED from DOM:",
-        verse.book_abbrev,
-        verse.chapter + ":" + verse.verse,
-      );
+      clearTimeout(timer);
     };
   }, []);
 
-  // Compact styling for at-a-glance tree view
+  // Enhanced styling for anchor node, compact for others
   const baseClasses =
-    "px-2 py-1 rounded border transition-all duration-300 cursor-pointer relative";
+    "rounded border cursor-pointer relative " +
+    "transition-all duration-150 ease-in-out " +
+    "hover:scale-105 hover:shadow-lg hover:z-10 " +
+    "active:scale-98 active:transition-transform active:duration-75";
 
   const stateClasses = isAnchor
-    ? "bg-yellow-400 border-yellow-600 text-black font-bold shadow-md"
+    ? "bg-yellow-400 border-yellow-600 text-black font-bold"
     : isHighlighted
-      ? "bg-yellow-100 border-yellow-500 text-black font-semibold shadow-sm"
-      : "bg-gray-50 border-gray-300 text-gray-700";
+      ? "bg-yellow-100 border-yellow-500 text-black font-semibold shadow-sm hover:shadow-md"
+      : "bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400";
+
+  // Node sizing based on depth from anchor
+  // Anchor: 180x90 (full size)
+  // Depth 1: 120x50 (medium)
+  // Depth 2: 100x42 (smaller)
+  // Depth 3+: 85x35 (smallest)
+  const nodeDepth = depth || verse.depth || 1;
+  let width: number, height: number, padding: string;
+
+  if (isAnchor) {
+    width = 180;
+    height = 90;
+    padding = "px-3 py-2";
+  } else if (nodeDepth === 1) {
+    width = 120;
+    height = 50;
+    padding = "px-2 py-1";
+  } else if (nodeDepth === 2) {
+    width = 100;
+    height = 42;
+    padding = "px-1.5 py-0.5";
+  } else {
+    width = 85;
+    height = 35;
+    padding = "px-1.5 py-0.5";
+  }
 
   return (
     <>
+      {/* Glow pulse animation for anchor node */}
+      {isAnchor && (
+        <style>{`
+          @keyframes glow-pulse {
+            0%, 100% {
+              box-shadow: 0 0 20px #FBBF24, 0 0 40px #F59E0B, 0 4px 15px rgba(0,0,0,0.3);
+            }
+            50% {
+              box-shadow: 0 0 30px #FBBF24, 0 0 60px #F59E0B, 0 4px 20px rgba(0,0,0,0.4);
+            }
+          }
+        `}</style>
+      )}
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <div
-        className={`${baseClasses} ${stateClasses}`}
+        className={`${baseClasses} ${stateClasses} ${padding}`}
         style={{
-          width: "120px",
-          height: "50px",
-          minWidth: "120px",
-          minHeight: "50px",
+          width: `${width}px`,
+          height: `${height}px`,
+          minWidth: `${width}px`,
+          minHeight: `${height}px`,
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "flex-start",
           boxSizing: "border-box",
+          // Glowing border for anchor node with hover pulse animation
+          ...(isAnchor && {
+            boxShadow:
+              "0 0 20px #FBBF24, 0 0 40px #F59E0B, 0 4px 15px rgba(0,0,0,0.3)",
+            borderWidth: "3px",
+            animation: "glow-pulse 2s ease-in-out infinite",
+          }),
+          // Entrance animation
+          opacity: hasEntered ? 1 : 0,
+          transform: hasEntered
+            ? "translateY(0) scale(1)"
+            : "translateY(-10px) scale(0.95)",
+          transition:
+            "opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), transform 400ms cubic-bezier(0.4, 0, 0.2, 1)",
         }}
       >
-        <div className="text-[11px] font-mono font-semibold whitespace-nowrap">
+        <div
+          className={
+            isAnchor
+              ? "text-[13px] font-mono font-bold whitespace-nowrap"
+              : nodeDepth <= 1
+                ? "text-[11px] font-mono font-semibold whitespace-nowrap"
+                : nodeDepth === 2
+                  ? "text-[10px] font-mono font-medium whitespace-nowrap"
+                  : "text-[9px] font-mono font-medium whitespace-nowrap"
+          }
+        >
           {verse.book_abbrev.toUpperCase()} {verse.chapter}:{verse.verse}
         </div>
-        {isHighlighted && (
-          <div className="text-[9px] mt-0.5 max-w-[110px] truncate leading-tight">
-            {verse.text}
+        {/* Show verse preview for anchor or highlighted nodes */}
+        {(isAnchor || isHighlighted) && (
+          <div
+            className={
+              isAnchor
+                ? "text-[10px] mt-1 max-w-[170px] truncate leading-tight"
+                : nodeDepth <= 1
+                  ? "text-[9px] mt-0.5 max-w-[110px] truncate leading-tight"
+                  : nodeDepth === 2
+                    ? "text-[8px] mt-0.5 max-w-[95px] truncate leading-tight"
+                    : "text-[7px] mt-0.5 max-w-[80px] truncate leading-tight"
+            }
+          >
+            {isAnchor
+              ? verse.text.substring(0, 50) +
+                (verse.text.length > 50 ? "..." : "")
+              : verse.text}
           </div>
         )}
         {collapsedChildCount > 0 && (
@@ -78,7 +158,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
               e.stopPropagation();
               onExpand();
             }}
-            className="absolute -bottom-2 -right-2 bg-blue-500 hover:bg-blue-600 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white shadow-sm transition-colors cursor-pointer"
+            className="absolute -bottom-2 -right-2 bg-blue-500 hover:bg-blue-600 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white shadow-sm transition-all duration-150 ease-in-out hover:scale-110 hover:shadow-md active:scale-95 cursor-pointer"
             title={`Expand ${collapsedChildCount} hidden ${collapsedChildCount === 1 ? "reference" : "references"}`}
           >
             +{collapsedChildCount}

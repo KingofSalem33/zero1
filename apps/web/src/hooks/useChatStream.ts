@@ -128,6 +128,7 @@ export function useChatStream(
             }
             if (line.startsWith("event:")) {
               currentEvent = line.slice(6).trim();
+              console.log("[useChatStream] Event line:", currentEvent);
             } else if (line.startsWith("data:")) {
               const data = line.slice(5).trim();
               if (!data) continue;
@@ -135,146 +136,117 @@ export function useChatStream(
               try {
                 const parsed = JSON.parse(data);
                 console.log(
-                  "[Frontend SSE] Event:",
+                  "[useChatStream] Processing event:",
                   currentEvent,
-                  "Data length:",
-                  JSON.stringify(parsed).length,
-                );
-                console.log(
-                  "[Frontend SSE] currentEvent value:",
-                  JSON.stringify(currentEvent),
-                );
-                console.log(
-                  "[Frontend SSE] currentEvent === 'content':",
-                  currentEvent === "content",
+                  "data:",
+                  parsed,
                 );
 
-                console.log("[Frontend SSE] About to call setStreamingMessage");
-                try {
+                // Capture event type before async operations (prevents currentEvent from being reset by blank lines)
+                const eventType = currentEvent;
+
+                // Use flushSync only for content to prevent text corruption
+                // while allowing other updates to batch
+                if (eventType === "content") {
                   flushSync(() => {
                     setStreamingMessage((prev) => {
-                      console.log(
-                        "[Frontend SSE] setStreamingMessage called, prev:",
-                        prev,
-                      );
-                      if (!prev) {
-                        console.log(
-                          "[Frontend SSE] prev is null/undefined, returning",
-                        );
-                        return prev;
-                      }
-
-                      console.log(
-                        "[Frontend SSE] About to enter switch with currentEvent:",
-                        currentEvent,
-                      );
-                      switch (currentEvent) {
-                        case "content": {
-                          const contentEvent = parsed as ContentEvent;
-                          console.log(
-                            "[Frontend SSE] Content event:",
-                            contentEvent,
-                          );
-                          console.log(
-                            "[Frontend SSE] Delta:",
-                            contentEvent.delta,
-                          );
-                          console.log(
-                            "[Frontend SSE] Delta length:",
-                            contentEvent.delta?.length,
-                          );
-                          console.log(
-                            "[Frontend SSE] Prev content length:",
-                            prev.content.length,
-                          );
-                          const newContent =
-                            prev.content + (contentEvent.delta || "");
-                          console.log(
-                            "[Frontend SSE] New content length:",
-                            newContent.length,
-                          );
-                          return {
-                            ...prev,
-                            content: newContent,
-                          };
-                        }
-
-                        case "tool_call": {
-                          const toolCallEvent = parsed as ToolCallEvent;
-                          return {
-                            ...prev,
-                            activeTools: [
-                              ...prev.activeTools,
-                              toolCallEvent.tool,
-                            ],
-                          };
-                        }
-
-                        case "tool_result": {
-                          const toolResultEvent = parsed as ToolResultEvent;
-                          return {
-                            ...prev,
-                            activeTools: prev.activeTools.filter(
-                              (t) => t !== toolResultEvent.tool,
-                            ),
-                            completedTools: [
-                              ...prev.completedTools,
-                              toolResultEvent.tool,
-                            ],
-                          };
-                        }
-
-                        case "tool_error": {
-                          const toolErrorEvent = parsed as ToolErrorEvent;
-                          return {
-                            ...prev,
-                            activeTools: prev.activeTools.filter(
-                              (t) => t !== toolErrorEvent.tool,
-                            ),
-                            erroredTools: [
-                              ...prev.erroredTools,
-                              toolErrorEvent.tool,
-                            ],
-                          };
-                        }
-
-                        case "map_data": {
-                          // Handle Golden Thread visualization data
-                          const mapDataEvent = parsed as VisualContextBundle;
-                          if (onMapData) {
-                            onMapData(mapDataEvent);
-                          }
-                          return prev;
-                        }
-
-                        case "done": {
-                          const doneEvent = parsed as DoneEvent;
-                          return {
-                            ...prev,
-                            isComplete: true,
-                            citations: doneEvent.citations,
-                          };
-                        }
-
-                        case "error": {
-                          const errorEvent = parsed as ErrorEvent;
-                          setError(errorEvent.message);
-                          return prev;
-                        }
-
-                        default:
-                          return prev;
-                      }
+                      if (!prev) return prev;
+                      const contentEvent = parsed as ContentEvent;
+                      return {
+                        ...prev,
+                        content: prev.content + (contentEvent.delta || ""),
+                      };
                     });
                   });
-                  console.log(
-                    "[Frontend SSE] setStreamingMessage call completed",
-                  );
-                } catch (setStateError) {
-                  console.error(
-                    "[Frontend SSE] Error calling setStreamingMessage:",
-                    setStateError,
-                  );
+                } else {
+                  setStreamingMessage((prev) => {
+                    // Initialize prev if null (defensive)
+                    const currentState = prev || {
+                      content: "",
+                      isComplete: false,
+                      activeTools: [],
+                      completedTools: [],
+                      erroredTools: [],
+                    };
+
+                    console.log(
+                      "[useChatStream] About to switch on event:",
+                      eventType,
+                      "currentState:",
+                      currentState,
+                    );
+
+                    switch (eventType) {
+                      case "tool_call": {
+                        const toolCallEvent = parsed as ToolCallEvent;
+                        return {
+                          ...currentState,
+                          activeTools: [
+                            ...currentState.activeTools,
+                            toolCallEvent.tool,
+                          ],
+                        };
+                      }
+
+                      case "tool_result": {
+                        const toolResultEvent = parsed as ToolResultEvent;
+                        return {
+                          ...currentState,
+                          activeTools: currentState.activeTools.filter(
+                            (t) => t !== toolResultEvent.tool,
+                          ),
+                          completedTools: [
+                            ...currentState.completedTools,
+                            toolResultEvent.tool,
+                          ],
+                        };
+                      }
+
+                      case "tool_error": {
+                        const toolErrorEvent = parsed as ToolErrorEvent;
+                        return {
+                          ...currentState,
+                          activeTools: currentState.activeTools.filter(
+                            (t) => t !== toolErrorEvent.tool,
+                          ),
+                          erroredTools: [
+                            ...currentState.erroredTools,
+                            toolErrorEvent.tool,
+                          ],
+                        };
+                      }
+
+                      case "map_data": {
+                        // Handle Golden Thread visualization data
+                        const mapDataEvent = parsed as VisualContextBundle;
+                        if (onMapData) {
+                          onMapData(mapDataEvent);
+                        }
+                        return currentState;
+                      }
+
+                      case "done": {
+                        const doneEvent = parsed as DoneEvent;
+                        console.log(
+                          "[useChatStream] 🎉 DONE event received, setting isComplete=true",
+                        );
+                        return {
+                          ...currentState,
+                          isComplete: true,
+                          citations: doneEvent.citations,
+                        };
+                      }
+
+                      case "error": {
+                        const errorEvent = parsed as ErrorEvent;
+                        setError(errorEvent.message);
+                        return currentState;
+                      }
+
+                      default:
+                        return currentState;
+                    }
+                  });
                 }
               } catch (parseError) {
                 console.error("Failed to parse SSE data:", parseError);

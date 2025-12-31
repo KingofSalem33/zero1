@@ -4,6 +4,22 @@ import path from "path";
 // Load .env from the api package root regardless of where the server is started
 const envPath = path.resolve(__dirname, "..", ".env");
 dotenv.config({ path: envPath });
+
+// Initialize Sentry AFTER loading env vars
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV || "development",
+  enabled: process.env.NODE_ENV === "production", // Only enable in production
+  integrations: [nodeProfilingIntegration()],
+  // Performance Monitoring
+  tracesSampleRate: 1.0, // Capture 100% of transactions for performance monitoring
+  // Profiling
+  profilesSampleRate: 1.0, // Capture 100% of profiles
+});
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -20,7 +36,12 @@ import {
   rankVersesBySimilarity,
   type ReferenceVisualBundle,
   type ReferenceTreeNode,
+  buildMultiAnchorTree,
+  resolveAnchor,
+  resolveMultipleAnchors,
+  deduplicateVerses,
 } from "./bible/expandingRingExegesis";
+import { buildVisualBundle } from "./bible/graphWalker";
 import { findResonantScripture } from "./bible/oratoryValidation";
 import bookmarksRouter from "./routes/bookmarks";
 import verseRouter from "./routes/verse";
@@ -568,6 +589,92 @@ app.get("/api/health/db", async (req, res) => {
   }
 });
 
+// Direct trace endpoint - returns visual bundle without chat streaming
+app.post(
+  "/api/trace",
+  optionalAuth,
+  aiLimiter,
+  express.json(),
+  async (req, res) => {
+    console.log("[Trace] Request received:", {
+      text: req.body?.text?.substring(0, 50),
+    });
+    try {
+      const { text } = req.body;
+
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({ error: "Text is required" });
+      }
+
+      // Resolve anchor verses from the selected text
+      const anchorIds = await resolveMultipleAnchors(text, 3);
+
+      if (anchorIds.length === 0) {
+        // Fallback to single anchor
+        const singleAnchor = await resolveAnchor(text);
+        if (singleAnchor) {
+          anchorIds.push(singleAnchor);
+        }
+      }
+
+      if (anchorIds.length === 0) {
+        return res.status(404).json({
+          error: "Could not find relevant Scripture for this text",
+        });
+      }
+
+      // Build visual bundle
+      let visualBundle: ReferenceVisualBundle;
+
+      if (anchorIds.length > 1) {
+        console.log(
+          `[Trace] Using multi-anchor synthesis with ${anchorIds.length} anchors`,
+        );
+        visualBundle = await buildMultiAnchorTree(anchorIds, text);
+      } else {
+        console.log(`[Trace] Using single anchor: ${anchorIds[0]}`);
+        visualBundle = (await buildVisualBundle(
+          anchorIds[0],
+          {
+            ring0Radius: 3,
+            ring1Limit: 20,
+            ring2Limit: 30,
+            ring3Limit: 40,
+          },
+          {
+            includeDEEPER: true,
+            includeROOTS: true,
+            includeECHOES: true,
+            includePROPHECY: true,
+            includeGENEALOGY: false,
+          },
+        )) as ReferenceVisualBundle;
+      }
+
+      // Rank verses by semantic similarity
+      visualBundle = await rankVersesBySimilarity(visualBundle, text);
+
+      // Remove duplicate/parallel passages
+      visualBundle = await deduplicateVerses(visualBundle);
+
+      console.log(
+        `[Trace] ✅ Visual bundle built: ${visualBundle.nodes.length} nodes, ${visualBundle.edges.length} edges`,
+      );
+
+      // Return the visual bundle
+      res.json(visualBundle);
+    } catch (error) {
+      console.error("[Trace] Error:", error);
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate trace visualization",
+      });
+    }
+  },
+);
+
 // AI Chat streaming endpoint with SSE (optional auth, AI rate limited)
 app.post(
   "/api/chat/stream",
@@ -877,6 +984,9 @@ app.post(
 app.use((_req, res) => {
   res.status(404).json({ error: "Not Found" });
 });
+
+// Sentry error handler - must be before other error handlers
+Sentry.setupExpressErrorHandler(app);
 
 app.use(
   (
