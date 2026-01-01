@@ -90,23 +90,22 @@ ${verseList}
 
 These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
 
-Provide a brief (2-3 sentences) analysis of:
+Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. What shared themes or concepts connect these verses
 2. The theological or spiritual significance of this connection
 
-Be concise and insightful. Focus on the "why" of the connection rather than just describing what each verse says.`
+Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words.`
         : `Analyze this ${connectionDesc} connecting ${sortedVerses.length} Bible verses:
 
 ${verseList}
 
 These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} thread.
 
-Provide a comprehensive (3-4 sentences) analysis of:
+Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. The overarching theme or pattern connecting ALL these verses
-2. How the verses build on or relate to each other
-3. The theological or spiritual significance of this connection as a whole
+2. The theological or spiritual significance of this connection as a whole
 
-Be insightful and synthesize the connections across all verses, not just pairwise relationships.`;
+Be direct and synthesizing. Maximum 34 words.`;
 
     const result = await runModel(
       [

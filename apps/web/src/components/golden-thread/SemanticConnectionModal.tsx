@@ -66,6 +66,9 @@ export function SemanticConnectionModal({
   connectedVerseIds,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
+  const [verses, setVerses] = useState<
+    Array<{ reference: string; text: string }>
+  >([]);
   const [loading, setLoading] = useState(true); // Always load synopsis for comprehensive analysis
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -137,6 +140,7 @@ export function SemanticConnectionModal({
         const data = await response.json();
         console.log("[SemanticConnectionModal] Loaded synopsis:", data);
         setSynopsis(data.synopsis || "");
+        setVerses(data.verses || []);
       } catch (err) {
         console.error(
           "[SemanticConnectionModal] Error fetching synopsis:",
@@ -242,36 +246,45 @@ export function SemanticConnectionModal({
             </span>
           </div>
 
-          {/* Verses */}
-          <div className="space-y-2 mb-3">
-            <div>
-              <div
-                className="font-bold text-xs mb-1 uppercase tracking-wide"
-                style={{ color: connectionColor }}
-              >
-                {fromVerse.reference}
-              </div>
-              <div className="text-[13px] leading-relaxed text-white/90 font-serif italic line-clamp-2">
-                {fromVerse.text}
-              </div>
-            </div>
-            <div className="flex justify-center">
-              <div
-                className="w-8 h-0.5 rounded"
-                style={{ backgroundColor: connectionColor, opacity: 0.5 }}
-              />
-            </div>
-            <div>
-              <div
-                className="font-bold text-xs mb-1 uppercase tracking-wide"
-                style={{ color: connectionColor }}
-              >
-                {toVerse.reference}
-              </div>
-              <div className="text-[13px] leading-relaxed text-white/90 font-serif italic line-clamp-2">
-                {toVerse.text}
-              </div>
-            </div>
+          {/* Compact Verse Reference Chips */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {verses.length > 0 ? (
+              verses.map((verse, idx) => (
+                <div
+                  key={idx}
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                  style={{
+                    backgroundColor: `${connectionColor}20`,
+                    color: connectionColor,
+                  }}
+                  title={verse.text}
+                >
+                  {verse.reference}
+                </div>
+              ))
+            ) : (
+              // Fallback while loading
+              <>
+                <div
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                  style={{
+                    backgroundColor: `${connectionColor}20`,
+                    color: connectionColor,
+                  }}
+                >
+                  {fromVerse.reference}
+                </div>
+                <div
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                  style={{
+                    backgroundColor: `${connectionColor}20`,
+                    color: connectionColor,
+                  }}
+                >
+                  {toVerse.reference}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Synopsis */}
