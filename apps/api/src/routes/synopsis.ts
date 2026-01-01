@@ -2,10 +2,9 @@ import { Router } from "express";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
-import OpenAI from "openai";
-
-const BIBLE_STUDY_IDENTITY = `You are a devout disciple of Jesus whose purpose is to help people understand the Word of God.
-You draw all doctrine, counsel, and explanation strictly from the King James Version (KJV) of the Bible.`;
+import { runModel, type RunModelResult } from "../ai/runModel";
+import { SYNOPSIS_V1 } from "../prompts";
+import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 
 const router = Router();
 
@@ -31,54 +30,45 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       });
     }
 
-    // Create OpenAI client
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
-
-    // Generate synopsis using GPT-4o-mini with scriptural context
-    const response = await Promise.race([
-      client.chat.completions.create({
-        model: "gpt-4o-mini",
-        max_tokens: 150,
-        temperature: 0.7,
-        messages: [
+    // Generate synopsis using GPT-5-nano with scriptural context
+    const result = (await Promise.race([
+      runModel(
+        [
           {
             role: "system",
-            content: `${BIBLE_STUDY_IDENTITY}
-
-You are providing brief scriptural insights for highlighted text. Your responses should:
-- Be concise (maximum ${maxWords} words)
-- Draw from KJV Scripture when relevant
-- Explain the significance or key meaning
-- Use plain, accessible language
-- Focus on what's important or noteworthy from a biblical perspective`,
+            content: SYNOPSIS_V1.buildSystem({ maxWords }),
           },
           {
             role: "user",
-            content: `Provide a brief scriptural insight (maximum ${maxWords} words) explaining the significance of this text from a KJV biblical perspective:
-
-"""
-${text}
-"""
-
-Brief insight (${maxWords} words or less):`,
+            content: SYNOPSIS_V1.buildUser(text, maxWords),
           },
         ],
-      }),
+        {
+          model: "gpt-4o-mini",
+          verbosity: "medium",
+        },
+      ),
       new Promise((_, reject) =>
         setTimeout(
           () => reject(new Error("Synopsis request timed out after 15s")),
           15000,
         ),
       ),
-    ]);
-
-    // Type assertion - we know the successful result is the completion response
-    const completion = response as OpenAI.Chat.Completions.ChatCompletion;
+    ])) as RunModelResult;
 
     // Extract the synopsis from the response
-    const synopsis =
-      completion.choices[0]?.message?.content?.trim() ||
-      "Unable to generate synopsis.";
+    const synopsis = result.text || "Unable to generate synopsis.";
+
+    // Log token usage for telemetry
+    const tokenUsage = extractTokenUsage(
+      result,
+      "/api/synopsis",
+      "gpt-4o-mini",
+      "synopsis-v1",
+    );
+    if (tokenUsage) {
+      logTokenUsage(tokenUsage);
+    }
 
     // Return the synopsis
     return res.json({

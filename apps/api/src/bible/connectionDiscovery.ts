@@ -9,12 +9,9 @@
  * - Pattern (structural, numerical, chiastic)
  */
 
-import OpenAI from "openai";
+import { runModel } from "../ai/runModel";
 import type { VisualContextBundle, ThreadNode } from "./types";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 
 export interface DiscoveredConnection {
   from: number; // verse ID
@@ -213,9 +210,8 @@ Return as:
 }`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    const result = await runModel(
+      [
         {
           role: "system",
           content:
@@ -226,19 +222,65 @@ Return as:
           content: prompt,
         },
       ],
-      response_format: { type: "json_object" },
-      temperature: 0.3, // Lower for consistency
-      max_tokens: 2000,
-    });
+      {
+        model: "gpt-4o-mini",
+        verbosity: "medium",
+        responseFormat: {
+          type: "json_schema",
+          json_schema: {
+            name: "connection_discovery",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                connections: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      from: { type: "number" },
+                      to: { type: "number" },
+                      type: { type: "string" },
+                      explanation: { type: "string" },
+                      confidence: { type: "number" },
+                    },
+                    required: [
+                      "from",
+                      "to",
+                      "type",
+                      "explanation",
+                      "confidence",
+                    ],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["connections"],
+              additionalProperties: false,
+            },
+          },
+        },
+      },
+    );
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
+    if (!result.text) {
       console.error("[Connection Discovery] No response from LLM");
       return [];
     }
 
-    const result = JSON.parse(content);
-    const connections = result.connections || [];
+    // Log token usage for telemetry
+    const tokenUsage = extractTokenUsage(
+      result,
+      "connectionDiscovery",
+      "gpt-4o-mini",
+      "connection-discovery-v1",
+    );
+    if (tokenUsage) {
+      logTokenUsage(tokenUsage);
+    }
+
+    const parsed = JSON.parse(result.text);
+    const connections = parsed.connections || [];
 
     console.log(
       `[Connection Discovery] LLM found ${connections.length} connections`,

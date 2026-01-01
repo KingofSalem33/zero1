@@ -150,6 +150,14 @@ export interface RunModelResult {
   text: string;
   citations?: string[];
   tools_used?: ToolActivity[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+    };
+  };
 }
 
 export async function runModel(
@@ -191,6 +199,7 @@ export async function runModel(
   const toolActivity: ToolActivity[] = [];
   const MAX_TOOL_ACTIVITY = 100; // ✅ Fix #10: Limit tool activity tracking to prevent unbounded growth
   let iterations = 0;
+  let lastUsageData: any = undefined; // Track usage from last API call
 
   logger.info(
     { messageCount: messages.length, toolCount: toolSpecs.length },
@@ -240,15 +249,19 @@ export async function runModel(
         // Note: OpenAI prompt caching parameters (if supported by SDK version)
         // Prompt caching is automatic for prompts > 1024 tokens
         // These parameters are for advanced optimization when supported
-        ...(promptCacheRetention && { prompt_cache_retention: promptCacheRetention }),
+        ...(promptCacheRetention && {
+          prompt_cache_retention: promptCacheRetention,
+        }),
         ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
       });
 
       // Log prompt cache performance if available
       if ((response as any).usage?.prompt_tokens_details?.cached_tokens) {
-        const cached = (response as any).usage.prompt_tokens_details.cached_tokens;
+        const cached = (response as any).usage.prompt_tokens_details
+          .cached_tokens;
         const total = (response as any).usage?.prompt_tokens || 0;
-        const cacheHitRate = total > 0 ? ((cached / total) * 100).toFixed(1) : "0";
+        const cacheHitRate =
+          total > 0 ? ((cached / total) * 100).toFixed(1) : "0";
         logger.info(
           {
             cached_tokens: cached,
@@ -259,6 +272,9 @@ export async function runModel(
           "Prompt cache hit",
         );
       }
+
+      // Store usage data for telemetry
+      lastUsageData = (response as any).usage;
 
       // Extract assistant message from output array
       const assistantMessage = response.output.find(
@@ -324,6 +340,7 @@ export async function runModel(
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
+          usage: lastUsageData,
         };
       }
 
@@ -513,6 +530,7 @@ export async function runModel(
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
+          usage: lastUsageData,
         };
       }
     }
@@ -539,5 +557,6 @@ export async function runModel(
     text: textContent,
     citations: allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
     tools_used: toolActivity.length > 0 ? toolActivity : undefined,
+    usage: lastUsageData,
   };
 }

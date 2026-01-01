@@ -14,7 +14,7 @@
 import { supabase } from "../db";
 import type { Verse } from "./graphWalker";
 import type { ThreadNode, VisualEdge, VisualContextBundle } from "./types";
-import OpenAI from "openai";
+import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 
 interface BuildTreeOptions {
@@ -78,7 +78,10 @@ export async function buildReferenceTree(
   let queryEmbedding: number[] | null = null;
   if (userQuery && ENV.OPENAI_API_KEY) {
     try {
-      const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+      const client = makeOpenAI();
+      if (!client) {
+        throw new Error("OpenAI client not configured");
+      }
       const response = await client.embeddings.create({
         model: "text-embedding-3-small",
         input: userQuery,

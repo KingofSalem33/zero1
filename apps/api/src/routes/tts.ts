@@ -2,7 +2,7 @@ import { Router } from "express";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
-import OpenAI from "openai";
+import { makeOpenAI } from "../ai";
 
 const router = Router();
 
@@ -35,7 +35,10 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     }
 
     // Create OpenAI client for TTS
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("OpenAI client not configured");
+    }
 
     console.log("Calling OpenAI TTS API...");
 

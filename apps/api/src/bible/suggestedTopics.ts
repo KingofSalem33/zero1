@@ -7,7 +7,7 @@
  */
 
 import { supabase } from "../db";
-import OpenAI from "openai";
+import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
@@ -164,7 +164,10 @@ export async function findSimilarChapters(
   }
 
   try {
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("OpenAI client not configured");
+    }
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: chapterSummary,
@@ -302,7 +305,10 @@ export async function findGoldenThreads(
   }
 
   try {
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("OpenAI client not configured");
+    }
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: chapterSummary,

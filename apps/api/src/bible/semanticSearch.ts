@@ -5,7 +5,7 @@
  */
 
 import { supabase } from "../db";
-import OpenAI from "openai";
+import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
@@ -46,7 +46,10 @@ export async function searchVersesByQuery(
 
   // Step 1: Generate embedding for the query
   const startTime = Date.now();
-  const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+  const client = makeOpenAI();
+  if (!client) {
+    throw new Error("OpenAI client not configured");
+  }
 
   let queryEmbedding: number[];
   try {
@@ -192,7 +195,10 @@ export async function generateEmbeddingsBatch(
     throw new Error("OPENAI_API_KEY not configured");
   }
 
-  const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+  const client = makeOpenAI();
+  if (!client) {
+    throw new Error("OpenAI client not configured");
+  }
 
   const response = await client.embeddings.create({
     model: EMBEDDING_MODEL,

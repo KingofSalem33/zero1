@@ -1,12 +1,10 @@
 import { Router } from "express";
 import { supabase } from "../db";
-import OpenAI from "openai";
+import { runModel } from "../ai/runModel";
+import { SEMANTIC_CONNECTION_V1 } from "../prompts";
+import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 
 const router = Router();
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 /**
  * POST /api/semantic-connection/synopsis
@@ -110,25 +108,35 @@ Provide a comprehensive (3-4 sentences) analysis of:
 
 Be insightful and synthesize the connections across all verses, not just pairwise relationships.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    const result = await runModel(
+      [
         {
           role: "system",
-          content:
-            "You are a biblical scholar analyzing semantic connections between verses. Provide clear, concise insights into shared themes and theological significance.",
+          content: SEMANTIC_CONNECTION_V1.systemPrompt,
         },
         {
           role: "user",
           content: prompt,
         },
       ],
-      temperature: 0.7,
-      max_tokens: sortedVerses.length > 2 ? 300 : 200, // More tokens for cluster analysis
-    });
+      {
+        model: "gpt-4o-mini",
+        verbosity: "medium",
+      },
+    );
 
-    const synopsis =
-      completion.choices[0]?.message?.content || "Unable to generate synopsis.";
+    const synopsis = result.text || "Unable to generate synopsis.";
+
+    // Log token usage for telemetry
+    const tokenUsage = extractTokenUsage(
+      result,
+      "/api/semantic-connection/synopsis",
+      "gpt-4o-mini",
+      "semantic-connection-v1",
+    );
+    if (tokenUsage) {
+      logTokenUsage(tokenUsage);
+    }
 
     console.log(
       `[Semantic Connection] Synopsis generated for ${sortedVerses.length} verses: ${synopsis.substring(0, 100)}...`,

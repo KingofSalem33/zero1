@@ -12,7 +12,7 @@ import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
 import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
 import { supabase } from "../db";
-import OpenAI from "openai";
+import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
@@ -107,7 +107,10 @@ export async function rankVersesBySimilarity(
 
   try {
     // Step 1: Generate embedding for user query
-    const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+    const client = makeOpenAI();
+    if (!client) {
+      throw new Error("OpenAI client not configured");
+    }
     const response = await client.embeddings.create({
       model: "text-embedding-3-small",
       input: userQuery,
