@@ -98,6 +98,7 @@ interface UnifiedWorkspaceProps {
   bibleStudyMode?: boolean;
   onExitBibleStudy?: () => void;
   onTrace?: (text: string) => void; // Canonical trace handler from App
+  onGoDeeper?: (prompt: string) => void; // Go Deeper handler for Bible Study
 }
 
 const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
@@ -120,6 +121,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   onExitBibleStudy: _onExitBibleStudy,
   onTrace,
+  onGoDeeper,
 }) => {
   const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
   const messages =
@@ -1680,56 +1682,100 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     bundle={visualBundle}
                     highlightedRefs={highlightedRefs}
                     onTrace={handleGoDeeper}
+                    onGoDeeper={onGoDeeper}
                   />
                 </div>
               </div>
             ),
-          [showVisualization, visualBundle, highlightedRefs, handleGoDeeper],
+          [
+            showVisualization,
+            visualBundle,
+            highlightedRefs,
+            handleGoDeeper,
+            onGoDeeper,
+          ],
         )}
       </div>
 
-      {/* Input Composer (sticky bottom) */}
-      {/* Bottom composer (shown when there are messages) */}
-      {messages.length > 0 && (
+      {/* Input Composer */}
+      <div
+        ref={composerRef}
+        className={
+          messages.length === 0
+            ? "flex-1 flex flex-col items-center justify-start px-6 pt-6"
+            : "sticky bottom-0 px-6 py-4 bg-neutral-950/40 backdrop-blur-sm"
+        }
+      >
         <div
-          ref={composerRef}
-          className="sticky bottom-0 px-6 py-4 bg-neutral-950/40 backdrop-blur-sm"
+          className={
+            messages.length === 0
+              ? "max-w-3xl w-full space-y-8"
+              : "max-w-4xl mx-auto"
+          }
         >
-          <div className="max-w-4xl mx-auto">
-            <div
-              className={`relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg ${bibleStudyMode ? "focus-within:ring-2 focus-within:ring-amber-500/50 focus-within:border-amber-500/50" : "focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50"}`}
+          {messages.length === 0 && (
+            <div className="text-center mb-10">
+              <h1 className="text-4xl font-medium text-neutral-100 tracking-tight">
+                What would you like to examine?
+              </h1>
+            </div>
+          )}
+          <div
+            className={`relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg ${bibleStudyMode ? "focus-within:ring-2 focus-within:ring-amber-500/50 focus-within:border-amber-500/50" : "focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50"}`}
+          >
+            <button
+              onClick={() => setShowUploadButton(!showUploadButton)}
+              className="btn-icon-ghost w-8 h-8"
+              title="Add options"
             >
-              <button
-                onClick={() => setShowUploadButton(!showUploadButton)}
-                className="btn-icon-ghost w-8 h-8"
-                title="Add options"
+              <svg
+                className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg
-                  className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              </button>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            </button>
 
-              {/* Options Menu */}
-              {showUploadButton && (
-                <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
-                  <div className="py-1">
-                    {/* Add Workspace Option */}
+            {/* Options Menu */}
+            {showUploadButton && (
+              <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
+                <div className="py-1">
+                  {/* Add Workspace Option */}
+                  <button
+                    onClick={() => {
+                      onOpenNewWorkspace?.();
+                      setShowUploadButton(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    <span>Add Workspace</span>
+                  </button>
+
+                  {/* Placeholder for future options */}
+                  <div className="border-t border-gray-700 mt-1 pt-1">
                     <button
-                      onClick={() => {
-                        onOpenNewWorkspace?.();
-                        setShowUploadButton(false);
-                      }}
-                      className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
+                      disabled
+                      className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
                     >
                       <svg
                         className="w-4 h-4"
@@ -1741,53 +1787,56 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M12 4v16m8-8H4"
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
                         />
                       </svg>
-                      <span>Add Workspace</span>
+                      <span>More options coming soon...</span>
                     </button>
-
-                    {/* Placeholder for future options */}
-                    <div className="border-t border-gray-700 mt-1 pt-1">
-                      <button
-                        disabled
-                        className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                          />
-                        </svg>
-                        <span>More options coming soon...</span>
-                      </button>
-                    </div>
                   </div>
                 </div>
-              )}
-              <textarea
-                value={currentInput}
-                onChange={(e) => setCurrentInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={getContextualPlaceholder()}
-                className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
-                rows={1}
-                disabled={isProcessing}
-                autoFocus={bibleStudyMode && messages.length === 0}
-              />
-              {/* Bookmark Button */}
-              <button
-                onClick={() => setShowBookmarkPanel(true)}
-                className="p-2 rounded-lg text-neutral-400 hover:text-blue-400 hover:bg-white/5 transition-all"
-                title="View bookmarks"
+              </div>
+            )}
+            <textarea
+              value={currentInput}
+              onChange={(e) => setCurrentInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={getContextualPlaceholder()}
+              className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
+              rows={1}
+              disabled={isProcessing}
+              autoFocus={bibleStudyMode && messages.length === 0}
+            />
+            {/* Bookmark Button */}
+            <button
+              onClick={() => setShowBookmarkPanel(true)}
+              className="p-2 rounded-lg text-neutral-400 hover:text-blue-400 hover:bg-white/5 transition-all"
+              title="View bookmarks"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                />
+              </svg>
+            </button>
+            {/* Voice Settings Button */}
+            <VoiceSettings />
+            <button
+              onClick={handleSendMessage}
+              disabled={!currentInput.trim() || isProcessing}
+              className="btn-icon-primary"
+              title={isProcessing ? "Sending..." : "Send message"}
+            >
+              {isProcessing ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
                 <svg
                   className="w-5 h-5"
                   fill="none"
@@ -1798,40 +1847,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
                   />
                 </svg>
-              </button>
-              {/* Voice Settings Button */}
-              <VoiceSettings />
-              <button
-                onClick={handleSendMessage}
-                disabled={!currentInput.trim() || isProcessing}
-                className="btn-icon-primary"
-                title={isProcessing ? "Sending..." : "Send message"}
-              >
-                {isProcessing ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                    />
-                  </svg>
-                )}
-              </button>
-            </div>
+              )}
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Step Completion Modal */}
 

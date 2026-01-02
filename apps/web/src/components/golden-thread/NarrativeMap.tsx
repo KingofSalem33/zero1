@@ -236,12 +236,14 @@ interface NarrativeMapProps {
   bundle: VisualContextBundle | null;
   highlightedRefs: string[]; // ["John 3:16", "Romans 5:8"]
   onTrace?: (prompt: string) => void;
+  onGoDeeper?: (prompt: string) => void;
 }
 
 const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   bundle,
   highlightedRefs,
   onTrace,
+  onGoDeeper,
 }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -1858,7 +1860,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       </div>
 
       {/* Semantic Connection Modal */}
-      {clickedConnection && onTrace && (
+      {clickedConnection && (onTrace || onGoDeeper) && (
         <SemanticConnectionModal
           fromVerse={clickedConnection.fromVerse}
           toVerse={clickedConnection.toVerse}
@@ -1866,7 +1868,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           similarity={clickedConnection.similarity}
           position={clickedConnection.position}
           onClose={() => setClickedConnection(null)}
-          onTrace={onTrace}
+          onTrace={onTrace || (() => {})}
+          onGoDeeper={onGoDeeper || (() => {})}
           explanation={clickedConnection.explanation}
           isLLMDiscovered={clickedConnection.isLLMDiscovered}
           connectedVerseIds={clickedConnection.connectedVerseIds}
@@ -1880,14 +1883,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 export const NarrativeMap = React.memo(
   NarrativeMapComponent,
   (prevProps, nextProps) => {
-    // Custom comparison: only re-render if bundle, highlightedRefs, or onTrace actually changed
+    // Custom comparison: only re-render if bundle, highlightedRefs, onTrace, or onGoDeeper actually changed
     return (
       prevProps.bundle === nextProps.bundle &&
       prevProps.highlightedRefs.length === nextProps.highlightedRefs.length &&
       prevProps.highlightedRefs.every(
         (ref, i) => ref === nextProps.highlightedRefs[i],
       ) &&
-      prevProps.onTrace === nextProps.onTrace
+      prevProps.onTrace === nextProps.onTrace &&
+      prevProps.onGoDeeper === nextProps.onGoDeeper
     );
   },
 );

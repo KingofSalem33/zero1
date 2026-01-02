@@ -24,6 +24,7 @@ interface SemanticConnectionModalProps {
   position: { x: number; y: number };
   onClose: () => void;
   onTrace: (prompt: string) => void;
+  onGoDeeper: (prompt: string) => void;
   explanation?: string;
   isLLMDiscovered?: boolean;
   connectedVerseIds?: number[];
@@ -61,6 +62,7 @@ export function SemanticConnectionModal({
   position,
   onClose,
   onTrace,
+  onGoDeeper,
   explanation: _explanation, // Unused - we always fetch fresh synopsis
   isLLMDiscovered,
   connectedVerseIds,
@@ -190,6 +192,29 @@ export function SemanticConnectionModal({
   const handleTrace = () => {
     const tracePrompt = `Trace the ${CONNECTION_LABELS[connectionType].toLowerCase()} between ${fromVerse.reference} and ${toVerse.reference}. Explore the semantic themes and theological significance of this connection.`;
     onTrace(tracePrompt);
+    onClose();
+  };
+
+  const handleGoDeeper = () => {
+    // Format the prompt according to the user's specification
+    const goDeeperPrompt = `TASK: Expound upon the significance of this connection.
+
+=== THE DATA ===
+[SOURCE ANCHOR]
+${fromVerse.reference}: "${fromVerse.text}"
+
+[TARGET CONNECTION]
+${toVerse.reference}: "${toVerse.text}"
+
+[METADATA]
+- Type: ${CONNECTION_LABELS[connectionType]}
+- Previous Synopsis: "${synopsis}"
+
+=== INSTRUCTION ===
+Using the KJV text above and the synopsis as a starting point, explain the *theological significance* of this link to the Christian faith.
+Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
+
+    onGoDeeper(goDeeperPrompt);
     onClose();
   };
 
@@ -345,6 +370,36 @@ export function SemanticConnectionModal({
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M13 7l5 5m0 0l-5 5m5-5H6"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={handleGoDeeper}
+              disabled={loading || !synopsis}
+              className="group px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: `${connectionColor}20`,
+                color: connectionColor,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = `${connectionColor}30`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = `${connectionColor}20`;
+              }}
+            >
+              <span>Go Deeper</span>
+              <svg
+                className="w-3 h-3 transition-transform group-hover:translate-y-0.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
                 />
               </svg>
             </button>

@@ -119,3 +119,5 @@ apps/api/data/
 
 # Claude settings (contains API keys)
 .claude/settings.local.json
+nul
+.playwright-mcp/

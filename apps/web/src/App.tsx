@@ -30,9 +30,9 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
-  const [showBible, setShowBible] = useState<boolean>(true);
-  const [bibleStudyMode, setBibleStudyMode] = useState<boolean>(false);
-  const [highlightsMode, setHighlightsMode] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<"reader" | "chat" | "highlights">(
+    "reader",
+  );
   const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
     null,
   );
@@ -102,22 +102,14 @@ function App() {
     }
   }, []);
 
-  // Toggle Bible view
+  // Toggle to Bible Reader view
   const handleToggleBible = () => {
-    setShowBible((prev) => {
-      const newState = !prev;
-      // If opening Bible, close other modes
-      if (newState) {
-        setHighlightsMode(false);
-        setBibleStudyMode(false);
-      }
-      return newState;
-    });
+    setViewMode("reader");
   };
 
   // Navigate from Bible to Chat with a prompt
   const handleNavigateToChat = (prompt: string) => {
-    setShowBible(false); // Switch to chat view
+    setViewMode("chat"); // Switch to chat view
     setPendingChatPrompt(prompt); // Queue the prompt
   };
 
@@ -163,28 +155,25 @@ function App() {
     }
   }, []);
 
-  // Enter Bible Study
+  // Handle "Go Deeper" - navigates to chat and sends the formatted prompt
+  const handleGoDeeper = useCallback((prompt: string) => {
+    console.log("[App] Go Deeper requested with prompt:", prompt);
+    handleNavigateToChat(prompt);
+  }, []);
+
+  // Enter Bible Study (just show chat view)
   const handleEnterBibleStudy = () => {
-    setShowBible(false); // Close Bible if open
-    setHighlightsMode(false); // Close Highlights if open
-    setBibleStudyMode(true); // Enable Bible Study mode
-    // Start a new chat session for Bible Study
-    const newChatId = `biblestudy_${Date.now()}`;
-    setCurrentChatId(newChatId);
-    setCurrentMessages([]);
+    setViewMode("chat");
   };
 
-  // Open Highlights in chat area
+  // Open Highlights
   const handleOpenHighlights = () => {
-    setShowBible(false); // Close Bible if open
-    setBibleStudyMode(false); // Exit Bible Study mode
-    setHighlightsMode(true); // Enter Highlights mode
+    setViewMode("highlights");
   };
 
   // Navigate from Highlights to Bible verse
   const handleNavigateToVerse = () => {
-    setHighlightsMode(false); // Close highlights
-    setShowBible(true); // Open Bible
+    setViewMode("reader");
     // TODO: Add logic to navigate to specific verse in BibleReader
     // For now, BibleReader will open at current position
   };
@@ -214,10 +203,8 @@ function App() {
 
   // Handle creating a new chat
   const handleNewChat = () => {
-    // Exit special modes when starting a new chat
-    setShowBible(false);
-    setBibleStudyMode(false);
-    setHighlightsMode(false);
+    // Switch to chat view
+    setViewMode("chat");
 
     // Save current chat if it has messages
     if (currentMessages.length > 0 && currentChatId) {
@@ -370,7 +357,7 @@ function App() {
             chats={chats}
             onNewChat={handleNewChat}
             onSelectChat={handleSelectChat}
-            showBible={showBible}
+            showBible={viewMode === "reader"}
             onToggleBible={handleToggleBible}
             onEnterBibleStudy={handleEnterBibleStudy}
             onOpenHighlights={handleOpenHighlights}
@@ -391,12 +378,12 @@ function App() {
                 </div>
               }
             >
-              {showBible ? (
+              {viewMode === "reader" ? (
                 <BibleReader
                   onNavigateToChat={handleNavigateToChat}
                   onTrace={handleTrace}
                 />
-              ) : highlightsMode ? (
+              ) : viewMode === "highlights" ? (
                 <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
               ) : (
                 <UnifiedWorkspace
@@ -412,9 +399,10 @@ function App() {
                   onMessagesChange={setCurrentMessages}
                   pendingPrompt={pendingChatPrompt}
                   onPromptConsumed={() => setPendingChatPrompt(null)}
-                  bibleStudyMode={bibleStudyMode}
-                  onExitBibleStudy={() => setBibleStudyMode(false)}
+                  bibleStudyMode={false}
+                  onExitBibleStudy={() => {}}
                   onTrace={handleTrace}
+                  onGoDeeper={handleGoDeeper}
                 />
               )}
             </Suspense>
@@ -460,6 +448,7 @@ function App() {
                     bundle={visualBundle}
                     highlightedRefs={[]}
                     onTrace={handleTrace}
+                    onGoDeeper={handleGoDeeper}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">
