@@ -103,7 +103,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   // Restore last Bible position from localStorage
   const [selectedBook, setSelectedBook] = useState<string>(() => {
     const saved = localStorage.getItem("lastBibleBook");
-    return saved || "John";
+    return saved || "Matthew";
   });
   const [selectedChapter, setSelectedChapter] = useState<number>(() => {
     const saved = localStorage.getItem("lastBibleChapter");

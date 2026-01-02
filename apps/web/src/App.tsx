@@ -30,7 +30,7 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
-  const [showBible, setShowBible] = useState<boolean>(false);
+  const [showBible, setShowBible] = useState<boolean>(true);
   const [bibleStudyMode, setBibleStudyMode] = useState<boolean>(false);
   const [highlightsMode, setHighlightsMode] = useState<boolean>(false);
   const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
