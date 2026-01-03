@@ -596,10 +596,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         // Determine edge style based on type
         const edgeType = edge.type;
         const styleType = TYPE_TO_STYLE_MAP[edgeType as EdgeType];
-        const finalStyleType = styleType || "PURPLE";
 
         // 🌟 GOLDEN THREAD: Check if this is a primary ray from the anchor
         const isAnchorRay = edge.from === bundle.rootId;
+
+        // 🌟 GOLDEN THREAD: Anchor rays that are DEEPER (cross-refs) should be treated as GOLD (lexical)
+        // This ensures hover reveal shows meaningful color, not GREY
+        const finalStyleType =
+          isAnchorRay && styleType === "GREY" ? "GOLD" : styleType || "PURPLE";
         const edgeId = `e${fromId}-${toId}`;
 
         // 🌟 GOLDEN THREAD: Reveal true semantic color on hover, otherwise show GOLD for anchor rays
