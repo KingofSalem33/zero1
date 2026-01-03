@@ -678,11 +678,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               "opacity 150ms ease-in-out, stroke-width 150ms ease-in-out, filter 150ms ease-in-out",
             cursor: visualStyleType !== "GREY" ? "pointer" : "default",
           },
+          // 🌟 GOLDEN THREAD: Use visualStyleType for interaction width
           interactionWidth: isAnchorRay
             ? 25
-            : finalStyleType !== "GREY"
+            : visualStyleType !== "GREY"
               ? 20
-              : 10, // 🌟 Wider interaction for anchor rays
+              : 10, // Grey secondary edges have smallest interaction area
         });
 
         edgeSet.add(edgeKey);
