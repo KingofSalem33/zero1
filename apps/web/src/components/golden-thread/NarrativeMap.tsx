@@ -604,8 +604,19 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         // 🌟 GOLDEN THREAD: Reveal true semantic color on hover, otherwise show GOLD for anchor rays
         const isHovered = hoveredAnchorRay === edgeId;
-        const visualStyleType =
-          isAnchorRay && !isHovered ? "GOLD" : finalStyleType;
+        let visualStyleType: keyof typeof EDGE_STYLES;
+
+        if (isAnchorRay && !isHovered) {
+          // Anchor rays are GOLD (unless hovered)
+          visualStyleType = "GOLD";
+        } else if (isAnchorRay && isHovered) {
+          // Hovered anchor rays show true color
+          visualStyleType = finalStyleType;
+        } else {
+          // 🌟 GOLDEN THREAD: Secondary edges (non-anchor) are GREY to emphasize GOLD threads
+          visualStyleType = "GREY";
+        }
+
         const edgeStyle = EDGE_STYLES[visualStyleType];
 
         // Get source and target verses for line pattern
@@ -1379,13 +1390,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     }
 
     try {
-      console.log(
-        `[Focus DEBUG] Applying focus mode for node: ${focusedNodeId}`,
-      );
-      console.log(
-        `[Focus DEBUG] Total edges: ${edges.length}, Total nodes: ${nodes.length}`,
-      );
-
       // Find connected edges for the focused node
       const connectedEdgeIds = new Set(
         edges
@@ -1395,8 +1399,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           .map((e) => e.id),
       );
 
-      console.log(`[Focus DEBUG] Connected edges: ${connectedEdgeIds.size}`);
-
       // Find connected node IDs
       const connectedNodeIds = new Set<string>([focusedNodeId]);
       edges.forEach((edge) => {
@@ -1404,20 +1406,37 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         if (edge.target === focusedNodeId) connectedNodeIds.add(edge.source);
       });
 
-      console.log(`[Focus DEBUG] Connected nodes: ${connectedNodeIds.size}`);
+      // 🌟 GOLDEN THREAD: Check if focused node is anchor
+      const isAnchorFocused = focusedNodeId === bundle.rootId?.toString();
 
-      // Dim non-focused nodes to 20% opacity
+      // Dim non-focused nodes to 20% opacity, add GOLD glow to anchor connections
       setNodes((nds) =>
-        nds.map((node) => ({
-          ...node,
-          style: {
-            ...node.style,
-            opacity: connectedNodeIds.has(node.id) ? 1 : 0.2,
-            transitionProperty: "opacity",
-            transitionDuration: "300ms",
-            transitionTimingFunction: "ease-in-out",
-          },
-        })),
+        nds.map((node) => {
+          const isConnected = connectedNodeIds.has(node.id);
+          const isFocusedNode = node.id === focusedNodeId;
+
+          // 🌟 GOLDEN THREAD: If anchor is focused and this node is connected, add GOLD glow
+          const shouldGlowGold =
+            isAnchorFocused && isConnected && !isFocusedNode;
+
+          return {
+            ...node,
+            style: {
+              ...node.style,
+              opacity: isConnected ? 1 : 0.2,
+              // 🌟 GOLDEN THREAD: Add GOLD glow for anchor connections
+              ...(shouldGlowGold && {
+                boxShadow: "0 0 20px #FBBF24, 0 0 40px #F59E0B",
+                borderColor: "#D97706",
+                borderWidth: "3px",
+                borderStyle: "solid",
+              }),
+              transitionProperty: "opacity, box-shadow, border-color",
+              transitionDuration: "300ms",
+              transitionTimingFunction: "ease-in-out",
+            },
+          };
+        }),
       );
 
       // Dim non-connected edges to 10% opacity
@@ -1436,8 +1455,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       // Mark this focus as applied to prevent re-triggering
       lastAppliedFocusRef.current = focusedNodeId;
-
-      console.log(`[Focus DEBUG] ✅ Focus mode applied successfully`);
     } catch (error) {
       console.error(`[Focus DEBUG] ❌ Error applying focus mode:`, error);
       // Reset focus mode on error
@@ -1450,13 +1467,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   useEffect(() => {
     if (focusedNodeId !== null) return; // Still in focus mode
 
-    // Reset node opacity
+    // Reset node opacity and remove GOLD glow
     setNodes((nds) =>
       nds.map((node) => ({
         ...node,
         style: {
           ...node.style,
           opacity: 1,
+          // 🌟 GOLDEN THREAD: Remove GOLD glow when exiting focus
+          boxShadow: undefined,
+          borderColor: undefined,
+          borderWidth: undefined,
+          borderStyle: undefined,
         },
       })),
     );
