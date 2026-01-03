@@ -9,6 +9,7 @@ interface VerseNodeData {
   collapsedChildCount: number;
   onExpand: () => void;
   depth?: number; // Depth from anchor for size scaling
+  semanticConnectionType?: string; // 🌟 GOLDEN THREAD: Type of connection from anchor (GOLD/PURPLE/CYAN/GREY)
 }
 
 export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
@@ -19,6 +20,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     collapsedChildCount,
     onExpand,
     depth,
+    semanticConnectionType, // 🌟 GOLDEN THREAD: Semantic connection from anchor
   } = data;
   const [hasEntered, setHasEntered] = React.useState(false);
 
@@ -56,6 +58,36 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   // Depth 2: 100x42 (smaller)
   // Depth 3+: 85x35 (smallest)
   const nodeDepth = depth || verse.depth || 1;
+
+  // 🌟 GOLDEN THREAD: Semantic border/halo colors for first-degree nodes
+  // These show the TYPE of connection from the anchor (revealed via node border, not edge color)
+  const semanticGlowStyles: Record<
+    string,
+    { glow: string; border: string; animation?: string }
+  > = {
+    GOLD: {
+      glow: "0 0 12px #FBBF24, 0 0 24px #F59E0B",
+      border: "#D97706",
+      animation: "glow-pulse-gold 3s ease-in-out infinite", // ✨ Subtle sparkle for lexical
+    },
+    PURPLE: {
+      glow: "0 0 10px #A78BFA, 0 0 20px #7C3AED",
+      border: "#7C3AED",
+    },
+    CYAN: {
+      glow: "0 0 10px #22D3EE, 0 0 20px #0891B2",
+      border: "#0891B2",
+    },
+    GREY: {
+      glow: "0 0 6px #9CA3AF",
+      border: "#6B7280",
+    },
+  };
+
+  const isFirstDegree = nodeDepth === 1 && semanticConnectionType;
+  const glowStyle = isFirstDegree
+    ? semanticGlowStyles[semanticConnectionType]
+    : null;
   let width: number, height: number, padding: string;
 
   if (isAnchor) {
@@ -91,6 +123,19 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           }
         `}</style>
       )}
+      {/* 🌟 GOLDEN THREAD: Animation for lexical nodes (gold sparkle) */}
+      {semanticConnectionType === "GOLD" && (
+        <style>{`
+          @keyframes glow-pulse-gold {
+            0%, 100% {
+              box-shadow: 0 0 12px #FBBF24, 0 0 24px #F59E0B;
+            }
+            50% {
+              box-shadow: 0 0 18px #FBBF24, 0 0 36px #F59E0B, 0 0 2px #FFF;
+            }
+          }
+        `}</style>
+      )}
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <div
         className={`${baseClasses} ${stateClasses} ${padding}`}
@@ -111,6 +156,14 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
             borderWidth: "3px",
             animation: "glow-pulse 2s ease-in-out infinite",
           }),
+          // 🌟 GOLDEN THREAD: Semantic glow for first-degree nodes (shows connection type)
+          ...(!isAnchor &&
+            glowStyle && {
+              boxShadow: glowStyle.glow,
+              borderColor: glowStyle.border,
+              borderWidth: "2.5px",
+              animation: glowStyle.animation, // Only GOLD has animation (sparkle effect)
+            }),
           // Entrance animation
           opacity: hasEntered ? 1 : 0,
           transform: hasEntered

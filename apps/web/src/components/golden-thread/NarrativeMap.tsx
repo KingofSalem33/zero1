@@ -7,8 +7,9 @@ import {
   useEdgesState,
 } from "@xyflow/react";
 import type { Node, Edge } from "@xyflow/react";
-import dagre from "dagre";
+import dagre from "dagre"; // LEGACY: Will be replaced by force-directed layout
 import "@xyflow/react/dist/style.css";
+import { calculateForceLayout } from "../../utils/forceLayout";
 import { VerseNode } from "./VerseNode";
 import { SemanticConnectionModal } from "./SemanticConnectionModal";
 import { MapSkeleton } from "./MapSkeleton";
@@ -250,6 +251,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
   const [discovering, setDiscovering] = useState(false);
   const [initialExpansionDone, setInitialExpansionDone] = useState(false);
+  // 🌟 GOLDEN THREAD: Track hovered anchor ray for semantic color reveal
+  const [hoveredAnchorRay, setHoveredAnchorRay] = useState<string | null>(null);
   const [discoveryProgress, setDiscoveryProgress] = useState<{
     phase: "selecting" | "analyzing" | "connecting" | "complete";
     progress: number;
@@ -466,7 +469,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     expandedIds: Set<number>,
     onExpand: (nodeId: number) => void,
   ) => {
-    // For dagre edge routing, we still create the graph
+    // === FEATURE FLAG: Force-Directed Layout ===
+    // Set to true to use new neural network layout, false for legacy radial layout
+    const USE_FORCE_LAYOUT = true;
+
+    // For dagre edge routing, we still create the graph (legacy - only used if USE_FORCE_LAYOUT = false)
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
     dagreGraph.setGraph({
@@ -536,6 +543,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       );
       const actualCollapsedCount = allChildren.length - visibleChildren.length;
 
+      // 🌟 GOLDEN THREAD: Determine semantic connection type for first-degree nodes
+      // This will be shown as a colored border/halo around the node
+      let semanticConnectionType: string | undefined;
+      if (nodeDepth === 1 && !isAnchor && bundle.rootId) {
+        // Find the edge from anchor to this node
+        const connectionEdge = bundle.edges.find(
+          (e) => e.from === bundle.rootId && e.to === verse.id,
+        );
+        if (connectionEdge) {
+          const edgeType = connectionEdge.type;
+          semanticConnectionType =
+            TYPE_TO_STYLE_MAP[edgeType as EdgeType] || "PURPLE";
+        }
+      }
+
       return {
         id: nodeId,
         type: "verseNode",
@@ -546,6 +568,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           collapsedChildCount: actualCollapsedCount,
           onExpand: () => onExpand(verse.id),
           depth: verse.depth, // Pass depth for size scaling
+          semanticConnectionType, // 🌟 GOLDEN THREAD: Type of connection from anchor
         },
         position: { x: 0, y: 0 }, // Will be set by radial layout
       };
@@ -574,7 +597,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const edgeType = edge.type;
         const styleType = TYPE_TO_STYLE_MAP[edgeType as EdgeType];
         const finalStyleType = styleType || "PURPLE";
-        const edgeStyle = EDGE_STYLES[finalStyleType];
+
+        // 🌟 GOLDEN THREAD: Check if this is a primary ray from the anchor
+        const isAnchorRay = edge.from === bundle.rootId;
+        const edgeId = `e${fromId}-${toId}`;
+
+        // 🌟 GOLDEN THREAD: Reveal true semantic color on hover, otherwise show GOLD for anchor rays
+        const isHovered = hoveredAnchorRay === edgeId;
+        const visualStyleType =
+          isAnchorRay && !isHovered ? "GOLD" : finalStyleType;
+        const edgeStyle = EDGE_STYLES[visualStyleType];
 
         // Get source and target verses for line pattern
         const fromVerse = visibleNodes.find((n) => n.id === edge.from);
@@ -597,37 +629,49 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const similarity =
           edgeMetadata.metadata?.similarity || edgeMetadata.weight || 0.8; // Default to 0.8
         const widthMultiplier = 0.7 + similarity * 0.6; // Maps 0→0.7, 1→1.3
-        const finalWidth = edgeStyle.width * widthMultiplier;
+
+        // 🌟 GOLDEN THREAD: Anchor rays are thicker (aggressive contrast)
+        const baseWidth = isAnchorRay ? 4 : edgeStyle.width * widthMultiplier;
+        const finalWidth = isAnchorRay ? baseWidth : baseWidth;
 
         reactFlowEdges.push({
           id: `e${fromId}-${toId}`,
           source: fromId,
           target: toId,
           type: "smoothstep",
+          // 🌟 GOLDEN THREAD: Animate anchor rays (outward flow)
+          animated: isAnchorRay,
           data: {
-            styleType: finalStyleType,
+            styleType: finalStyleType, // 🌟 Preserve original type for hover reveal
+            visualStyleType, // Current visual style (GOLD for anchor rays)
             edgeType,
             isSynthetic: false,
+            isAnchorRay, // 🌟 Flag for hover interaction
             strokeDashArray, // Store final pattern for animation restoration
             baseWidth: finalWidth, // Store calculated width for hover effects
           },
           style: {
-            stroke: `url(#edge-gradient-${finalStyleType})`, // Use directional gradient
-            strokeWidth: finalWidth, // Use similarity-based width
+            stroke: `url(#edge-gradient-${visualStyleType})`, // 🌟 Use GOLD for anchor rays
+            strokeWidth: finalWidth, // 🌟 Thicker for anchor rays
             strokeLinecap: "round",
             opacity: 0, // Start invisible for entrance animation
             strokeDasharray: "10", // Temporary for entrance animation
             strokeDashoffset: "10",
-            // Subtle glow for colored edges (not GREY)
-            filter:
-              finalStyleType !== "GREY"
+            // 🌟 GOLDEN THREAD: Stronger glow for anchor rays
+            filter: isAnchorRay
+              ? `drop-shadow(0 0 6px ${EDGE_STYLES.GOLD.glowColor}80)` // Stronger glow for anchor rays
+              : visualStyleType !== "GREY"
                 ? `drop-shadow(0 0 3px ${edgeStyle.glowColor}40)` // 40 = 25% opacity in hex
                 : "none",
             transition:
               "opacity 150ms ease-in-out, stroke-width 150ms ease-in-out, filter 150ms ease-in-out",
-            cursor: finalStyleType !== "GREY" ? "pointer" : "default",
+            cursor: visualStyleType !== "GREY" ? "pointer" : "default",
           },
-          interactionWidth: finalStyleType !== "GREY" ? 20 : 10,
+          interactionWidth: isAnchorRay
+            ? 25
+            : finalStyleType !== "GREY"
+              ? 20
+              : 10, // 🌟 Wider interaction for anchor rays
         });
 
         edgeSet.add(edgeKey);
@@ -688,120 +732,176 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       }
     });
 
-    // Run dagre layout (still used for edge routing calculations)
-    dagre.layout(dagreGraph);
+    // === LAYOUT CALCULATION ===
+    if (USE_FORCE_LAYOUT) {
+      // NEW: Force-directed "neural network" layout
+      console.log("[Layout] Using force-directed layout");
 
-    // Apply radial layout positions (anchor at center, connections radiate outward)
-    const anchor = reactFlowNodes.find((n) => n.data.isAnchor);
-
-    console.log(
-      `[Layout DEBUG] Total nodes to position: ${reactFlowNodes.length}`,
-    );
-    console.log(`[Layout DEBUG] Bundle rootId: ${bundle.rootId}`);
-    console.log(
-      `[Layout DEBUG] Found anchor node:`,
-      anchor?.id,
-      anchor?.data?.verse,
-    );
-
-    // Check for duplicate nodes at anchor position
-    const anchorCandidates = reactFlowNodes.filter((n) => n.data.isAnchor);
-    if (anchorCandidates.length > 1) {
-      console.error(
-        `[Layout DEBUG] ⚠️ MULTIPLE ANCHORS DETECTED:`,
-        anchorCandidates.map((n) => ({
-          id: n.id,
-          verse: `${n.data.verse.book_abbrev} ${n.data.verse.chapter}:${n.data.verse.verse}`,
-        })),
+      const positionMap = calculateForceLayout(
+        reactFlowNodes,
+        reactFlowEdges,
+        bundle.rootId,
       );
-    }
 
-    if (anchor) {
-      // Anchor at center (0, 0) - anchor is 180x90, so offset is 90x45
-      anchor.position = { x: -90, y: -45 };
+      // Apply calculated positions to nodes
+      reactFlowNodes.forEach((node) => {
+        const pos = positionMap.get(node.id);
+        if (pos) {
+          // Adjust for node size (center the node on its position)
+          const isAnchor = node.data.isAnchor;
+          const offsetX = isAnchor ? 90 : 60; // Half of node width
+          const offsetY = isAnchor ? 45 : 25; // Half of node height
+          node.position = { x: pos.x - offsetX, y: pos.y - offsetY };
+        } else {
+          // Fallback: random position if not in map (shouldn't happen)
+          console.warn(
+            `[Layout] Node ${node.id} missing from position map, using fallback`,
+          );
+          node.position = {
+            x: Math.random() * 200 - 100,
+            y: Math.random() * 200 - 100,
+          };
+        }
+      });
+
       console.log(
-        `[Layout DEBUG] Positioned anchor ${anchor.id} at center:`,
-        anchor.position,
+        `[Layout] ✅ Force-directed layout complete: ${reactFlowNodes.length} nodes positioned`,
+      );
+    } else {
+      // LEGACY: Dagre + Radial layout
+      console.log("[Layout] Using legacy radial layout");
+
+      // Run dagre layout (still used for edge routing calculations)
+      dagre.layout(dagreGraph);
+
+      // Apply radial layout positions (anchor at center, connections radiate outward)
+      const anchor = reactFlowNodes.find((n) => n.data.isAnchor);
+
+      console.log(
+        `[Layout DEBUG] Total nodes to position: ${reactFlowNodes.length}`,
+      );
+      console.log(`[Layout DEBUG] Bundle rootId: ${bundle.rootId}`);
+      console.log(
+        `[Layout DEBUG] Found anchor node:`,
+        anchor?.id,
+        anchor?.data?.verse,
       );
 
-      // Build depth map: distance from anchor node
-      const depthMap = new Map<string, number>();
-      const visited = new Set<string>();
-      const queue: Array<{ nodeId: string; depth: number }> = [
-        { nodeId: anchor.id, depth: 0 },
-      ];
-
-      while (queue.length > 0) {
-        const { nodeId, depth } = queue.shift()!;
-        if (visited.has(nodeId)) continue;
-        visited.add(nodeId);
-        depthMap.set(nodeId, depth);
-
-        // Find connected nodes
-        const connectedEdges = reactFlowEdges.filter(
-          (e) => e.source === nodeId || e.target === nodeId,
+      // Check for duplicate nodes at anchor position
+      const anchorCandidates = reactFlowNodes.filter((n) => n.data.isAnchor);
+      if (anchorCandidates.length > 1) {
+        console.error(
+          `[Layout DEBUG] ⚠️ MULTIPLE ANCHORS DETECTED:`,
+          anchorCandidates.map((n) => ({
+            id: n.id,
+            verse: `${n.data.verse.book_abbrev} ${n.data.verse.chapter}:${n.data.verse.verse}`,
+          })),
         );
-        connectedEdges.forEach((edge) => {
-          const nextNodeId = edge.source === nodeId ? edge.target : edge.source;
-          if (!visited.has(nextNodeId)) {
-            queue.push({ nodeId: nextNodeId, depth: depth + 1 });
-          }
-        });
       }
 
-      // Group nodes by depth
-      const nodesByDepth = new Map<number, typeof reactFlowNodes>();
-      reactFlowNodes.forEach((node) => {
-        const depth = depthMap.get(node.id) || 0;
-        if (!nodesByDepth.has(depth)) {
-          nodesByDepth.set(depth, []);
+      if (anchor) {
+        // Anchor at center (0, 0) - anchor is 180x90, so offset is 90x45
+        anchor.position = { x: -90, y: -45 };
+        console.log(
+          `[Layout DEBUG] Positioned anchor ${anchor.id} at center:`,
+          anchor.position,
+        );
+
+        // Build depth map: distance from anchor node
+        const depthMap = new Map<string, number>();
+        const visited = new Set<string>();
+        const queue: Array<{ nodeId: string; depth: number }> = [
+          { nodeId: anchor.id, depth: 0 },
+        ];
+
+        while (queue.length > 0) {
+          const { nodeId, depth } = queue.shift()!;
+          if (visited.has(nodeId)) continue;
+          visited.add(nodeId);
+          depthMap.set(nodeId, depth);
+
+          // Find connected nodes
+          const connectedEdges = reactFlowEdges.filter(
+            (e) => e.source === nodeId || e.target === nodeId,
+          );
+          connectedEdges.forEach((edge) => {
+            const nextNodeId =
+              edge.source === nodeId ? edge.target : edge.source;
+            if (!visited.has(nextNodeId)) {
+              queue.push({ nodeId: nextNodeId, depth: depth + 1 });
+            }
+          });
         }
-        nodesByDepth.get(depth)!.push(node);
-      });
 
-      // Position nodes in concentric circles
-      const radiusStep = 200; // Distance between depth levels (increased for better spacing)
-      const positionedNodes = new Set<string>();
+        // Group nodes by depth
+        const nodesByDepth = new Map<number, typeof reactFlowNodes>();
+        reactFlowNodes.forEach((node) => {
+          const depth = depthMap.get(node.id) || 0;
+          if (!nodesByDepth.has(depth)) {
+            nodesByDepth.set(depth, []);
+          }
+          nodesByDepth.get(depth)!.push(node);
+        });
 
-      nodesByDepth.forEach((nodesAtDepth, depth) => {
-        if (depth === 0) {
-          positionedNodes.add(anchor.id); // Mark anchor as positioned
-          return; // Skip anchor (already positioned)
-        }
+        // Position nodes in concentric circles
+        const radiusStep = 200; // Distance between depth levels (increased for better spacing)
+        const positionedNodes = new Set<string>();
 
-        const radius = depth * radiusStep;
-        const angleStep = (2 * Math.PI) / nodesAtDepth.length;
-
-        nodesAtDepth.forEach((node, index) => {
-          const angle = index * angleStep - Math.PI / 2; // Start at top (-90 degrees)
-
-          // Calculate center offsets based on node depth
-          const nodeDepth = node.data.depth || node.data.verse.depth || 1;
-          let offsetX: number, offsetY: number;
-
-          if (nodeDepth === 1) {
-            offsetX = 60; // 120 / 2
-            offsetY = 25; // 50 / 2
-          } else if (nodeDepth === 2) {
-            offsetX = 50; // 100 / 2
-            offsetY = 21; // 42 / 2
-          } else {
-            offsetX = 42.5; // 85 / 2
-            offsetY = 17.5; // 35 / 2
+        nodesByDepth.forEach((nodesAtDepth, depth) => {
+          if (depth === 0) {
+            positionedNodes.add(anchor.id); // Mark anchor as positioned
+            return; // Skip anchor (already positioned)
           }
 
-          node.position = {
-            x: radius * Math.cos(angle) - offsetX,
-            y: radius * Math.sin(angle) - offsetY,
-          };
+          const radius = depth * radiusStep;
+          const angleStep = (2 * Math.PI) / nodesAtDepth.length;
 
-          positionedNodes.add(node.id); // Mark as positioned
+          nodesAtDepth.forEach((node, index) => {
+            const angle = index * angleStep - Math.PI / 2; // Start at top (-90 degrees)
+
+            // Calculate center offsets based on node depth
+            const nodeDepth = node.data.depth || node.data.verse.depth || 1;
+            let offsetX: number, offsetY: number;
+
+            if (nodeDepth === 1) {
+              offsetX = 60; // 120 / 2
+              offsetY = 25; // 50 / 2
+            } else if (nodeDepth === 2) {
+              offsetX = 50; // 100 / 2
+              offsetY = 21; // 42 / 2
+            } else {
+              offsetX = 42.5; // 85 / 2
+              offsetY = 17.5; // 35 / 2
+            }
+
+            node.position = {
+              x: radius * Math.cos(angle) - offsetX,
+              y: radius * Math.sin(angle) - offsetY,
+            };
+
+            positionedNodes.add(node.id); // Mark as positioned
+          });
         });
-      });
 
-      // Fallback: Use dagre positions for any nodes that weren't reached by BFS
-      reactFlowNodes.forEach((node) => {
-        if (!positionedNodes.has(node.id)) {
+        // Fallback: Use dagre positions for any nodes that weren't reached by BFS
+        reactFlowNodes.forEach((node) => {
+          if (!positionedNodes.has(node.id)) {
+            const dagreNode = dagreGraph.node(node.id);
+            const isNodeAnchor = node.data.isAnchor;
+            const offsetX = isNodeAnchor ? 90 : 60;
+            const offsetY = isNodeAnchor ? 45 : 25;
+            node.position = {
+              x: dagreNode.x - offsetX,
+              y: dagreNode.y - offsetY,
+            };
+            console.log(
+              `[Layout DEBUG] Using dagre fallback for unconnected node: ${node.id}`,
+            );
+          }
+        });
+      } else {
+        // Fallback to dagre positions if no anchor found
+        reactFlowNodes.forEach((node) => {
           const dagreNode = dagreGraph.node(node.id);
           const isNodeAnchor = node.data.isAnchor;
           const offsetX = isNodeAnchor ? 90 : 60;
@@ -810,24 +910,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             x: dagreNode.x - offsetX,
             y: dagreNode.y - offsetY,
           };
-          console.log(
-            `[Layout DEBUG] Using dagre fallback for unconnected node: ${node.id}`,
-          );
-        }
-      });
-    } else {
-      // Fallback to dagre positions if no anchor found
-      reactFlowNodes.forEach((node) => {
-        const dagreNode = dagreGraph.node(node.id);
-        const isNodeAnchor = node.data.isAnchor;
-        const offsetX = isNodeAnchor ? 90 : 60;
-        const offsetY = isNodeAnchor ? 45 : 25;
-        node.position = {
-          x: dagreNode.x - offsetX,
-          y: dagreNode.y - offsetY,
-        };
-      });
-    }
+        });
+      }
+    } // End of USE_FORCE_LAYOUT conditional
 
     // Debug: Check for position conflicts
     const positionMap = new Map<string, string[]>();
@@ -1248,6 +1333,39 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     );
   }, [hoveredBranch]);
 
+  // 🌟 GOLDEN THREAD: Reveal semantic color on anchor ray hover
+  useEffect(() => {
+    setEdges((eds) =>
+      eds.map((edge) => {
+        const edgeData = edge.data as EdgeData & {
+          isAnchorRay?: boolean;
+          styleType?: string;
+        };
+
+        // Only update anchor rays
+        if (!edgeData?.isAnchorRay) return edge;
+
+        // Determine if this edge is currently hovered
+        const isHovered = hoveredAnchorRay === edge.id;
+
+        // Reveal true semantic color on hover, otherwise show GOLD
+        const visualStyleType = isHovered
+          ? edgeData.styleType || "PURPLE"
+          : "GOLD";
+        const edgeStyle = EDGE_STYLES[visualStyleType];
+
+        return {
+          ...edge,
+          style: {
+            ...edge.style,
+            stroke: `url(#edge-gradient-${visualStyleType})`,
+            filter: `drop-shadow(0 0 6px ${edgeStyle.glowColor}80)`,
+          },
+        };
+      }),
+    );
+  }, [hoveredAnchorRay]);
+
   // Apply Focus Mode dimming when focused node changes
   useEffect(() => {
     if (!focusedNodeId) {
@@ -1467,6 +1585,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     (event: React.MouseEvent, edge: Edge) => {
       const isFastMoving = checkMouseVelocity(event.clientX, event.clientY);
 
+      // 🌟 GOLDEN THREAD: Reveal semantic color for anchor rays on hover
+      const edgeData = edge.data as {
+        isAnchorRay?: boolean;
+        styleType?: string;
+      };
+      if (edgeData?.isAnchorRay) {
+        setHoveredAnchorRay(edge.id);
+      }
+
       // Look up pre-computed branch cluster
       const cluster = branchClusters.get(edge.id);
       if (!cluster) return;
@@ -1513,6 +1640,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   );
 
   const handleEdgeMouseLeave = useCallback(() => {
+    // 🌟 GOLDEN THREAD: Return anchor ray to GOLD when mouse leaves
+    setHoveredAnchorRay(null);
+
     setHoveredBranch(null);
     setTooltipState({
       visible: false,
