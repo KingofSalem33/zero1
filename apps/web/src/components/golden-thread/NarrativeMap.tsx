@@ -1224,11 +1224,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     // Animate edges with a drawing effect
     setEdges((eds) =>
       eds.map((edge, idx) => {
-        const edgeData = edge.data as EdgeData;
-        const styleType = edgeData?.styleType || "PURPLE";
+        const edgeData = edge.data as EdgeData & { visualStyleType?: string };
+        // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
+        const visualStyleType =
+          edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
         const isSynthetic = edgeData?.isSynthetic;
         const finalOpacity =
-          styleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
+          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
 
         // Restore the proper line pattern (solid, dashed, or dotted)
         const storedPattern = edgeData?.strokeDashArray;
@@ -1263,14 +1265,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       setEdges((eds) =>
         eds.map((edge) => {
-          const edgeData = edge.data as EdgeData;
-          const styleType = edgeData?.styleType || "PURPLE";
-          const edgeStyle = EDGE_STYLES[styleType];
+          const edgeData = edge.data as EdgeData & { visualStyleType?: string };
+          // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
+          const visualStyleType =
+            edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+          const edgeStyle = EDGE_STYLES[visualStyleType];
           const baseWidth = edgeData?.baseWidth || edgeStyle.width;
 
           // Restore subtle glow for colored edges
           const baseFilter =
-            styleType !== "GREY"
+            visualStyleType !== "GREY"
               ? `drop-shadow(0 0 3px ${edgeStyle.glowColor}40)`
               : "none";
 
@@ -1320,10 +1324,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setEdges((eds) =>
       eds.map((edge) => {
         const isInBranch = hoveredBranch.edgeIds.has(edge.id);
-        const edgeData = edge.data as EdgeData;
-        const styleType = edgeData?.styleType || "PURPLE";
-        const edgeStyle = EDGE_STYLES[styleType];
-        const isColoredBranch = styleType !== "GREY"; // Only colored branches get glow
+        const edgeData = edge.data as EdgeData & {
+          visualStyleType?: string;
+          isAnchorRay?: boolean;
+        };
+        // 🌟 GOLDEN THREAD: Use visualStyleType (GREY for secondary edges, GOLD for anchor rays)
+        const visualStyleType =
+          edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+        const edgeStyle = EDGE_STYLES[visualStyleType];
+        const isColoredBranch = visualStyleType !== "GREY"; // Only colored branches get glow
 
         // Use stored baseWidth if available, otherwise fall back to style width
         const baseWidth = edgeData?.baseWidth || edgeStyle.width;
@@ -1486,11 +1495,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     // Reset edge opacity
     setEdges((eds) =>
       eds.map((edge) => {
-        const edgeData = edge.data as EdgeData;
-        const styleType = edgeData?.styleType || "PURPLE";
+        const edgeData = edge.data as EdgeData & { visualStyleType?: string };
+        // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
+        const visualStyleType =
+          edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
         const isSynthetic = edgeData?.isSynthetic;
         const defaultOpacity =
-          styleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
+          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
 
         return {
           ...edge,
@@ -1536,11 +1547,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   // Handle edge click for colored branches
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      const edgeData = edge.data as EdgeData;
+      const edgeData = edge.data as EdgeData & { visualStyleType?: string };
+      // 🌟 GOLDEN THREAD: Use visualStyleType to ignore grey secondary edges
+      const visualStyleType = edgeData?.visualStyleType || edgeData?.styleType;
+      // For connection details popup, use original semantic type
       const styleType = edgeData?.styleType;
 
       // Only handle colored branches (not GREY)
-      if (styleType === "GREY" || !styleType) return;
+      if (visualStyleType === "GREY" || !visualStyleType) return;
       if (!bundle) return;
 
       // Get the from and to verse data
