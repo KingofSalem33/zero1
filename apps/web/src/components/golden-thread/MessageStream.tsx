@@ -312,7 +312,7 @@ export function MessageStream({
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-6 pb-24">
+    <div className="max-w-3xl mx-auto px-6">
       <ReactMarkdown
         components={{
           // Main title (##)

@@ -161,6 +161,13 @@ function App() {
     handleNavigateToChat(prompt);
   }, []);
 
+  // Show visualization with existing bundle (for map icon in Bible study)
+  const handleShowVisualization = useCallback((bundle: VisualContextBundle) => {
+    console.log("[App] Showing visualization with bundle:", bundle);
+    setVisualBundle(bundle);
+    setShowVisualization(true);
+  }, []);
+
   // Enter Bible Study (just show chat view)
   const handleEnterBibleStudy = () => {
     setViewMode("chat");
@@ -403,6 +410,7 @@ function App() {
                   onExitBibleStudy={() => {}}
                   onTrace={handleTrace}
                   onGoDeeper={handleGoDeeper}
+                  onShowVisualization={handleShowVisualization}
                 />
               )}
             </Suspense>
