@@ -396,30 +396,14 @@ export function TextHighlightTooltip({
       const data = await response.json();
       const fullSynopsis = data.synopsis || "Unable to generate synopsis.";
 
-      // Check if we were cancelled before starting to stream
+      // Check if we were cancelled
       if (!isStreamingRef.current) {
         return;
       }
 
-      // Stream the text word by word
+      // Show synopsis immediately - no streaming animation
       setIsLoadingDescription(false);
-      setDescription("");
-
-      const words = fullSynopsis.split(" ");
-      let currentText = "";
-
-      for (let i = 0; i < words.length; i++) {
-        if (!isStreamingRef.current) {
-          // Streaming was cancelled
-          return;
-        }
-
-        currentText += (i > 0 ? " " : "") + words[i];
-        setDescription(currentText);
-
-        // Wait between words for streaming effect
-        await new Promise((resolve) => setTimeout(resolve, 30));
-      }
+      setDescription(fullSynopsis);
 
       isStreamingRef.current = false;
       abortControllerRef.current = null;
@@ -556,26 +540,14 @@ export function TextHighlightTooltip({
 
         setIsLoadingRoot(false);
 
-        // Stream the structured content
-        // Stream insights one by one
-        for (let i = 0; i < parsed.insights.length; i++) {
-          if (!isStreamingRef.current) break;
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          setRootInsights((prev) => [...prev, parsed.insights[i]]);
+        // Check if cancelled
+        if (!isStreamingRef.current) {
+          return;
         }
 
-        // Stream plain meaning word by word
-        if (isStreamingRef.current && parsed.plain) {
-          const words = parsed.plain.split(" ");
-          for (let i = 0; i < words.length; i++) {
-            if (!isStreamingRef.current) break;
-            await new Promise((resolve) => setTimeout(resolve, 30));
-            setPlainMeaning((prev) =>
-              prev ? prev + " " + words[i] : words[i],
-            );
-          }
-        }
-
+        // Show all content immediately - no streaming animation
+        setRootInsights(parsed.insights);
+        setPlainMeaning(parsed.plain);
         setRootTranslation(fullTranslation); // Keep for fallback
         isStreamingRef.current = false;
         abortControllerRef.current = null;

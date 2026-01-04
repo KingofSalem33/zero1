@@ -166,24 +166,14 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
 
         setIsLoadingRoot(false);
 
-        // Stream insights one by one
-        for (let i = 0; i < parsed.insights.length; i++) {
-          if (!isStreamingRef.current) break;
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          setRootInsights((prev) => [...prev, parsed.insights[i]]);
+        // Check if cancelled
+        if (!isStreamingRef.current) {
+          return;
         }
 
-        // Stream plain meaning word by word
-        if (isStreamingRef.current && parsed.plain) {
-          const words = parsed.plain.split(" ");
-          for (let i = 0; i < words.length; i++) {
-            if (!isStreamingRef.current) break;
-            await new Promise((resolve) => setTimeout(resolve, 30));
-            setPlainMeaning((prev) =>
-              prev ? prev + " " + words[i] : words[i],
-            );
-          }
-        }
+        // Show all content immediately - no streaming animation
+        setRootInsights(parsed.insights);
+        setPlainMeaning(parsed.plain);
 
         isStreamingRef.current = false;
         abortControllerRef.current = null;

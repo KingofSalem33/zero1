@@ -161,7 +161,8 @@ export function SemanticConnectionModal({
     connectionType,
     similarity,
     isLLMDiscovered,
-    connectedVerseIds,
+    // Use JSON.stringify to create stable dependency for array
+    JSON.stringify(connectedVerseIds || []),
   ]);
 
   // Close on click outside
