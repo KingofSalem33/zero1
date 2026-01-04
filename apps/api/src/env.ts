@@ -2,6 +2,14 @@ export const ENV = {
   PORT: Number(process.env.PORT || 3001),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
   OPENAI_MODEL_NAME: process.env.OPENAI_MODEL_NAME || "gpt-4o-mini",
+  OPENAI_FAST_MODEL:
+    process.env.OPENAI_FAST_MODEL ||
+    process.env.OPENAI_MODEL_NAME ||
+    "gpt-4.1-nano",
+  OPENAI_SMART_MODEL:
+    process.env.OPENAI_SMART_MODEL ||
+    process.env.OPENAI_MODEL_NAME ||
+    "gpt-4.1-mini",
   SUPABASE_URL: process.env.SUPABASE_URL || "",
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
   SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY || "",

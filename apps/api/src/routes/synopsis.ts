@@ -44,7 +44,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
           },
         ],
         {
-          model: "gpt-4o-mini",
+          model: ENV.OPENAI_FAST_MODEL,
           verbosity: "medium",
         },
       ),
@@ -63,7 +63,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const tokenUsage = extractTokenUsage(
       result,
       "/api/synopsis",
-      "gpt-4o-mini",
+      ENV.OPENAI_FAST_MODEL,
       "synopsis-v1",
     );
     if (tokenUsage) {

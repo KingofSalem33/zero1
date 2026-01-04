@@ -324,9 +324,9 @@ Return ONLY valid JSON.`;
       {
         toolSpecs: [],
         toolMap: {},
-        model: "gpt-5-mini",
+        model: ENV.OPENAI_SMART_MODEL,
         reasoningEffort: "low", // Explicit low reasoning for faster responses
-        // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
+        // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
       },
     );
 
@@ -751,12 +751,12 @@ Teach with conviction as one who lives the Word—declarative, confident, rooted
           res,
           conversationMessages,
           {
-            model: "gpt-5-mini",
+            model: ENV.OPENAI_SMART_MODEL,
             reasoningEffort: "low", // Explicit low reasoning for faster streaming
             toolSpecs: [],
             toolMap: {},
             keepAlive: true, // Don't close response yet - we need to send resonant Scripture
-            // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
+            // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
           },
         );
 

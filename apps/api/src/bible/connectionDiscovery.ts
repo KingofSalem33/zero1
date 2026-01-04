@@ -9,6 +9,7 @@
  * - Pattern (structural, numerical, chiastic)
  */
 
+import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import type { VisualContextBundle, ThreadNode } from "./types";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
@@ -223,7 +224,7 @@ Return as:
         },
       ],
       {
-        model: "gpt-4o-mini",
+        model: ENV.OPENAI_SMART_MODEL,
         verbosity: "medium",
         responseFormat: {
           type: "json_schema",
@@ -272,7 +273,7 @@ Return as:
     const tokenUsage = extractTokenUsage(
       result,
       "connectionDiscovery",
-      "gpt-4o-mini",
+      ENV.OPENAI_SMART_MODEL,
       "connection-discovery-v1",
     );
     if (tokenUsage) {

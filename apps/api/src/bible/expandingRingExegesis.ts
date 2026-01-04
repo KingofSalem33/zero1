@@ -952,9 +952,9 @@ export async function explainScriptureWithKernelStream(
     {
       toolSpecs: [],
       toolMap: {},
-      model: "gpt-5-mini",
+      model: ENV.OPENAI_SMART_MODEL,
       reasoningEffort: "low", // Explicit low reasoning for faster streaming
-      // Automatic in-memory caching (5-10 min) works on gpt-5-mini for prompts > 1024 tokens
+      // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
     },
   );
 

@@ -362,7 +362,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
           },
         ],
         {
-          model: "gpt-4o-mini",
+          model: ENV.OPENAI_FAST_MODEL,
           verbosity: "medium",
           promptCacheKey: "root-translation-v1",
         },
@@ -380,7 +380,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const tokenUsage = extractTokenUsage(
       result,
       "/api/root-translation",
-      "gpt-4o-mini",
+      ENV.OPENAI_FAST_MODEL,
       "root-translation-v1",
     );
     if (tokenUsage) {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { supabase } from "../db";
+import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import { SEMANTIC_CONNECTION_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
@@ -119,7 +120,7 @@ Be direct and synthesizing. Maximum 34 words.`;
         },
       ],
       {
-        model: "gpt-4o-mini",
+        model: ENV.OPENAI_FAST_MODEL,
         verbosity: "medium",
       },
     );
@@ -130,7 +131,7 @@ Be direct and synthesizing. Maximum 34 words.`;
     const tokenUsage = extractTokenUsage(
       result,
       "/api/semantic-connection/synopsis",
-      "gpt-4o-mini",
+      ENV.OPENAI_FAST_MODEL,
       "semantic-connection-v1",
     );
     if (tokenUsage) {

@@ -25,6 +25,14 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
     input: 0.00015, // $0.150 per 1M tokens
     output: 0.0006, // $0.600 per 1M tokens
   },
+  "gpt-4.1-nano": {
+    input: 0.0001, // $0.100 per 1M tokens
+    output: 0.0004, // $0.400 per 1M tokens
+  },
+  "gpt-4.1-mini": {
+    input: 0.0004, // $0.400 per 1M tokens
+    output: 0.0016, // $1.600 per 1M tokens
+  },
   "gpt-4o": {
     input: 0.0025, // $2.50 per 1M tokens
     output: 0.01, // $10.00 per 1M tokens
