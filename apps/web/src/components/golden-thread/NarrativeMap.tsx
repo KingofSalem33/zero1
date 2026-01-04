@@ -12,6 +12,7 @@ import "@xyflow/react/dist/style.css";
 import { calculateForceLayout } from "../../utils/forceLayout";
 import { VerseNode } from "./VerseNode";
 import { SemanticConnectionModal } from "./SemanticConnectionModal";
+import { ParallelPassagesModal } from "./ParallelPassagesModal";
 import { MapSkeleton } from "./MapSkeleton";
 import { DiscoveryProgress } from "./DiscoveryProgress";
 import type {
@@ -285,6 +286,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     connectedVerseIds?: number[];
   } | null>(null);
 
+  // Parallel passages modal state
+  const [parallelPassagesModal, setParallelPassagesModal] = useState<{
+    verse: ThreadNode;
+    position: { x: number; y: number };
+  } | null>(null);
+
   // Branch highlighting state
   const [hoveredBranch, setHoveredBranch] = useState<BranchCluster | null>(
     null,
@@ -336,6 +343,31 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       return next;
     });
   }, []);
+
+  // Handler for showing parallel passages modal
+  const handleShowParallels = useCallback(
+    (verseId: number, event?: React.MouseEvent) => {
+      const verse = bundle?.nodes.find((n) => n.id === verseId);
+      if (
+        !verse ||
+        !verse.parallelPassages ||
+        verse.parallelPassages.length === 0
+      ) {
+        return;
+      }
+
+      // Get click position for modal placement
+      const position = event
+        ? { x: event.clientX, y: event.clientY }
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+      setParallelPassagesModal({
+        verse,
+        position,
+      });
+    },
+    [bundle],
+  );
 
   // Handler for node click (Focus Mode)
   const handleNodeClick = useCallback(
@@ -567,6 +599,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           isAnchor,
           collapsedChildCount: actualCollapsedCount,
           onExpand: () => onExpand(verse.id),
+          onShowParallels: (verseId: number) => handleShowParallels(verseId),
           depth: verse.depth, // Pass depth for size scaling
           semanticConnectionType, // 🌟 GOLDEN THREAD: Type of connection from anchor
         },
@@ -2044,6 +2077,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           explanation={clickedConnection.explanation}
           isLLMDiscovered={clickedConnection.isLLMDiscovered}
           connectedVerseIds={clickedConnection.connectedVerseIds}
+        />
+      )}
+
+      {/* Parallel Passages Modal */}
+      {parallelPassagesModal && (
+        <ParallelPassagesModal
+          primaryVerse={parallelPassagesModal.verse}
+          position={parallelPassagesModal.position}
+          onClose={() => setParallelPassagesModal(null)}
+          onNavigateToPassage={(passage) => {
+            console.log("[Parallel Passages] Navigate to:", passage.reference);
+            // TODO: Integrate with Bible reader navigation when available
+            // For now, just close the modal
+            setParallelPassagesModal(null);
+          }}
         />
       )}
     </div>

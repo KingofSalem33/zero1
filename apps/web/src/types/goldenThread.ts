@@ -10,6 +10,20 @@
  */
 export type EdgeType = "DEEPER" | "ROOTS" | "ECHOES" | "PROPHECY" | "GENEALOGY";
 
+/**
+ * Parallel passage (synoptic Gospel parallels, etc.)
+ */
+export interface ParallelPassage {
+  id: number;
+  reference: string; // e.g., "Mark 1:40-45"
+  text: string;
+  similarity: number; // 0.92-1.0 range
+  book_abbrev: string;
+  book_name: string;
+  chapter: number;
+  verse: number;
+}
+
 export interface ThreadNode {
   id: number;
   book_abbrev: string;
@@ -23,6 +37,8 @@ export interface ThreadNode {
   isVisible: boolean; // Should this node be visible by default (spine + expanded branches)?
   collapsedChildCount: number; // How many children are hidden (0 if all visible or no children)
   ringSource: string; // "ring0" | "ring1" | "ring2" | "ring3"
+  parallelPassages?: ParallelPassage[]; // Parallel accounts (synoptic parallels, etc.)
+  isStackedWith?: number; // If this node is hidden due to being a parallel, points to the representative node ID
 }
 
 export interface VisualEdge {

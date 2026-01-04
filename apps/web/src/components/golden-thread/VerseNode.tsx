@@ -8,6 +8,7 @@ interface VerseNodeData {
   isAnchor: boolean;
   collapsedChildCount: number;
   onExpand: () => void;
+  onShowParallels?: (verseId: number) => void; // Show parallel passages modal
   depth?: number; // Depth from anchor for size scaling
   semanticConnectionType?: string; // 🌟 GOLDEN THREAD: Type of connection from anchor (GOLD/PURPLE/CYAN/GREY)
 }
@@ -17,8 +18,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     verse,
     isHighlighted,
     isAnchor,
-    collapsedChildCount,
-    onExpand,
+    onShowParallels,
     depth,
     semanticConnectionType, // 🌟 GOLDEN THREAD: Semantic connection from anchor
   } = data;
@@ -205,18 +205,22 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
               : verse.text}
           </div>
         )}
-        {collapsedChildCount > 0 && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onExpand();
-            }}
-            className="absolute -bottom-2 -right-2 bg-blue-500 hover:bg-blue-600 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white shadow-sm transition-all duration-150 ease-in-out hover:scale-110 hover:shadow-md active:scale-95 cursor-pointer"
-            title={`Expand ${collapsedChildCount} hidden ${collapsedChildCount === 1 ? "reference" : "references"}`}
-          >
-            +{collapsedChildCount}
-          </button>
-        )}
+        {/* Collapse/expand badges removed - map now starts fully expanded */}
+        {/* User only sees parallel passage badges (purple, top-right) */}
+        {verse.parallelPassages &&
+          verse.parallelPassages.length > 0 &&
+          onShowParallels && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowParallels(verse.id);
+              }}
+              className="absolute -top-2 -right-2 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white shadow-md transition-all duration-150 ease-in-out hover:scale-110 hover:shadow-lg active:scale-95 cursor-pointer"
+              title={`${verse.parallelPassages.length} parallel ${verse.parallelPassages.length === 1 ? "account" : "accounts"}`}
+            >
+              +{verse.parallelPassages.length}
+            </button>
+          )}
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </>

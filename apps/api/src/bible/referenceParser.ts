@@ -14,7 +14,7 @@ import { BOOK_NAMES } from "./bookNames";
 import { levenshteinDistance } from "./fuzzyMatch";
 
 export interface ParsedReference {
-  book: string;      // Abbreviation (e.g., "jn", "ge")
+  book: string; // Abbreviation (e.g., "jn", "ge")
   chapter: number;
   verse: number;
   endVerse?: number; // For ranges like "John 3:16-18"
@@ -31,10 +31,7 @@ const bookPattern = bookPatterns.join("|");
 // Regex patterns for different reference formats
 const patterns = [
   // Full format: "John 3:16" or "John 3:16-18"
-  new RegExp(
-    `\\b(${bookPattern})\\s+(\\d+):(\\d+)(?:-(\\d+))?\\b`,
-    "i"
-  ),
+  new RegExp(`\\b(${bookPattern})\\s+(\\d+):(\\d+)(?:-(\\d+))?\\b`, "i"),
   // Chapter only: "Psalm 23" (defaults to verse 1)
   new RegExp(`\\b(${bookPattern})\\s+(\\d+)\\b`, "i"),
 ];
@@ -79,83 +76,118 @@ export function parseExplicitReference(input: string): ParsedReference | null {
 /**
  * Common alternative abbreviations
  * Maps user input -> canonical database abbreviation
+ *
+ * IMPORTANT: All mappings verified against BOOK_NAMES in bookNames.ts
  */
 const ABBREVIATION_ALIASES: Record<string, string> = {
-  // Common aliases that might conflict:
-  "jon": "jn",     // Jonah (not Jonathan - that's in 1 Samuel)
-  "jonah": "jn",   // Jonah
+  // OLD TESTAMENT
+  gen: "gn", // Genesis
+  exo: "ex", // Exodus
+  exod: "ex", // Exodus
+  lev: "lv", // Leviticus
+  num: "nm", // Numbers ✓ FIXED: was "nu"
+  nums: "nm", // Numbers ✓ FIXED: was "nu"
+  deut: "dt", // Deuteronomy
+  deu: "dt", // Deuteronomy
+  josh: "js", // Joshua
+  judg: "jud", // Judges ✓ FIXED: was "jg"
+  judges: "jud", // Judges
+  psa: "ps", // Psalms
+  psalm: "ps", // Psalms
+  psalms: "ps", // Psalms
+  prov: "prv", // Proverbs ✓ FIXED: was "pr"
+  proverbs: "prv", // Proverbs
+  ecc: "ec", // Ecclesiastes
+  eccl: "ec", // Ecclesiastes
+  song: "so", // Song of Solomon
+  sos: "so", // Song of Solomon
+  isa: "is", // Isaiah
+  isaiah: "is", // Isaiah
+  jer: "jr", // Jeremiah
+  jeremiah: "jr", // Jeremiah
+  lam: "lm", // Lamentations
+  eze: "ez", // Ezekiel ✓ FIXED: was "ek"
+  ezek: "ez", // Ezekiel ✓ FIXED: was "ek"
+  ezekiel: "ez", // Ezekiel
+  dan: "dn", // Daniel
+  daniel: "dn", // Daniel
+  hos: "ho", // Hosea ✓ FIXED: was "hs"
+  hosea: "ho", // Hosea
+  joe: "jl", // Joel
+  joel: "jl", // Joel
+  amo: "am", // Amos
+  amos: "am", // Amos
+  oba: "ob", // Obadiah
+  obad: "ob", // Obadiah
+  obadiah: "ob", // Obadiah
+  jon: "jo", // Jonah ✓ FIXED: was "jn" (John)
+  jonah: "jo", // Jonah ✓ FIXED: was "jn" (John)
+  mic: "mi", // Micah
+  micah: "mi", // Micah
+  nah: "na", // Nahum
+  nahum: "na", // Nahum
+  hab: "hk", // Habakkuk
+  habakkuk: "hk", // Habakkuk
+  zep: "zp", // Zephaniah
+  zeph: "zp", // Zephaniah
+  zephaniah: "zp", // Zephaniah
+  hag: "hg", // Haggai
+  haggai: "hg", // Haggai
+  zec: "zc", // Zechariah
+  zech: "zc", // Zechariah
+  zechariah: "zc", // Zechariah
+  mal: "ml", // Malachi
+  malachi: "ml", // Malachi
 
-  // Numbers that might be confused:
-  "num": "nu",     // Numbers
-  "nums": "nu",    // Numbers
-
-  // Judges vs Joshua:
-  "judg": "jg",    // Judges
-  "josh": "js",    // Joshua
-
-  // Other common abbreviations:
-  "gen": "gn",     // Genesis
-  "exo": "ex",     // Exodus
-  "exod": "ex",    // Exodus
-  "lev": "lv",     // Leviticus
-  "deut": "dt",    // Deuteronomy
-  "deu": "dt",     // Deuteronomy
-  "psa": "ps",     // Psalms
-  "psalm": "ps",   // Psalms
-  "prov": "pr",    // Proverbs
-  "ecc": "ec",     // Ecclesiastes
-  "song": "so",    // Song of Solomon
-  "isa": "is",     // Isaiah
-  "jer": "jr",     // Jeremiah
-  "lam": "lm",     // Lamentations
-  "eze": "ek",     // Ezekiel
-  "ezek": "ek",    // Ezekiel
-  "dan": "dn",     // Daniel
-  "hos": "hs",     // Hosea
-  "joe": "jl",     // Joel
-  "amo": "am",     // Amos
-  "oba": "ob",     // Obadiah
-  "obad": "ob",    // Obadiah
-  "mic": "mi",     // Micah
-  "nah": "na",     // Nahum
-  "hab": "hk",     // Habakkuk
-  "zep": "zp",     // Zephaniah
-  "zeph": "zp",    // Zephaniah
-  "hag": "hg",     // Haggai
-  "zec": "zc",     // Zechariah
-  "zech": "zc",    // Zechariah
-  "mal": "ml",     // Malachi
-  "matt": "mt",    // Matthew
-  "mar": "mk",     // Mark
-  "luk": "lk",     // Luke
-  "act": "ac",     // Acts
-  "rom": "ro",     // Romans
-  "gal": "gl",     // Galatians
-  "eph": "ep",     // Ephesians
-  "phil": "pp",    // Philippians
-  "php": "pp",     // Philippians
-  "col": "cl",     // Colossians
-  "thess": "1th",  // 1 Thessalonians (will need disambiguation)
-  "tim": "1tm",    // 1 Timothy (will need disambiguation)
-  "tit": "ti",     // Titus
-  "phm": "pm",     // Philemon
-  "phlm": "pm",    // Philemon
-  "heb": "hb",     // Hebrews
-  "jam": "jm",     // James
-  "jas": "jm",     // James
-  "pet": "1pe",    // 1 Peter (will need disambiguation)
-  "joh": "1jn",    // 1 John epistles (will need disambiguation from Gospel)
-  "rev": "rv",     // Revelation
-  "revel": "rv",   // Revelation
+  // NEW TESTAMENT
+  matt: "mt", // Matthew
+  matthew: "mt", // Matthew
+  mar: "mk", // Mark
+  mark: "mk", // Mark
+  luk: "lk", // Luke
+  luke: "lk", // Luke
+  joh: "jn", // John (Gospel) ✓ FIXED: was "1jn"
+  john: "jn", // John (Gospel)
+  acts: "act", // Acts ✓ FIXED: was "ac"
+  rom: "rm", // Romans ✓ FIXED: was "ro"
+  romans: "rm", // Romans
+  gal: "gl", // Galatians
+  galatians: "gl", // Galatians
+  eph: "eph", // Ephesians ✓ FIXED: was "ep"
+  ephesians: "eph", // Ephesians
+  phil: "ph", // Philippians ✓ FIXED: was "pp"
+  php: "ph", // Philippians ✓ FIXED: was "pp"
+  philippians: "ph", // Philippians
+  col: "cl", // Colossians
+  colossians: "cl", // Colossians
+  thess: "1ts", // 1 Thessalonians ✓ FIXED: was "1th"
+  thessalonians: "1ts", // 1 Thessalonians (default to 1st)
+  tim: "1tm", // 1 Timothy
+  timothy: "1tm", // 1 Timothy (default to 1st)
+  tit: "tt", // Titus ✓ FIXED: was "ti"
+  titus: "tt", // Titus
+  philemon: "phm", // Philemon ✓ FIXED: was "pm"
+  phlm: "phm", // Philemon ✓ FIXED: was "pm"
+  heb: "hb", // Hebrews
+  hebrews: "hb", // Hebrews
+  jam: "jm", // James
+  jas: "jm", // James
+  james: "jm", // James
+  pet: "1pe", // 1 Peter (default to 1st)
+  peter: "1pe", // 1 Peter (default to 1st)
+  rev: "re", // Revelation ✓ FIXED: was "rv"
+  revel: "re", // Revelation ✓ FIXED: was "rv"
+  revelation: "re", // Revelation
+  jude: "jd", // Jude
 };
 
 /**
  * Normalize book name to abbreviation
  *
  * Handles:
- * - Full names: "Genesis" -> "gn", "John" -> "jo", "Jonah" -> "jn"
+ * - Full names: "Genesis" -> "gn", "John" -> "jn", "Jonah" -> "jo" ✓ FIXED
  * - Abbreviations: "gen" -> "gn", "jo" -> "jo"
- * - Aliases: "jon" -> "jn" (Jonah)
+ * - Aliases: "jon" -> "jo" (Jonah) ✓ FIXED
  * - Case-insensitive matching
  * - Fuzzy matching for misspellings: "salamon" -> "so" (Solomon)
  */
@@ -211,7 +243,9 @@ function normalizeBookName(input: string): string | null {
     }
 
     if (bestMatch) {
-      console.log(`[Reference Parser] Fuzzy matched "${input}" -> "${bestMatch}" (distance: ${bestDistance})`);
+      console.log(
+        `[Reference Parser] Fuzzy matched "${input}" -> "${bestMatch}" (distance: ${bestDistance})`,
+      );
       return bestMatch;
     }
   }

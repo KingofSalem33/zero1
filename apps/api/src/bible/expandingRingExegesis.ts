@@ -14,6 +14,8 @@ import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
 import { supabase } from "../db";
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
+import type { ParallelPassage } from "./types";
+import { areSameTestament } from "./testamentUtil";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -36,6 +38,8 @@ export interface ReferenceTreeNode {
   verse: number;
   text: string;
   similarity?: number; // Semantic similarity to user query (0-1)
+  parallelPassages?: ParallelPassage[]; // Parallel accounts (synoptic parallels, etc.)
+  isStackedWith?: number; // If this node is hidden due to being a parallel, points to the representative node ID
 }
 
 export interface ReferenceTreeEdge {
@@ -196,26 +200,27 @@ export async function rankVersesBySimilarity(
 }
 
 /**
- * Remove duplicate/parallel passages from the reference tree.
- * Detects verses with high semantic similarity (>92%) and keeps only the most relevant.
+ * Stack parallel passages instead of removing them.
+ * Detects verses with high semantic similarity (>92%) in the same testament
+ * and attaches parallels to the most relevant representative node.
  *
- * @param visualBundle - The reference tree to deduplicate
- * @returns The bundle with duplicates removed
+ * @param visualBundle - The reference tree to process
+ * @returns The bundle with parallels stacked
  */
 export async function deduplicateVerses(
   visualBundle: ReferenceVisualBundle,
 ): Promise<ReferenceVisualBundle> {
   if (visualBundle.nodes.length < 2) {
-    return visualBundle; // Nothing to deduplicate
+    return visualBundle; // Nothing to stack
   }
 
   const startTime = Date.now();
   console.log(
-    `[Deduplication] Checking ${visualBundle.nodes.length} verses for duplicates...`,
+    `[Parallel Stacking] Checking ${visualBundle.nodes.length} verses for parallels...`,
   );
 
   const DUPLICATE_THRESHOLD = 0.92; // 92% similarity = likely parallel passage
-  const duplicateIds = new Set<number>();
+  const stackedNodeIds = new Set<number>(); // Track which nodes are stacked under others
 
   // Fetch embeddings for all verses
   const verseIds = visualBundle.nodes.map((n) => n.id);
@@ -225,7 +230,7 @@ export async function deduplicateVerses(
     .in("id", verseIds);
 
   if (error || !verses) {
-    console.error("[Deduplication] Failed to fetch embeddings:", error);
+    console.error("[Parallel Stacking] Failed to fetch embeddings:", error);
     return visualBundle; // Return unchanged on error
   }
 
@@ -245,16 +250,22 @@ export async function deduplicateVerses(
     }
   }
 
-  // Compare all pairs
+  // Create node map for easy lookup
+  const nodeMap = new Map<number, ReferenceTreeNode>();
+  for (const node of visualBundle.nodes) {
+    nodeMap.set(node.id, node);
+  }
+
+  // Compare all pairs and build parallel stacks
   for (let i = 0; i < visualBundle.nodes.length; i++) {
-    if (duplicateIds.has(visualBundle.nodes[i].id)) continue;
+    if (stackedNodeIds.has(visualBundle.nodes[i].id)) continue;
 
     const node1 = visualBundle.nodes[i];
     const emb1 = embeddingMap.get(node1.id);
     if (!emb1) continue;
 
     for (let j = i + 1; j < visualBundle.nodes.length; j++) {
-      if (duplicateIds.has(visualBundle.nodes[j].id)) continue;
+      if (stackedNodeIds.has(visualBundle.nodes[j].id)) continue;
 
       const node2 = visualBundle.nodes[j];
       const emb2 = embeddingMap.get(node2.id);
@@ -262,44 +273,75 @@ export async function deduplicateVerses(
 
       const similarity = cosineSimilarity(emb1, emb2);
 
-      if (similarity >= DUPLICATE_THRESHOLD) {
-        // These are duplicates/parallels
-        // Keep the one with higher relevance to query (or first if no scores)
-        const keep =
+      // Only stack same-testament parallels (avoid cross-testament echoes)
+      if (
+        similarity >= DUPLICATE_THRESHOLD &&
+        areSameTestament(node1.book_abbrev, node2.book_abbrev)
+      ) {
+        // Choose representative: highest query similarity (or first if no scores)
+        const representative =
           (node1.similarity || 0) >= (node2.similarity || 0) ? node1 : node2;
-        const remove = keep === node1 ? node2 : node1;
+        const parallel = representative === node1 ? node2 : node1;
 
-        duplicateIds.add(remove.id);
+        // Initialize parallelPassages array if needed
+        if (!representative.parallelPassages) {
+          representative.parallelPassages = [];
+        }
+
+        // Add parallel to representative's stack
+        representative.parallelPassages.push({
+          id: parallel.id,
+          reference: `${parallel.book_name} ${parallel.chapter}:${parallel.verse}`,
+          text: parallel.text,
+          similarity: similarity,
+          book_abbrev: parallel.book_abbrev,
+          book_name: parallel.book_name,
+          chapter: parallel.chapter,
+          verse: parallel.verse,
+        });
+
+        // Mark parallel as stacked
+        parallel.isStackedWith = representative.id;
+        stackedNodeIds.add(parallel.id);
+
         console.log(
-          `[Deduplication] Found parallel: ${node1.book_name} ${node1.chapter}:${node1.verse} ≈ ` +
-            `${node2.book_name} ${node2.chapter}:${node2.verse} (${(similarity * 100).toFixed(1)}% similar) - ` +
-            `Keeping ${keep.book_name} ${keep.chapter}:${keep.verse}`,
+          `[Parallel Stacking] Stacked: ${parallel.book_name} ${parallel.chapter}:${parallel.verse} → ` +
+            `${representative.book_name} ${representative.chapter}:${representative.verse} ` +
+            `(${(similarity * 100).toFixed(1)}% similar)`,
         );
       }
     }
+
+    // Sort parallel passages by similarity (highest first)
+    if (node1.parallelPassages && node1.parallelPassages.length > 0) {
+      node1.parallelPassages.sort((a, b) => b.similarity - a.similarity);
+    }
   }
 
-  // Filter out duplicates
+  // Filter out stacked nodes (but keep them in data structure for potential future use)
   const originalCount = visualBundle.nodes.length;
   visualBundle.nodes = visualBundle.nodes.filter(
-    (n) => !duplicateIds.has(n.id),
+    (n) => !stackedNodeIds.has(n.id),
   );
 
-  // Also remove edges that reference removed nodes
+  // Also remove edges that reference stacked nodes
   visualBundle.edges = visualBundle.edges.filter(
-    (e) => !duplicateIds.has(e.from) && !duplicateIds.has(e.to),
+    (e) => !stackedNodeIds.has(e.from) && !stackedNodeIds.has(e.to),
   );
 
   const elapsed = Date.now() - startTime;
-  const removedCount = originalCount - visualBundle.nodes.length;
+  const stackedCount = originalCount - visualBundle.nodes.length;
+  const nodesWithParallels = visualBundle.nodes.filter(
+    (n) => n.parallelPassages && n.parallelPassages.length > 0,
+  ).length;
 
-  if (removedCount > 0) {
+  if (stackedCount > 0) {
     console.log(
-      `[Deduplication] ✅ Removed ${removedCount} duplicate(s) in ${elapsed}ms ` +
+      `[Parallel Stacking] ✅ Stacked ${stackedCount} parallel(s) under ${nodesWithParallels} representative node(s) in ${elapsed}ms ` +
         `(${visualBundle.nodes.length} verses remaining)`,
     );
   } else {
-    console.log(`[Deduplication] No duplicates found (${elapsed}ms)`);
+    console.log(`[Parallel Stacking] No parallels found (${elapsed}ms)`);
   }
 
   return visualBundle;

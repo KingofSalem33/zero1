@@ -454,54 +454,20 @@ function calculateSpinePath(
 /**
  * Calculate visibility flags and collapsed child counts.
  *
- * Strategy:
- * 1. Mark all spine nodes as visible
- * 2. All non-spine nodes are hidden by default
- * 3. Calculate how many children each node has that are hidden
+ * Strategy (UPDATED):
+ * 1. Mark ALL nodes as visible (fully expanded by default)
+ * 2. Set collapsedChildCount to 0 for all nodes
+ *
+ * Note: User requested map to start fully expanded with no collapse badges
  */
-function calculateVisibility(nodes: ThreadNode[], edges: VisualEdge[]): void {
-  // Step 1: Mark spine nodes as visible
-  let visibleCount = 0;
+function calculateVisibility(nodes: ThreadNode[], _edges: VisualEdge[]): void {
+  // Mark ALL nodes as visible (fully expanded map)
   for (const node of nodes) {
-    if (node.isSpine) {
-      node.isVisible = true;
-      visibleCount++;
-    }
+    node.isVisible = true;
+    node.collapsedChildCount = 0; // No collapsed children
   }
 
   console.log(
-    `[Reference Tree] Visibility: ${visibleCount} spine nodes visible, ${nodes.length - visibleCount} collapsed`,
+    `[Reference Tree] Visibility: ALL ${nodes.length} nodes visible (fully expanded)`,
   );
-
-  // Step 2: Calculate collapsed child counts for each node
-  for (const node of nodes) {
-    // Find all children of this node
-    const childEdges = edges.filter((e) => e.from === node.id);
-    const childIds = childEdges.map((e) => e.to);
-
-    // Count how many children are NOT visible
-    const hiddenChildren = childIds.filter((childId) => {
-      const childNode = nodes.find((n) => n.id === childId);
-      return childNode && !childNode.isVisible;
-    });
-
-    node.collapsedChildCount = hiddenChildren.length;
-  }
-
-  // Log stats for debugging
-  const nodesWithCollapsed = nodes.filter((n) => n.collapsedChildCount > 0);
-  console.log(
-    `[Reference Tree] ${nodesWithCollapsed.length} nodes have collapsed children`,
-  );
-
-  if (nodesWithCollapsed.length > 0) {
-    const examples = nodesWithCollapsed
-      .slice(0, 3)
-      .map(
-        (n) =>
-          `${n.book_abbrev} ${n.chapter}:${n.verse} (+${n.collapsedChildCount})`,
-      )
-      .join(", ");
-    console.log(`[Reference Tree] Examples: ${examples}`);
-  }
 }

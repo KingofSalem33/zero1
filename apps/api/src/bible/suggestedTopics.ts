@@ -9,6 +9,11 @@
 import { supabase } from "../db";
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
+import {
+  getTestament,
+  OLD_TESTAMENT_BOOKS,
+  NEW_TESTAMENT_BOOKS,
+} from "./testamentUtil";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
@@ -37,87 +42,6 @@ interface FooterCard {
     | "GOLDEN";
   title: string;
   prompt: string;
-}
-
-// Old Testament books
-const OLD_TESTAMENT_BOOKS = new Set([
-  "Gen",
-  "Exo",
-  "Lev",
-  "Num",
-  "Deu",
-  "Jos",
-  "Jdg",
-  "Rth",
-  "1Sa",
-  "2Sa",
-  "1Ki",
-  "2Ki",
-  "1Ch",
-  "2Ch",
-  "Ezr",
-  "Neh",
-  "Est",
-  "Job",
-  "Psa",
-  "Pro",
-  "Ecc",
-  "Sng",
-  "Isa",
-  "Jer",
-  "Lam",
-  "Eze",
-  "Dan",
-  "Hos",
-  "Joe",
-  "Amo",
-  "Oba",
-  "Jon",
-  "Mic",
-  "Nah",
-  "Hab",
-  "Zep",
-  "Hag",
-  "Zec",
-  "Mal",
-]);
-
-// New Testament books
-const NEW_TESTAMENT_BOOKS = new Set([
-  "Mat",
-  "Mar",
-  "Luk",
-  "Jhn",
-  "Act",
-  "Rom",
-  "1Co",
-  "2Co",
-  "Gal",
-  "Eph",
-  "Phl",
-  "Col",
-  "1Th",
-  "2Th",
-  "1Ti",
-  "2Ti",
-  "Tit",
-  "Phm",
-  "Heb",
-  "Jas",
-  "1Pe",
-  "2Pe",
-  "1Jo",
-  "2Jo",
-  "3Jo",
-  "Jde",
-  "Rev",
-]);
-
-/**
- * Determine if a book is Old or New Testament
- */
-function getTestament(bookAbbrev: string): "OT" | "NT" {
-  return OLD_TESTAMENT_BOOKS.has(bookAbbrev) ? "OT" : "NT";
 }
 
 /**
