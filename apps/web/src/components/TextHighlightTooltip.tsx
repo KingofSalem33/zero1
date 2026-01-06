@@ -21,6 +21,12 @@ interface Position {
   left: number;
 }
 
+type VerseContext = {
+  book: string;
+  chapter: number;
+  verses: number[];
+};
+
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
 const HIGHLIGHT_COLORS = [
@@ -261,6 +267,7 @@ export function TextHighlightTooltip({
   const [selectedText, setSelectedText] = useState("");
   const [position, setPosition] = useState<Position | null>(null);
   const [description, setDescription] = useState("");
+  const [verseReference, setVerseReference] = useState<string | null>(null);
   const [isLoadingDescription, setIsLoadingDescription] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [highlightSuccess, setHighlightSuccess] = useState(false);
@@ -349,6 +356,7 @@ export function TextHighlightTooltip({
       setPosition(null);
       setSelectedText("");
       setDescription("");
+      setVerseReference(null);
       setIsLoadingDescription(false);
       setHighlightSuccess(false);
       setViewMode("synopsis");
@@ -362,63 +370,101 @@ export function TextHighlightTooltip({
     }, 150);
   }, []);
 
-  const generateAISynopsis = useCallback(async (text: string) => {
-    try {
-      // Create new abort controller for this request
-      abortControllerRef.current = new AbortController();
-      isStreamingRef.current = true;
+  const generateAISynopsis = useCallback(
+    async (text: string, verseContext?: VerseContext) => {
+      try {
+        // Create new abort controller for this request
+        abortControllerRef.current = new AbortController();
+        isStreamingRef.current = true;
 
-      const response = await fetch(`${API_URL}/api/synopsis`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: text,
+        const requestBody: {
+          text: string;
+          maxWords: number;
+          book?: string;
+          chapter?: number;
+          verse?: number;
+          verses?: number[];
+        } = {
+          text,
           maxWords: 34,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
+        };
 
-      if (!response.ok) {
-        await response.text();
-        const errorMessage =
-          response.status === 429
-            ? "Highlight insight unavailable (quota exceeded)."
-            : `Failed to generate synopsis (${response.status}).`;
+        const normalizedVerses = verseContext?.verses
+          ? Array.from(
+              new Set(
+                verseContext.verses.filter(
+                  (num) => Number.isFinite(num) && num > 0,
+                ),
+              ),
+            ).sort((a, b) => a - b)
+          : [];
+
+        if (verseContext?.book && verseContext.chapter) {
+          requestBody.book = verseContext.book;
+          requestBody.chapter = verseContext.chapter;
+        }
+
+        if (normalizedVerses.length === 1) {
+          requestBody.verse = normalizedVerses[0];
+        } else if (normalizedVerses.length > 1) {
+          requestBody.verses = normalizedVerses;
+        }
+
+        const response = await fetch(`${API_URL}/api/synopsis`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!response.ok) {
+          await response.text();
+          const errorMessage =
+            response.status === 429
+              ? "Highlight insight unavailable (quota exceeded)."
+              : `Failed to generate synopsis (${response.status}).`;
+          setIsLoadingDescription(false);
+          setDescription(errorMessage);
+          setVerseReference(null);
+          isStreamingRef.current = false;
+          abortControllerRef.current = null;
+          return;
+        }
+
+        const data = await response.json();
+        const reference =
+          data?.verse?.reference || data?.verses?.reference || null;
+        setVerseReference(reference);
+        const fullSynopsis = data.synopsis || "Unable to generate synopsis.";
+
+        // Check if we were cancelled
+        if (!isStreamingRef.current) {
+          return;
+        }
+
+        // Show synopsis immediately - no streaming animation
         setIsLoadingDescription(false);
-        setDescription(errorMessage);
+        setDescription(fullSynopsis);
+
         isStreamingRef.current = false;
         abortControllerRef.current = null;
-        return;
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        setDescription(
+          'Highlight insight unavailable right now. Click "Trace" to continue.',
+        );
+        setVerseReference(null);
+        setIsLoadingDescription(false);
+        isStreamingRef.current = false;
+        abortControllerRef.current = null;
       }
-
-      const data = await response.json();
-      const fullSynopsis = data.synopsis || "Unable to generate synopsis.";
-
-      // Check if we were cancelled
-      if (!isStreamingRef.current) {
-        return;
-      }
-
-      // Show synopsis immediately - no streaming animation
-      setIsLoadingDescription(false);
-      setDescription(fullSynopsis);
-
-      isStreamingRef.current = false;
-      abortControllerRef.current = null;
-    } catch (error: unknown) {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      setDescription(
-        'Highlight insight unavailable right now. Click "Trace" to continue.',
-      );
-      setIsLoadingDescription(false);
-      isStreamingRef.current = false;
-      abortControllerRef.current = null;
-    }
-  }, []);
+    },
+    [],
+  );
 
   const generateRootTranslation = useCallback(
     async (text: string) => {
@@ -598,22 +644,19 @@ export function TextHighlightTooltip({
           // Store the selection range for later use
           selectionRangeRef.current = range.cloneRange();
 
+          let nextVerseContext: VerseContext | undefined;
+
           // Detect verse numbers from the selection (supports multi-verse)
           setDetectedVerseContext(undefined);
           try {
             const verseNumbers = getVerseNumbersFromRange(range);
 
             if (verseNumbers.length && bibleContext) {
-              setDetectedVerseContext({
+              nextVerseContext = {
                 book: bibleContext.book,
                 chapter: bibleContext.chapter,
                 verses: verseNumbers,
-              });
-              console.log("[TextHighlight] Detected verse context:", {
-                book: bibleContext.book,
-                chapter: bibleContext.chapter,
-                verses: verseNumbers,
-              });
+              };
             } else {
               let verseElement = null;
 
@@ -653,21 +696,25 @@ export function TextHighlightTooltip({
                 );
                 if (verseNum > 0) {
                   // Combine verse from DOM with book/chapter from context
-                  setDetectedVerseContext({
+                  nextVerseContext = {
                     book: bibleContext.book,
                     chapter: bibleContext.chapter,
                     verses: [verseNum],
-                  });
-                  console.log("[TextHighlight] Detected verse context:", {
-                    book: bibleContext.book,
-                    chapter: bibleContext.chapter,
-                    verses: [verseNum],
-                  });
+                  };
                 }
               }
             }
           } catch (err) {
             console.log("[TextHighlight] Could not detect verse:", err);
+          }
+
+          if (nextVerseContext) {
+            setDetectedVerseContext(nextVerseContext);
+            console.log("[TextHighlight] Detected verse context:", {
+              book: nextVerseContext.book,
+              chapter: nextVerseContext.chapter,
+              verses: nextVerseContext.verses,
+            });
           }
 
           // Cancel any ongoing streaming
@@ -680,6 +727,7 @@ export function TextHighlightTooltip({
           // Reset all state for new selection
           setSelectedText(text);
           setDescription("");
+          setVerseReference(null);
           setIsLoadingDescription(true);
           setIsVisible(false);
 
@@ -728,7 +776,7 @@ export function TextHighlightTooltip({
           }
 
           setTimeout(() => setIsVisible(true), 10);
-          await generateAISynopsis(text);
+          await generateAISynopsis(text, nextVerseContext);
         }
       } else {
         // Only close if not clicking inside the tooltip
@@ -936,6 +984,11 @@ export function TextHighlightTooltip({
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {verseReference && (
+                    <div className="font-bold text-[#D4AF37] text-xs uppercase tracking-wide">
+                      {verseReference}
+                    </div>
+                  )}
                   <InteractiveText onVerseClick={handleVerseClick}>
                     {description}
                   </InteractiveText>
