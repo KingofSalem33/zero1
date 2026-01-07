@@ -12,6 +12,7 @@ config();
 import { supabase } from "../src/db";
 import * as fs from "fs";
 import * as path from "path";
+import { BOOK_NAMES as DB_BOOK_NAMES } from "../src/bible/bookNames";
 
 // Mapping from file abbreviations to full book names
 const BOOK_NAMES: Record<string, string> = {
@@ -83,11 +84,25 @@ const BOOK_NAMES: Record<string, string> = {
   Rev: "Revelation",
 };
 
+const DB_ABBREV_BY_NAME = Object.entries(DB_BOOK_NAMES).reduce(
+  (acc, [abbrev, name]) => {
+    acc[name] = abbrev;
+    return acc;
+  },
+  {} as Record<string, string>,
+);
+
 interface StrongsEntry {
   verse_id: number;
   strongs_number: string;
   position: number;
 }
+
+type LooseVerse = {
+  chapterNum: number;
+  verseNum: number;
+  textWithStrongs: string;
+};
 
 /**
  * Extract Strong's numbers from verse text
@@ -115,6 +130,37 @@ function extractStrongsNumbers(
   }
 
   return results;
+}
+
+/**
+ * Extract verse keys + English text from loosely formatted JSON.
+ * This handles files with unescaped quotes in non-English fields.
+ */
+function extractLooseVerses(raw: string, bookAbbrev: string): LooseVerse[] {
+  const verses: LooseVerse[] = [];
+  const regex =
+    /"([A-Za-z0-9]+\|\d+\|\d+)":\s*\{\s*"en"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+
+  let match;
+  while ((match = regex.exec(raw)) !== null) {
+    const verseKey = match[1];
+    const textWithStrongs = match[2];
+    const parts = verseKey.split("|");
+    if (parts.length !== 3) continue;
+    if (parts[0] !== bookAbbrev) continue;
+
+    const chapterNum = parseInt(parts[1], 10);
+    const verseNum = parseInt(parts[2], 10);
+    if (!Number.isFinite(chapterNum) || !Number.isFinite(verseNum)) continue;
+
+    verses.push({
+      chapterNum,
+      verseNum,
+      textWithStrongs,
+    });
+  }
+
+  return verses;
 }
 
 async function populateStrongsNumbers() {
@@ -168,34 +214,48 @@ async function populateStrongsNumbers() {
       continue;
     }
 
+    const dbBookAbbrev =
+      DB_ABBREV_BY_NAME[bookName] ?? bookAbbrev.toLowerCase();
+
     console.log(`📖 Processing ${bookName} (${bookAbbrev})...`);
 
     const filePath = path.join(bibleDataPath, file);
 
-    let data;
+    let data: Record<string, unknown> | null = null;
+    let looseVerses: LooseVerse[] | null = null;
+    let fileContent = "";
     try {
-      const fileContent = fs.readFileSync(filePath, "utf-8");
-      data = JSON.parse(fileContent);
+      fileContent = fs.readFileSync(filePath, "utf-8");
+      data = JSON.parse(fileContent) as Record<string, unknown>;
     } catch (error) {
       console.log(
-        `   ❌ Failed to parse JSON: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `   WARN: Failed to parse JSON: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
-      skippedBooks++;
-      continue;
+      looseVerses = extractLooseVerses(fileContent, bookAbbrev);
     }
 
-    const bookData = data[bookAbbrev];
-    if (!bookData) {
-      console.log(`   ❌ No data found in file`);
-      skippedBooks++;
-      continue;
+    let bookData: Record<string, unknown> | null = null;
+    if (data) {
+      const keys = Object.keys(data);
+      const singleKey = keys.length === 1 ? keys[0] : null;
+      const candidate =
+        data[bookAbbrev] ??
+        data[bookName] ??
+        (singleKey ? data[singleKey] : null);
+      if (candidate && typeof candidate === "object") {
+        bookData = candidate as Record<string, unknown>;
+      }
+
+      if (!bookData) {
+        looseVerses = extractLooseVerses(fileContent, bookAbbrev);
+      }
     }
 
     // Fetch all verses for this book at once (much faster than individual queries)
     const { data: bookVerses, error: bookVersesError } = await supabase
       .from("verses")
       .select("id, chapter, verse")
-      .eq("book_abbrev", bookAbbrev.toLowerCase());
+      .eq("book_abbrev", dbBookAbbrev);
 
     if (bookVersesError || !bookVerses) {
       console.log(`   ❌ Failed to fetch verses: ${bookVersesError?.message}`);
@@ -211,48 +271,82 @@ async function populateStrongsNumbers() {
 
     const strongsEntries: StrongsEntry[] = [];
 
-    // Parse all verses
-    for (const chapterKey of Object.keys(bookData)) {
-      const chapter = bookData[chapterKey];
+    const verseTexts: LooseVerse[] = [];
 
-      for (const verseKey of Object.keys(chapter)) {
-        const verseData = chapter[verseKey];
+    if (bookData) {
+      // Parse all verses from JSON structure
+      for (const chapterKey of Object.keys(bookData)) {
+        const chapter = (bookData as Record<string, any>)[chapterKey];
 
-        // Parse verse reference (e.g., "Gen|1|1")
-        const parts = verseKey.split("|");
-        if (parts.length !== 3) continue;
+        for (const verseKey of Object.keys(chapter)) {
+          const verseData = chapter[verseKey];
 
-        const chapterNum = parseInt(parts[1]);
-        const verseNum = parseInt(parts[2]);
-        const textWithStrongs = verseData.en;
+          // Parse verse reference (e.g., "Gen|1|1")
+          const parts = verseKey.split("|");
+          if (parts.length !== 3) continue;
 
-        // Get verse_id from map
-        const verseId = verseIdMap.get(`${chapterNum}:${verseNum}`);
-        if (!verseId) {
-          console.log(
-            `   ⚠️  Verse not found: ${bookAbbrev} ${chapterNum}:${verseNum}`,
-          );
-          continue;
-        }
+          const chapterNum = parseInt(parts[1], 10);
+          const verseNum = parseInt(parts[2], 10);
+          const textWithStrongs = verseData.en as string;
+          if (!textWithStrongs) continue;
 
-        // Extract Strong's numbers
-        const strongsNumbers = extractStrongsNumbers(textWithStrongs);
-
-        for (const { strongsNumber, position } of strongsNumbers) {
-          strongsEntries.push({
-            verse_id: verseId,
-            strongs_number: strongsNumber,
-            position: position,
-          });
-          totalStrongsEntries++;
+          verseTexts.push({ chapterNum, verseNum, textWithStrongs });
         }
       }
+    } else if (looseVerses && looseVerses.length > 0) {
+      verseTexts.push(...looseVerses);
+      console.log(
+        `   WARN: using loose parser for ${looseVerses.length.toLocaleString()} verses`,
+      );
+    } else {
+      console.log(`   WARN: no verse data found in file`);
+      skippedBooks++;
+      continue;
+    }
+
+    for (const verse of verseTexts) {
+      const { chapterNum, verseNum, textWithStrongs } = verse;
+
+      // Get verse_id from map
+      const verseId = verseIdMap.get(`${chapterNum}:${verseNum}`);
+      if (!verseId) {
+        console.log(
+          `   WARN: verse not found: ${bookAbbrev} ${chapterNum}:${verseNum}`,
+        );
+        continue;
+      }
+
+      // Extract Strong's numbers
+      const strongsNumbers = extractStrongsNumbers(textWithStrongs);
+
+      for (const { strongsNumber, position } of strongsNumbers) {
+        strongsEntries.push({
+          verse_id: verseId,
+          strongs_number: strongsNumber,
+          position: position,
+        });
+        totalStrongsEntries++;
+      }
+    }
+    const seenEntries = new Set<string>();
+    const uniqueEntries: StrongsEntry[] = [];
+    for (const entry of strongsEntries) {
+      const key = `${entry.verse_id}|${entry.strongs_number}|${entry.position}`;
+      if (seenEntries.has(key)) continue;
+      seenEntries.add(key);
+      uniqueEntries.push(entry);
+    }
+
+    if (uniqueEntries.length !== strongsEntries.length) {
+      console.log(
+        `   WARN: deduped ${strongsEntries.length - uniqueEntries.length} Strong's entries`,
+      );
     }
 
     // Insert Strong's entries in batches
     const BATCH_SIZE = 1000;
-    for (let i = 0; i < strongsEntries.length; i += BATCH_SIZE) {
-      const batch = strongsEntries.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < uniqueEntries.length; i += BATCH_SIZE) {
+      const batch = uniqueEntries.slice(i, i + BATCH_SIZE);
 
       const { error } = await supabase.from("verse_strongs").insert(batch);
 
@@ -264,7 +358,7 @@ async function populateStrongsNumbers() {
     }
 
     console.log(
-      `   ✅ Inserted ${strongsEntries.length.toLocaleString()} Strong's entries`,
+      `   ✅ Inserted ${uniqueEntries.length.toLocaleString()} Strong's entries`,
     );
   }
 
@@ -307,7 +401,7 @@ async function populateStrongsNumbers() {
       )
     `,
     )
-    .eq("book_abbrev", "gen")
+    .eq("book_abbrev", "gn")
     .eq("chapter", 1)
     .eq("verse", 1)
     .single();

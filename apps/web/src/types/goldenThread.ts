@@ -8,7 +8,13 @@
 /**
  * Edge types for multi-strand visualization
  */
-export type EdgeType = "DEEPER" | "ROOTS" | "ECHOES" | "PROPHECY" | "GENEALOGY";
+export type EdgeType =
+  | "DEEPER"
+  | "ROOTS"
+  | "ECHOES"
+  | "PROPHECY"
+  | "GENEALOGY"
+  | "NARRATIVE";
 
 /**
  * Parallel passage (synoptic Gospel parallels, etc.)

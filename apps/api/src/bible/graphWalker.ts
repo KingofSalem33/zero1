@@ -12,6 +12,12 @@
  */
 
 import { supabase } from "../db";
+import { ENV } from "../env";
+import { matchConcept } from "./conceptMapping";
+import { parseExplicitReference } from "./referenceParser";
+import { searchVersesByQuery } from "./semanticSearch";
+import { getTestament } from "./testamentUtil";
+import { ensureVersesHaveText } from "./verseText";
 import { fetchAllEdges } from "./edgeFetchers";
 
 export interface Verse {
@@ -45,6 +51,138 @@ const DEFAULT_CONFIG: RingConfig = {
   ring3Limit: 40,
 };
 
+const normalizeConceptReference = (reference: string): string =>
+  reference.replace(/^Psalm\b/i, "Psalms");
+
+const fetchVerseByReference = async (
+  bookAbbrev: string,
+  chapter: number,
+  verse: number,
+): Promise<Verse | null> => {
+  const { data, error } = await supabase
+    .from("verses")
+    .select("id, book_abbrev, book_name, chapter, verse, text")
+    .eq("book_abbrev", bookAbbrev)
+    .eq("chapter", chapter)
+    .eq("verse", verse)
+    .single();
+
+  if (error || !data) {
+    console.error(
+      `[Graph Walker] Bridge verse lookup failed: ${bookAbbrev} ${chapter}:${verse}`,
+      error,
+    );
+    return null;
+  }
+
+  const ensured = await ensureVersesHaveText(
+    [data as Verse],
+    "graph-walker:bridge",
+  );
+
+  return ensured[0] ?? null;
+};
+
+const findBridgeVerses = async (
+  anchor: Verse,
+  existingIds: Set<number>,
+): Promise<Verse[]> => {
+  const bridges: Verse[] = [];
+  const anchorTestament = getTestament(anchor.book_abbrev.toLowerCase());
+
+  const conceptRef = matchConcept(anchor.text);
+  if (conceptRef) {
+    const parsed = parseExplicitReference(
+      normalizeConceptReference(conceptRef),
+    );
+    if (parsed && getTestament(parsed.book) !== anchorTestament) {
+      const conceptVerse = await fetchVerseByReference(
+        parsed.book,
+        parsed.chapter,
+        parsed.verse,
+      );
+      if (conceptVerse && !existingIds.has(conceptVerse.id)) {
+        bridges.push(conceptVerse);
+        existingIds.add(conceptVerse.id);
+      }
+    }
+  }
+
+  if (bridges.length >= 2 || !ENV.OPENAI_API_KEY) {
+    return bridges;
+  }
+
+  try {
+    const results = await searchVersesByQuery(anchor.text, 6, 0.5);
+    for (const result of results) {
+      if (bridges.length >= 2) break;
+      if (existingIds.has(result.id)) continue;
+      const testament = getTestament(result.book_abbrev.toLowerCase());
+      if (testament === anchorTestament) continue;
+      bridges.push({
+        id: result.id,
+        book_abbrev: result.book_abbrev,
+        book_name: result.book_name,
+        chapter: result.chapter,
+        verse: result.verse,
+        text: result.text,
+      });
+      existingIds.add(result.id);
+    }
+  } catch (error) {
+    console.error("[Graph Walker] Bridge semantic search failed:", error);
+  }
+
+  return await ensureVersesHaveText(bridges, "graph-walker:bridge");
+};
+
+const buildNarrativeEdges = (
+  nodes: import("./types").ThreadNode[],
+  existingEdges: import("./types").VisualEdge[],
+): import("./types").VisualEdge[] => {
+  const existingPairs = new Set<string>();
+  existingEdges.forEach((edge) => {
+    existingPairs.add(`${edge.from}->${edge.to}`);
+    existingPairs.add(`${edge.to}->${edge.from}`);
+  });
+
+  const nodesByChapter = new Map<string, import("./types").ThreadNode[]>();
+  nodes.forEach((node) => {
+    const key = `${node.book_abbrev}|${node.chapter}`;
+    const group = nodesByChapter.get(key) || [];
+    group.push(node);
+    nodesByChapter.set(key, group);
+  });
+
+  const narrativeEdges: import("./types").VisualEdge[] = [];
+
+  nodesByChapter.forEach((group) => {
+    group.sort((a, b) => a.verse - b.verse);
+    for (let i = 0; i < group.length - 1; i++) {
+      const current = group[i];
+      const next = group[i + 1];
+      if (next.verse !== current.verse + 1) continue;
+
+      const edgeKey = `${current.id}->${next.id}`;
+      if (existingPairs.has(edgeKey)) continue;
+
+      narrativeEdges.push({
+        from: current.id,
+        to: next.id,
+        weight: 0.2,
+        type: "NARRATIVE",
+        metadata: {
+          thread: "narrative",
+        },
+      });
+      existingPairs.add(edgeKey);
+      existingPairs.add(`${next.id}->${current.id}`);
+    }
+  });
+
+  return narrativeEdges;
+};
+
 /**
  * Build context bundle using budgeted BFS graph traversal
  */
@@ -76,7 +214,10 @@ export async function buildContextBundle(
     throw new Error(`Failed to fetch Ring 0: ${ring0Error.message}`);
   }
 
-  const ring0 = ring0Data as Verse[];
+  const ring0 = await ensureVersesHaveText(
+    ring0Data as Verse[],
+    "graph-walker:ring0",
+  );
   const anchor = ring0.find((v) => v.id === anchorId);
 
   if (!anchor) {
@@ -97,7 +238,7 @@ export async function buildContextBundle(
   console.log(`[Graph Walker] Fetching Ring 1 (max ${cfg.ring1Limit})...`);
 
   const ring1Ids = await fetchLayer(ring0Ids, cfg.ring1Limit, new Set());
-  const ring1 = await hydrateVerses(ring1Ids);
+  let ring1 = await hydrateVerses(ring1Ids);
 
   console.log(`[Graph Walker] Ring 1: ${ring1.length} verses`);
 
@@ -124,6 +265,23 @@ export async function buildContextBundle(
   const ring3 = await hydrateVerses(ring3Ids);
 
   console.log(`[Graph Walker] Ring 3: ${ring3.length} verses`);
+
+  // ========================================
+  // Bridge Verses: Cross-testament continuity
+  // ========================================
+  const existingIds = new Set([
+    ...ring0Ids,
+    ...ring1Ids,
+    ...ring2Ids,
+    ...ring3Ids,
+  ]);
+  const bridgeVerses = await findBridgeVerses(anchor, existingIds);
+  if (bridgeVerses.length > 0) {
+    ring1 = [...ring1, ...bridgeVerses];
+    console.log(
+      `[Graph Walker] Added ${bridgeVerses.length} bridge verse(s) for ${anchor.book_name} ${anchor.chapter}:${anchor.verse}`,
+    );
+  }
 
   // ========================================
   // Summary
@@ -226,7 +384,8 @@ async function hydrateVerses(ids: number[]): Promise<Verse[]> {
     return [];
   }
 
-  return (data as Verse[]) || [];
+  const verses = (data as Verse[]) || [];
+  return await ensureVersesHaveText(verses, "graph-walker:hydrate");
 }
 
 /**
@@ -502,6 +661,13 @@ export async function buildVisualBundle(
   // Find the highest-weighted path from anchor to deepest ring
   calculateSpinePath(nodes, edges, bundle.anchor.id);
 
+  const narrativeEdges = buildNarrativeEdges(nodes, edges);
+  if (narrativeEdges.length > 0) {
+    console.log(
+      `[Visual Bundle] Added ${narrativeEdges.length} narrative chain edges`,
+    );
+  }
+
   console.log(
     `[Visual Bundle] Standard edges complete: ${nodes.length} nodes, ${edges.length} edges`,
   );
@@ -522,14 +688,8 @@ export async function buildVisualBundle(
     includeGENEALOGY: edgeOptions.includeGENEALOGY,
   });
 
-  // Tag existing edges as DEEPER type
-  const taggedExistingEdges = edges.map((e) => ({
-    ...e,
-    type: "DEEPER" as const,
-  }));
-
   // Merge all edges
-  const allEdges = [...taggedExistingEdges, ...additionalEdges];
+  const allEdges = [...edges, ...narrativeEdges, ...additionalEdges];
 
   console.log(
     `[Visual Bundle] Complete with multi-strand: ${nodes.length} nodes, ${allEdges.length} total edges`,
@@ -540,6 +700,7 @@ export async function buildVisualBundle(
     ECHOES: allEdges.filter((e) => e.type === "ECHOES").length,
     PROPHECY: allEdges.filter((e) => e.type === "PROPHECY").length,
     GENEALOGY: allEdges.filter((e) => e.type === "GENEALOGY").length,
+    NARRATIVE: allEdges.filter((e) => e.type === "NARRATIVE").length,
   });
 
   return {

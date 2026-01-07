@@ -13,6 +13,7 @@
 
 import { supabase } from "../db";
 import type { Verse } from "./graphWalker";
+import { ensureVersesHaveText } from "./verseText";
 import type { ThreadNode, VisualEdge, VisualContextBundle } from "./types";
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
@@ -177,8 +178,12 @@ export async function buildReferenceTree(
 
     const versesById = new Map<number, Verse>();
     if (data) {
-      for (const v of data) {
-        versesById.set(v.id, v as Verse);
+      const ensured = await ensureVersesHaveText(
+        data as Verse[],
+        "reference-tree:fetch",
+      );
+      for (const verse of ensured) {
+        versesById.set(verse.id, verse as Verse);
       }
     }
 

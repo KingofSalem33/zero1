@@ -37,7 +37,7 @@ export const BOOK_NAMES: Record<string, string> = {
   jl: "Joel",
   am: "Amos",
   ob: "Obadiah",
-  jo: "Jonah", // Database has "jo" for Jonah, not "jn"
+  jo: "John", // Database has "jo" for John, not "jn"
   mi: "Micah",
   na: "Nahum",
   hk: "Habakkuk",
@@ -48,7 +48,7 @@ export const BOOK_NAMES: Record<string, string> = {
   mt: "Matthew",
   mk: "Mark",
   lk: "Luke",
-  jn: "John", // Database has "jn" for John (Gospel), not "jo"
+  jn: "Jonah", // Database has "jn" for Jonah, not "jo"
   act: "Acts",
   rm: "Romans",
   "1co": "1 Corinthians",
@@ -106,7 +106,7 @@ export const ABBREV_TO_INDEX: Record<string, number> = {
   jl: 28,
   am: 29,
   ob: 30,
-  jo: 31, // Jonah
+  jn: 31, // Jonah
   mi: 32,
   na: 33,
   hk: 34,
@@ -117,7 +117,7 @@ export const ABBREV_TO_INDEX: Record<string, number> = {
   mt: 39,
   mk: 40,
   lk: 41,
-  jn: 42, // John
+  jo: 42, // John
   act: 43,
   rm: 44,
   "1co": 45,

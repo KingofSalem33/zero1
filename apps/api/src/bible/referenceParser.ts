@@ -120,8 +120,8 @@ const ABBREVIATION_ALIASES: Record<string, string> = {
   oba: "ob", // Obadiah
   obad: "ob", // Obadiah
   obadiah: "ob", // Obadiah
-  jon: "jo", // Jonah ✓ FIXED: was "jn" (John)
-  jonah: "jo", // Jonah ✓ FIXED: was "jn" (John)
+  jon: "jn", // Jonah ✓ FIXED: was "jo" (John)
+  jonah: "jn", // Jonah ✓ FIXED: was "jo" (John)
   mic: "mi", // Micah
   micah: "mi", // Micah
   nah: "na", // Nahum
@@ -146,8 +146,8 @@ const ABBREVIATION_ALIASES: Record<string, string> = {
   mark: "mk", // Mark
   luk: "lk", // Luke
   luke: "lk", // Luke
-  joh: "jn", // John (Gospel) ✓ FIXED: was "1jn"
-  john: "jn", // John (Gospel)
+  joh: "jo", // John (Gospel) ✓ FIXED: was "jn"
+  john: "jo", // John (Gospel)
   acts: "act", // Acts ✓ FIXED: was "ac"
   rom: "rm", // Romans ✓ FIXED: was "ro"
   romans: "rm", // Romans
@@ -185,9 +185,9 @@ const ABBREVIATION_ALIASES: Record<string, string> = {
  * Normalize book name to abbreviation
  *
  * Handles:
- * - Full names: "Genesis" -> "gn", "John" -> "jn", "Jonah" -> "jo" ✓ FIXED
+ * - Full names: "Genesis" -> "gn", "John" -> "jo", "Jonah" -> "jn" ✓ FIXED
  * - Abbreviations: "gen" -> "gn", "jo" -> "jo"
- * - Aliases: "jon" -> "jo" (Jonah) ✓ FIXED
+ * - Aliases: "jon" -> "jn" (Jonah) ✓ FIXED
  * - Case-insensitive matching
  * - Fuzzy matching for misspellings: "salamon" -> "so" (Solomon)
  */

@@ -17,12 +17,17 @@ router.post("/synopsis", async (req, res) => {
     const { verseIds, connectionType, similarity, isLLMDiscovered } = req.body;
 
     // Support legacy format (fromVerseId, toVerseId) for backwards compatibility
-    const ids = verseIds || [req.body.fromVerseId, req.body.toVerseId];
+    const rawIds = Array.isArray(verseIds)
+      ? verseIds
+      : [req.body.fromVerseId, req.body.toVerseId];
+    const ids = rawIds
+      .map((id: unknown) => Number(id))
+      .filter((id: number) => Number.isFinite(id) && id > 0);
 
-    if (!ids || ids.length < 2) {
+    if (ids.length < 2 || ids.length !== rawIds.length) {
       return res
         .status(400)
-        .json({ error: "At least two verse IDs are required" });
+        .json({ error: "At least two valid verse IDs are required" });
     }
 
     console.log(
@@ -40,7 +45,6 @@ router.post("/synopsis", async (req, res) => {
       return res.status(404).json({ error: "Verses not found" });
     }
 
-    // Sort verses by their position in the verseIds array to maintain order
     type VerseType = {
       id: number;
       book_name: string;
@@ -48,8 +52,26 @@ router.post("/synopsis", async (req, res) => {
       verse: number;
       text: string;
     };
+    const verseById = new Map(
+      verses.map((verse: VerseType) => [verse.id, verse]),
+    );
+    const missingIds = Array.from(
+      new Set(ids.filter((id: number) => !verseById.has(id))),
+    );
+
+    if (missingIds.length > 0) {
+      console.error(
+        `[Semantic Connection] Missing verses for IDs: ${missingIds.join(", ")}`,
+      );
+      return res.status(404).json({
+        error: "Verses not found",
+        missingVerseIds: missingIds,
+      });
+    }
+
+    // Sort verses by their position in the verseIds array to maintain order
     const sortedVerses = ids
-      .map((id: number) => verses.find((v: { id: number }) => v.id === id))
+      .map((id: number) => verseById.get(id))
       .filter((v: VerseType | undefined): v is VerseType => v !== undefined);
 
     // Determine connection description
@@ -146,11 +168,13 @@ Be direct and synthesizing. Maximum 34 words.`;
       synopsis,
       verses: sortedVerses.map(
         (v: {
+          id: number;
           book_name: string;
           chapter: number;
           verse: number;
           text: string;
         }) => ({
+          id: v.id,
           reference: `${v.book_name} ${v.chapter}:${v.verse}`,
           text: v.text,
         }),

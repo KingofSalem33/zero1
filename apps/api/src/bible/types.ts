@@ -40,7 +40,13 @@ export interface CrossRefBundle {
 /**
  * Edge types for multi-strand visualization
  */
-export type EdgeType = "DEEPER" | "ROOTS" | "ECHOES" | "PROPHECY" | "GENEALOGY";
+export type EdgeType =
+  | "DEEPER"
+  | "ROOTS"
+  | "ECHOES"
+  | "PROPHECY"
+  | "GENEALOGY"
+  | "NARRATIVE";
 
 /**
  * Edge styling configuration
@@ -104,4 +110,5 @@ export const EDGE_STYLES: Record<EdgeType, EdgeStyle> = {
   ECHOES: { color: "#3B82F6", dashArray: "0", width: 2 },
   PROPHECY: { color: "#A855F7", dashArray: "0", width: 1.5, glow: true },
   GENEALOGY: { color: "#10B981", dashArray: "0", width: 1 },
+  NARRATIVE: { color: "#9CA3AF", dashArray: "0", width: 1 },
 };

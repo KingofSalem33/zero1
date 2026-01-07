@@ -201,9 +201,9 @@ export async function fetchProphecyEdges(
   try {
     const { data, error } = await supabase
       .from("prophecies")
-      .select("source_verse_id, fulfillment_verse_id, confidence")
+      .select("prophecy_verse_id, fulfillment_verse_id, prophecy_type")
       .or(
-        `source_verse_id.in.(${sourceIds.join(",")}),fulfillment_verse_id.in.(${sourceIds.join(",")})`,
+        `prophecy_verse_id.in.(${sourceIds.join(",")}),fulfillment_verse_id.in.(${sourceIds.join(",")})`,
       )
       .limit(limit);
 
@@ -213,12 +213,12 @@ export async function fetchProphecyEdges(
     }
 
     return data.map((row) => ({
-      from: row.source_verse_id,
+      from: row.prophecy_verse_id,
       to: row.fulfillment_verse_id,
-      weight: row.confidence || 0.7,
+      weight: 0.85,
       type: "PROPHECY",
       metadata: {
-        confidence: row.confidence,
+        prophecyType: row.prophecy_type,
       },
     }));
   } catch (error) {
@@ -242,8 +242,10 @@ export async function fetchGenealogyEdges(
   try {
     const { data, error } = await supabase
       .from("genealogies")
-      .select("verse_id, person_name, parent_name")
-      .in("verse_id", sourceIds)
+      .select("ancestor_verse_id, descendant_verse_id, relationship")
+      .or(
+        `ancestor_verse_id.in.(${sourceIds.join(",")}),descendant_verse_id.in.(${sourceIds.join(",")})`,
+      )
       .limit(limit);
 
     if (error || !data || data.length === 0) {
@@ -251,15 +253,42 @@ export async function fetchGenealogyEdges(
       return [];
     }
 
-    // This is simplified - real implementation would need to:
-    // 1. Find verses mentioning the same people
-    // 2. Create edges based on family relationships
-    return [];
+    return data.map((row) => ({
+      from: row.ancestor_verse_id,
+      to: row.descendant_verse_id,
+      weight: 0.75,
+      type: "GENEALOGY",
+      metadata: {
+        relationship: row.relationship,
+      },
+    }));
   } catch (error) {
     console.error("[Edge Fetchers] Error in fetchGenealogyEdges:", error);
     return [];
   }
 }
+
+const FALLBACK_THRESHOLDS = {
+  roots: 3,
+  echoes: 2,
+  prophecy: 2,
+};
+
+const mergeEdges = (primary: VisualEdge[], secondary: VisualEdge[]) => {
+  if (secondary.length === 0) return primary;
+  const seen = new Set(
+    primary.map((edge) => `${edge.from}|${edge.to}|${edge.type}`),
+  );
+  const merged = [...primary];
+  secondary.forEach((edge) => {
+    const key = `${edge.from}|${edge.to}|${edge.type}`;
+    if (!seen.has(key)) {
+      merged.push(edge);
+      seen.add(key);
+    }
+  });
+  return merged;
+};
 
 /**
  * Fetch all edge types for a set of verses
@@ -299,26 +328,73 @@ export async function fetchAllEdges(
     useSemanticThreads,
   });
 
-  const fetchers: Promise<VisualEdge[]>[] = [];
+  const deeperPromise = includeDEEPER
+    ? fetchDeeperEdges(sourceIds)
+    : Promise.resolve([]);
+  const rootsPromise = includeROOTS
+    ? fetchRootsEdges(sourceIds)
+    : Promise.resolve([]);
+  const echoesPromise = includeECHOES
+    ? fetchEchoesEdges(sourceIds)
+    : Promise.resolve([]);
+  const prophecyPromise = includePROPHECY
+    ? fetchProphecyEdges(sourceIds)
+    : Promise.resolve([]);
+  const genealogyPromise = includeGENEALOGY
+    ? fetchGenealogyEdges(sourceIds)
+    : Promise.resolve([]);
 
-  // Always include DEEPER (cross-references)
-  if (includeDEEPER) fetchers.push(fetchDeeperEdges(sourceIds));
+  const [
+    deeperEdges,
+    rootsCanonical,
+    echoesCanonical,
+    prophecyCanonical,
+    genealogyCanonical,
+  ] = await Promise.all([
+    deeperPromise,
+    rootsPromise,
+    echoesPromise,
+    prophecyPromise,
+    genealogyPromise,
+  ]);
 
-  // Use semantic threads if enabled, otherwise try table-based fetchers
-  if (useSemanticThreads) {
-    if (includeROOTS) fetchers.push(findGoldThreads(sourceIds, 0.75)); // High same-testament similarity
-    if (includeECHOES) fetchers.push(findPurpleThreads(sourceIds, 0.55)); // Cross-testament theological similarity
-    if (includePROPHECY) fetchers.push(findCyanThreads(sourceIds, 0.5)); // Prophetic patterns
-  } else {
-    // Fallback to table-based fetchers (will be empty until populated)
-    if (includeROOTS) fetchers.push(fetchRootsEdges(sourceIds));
-    if (includeECHOES) fetchers.push(fetchEchoesEdges(sourceIds));
-    if (includePROPHECY) fetchers.push(fetchProphecyEdges(sourceIds));
-    if (includeGENEALOGY) fetchers.push(fetchGenealogyEdges(sourceIds));
+  let rootsEdges = rootsCanonical;
+  if (
+    includeROOTS &&
+    useSemanticThreads &&
+    rootsCanonical.length < FALLBACK_THRESHOLDS.roots
+  ) {
+    const semanticRoots = await findGoldThreads(sourceIds, 0.75);
+    rootsEdges = mergeEdges(rootsCanonical, semanticRoots);
   }
 
-  const results = await Promise.all(fetchers);
-  const allEdges = results.flat();
+  let echoesEdges = echoesCanonical;
+  if (
+    includeECHOES &&
+    useSemanticThreads &&
+    echoesCanonical.length < FALLBACK_THRESHOLDS.echoes
+  ) {
+    const semanticEchoes = await findPurpleThreads(sourceIds, 0.55);
+    echoesEdges = mergeEdges(echoesCanonical, semanticEchoes);
+  }
+
+  let prophecyEdges = prophecyCanonical;
+  if (
+    includePROPHECY &&
+    useSemanticThreads &&
+    prophecyCanonical.length < FALLBACK_THRESHOLDS.prophecy
+  ) {
+    const semanticProphecy = await findCyanThreads(sourceIds, 0.5);
+    prophecyEdges = mergeEdges(prophecyCanonical, semanticProphecy);
+  }
+
+  const allEdges = [
+    ...deeperEdges,
+    ...rootsEdges,
+    ...echoesEdges,
+    ...prophecyEdges,
+    ...genealogyCanonical,
+  ];
 
   console.log(`[Edge Fetchers] Total edges fetched: ${allEdges.length}`);
   console.log(`[Edge Fetchers] Breakdown:`, {

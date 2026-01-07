@@ -50,7 +50,7 @@ export const OLD_TESTAMENT_BOOKS = new Set([
   "jl", // Joel
   "am", // Amos
   "ob", // Obadiah
-  "jo", // Jonah (NOT "jn" which is John Gospel!)
+  "jn", // Jonah (NOT "jo" which is John Gospel!)
   "mi", // Micah
   "na", // Nahum
   "hk", // Habakkuk
@@ -69,7 +69,7 @@ export const NEW_TESTAMENT_BOOKS = new Set([
   "mt", // Matthew
   "mk", // Mark
   "lk", // Luke
-  "jn", // John (NOT "jo" which is Jonah!)
+  "jo", // John (NOT "jn" which is Jonah!)
 
   // Acts
   "act", // Acts

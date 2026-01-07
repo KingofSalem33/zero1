@@ -195,6 +195,7 @@ const TYPE_TO_STYLE_MAP: Record<string, keyof typeof EDGE_STYLES> = {
   ECHOES: "PURPLE", // Semantic theological threads = purple highlight
   PROPHECY: "CYAN", // Semantic prophetic threads = cyan highlight
   GENEALOGY: "CYAN",
+  NARRATIVE: "GREY",
   // LLM-discovered types
   TYPOLOGY: "TYPOLOGY",
   FULFILLMENT: "FULFILLMENT",

@@ -69,7 +69,7 @@ export function SemanticConnectionModal({
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
   const [verses, setVerses] = useState<
-    Array<{ reference: string; text: string }>
+    Array<{ id: number; reference: string; text: string }>
   >([]);
   const [loading, setLoading] = useState(true); // Always load synopsis for comprehensive analysis
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +109,8 @@ export function SemanticConnectionModal({
     const fetchSynopsis = async () => {
       setLoading(true);
       setError(null);
+      setSynopsis("");
+      setVerses([]);
 
       try {
         // Use all connected verse IDs if available, otherwise just the two endpoints
@@ -116,9 +118,19 @@ export function SemanticConnectionModal({
           connectedVerseIds && connectedVerseIds.length > 2
             ? connectedVerseIds
             : [fromVerse.id, toVerse.id];
+        const normalizedVerseIds = verseIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+
+        if (
+          normalizedVerseIds.length < 2 ||
+          normalizedVerseIds.length !== verseIds.length
+        ) {
+          throw new Error("Invalid verse IDs supplied");
+        }
 
         console.log(
-          `[SemanticConnectionModal] Fetching synopsis for ${verseIds.length} connected verses`,
+          `[SemanticConnectionModal] Fetching synopsis for ${normalizedVerseIds.length} connected verses`,
         );
 
         const response = await fetch(
@@ -127,7 +139,7 @@ export function SemanticConnectionModal({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              verseIds, // Pass all connected verse IDs
+              verseIds: normalizedVerseIds, // Pass all connected verse IDs
               connectionType,
               similarity,
               isLLMDiscovered,
@@ -141,8 +153,20 @@ export function SemanticConnectionModal({
 
         const data = await response.json();
         console.log("[SemanticConnectionModal] Loaded synopsis:", data);
+        const returnedVerses = Array.isArray(data?.verses) ? data.verses : [];
+        const orderedVerses = normalizedVerseIds
+          .map((id) => returnedVerses.find((verse) => verse.id === id))
+          .filter(
+            (verse): verse is { id: number; reference: string; text: string } =>
+              verse !== undefined,
+          );
+
+        if (orderedVerses.length !== normalizedVerseIds.length) {
+          throw new Error("Incomplete verse list returned from API");
+        }
+
         setSynopsis(data.synopsis || "");
-        setVerses(data.verses || []);
+        setVerses(orderedVerses);
       } catch (err) {
         console.error(
           "[SemanticConnectionModal] Error fetching synopsis:",
