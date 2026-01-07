@@ -101,9 +101,11 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const cleanBook = typeof book === "string" ? book.trim() : "";
     const resolvedChapter = Number.isFinite(chapter) ? (chapter as number) : 0;
     const hasBookChapter = cleanBook.length > 0 && resolvedChapter > 0;
+    const parsedVerse =
+      typeof verse === "number" && Number.isFinite(verse) ? verse : undefined;
     const resolvedVerse =
-      Number.isFinite(verse) && verse > 0
-        ? verse
+      typeof parsedVerse === "number" && parsedVerse > 0
+        ? parsedVerse
         : normalizedVerses.length === 1
           ? normalizedVerses[0]
           : undefined;
