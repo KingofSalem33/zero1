@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { supabase } from "../db";
-import { discoverConnections } from "../bible/connectionDiscovery";
+import {
+  discoverConnections,
+  type DiscoveredConnection,
+} from "../bible/connectionDiscovery";
 import crypto from "crypto";
 
 const router = Router();
@@ -11,6 +14,14 @@ const router = Router();
  */
 const cache = new Map<string, { connections: any[]; timestamp: number }>();
 const CACHE_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
+const PERSIST_CONFIDENCE_MIN = 0.9;
+const PERSIST_TYPES = new Set<DiscoveredConnection["type"]>([
+  "TYPOLOGY",
+  "FULFILLMENT",
+  "CONTRAST",
+  "PROGRESSION",
+  "PATTERN",
+]);
 
 /**
  * Hash verse IDs to create cache key
@@ -18,6 +29,40 @@ const CACHE_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
 function hashVerseIds(verseIds: number[]): string {
   const sorted = [...verseIds].sort((a, b) => a - b);
   return crypto.createHash("md5").update(sorted.join(",")).digest("hex");
+}
+
+async function persistConnections(connections: DiscoveredConnection[]) {
+  const toPersist = connections.filter(
+    (conn) =>
+      PERSIST_TYPES.has(conn.type) && conn.confidence >= PERSIST_CONFIDENCE_MIN,
+  );
+
+  if (toPersist.length === 0) {
+    return;
+  }
+
+  const rows = toPersist.map((conn) => ({
+    from_verse_id: conn.from,
+    to_verse_id: conn.to,
+    connection_type: conn.type,
+    explanation: conn.explanation,
+    confidence: conn.confidence,
+  }));
+
+  const { error } = await supabase.from("llm_connections").upsert(rows, {
+    onConflict: "from_verse_id,to_verse_id,connection_type",
+  });
+
+  if (error) {
+    console.error(
+      "[Discover Connections] Failed to persist connections:",
+      error,
+    );
+  } else {
+    console.log(
+      `[Discover Connections] Persisted ${rows.length} high-confidence LLM connections`,
+    );
+  }
 }
 
 /**
@@ -42,6 +87,7 @@ router.post("/", async (req, res) => {
       console.log(
         `[Discover Connections] Cache hit for ${verseIds.length} verses`,
       );
+      void persistConnections(cached.connections);
       return res.json({
         connections: cached.connections,
         fromCache: true,
@@ -69,6 +115,8 @@ router.post("/", async (req, res) => {
 
     // Discover connections using LLM
     const connections = await discoverConnections(formattedVerses);
+
+    await persistConnections(connections);
 
     // Cache result
     cache.set(cacheKey, {

@@ -10,12 +10,102 @@
  */
 
 import { supabase } from "../db";
-import { VisualEdge } from "./types";
+import { VisualEdge, type EdgeType } from "./types";
 import {
   findGoldThreads,
   findPurpleThreads,
   findCyanThreads,
 } from "./semanticThreads";
+
+const EDGE_POLICY: {
+  weights: Record<EdgeType, number>;
+  caps: Record<EdgeType, number>;
+} = {
+  weights: {
+    DEEPER: 0.65,
+    ROOTS: 0.94,
+    ECHOES: 0.98,
+    PROPHECY: 0.96,
+    GENEALOGY: 0.9,
+    NARRATIVE: 0.2,
+    TYPOLOGY: 0.92,
+    FULFILLMENT: 0.95,
+    CONTRAST: 0.85,
+    PROGRESSION: 0.88,
+    PATTERN: 0.9,
+  },
+  caps: {
+    DEEPER: 80,
+    ROOTS: 60,
+    ECHOES: 40,
+    PROPHECY: 30,
+    GENEALOGY: 30,
+    NARRATIVE: 40,
+    TYPOLOGY: 25,
+    FULFILLMENT: 25,
+    CONTRAST: 20,
+    PROGRESSION: 20,
+    PATTERN: 20,
+  },
+};
+
+const LLM_CONFIDENCE_MIN = 0.9;
+
+const applyEdgeWeight = (edge: VisualEdge): VisualEdge => {
+  const baseWeight = EDGE_POLICY.weights[edge.type] ?? edge.weight;
+  const source = edge.metadata?.source;
+
+  if (source === "llm") {
+    const confidence =
+      typeof edge.metadata?.confidence === "number"
+        ? edge.metadata.confidence
+        : 1;
+    return { ...edge, weight: Math.min(baseWeight, confidence) };
+  }
+
+  if (source === "canonical") {
+    return { ...edge, weight: baseWeight };
+  }
+
+  if (edge.metadata?.thread) {
+    const cap = Math.max(0.05, baseWeight - 0.04);
+    return { ...edge, weight: Math.min(edge.weight, cap) };
+  }
+
+  return { ...edge, weight: edge.weight ?? baseWeight };
+};
+
+const applyEdgeCaps = (edges: VisualEdge[]): VisualEdge[] => {
+  const grouped = new Map<EdgeType, VisualEdge[]>();
+
+  edges.forEach((edge) => {
+    const group = grouped.get(edge.type) ?? [];
+    group.push(edge);
+    grouped.set(edge.type, group);
+  });
+
+  const capped: VisualEdge[] = [];
+  grouped.forEach((group, type) => {
+    const cap = EDGE_POLICY.caps[type] ?? group.length;
+    if (group.length <= cap) {
+      capped.push(...group);
+      return;
+    }
+
+    const sorted = [...group].sort((a, b) => {
+      const aCanonical = a.metadata?.source === "canonical" ? 1 : 0;
+      const bCanonical = b.metadata?.source === "canonical" ? 1 : 0;
+      if (aCanonical !== bCanonical) {
+        return bCanonical - aCanonical;
+      }
+      return b.weight - a.weight;
+    });
+
+    capped.push(...sorted.slice(0, cap));
+  });
+
+  return capped;
+};
 
 /**
  * Fetch DEEPER edges (cross-references)
@@ -23,7 +113,7 @@ import {
  */
 export async function fetchDeeperEdges(
   sourceIds: number[],
-  limit: number = 100,
+  limit: number = EDGE_POLICY.caps.DEEPER,
 ): Promise<VisualEdge[]> {
   if (sourceIds.length === 0) return [];
 
@@ -41,8 +131,11 @@ export async function fetchDeeperEdges(
   return (data || []).map((row) => ({
     from: row.from_verse_id,
     to: row.to_verse_id,
-    weight: 0.8,
+    weight: EDGE_POLICY.weights.DEEPER,
     type: "DEEPER" as const,
+    metadata: {
+      source: "cross_reference",
+    },
   }));
 }
 
@@ -59,7 +152,7 @@ export async function fetchDeeperEdges(
  */
 export async function fetchRootsEdges(
   sourceIds: number[],
-  limit: number = 50,
+  limit: number = EDGE_POLICY.caps.ROOTS,
 ): Promise<VisualEdge[]> {
   if (sourceIds.length === 0) return [];
 
@@ -113,10 +206,11 @@ export async function fetchRootsEdges(
             edges.push({
               from: source.verse_id,
               to: target.verse_id,
-              weight: 0.6,
+              weight: EDGE_POLICY.weights.ROOTS,
               type: "ROOTS",
               metadata: {
                 strongsNumber: source.strongs_number,
+                source: "canonical",
               },
             });
             seenPairs.add(pairKey);
@@ -146,7 +240,7 @@ export async function fetchRootsEdges(
  */
 export async function fetchEchoesEdges(
   sourceIds: number[],
-  limit: number = 30,
+  limit: number = EDGE_POLICY.caps.ECHOES,
 ): Promise<VisualEdge[]> {
   if (sourceIds.length === 0) return [];
 
@@ -171,10 +265,11 @@ export async function fetchEchoesEdges(
     const edges: VisualEdge[] = citationsData.map((row) => ({
       from: row.ot_verse_id,
       to: row.nt_verse_id,
-      weight: 0.9, // Citations are strong connections
+      weight: EDGE_POLICY.weights.ECHOES, // Citations are strong connections
       type: "ECHOES",
       metadata: {
         quoteType: row.quote_type,
+        source: "canonical",
       },
     }));
 
@@ -194,7 +289,7 @@ export async function fetchEchoesEdges(
  */
 export async function fetchProphecyEdges(
   sourceIds: number[],
-  limit: number = 20,
+  limit: number = EDGE_POLICY.caps.PROPHECY,
 ): Promise<VisualEdge[]> {
   if (sourceIds.length === 0) return [];
 
@@ -215,10 +310,11 @@ export async function fetchProphecyEdges(
     return data.map((row) => ({
       from: row.prophecy_verse_id,
       to: row.fulfillment_verse_id,
-      weight: 0.85,
+      weight: EDGE_POLICY.weights.PROPHECY,
       type: "PROPHECY",
       metadata: {
         prophecyType: row.prophecy_type,
+        source: "canonical",
       },
     }));
   } catch (error) {
@@ -235,7 +331,7 @@ export async function fetchProphecyEdges(
  */
 export async function fetchGenealogyEdges(
   sourceIds: number[],
-  limit: number = 20,
+  limit: number = EDGE_POLICY.caps.GENEALOGY,
 ): Promise<VisualEdge[]> {
   if (sourceIds.length === 0) return [];
 
@@ -256,10 +352,11 @@ export async function fetchGenealogyEdges(
     return data.map((row) => ({
       from: row.ancestor_verse_id,
       to: row.descendant_verse_id,
-      weight: 0.75,
+      weight: EDGE_POLICY.weights.GENEALOGY,
       type: "GENEALOGY",
       metadata: {
         relationship: row.relationship,
+        source: "canonical",
       },
     }));
   } catch (error) {
@@ -268,11 +365,58 @@ export async function fetchGenealogyEdges(
   }
 }
 
-const FALLBACK_THRESHOLDS = {
-  roots: 3,
-  echoes: 2,
-  prophecy: 2,
-};
+/**
+ * Fetch LLM-discovered deep connections persisted in the database.
+ */
+export async function fetchDiscoveredEdges(
+  sourceIds: number[],
+  limit: number = 150,
+  minConfidence: number = LLM_CONFIDENCE_MIN,
+): Promise<VisualEdge[]> {
+  if (sourceIds.length === 0) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from("llm_connections")
+      .select(
+        "from_verse_id, to_verse_id, connection_type, explanation, confidence",
+      )
+      .or(
+        `from_verse_id.in.(${sourceIds.join(",")}),to_verse_id.in.(${sourceIds.join(",")})`,
+      )
+      .gte("confidence", minConfidence)
+      .limit(limit);
+
+    if (error) {
+      console.error("[Edge Fetchers] Error fetching LLM connections:", error);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    return data
+      .filter((row) => row.connection_type)
+      .map((row) => ({
+        from: row.from_verse_id,
+        to: row.to_verse_id,
+        weight:
+          EDGE_POLICY.weights[row.connection_type as EdgeType] ??
+          row.confidence ??
+          0.9,
+        type: row.connection_type as EdgeType,
+        metadata: {
+          explanation: row.explanation,
+          confidence: row.confidence,
+          source: "llm",
+        },
+      }));
+  } catch (error) {
+    console.error("[Edge Fetchers] Error in fetchDiscoveredEdges:", error);
+    return [];
+  }
+}
 
 const mergeEdges = (primary: VisualEdge[], secondary: VisualEdge[]) => {
   if (secondary.length === 0) return primary;
@@ -302,6 +446,7 @@ export async function fetchAllEdges(
     includeECHOES?: boolean;
     includePROPHECY?: boolean;
     includeGENEALOGY?: boolean;
+    includeDISCOVERED?: boolean; // LLM-discovered edges from DB
     useSemanticThreads?: boolean; // NEW: Use embedding-based high-conviction threads
   } = {},
 ): Promise<VisualEdge[]> {
@@ -311,6 +456,7 @@ export async function fetchAllEdges(
     includeECHOES = true,
     includePROPHECY = false,
     includeGENEALOGY = false,
+    includeDISCOVERED = true,
     useSemanticThreads = true, // Default to true - better than empty tables
   } = options;
 
@@ -325,6 +471,7 @@ export async function fetchAllEdges(
     includeECHOES,
     includePROPHECY,
     includeGENEALOGY,
+    includeDISCOVERED,
     useSemanticThreads,
   });
 
@@ -343,6 +490,9 @@ export async function fetchAllEdges(
   const genealogyPromise = includeGENEALOGY
     ? fetchGenealogyEdges(sourceIds)
     : Promise.resolve([]);
+  const discoveredPromise = includeDISCOVERED
+    ? fetchDiscoveredEdges(sourceIds)
+    : Promise.resolve([]);
 
   const [
     deeperEdges,
@@ -350,40 +500,30 @@ export async function fetchAllEdges(
     echoesCanonical,
     prophecyCanonical,
     genealogyCanonical,
+    discoveredEdges,
   ] = await Promise.all([
     deeperPromise,
     rootsPromise,
     echoesPromise,
     prophecyPromise,
     genealogyPromise,
+    discoveredPromise,
   ]);
 
   let rootsEdges = rootsCanonical;
-  if (
-    includeROOTS &&
-    useSemanticThreads &&
-    rootsCanonical.length < FALLBACK_THRESHOLDS.roots
-  ) {
+  if (includeROOTS && useSemanticThreads && rootsCanonical.length === 0) {
     const semanticRoots = await findGoldThreads(sourceIds, 0.75);
     rootsEdges = mergeEdges(rootsCanonical, semanticRoots);
   }
 
   let echoesEdges = echoesCanonical;
-  if (
-    includeECHOES &&
-    useSemanticThreads &&
-    echoesCanonical.length < FALLBACK_THRESHOLDS.echoes
-  ) {
+  if (includeECHOES && useSemanticThreads && echoesCanonical.length === 0) {
     const semanticEchoes = await findPurpleThreads(sourceIds, 0.55);
     echoesEdges = mergeEdges(echoesCanonical, semanticEchoes);
   }
 
   let prophecyEdges = prophecyCanonical;
-  if (
-    includePROPHECY &&
-    useSemanticThreads &&
-    prophecyCanonical.length < FALLBACK_THRESHOLDS.prophecy
-  ) {
+  if (includePROPHECY && useSemanticThreads && prophecyCanonical.length === 0) {
     const semanticProphecy = await findCyanThreads(sourceIds, 0.5);
     prophecyEdges = mergeEdges(prophecyCanonical, semanticProphecy);
   }
@@ -394,25 +534,35 @@ export async function fetchAllEdges(
     ...echoesEdges,
     ...prophecyEdges,
     ...genealogyCanonical,
+    ...discoveredEdges,
   ];
+  const weightedEdges = allEdges.map(applyEdgeWeight);
+  const filteredEdges = applyEdgeCaps(weightedEdges);
 
-  console.log(`[Edge Fetchers] Total edges fetched: ${allEdges.length}`);
+  console.log(`[Edge Fetchers] Total edges fetched: ${filteredEdges.length}`);
   console.log(`[Edge Fetchers] Breakdown:`, {
-    DEEPER: allEdges.filter((e) => e.type === "DEEPER").length,
-    ROOTS: allEdges.filter((e) => e.type === "ROOTS").length,
-    ECHOES: allEdges.filter((e) => e.type === "ECHOES").length,
-    PROPHECY: allEdges.filter((e) => e.type === "PROPHECY").length,
-    GENEALOGY: allEdges.filter((e) => e.type === "GENEALOGY").length,
+    DEEPER: filteredEdges.filter((e) => e.type === "DEEPER").length,
+    ROOTS: filteredEdges.filter((e) => e.type === "ROOTS").length,
+    ECHOES: filteredEdges.filter((e) => e.type === "ECHOES").length,
+    PROPHECY: filteredEdges.filter((e) => e.type === "PROPHECY").length,
+    GENEALOGY: filteredEdges.filter((e) => e.type === "GENEALOGY").length,
+    TYPOLOGY: filteredEdges.filter((e) => e.type === "TYPOLOGY").length,
+    FULFILLMENT: filteredEdges.filter((e) => e.type === "FULFILLMENT").length,
+    CONTRAST: filteredEdges.filter((e) => e.type === "CONTRAST").length,
+    PROGRESSION: filteredEdges.filter((e) => e.type === "PROGRESSION").length,
+    PATTERN: filteredEdges.filter((e) => e.type === "PATTERN").length,
   });
 
   console.log(`[Edge Fetchers] High-conviction threads:`, {
-    goldThreads: allEdges.filter((e) => e.metadata?.thread === "lexical")
+    goldThreads: filteredEdges.filter((e) => e.metadata?.thread === "lexical")
       .length,
-    purpleThreads: allEdges.filter((e) => e.metadata?.thread === "theological")
+    purpleThreads: filteredEdges.filter(
+      (e) => e.metadata?.thread === "theological",
+    ).length,
+    cyanThreads: filteredEdges.filter((e) => e.metadata?.thread === "prophetic")
       .length,
-    cyanThreads: allEdges.filter((e) => e.metadata?.thread === "prophetic")
-      .length,
+    llmEdges: filteredEdges.filter((e) => e.metadata?.source === "llm").length,
   });
 
-  return allEdges;
+  return filteredEdges;
 }

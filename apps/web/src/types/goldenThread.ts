@@ -14,7 +14,12 @@ export type EdgeType =
   | "ECHOES"
   | "PROPHECY"
   | "GENEALOGY"
-  | "NARRATIVE";
+  | "NARRATIVE"
+  | "TYPOLOGY"
+  | "FULFILLMENT"
+  | "CONTRAST"
+  | "PROGRESSION"
+  | "PATTERN";
 
 /**
  * Parallel passage (synoptic Gospel parallels, etc.)

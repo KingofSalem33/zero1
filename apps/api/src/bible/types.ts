@@ -46,7 +46,12 @@ export type EdgeType =
   | "ECHOES"
   | "PROPHECY"
   | "GENEALOGY"
-  | "NARRATIVE";
+  | "NARRATIVE"
+  | "TYPOLOGY"
+  | "FULFILLMENT"
+  | "CONTRAST"
+  | "PROGRESSION"
+  | "PATTERN";
 
 /**
  * Edge styling configuration
@@ -111,4 +116,9 @@ export const EDGE_STYLES: Record<EdgeType, EdgeStyle> = {
   PROPHECY: { color: "#A855F7", dashArray: "0", width: 1.5, glow: true },
   GENEALOGY: { color: "#10B981", dashArray: "0", width: 1 },
   NARRATIVE: { color: "#9CA3AF", dashArray: "0", width: 1 },
+  TYPOLOGY: { color: "#EA580C", dashArray: "2 3", width: 2 },
+  FULFILLMENT: { color: "#14B8A6", dashArray: "2 3", width: 2 },
+  CONTRAST: { color: "#DC2626", dashArray: "2 3", width: 2 },
+  PROGRESSION: { color: "#16A34A", dashArray: "2 3", width: 2 },
+  PATTERN: { color: "#3B82F6", dashArray: "2 3", width: 2 },
 };
