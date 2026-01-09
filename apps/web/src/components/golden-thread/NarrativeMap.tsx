@@ -1651,16 +1651,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           text: node.text,
         }));
 
-      // Calculate position relative to the map container (for absolute positioning)
-      const mapContainer = (event.target as HTMLElement).closest(".react-flow");
-      let posX = event.clientX;
-      let posY = event.clientY;
-
-      if (mapContainer) {
-        const containerRect = mapContainer.getBoundingClientRect();
-        posX = event.clientX - containerRect.left;
-        posY = event.clientY - containerRect.top;
-      }
+      // Use viewport coordinates for fixed-position modal rendering.
+      const posX = event.clientX;
+      const posY = event.clientY;
 
       setClickedConnection({
         fromVerse: {

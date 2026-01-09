@@ -21,10 +21,42 @@ export class InMemoryVerseRepository implements IVerseRepository {
     try {
       console.log("[InMemoryVerseRepository] Loading KJV data...");
       const rawData = await fs.readFile(this.kjvPath, "utf-8");
-      const books = JSON.parse(rawData) as Book[];
+      const parsed = JSON.parse(rawData) as
+        | Book[]
+        | {
+            books: Array<{
+              name: string;
+              chapters: Array<{
+                verses: Array<{ text: string }>;
+              }>;
+            }>;
+          };
+
+      const books: Book[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.books)
+          ? parsed.books.map((book) => {
+              const abbrev =
+                Object.entries(BOOK_NAMES).find(
+                  ([, fullName]) => fullName === book.name,
+                )?.[0] ?? book.name;
+              return {
+                abbrev,
+                name: book.name,
+                chapters: book.chapters.map((chapter) =>
+                  chapter.verses.map((verse) => verse.text ?? ""),
+                ),
+              };
+            })
+          : [];
+
+      if (!Array.isArray(books) || books.length === 0) {
+        throw new Error("KJV JSON format is not supported");
+      }
+
       this.kjvData = books.map((book) => ({
         ...book,
-        name: BOOK_NAMES[book.abbrev] || book.abbrev.toUpperCase(),
+        name: BOOK_NAMES[book.abbrev] || book.name || book.abbrev.toUpperCase(),
       }));
       console.log("[InMemoryVerseRepository] Loaded books from KJV");
     } catch (error) {

@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
 
 interface SemanticConnectionModalProps {
   fromVerse: {
@@ -111,33 +118,37 @@ export function SemanticConnectionModal({
     setVerses(previewVerses);
   }, [previewVerses]);
 
-  // Adjust position to keep modal within viewport (horizontally)
-  useEffect(() => {
+  const clampToViewport = useCallback(() => {
     if (!modalRef.current) return;
 
     const modalRect = modalRef.current.getBoundingClientRect();
-    const modalWidth = modalRect.width || 400; // fallback to max-w-md (28rem = ~448px)
+    const modalWidth = modalRect.width || 420;
+    const modalHeight = modalRect.height || 360;
+    const padding = 20;
 
-    let newX = position.x;
-    let newY = position.y;
+    const maxX = Math.max(padding, window.innerWidth - modalWidth - padding);
+    const maxY = Math.max(padding, window.innerHeight - modalHeight - padding);
 
-    // Keep within horizontal bounds
-    if (newX + modalWidth > window.innerWidth) {
-      newX = window.innerWidth - modalWidth - 20; // 20px padding
-    }
-    if (newX < 20) {
-      newX = 20;
-    }
-
-    // For vertical: just ensure it starts from a reasonable position
-    // If too far down, move it up a bit, but don't constrain it
-    // Users can scroll the page to see the rest
-    if (newY < 20) {
-      newY = 20;
-    }
+    const newX = Math.min(Math.max(position.x, padding), maxX);
+    const newY = Math.min(Math.max(position.y, padding), maxY);
 
     setAdjustedPosition({ x: newX, y: newY });
   }, [position]);
+
+  // Adjust position to keep modal within viewport (fixed positioning).
+  useEffect(() => {
+    clampToViewport();
+  }, [clampToViewport]);
+
+  useEffect(() => {
+    const handleResize = () => clampToViewport();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [clampToViewport]);
+
+  useEffect(() => {
+    clampToViewport();
+  }, [clampToViewport, synopsis, verses.length, loading]);
 
   // Fetch comprehensive synopsis considering all connected verses
   useEffect(() => {
@@ -282,10 +293,10 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
   const connectionColor = CONNECTION_COLORS[connectionType];
   const connectionLabel = CONNECTION_LABELS[connectionType];
 
-  return (
+  const modalContent = (
     <div
       ref={modalRef}
-      className="absolute z-[80] transform -translate-x-1/2 transition-all duration-150 ease-out"
+      className="fixed z-[80] transition-all duration-150 ease-out"
       style={{
         left: `${adjustedPosition.x}px`,
         top: `${adjustedPosition.y}px`,
@@ -473,4 +484,10 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 }
