@@ -74,6 +74,9 @@ const normalizeReferenceText = (input: string): string =>
   input
     .replace(/\./g, "")
     .replace(/\bPsalm\b/gi, "Psalms")
+    .replace(/^\s*III\s+/i, "3 ")
+    .replace(/^\s*II\s+/i, "2 ")
+    .replace(/^\s*I\s+/i, "1 ")
     .replace(/\s+/g, " ")
     .trim();
 

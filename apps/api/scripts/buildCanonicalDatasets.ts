@@ -213,6 +213,12 @@ const fetchText = (url: string): Promise<string> =>
       .on("error", reject);
   });
 
+const normalizeBookName = (name: string): string =>
+  name
+    .replace(/^III\s+/i, "3 ")
+    .replace(/^II\s+/i, "2 ")
+    .replace(/^I\s+/i, "1 ");
+
 const parseOpenBibleRef = (raw: string): Reference | null => {
   const parts = raw.split("-");
   const start = parseSingleRef(parts[0]);
@@ -364,15 +370,42 @@ const buildCitationsAndProphecies = async () => {
 };
 
 type KjvBook = {
-  abbrev: string;
+  abbrev?: string;
   chapters: string[][];
-  name: string;
+  name?: string;
+};
+
+type KjvSource = {
+  books: Array<{
+    name: string;
+    chapters: Array<{
+      chapter: number;
+      verses: Array<{
+        verse: number;
+        text: string;
+      }>;
+    }>;
+  }>;
 };
 
 const loadKjv = (): KjvBook[] => {
   const filePath = path.join(process.cwd(), "data", "kjv.json");
   const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as KjvBook[];
+  const parsed = JSON.parse(raw) as KjvBook[] | KjvSource;
+  if (Array.isArray(parsed)) {
+    return parsed as KjvBook[];
+  }
+  if (parsed && Array.isArray(parsed.books)) {
+    return parsed.books.map((book) => ({
+      name: book.name,
+      chapters: book.chapters.map((chapter) =>
+        Array.isArray(chapter.verses)
+          ? chapter.verses.map((verse) => verse.text ?? "")
+          : [],
+      ),
+    }));
+  }
+  throw new Error("Unsupported KJV JSON format");
 };
 
 const buildGenealogies = () => {
@@ -388,7 +421,9 @@ const buildGenealogies = () => {
   const sonOfRegex = /son of ([A-Z][a-zA-Z-]+)/gi;
 
   kjv.forEach((book) => {
-    const bookName = BOOK_NAMES[book.abbrev];
+    const rawName =
+      book.name ?? (book.abbrev ? BOOK_NAMES[book.abbrev] : undefined);
+    const bookName = rawName ? normalizeBookName(rawName) : undefined;
     if (!bookName) return;
     book.chapters.forEach((verses, chapterIndex) => {
       const chapter = chapterIndex + 1;
@@ -442,7 +477,9 @@ const buildGenealogies = () => {
 
   const nameFirstRef = new Map<string, Reference>();
   kjv.forEach((book) => {
-    const bookName = BOOK_NAMES[book.abbrev];
+    const rawName =
+      book.name ?? (book.abbrev ? BOOK_NAMES[book.abbrev] : undefined);
+    const bookName = rawName ? normalizeBookName(rawName) : undefined;
     if (!bookName) return;
     book.chapters.forEach((verses, chapterIndex) => {
       const chapter = chapterIndex + 1;

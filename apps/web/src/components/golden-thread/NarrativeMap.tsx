@@ -218,9 +218,12 @@ interface EdgeData {
   explanation?: string;
   confidence?: number;
   isLLMDiscovered?: boolean;
+  isStructural?: boolean;
   strokeDashArray?: string; // Line pattern: "0" (solid), "5,5" (dashed), "2,3" (dotted)
   isSynthetic?: boolean; // For synthetic hierarchy edges
   baseWidth?: number; // Calculated width based on similarity strength
+  weight?: number;
+  selectionScore?: number;
 }
 
 interface DiscoveredConnection {
@@ -285,6 +288,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     confidence?: number;
     isLLMDiscovered?: boolean;
     connectedVerseIds?: number[];
+    connectedVersesPreview?: Array<{
+      id: number;
+      reference: string;
+      text: string;
+    }>;
   } | null>(null);
 
   // Parallel passages modal state
@@ -657,6 +665,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         const edgeStyle = EDGE_STYLES[visualStyleType];
 
+        const edgeMetadata = edge.metadata || {};
+        const isLLMDiscovered = edgeMetadata.source === "llm";
+        const isStructural = edgeMetadata.source === "structure";
+
         // Get source and target verses for line pattern
         const fromVerse = visibleNodes.find((n) => n.id === edge.from);
         const toVerse = visibleNodes.find((n) => n.id === edge.to);
@@ -665,18 +677,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             ? getStrokeDashArray(
                 fromVerse.book_abbrev,
                 toVerse.book_abbrev,
-                false, // Not LLM-discovered
+                isLLMDiscovered,
               )
             : "0"; // Default to solid if verses not found
 
         // Calculate width based on similarity strength
         // Similarity range: 0-1, Width multiplier: 0.7-1.3
-        const edgeMetadata = edge as unknown as {
-          metadata?: { similarity?: number };
-          weight?: number;
-        };
-        const similarity =
-          edgeMetadata.metadata?.similarity || edgeMetadata.weight || 0.8; // Default to 0.8
+        const similarity = edgeMetadata.similarity || edge.weight || 0.8; // Default to 0.8
         const widthMultiplier = 0.7 + similarity * 0.6; // Maps 0→0.7, 1→1.3
 
         // 🌟 GOLDEN THREAD: Anchor rays are thicker (aggressive contrast)
@@ -695,9 +702,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             visualStyleType, // Current visual style (GOLD for anchor rays)
             edgeType,
             isSynthetic: false,
+            isLLMDiscovered,
+            isStructural,
+            explanation: edgeMetadata.explanation,
+            confidence: edgeMetadata.confidence,
             isAnchorRay, // 🌟 Flag for hover interaction
             strokeDashArray, // Store final pattern for animation restoration
             baseWidth: finalWidth, // Store calculated width for hover effects
+            weight: edge.weight,
+            selectionScore: edgeMetadata.selectionScore,
           },
           style: {
             stroke: `url(#edge-gradient-${visualStyleType})`, // 🌟 Use GOLD for anchor rays
@@ -761,8 +774,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               styleType: "CYAN",
               edgeType: "GENEALOGY",
               isSynthetic: true,
+              isLLMDiscovered: false,
+              isStructural: false,
               strokeDashArray, // Store final pattern for animation restoration
               baseWidth: 2, // Store base width for hover effects
+              weight: 0.4,
             },
             style: {
               stroke: `url(#edge-gradient-CYAN)`, // Use directional gradient
@@ -1187,8 +1203,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               explanation: conn.explanation,
               confidence: conn.confidence,
               isLLMDiscovered: true,
+              isStructural: false,
               strokeDashArray, // Store pattern for consistency
               baseWidth: edgeStyle.width, // Store base width for hover effects
+              weight: conn.confidence,
             },
             style: {
               stroke: `url(#edge-gradient-${styleType})`, // Use directional gradient
@@ -1621,6 +1639,17 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const connectedVerseIds = cluster
         ? Array.from(cluster.nodeIds)
         : [fromId, toId];
+      const connectedVersesPreview = connectedVerseIds
+        .map((id) => bundle.nodes.find((n) => n.id === id))
+        .filter(
+          (node): node is ThreadNode =>
+            node !== undefined && typeof node.id === "number",
+        )
+        .map((node) => ({
+          id: node.id,
+          reference: `${node.book_name} ${node.chapter}:${node.verse}`,
+          text: node.text,
+        }));
 
       // Calculate position relative to the map container (for absolute positioning)
       const mapContainer = (event.target as HTMLElement).closest(".react-flow");
@@ -1651,6 +1680,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         confidence: llmConfidence,
         isLLMDiscovered,
         connectedVerseIds, // All verses in this cluster
+        connectedVersesPreview,
       });
     },
     [bundle, branchClusters],
@@ -2078,6 +2108,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           explanation={clickedConnection.explanation}
           isLLMDiscovered={clickedConnection.isLLMDiscovered}
           connectedVerseIds={clickedConnection.connectedVerseIds}
+          connectedVersesPreview={clickedConnection.connectedVersesPreview}
         />
       )}
 

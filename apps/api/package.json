@@ -16,7 +16,10 @@
     "analyzer:test": "ts-node scripts/test-analyzer.ts",
     "upload:test": "ts-node scripts/test-upload.ts",
     "llm:test": "ts-node scripts/test-llm-analysis.ts",
-    "checkpoint:test": "ts-node scripts/test-checkpoints.ts"
+    "checkpoint:test": "ts-node scripts/test-checkpoints.ts",
+    "populate:analytics": "ts-node scripts/populateVerseAnalytics.ts",
+    "populate:structures": "ts-node scripts/populateLiteraryStructures.ts",
+    "build:structures": "ts-node scripts/buildLiteraryStructures.ts"
   },
   "keywords": [],
   "author": "",

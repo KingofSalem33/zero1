@@ -21,6 +21,41 @@ import {
 } from "d3-force";
 import type { Node, Edge } from "@xyflow/react";
 
+type ForceNode = {
+  id: string;
+  x: number;
+  y: number;
+  similarity: number;
+  depth: number;
+  mass: number;
+  centrality: number;
+  isAnchor: boolean;
+};
+
+type ForceLink = {
+  source: string;
+  target: string;
+  distance: number;
+  weight?: number;
+  isStructural?: boolean;
+};
+
+type VerseNodeData = {
+  verse?: {
+    similarity?: number;
+    depth?: number;
+    mass?: number;
+    centrality?: number;
+  };
+  isAnchor?: boolean;
+};
+
+type EdgeData = {
+  styleType?: string;
+  weight?: number;
+  isStructural?: boolean;
+};
+
 /**
  * Force simulation configuration
  * These values control the "physics" of the layout
@@ -49,11 +84,19 @@ const FORCE_CONFIG = {
   SIMULATION_TICKS: 300, // 300 ticks = stable layout
 };
 
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
 /**
  * Edge type to visual distance mapping
  * Stronger connections = shorter distance = nodes pulled closer
  */
 const EDGE_DISTANCE_MAP: Record<string, number> = {
+  TYPOLOGY: 110,
+  FULFILLMENT: 100,
+  CONTRAST: 150,
+  PROGRESSION: 120,
+  PATTERN: 85,
   GOLD: 90, // ⬆️ Lexical connections - some breathing room while staying connected
   PURPLE: 130, // ⬆️ Theological connections - moderate distance
   CYAN: 110, // ⬆️ Prophetic connections - moderate distance
@@ -65,21 +108,39 @@ const EDGE_DISTANCE_MAP: Record<string, number> = {
  * Stronger semantic connections result in shorter distances
  */
 function getLinkDistance(edge: Edge): number {
-  const edgeData = edge.data as { styleType?: string };
+  const edgeData = edge.data as EdgeData;
   const styleType = edgeData?.styleType || "GREY";
-  return EDGE_DISTANCE_MAP[styleType] || 150;
+  const base = EDGE_DISTANCE_MAP[styleType] || 150;
+  const weight = typeof edgeData?.weight === "number" ? edgeData.weight : 0.7;
+  const structuralFactor = edgeData?.isStructural ? 0.7 : 1;
+  const weighted = base * (1.15 - weight * 0.5) * structuralFactor;
+  return clamp(weighted, 60, 220);
+}
+
+function getLinkStrength(edge: ForceLink): number {
+  const weight = typeof edge.weight === "number" ? edge.weight : 0.7;
+  const structuralBonus = edge.isStructural ? 0.35 : 0;
+  const strength =
+    FORCE_CONFIG.LINK_STRENGTH * (0.45 + weight + structuralBonus);
+  return clamp(strength, 0.3, 2.4);
 }
 
 /**
  * Calculate collision radius based on node properties
  * Anchor is largest, depth affects size
  */
-function getNodeRadius(node: { isAnchor?: boolean; depth?: number }): number {
+function getNodeRadius(node: {
+  isAnchor?: boolean;
+  depth?: number;
+  mass?: number;
+}): number {
   if (node.isAnchor) return FORCE_CONFIG.ANCHOR_RADIUS;
 
   // Smaller radius for deeper nodes (depth 1 > depth 2 > depth 3)
   const depth = node.depth || 1;
-  return FORCE_CONFIG.NODE_BASE_RADIUS / (depth * 0.5 + 0.5);
+  const mass = node.mass || 1;
+  const base = FORCE_CONFIG.NODE_BASE_RADIUS / (depth * 0.5 + 0.5);
+  return base * (0.8 + mass * 0.25);
 }
 
 /**
@@ -91,6 +152,7 @@ function getNodeRadius(node: { isAnchor?: boolean; depth?: number }): number {
 function getRepulsionStrength(node: {
   isAnchor?: boolean;
   similarity?: number;
+  mass?: number;
 }): number {
   if (node.isAnchor) return FORCE_CONFIG.ANCHOR_REPULSION;
 
@@ -98,7 +160,9 @@ function getRepulsionStrength(node: {
   // High similarity (0.8+) = -80 (very weak repulsion, tight clustering)
   // Low similarity (0.2) = -400 (strong repulsion, spreads out)
   const similarity = node.similarity || 0;
-  return FORCE_CONFIG.BASE_REPULSION * (1 - similarity * 0.8); // ⬆️ Increased from 0.6 - stronger clustering effect
+  const mass = node.mass || 1;
+  const base = FORCE_CONFIG.BASE_REPULSION * (1 - similarity * 0.8);
+  return base * (0.7 + mass * 0.3);
 }
 
 /**
@@ -139,8 +203,8 @@ export function calculateForceLayout(
   const centerY = 0;
 
   // Prepare D3 simulation nodes with relevant properties
-  const d3Nodes = nodes.map((n) => {
-    const nodeData = n.data as any; // Type assertion for custom node data
+  const d3Nodes: ForceNode[] = nodes.map((n) => {
+    const nodeData = n.data as VerseNodeData;
     return {
       id: n.id,
       // Initialize positions (anchor at center, others random nearby)
@@ -149,23 +213,30 @@ export function calculateForceLayout(
       // Node properties for force calculations
       similarity: nodeData?.verse?.similarity || 0,
       depth: nodeData?.verse?.depth || 1,
+      mass: nodeData?.verse?.mass || 1,
+      centrality: nodeData?.verse?.centrality || 0,
       isAnchor: nodeData?.isAnchor || false,
     };
   });
 
   // Prepare D3 links with distance based on edge type
-  const d3Links = edges.map((e) => ({
-    source: e.source,
-    target: e.target,
-    distance: getLinkDistance(e),
-  }));
+  const d3Links: ForceLink[] = edges.map((e) => {
+    const edgeData = e.data as EdgeData;
+    return {
+      source: e.source,
+      target: e.target,
+      distance: getLinkDistance(e),
+      weight: edgeData?.weight,
+      isStructural: edgeData?.isStructural,
+    };
+  });
 
   console.log(
     `[Force Layout] Created ${d3Nodes.length} simulation nodes, ${d3Links.length} links`,
   );
 
   // Create force simulation
-  const simulation = forceSimulation(d3Nodes as any)
+  const simulation = forceSimulation<ForceNode>(d3Nodes)
     // CENTER: Pull all nodes toward anchor (weak gravity)
     .force(
       "center",
@@ -175,35 +246,36 @@ export function calculateForceLayout(
     // LINK: Connect related verses (shorter distance = pull closer)
     .force(
       "link",
-      forceLink(d3Links as any)
-        .id((d: any) => d.id)
-        .distance((d: any) => d.distance)
-        .strength(FORCE_CONFIG.LINK_STRENGTH),
+      forceLink<ForceNode, ForceLink>(d3Links)
+        .id((d) => d.id)
+        .distance((d) => d.distance)
+        .strength((d) => getLinkStrength(d)),
     )
 
     // CHARGE: Repulsion between nodes (prevents overlap, allows clustering)
     .force(
       "charge",
-      forceManyBody().strength((d: any) => getRepulsionStrength(d)),
+      forceManyBody<ForceNode>().strength((d) => getRepulsionStrength(d)),
     )
 
     // COLLISION: Prevent nodes from overlapping
     .force(
       "collide",
-      forceCollide().radius((d: any) => getNodeRadius(d)),
+      forceCollide<ForceNode>().radius((d) => getNodeRadius(d)),
     )
 
     // RADIAL: Organize by depth (creates organic ring structure)
     .force(
       "radial",
       forceRadial(
-        (d: any) => {
+        (d: ForceNode) => {
           if (d.isAnchor) return 0; // Anchor stays at center
           // Depth 1 ~200px, Depth 2 ~350px, Depth 3 ~500px
-          return (
+          const mass = d.mass || 1;
+          const base =
             FORCE_CONFIG.RADIAL_BASE_RADIUS * d.depth +
-            FORCE_CONFIG.RADIAL_OFFSET
-          );
+            FORCE_CONFIG.RADIAL_OFFSET;
+          return Math.max(80, base - (mass - 1) * 12);
         },
         centerX,
         centerY,

@@ -19,6 +19,13 @@ import { searchVersesByQuery } from "./semanticSearch";
 import { getTestament } from "./testamentUtil";
 import { ensureVersesHaveText } from "./verseText";
 import { fetchAllEdges } from "./edgeFetchers";
+import {
+  buildMirrorPairs,
+  buildMirrorLookup,
+  fetchCentralityScores,
+  fetchChiasmStructureForVerse,
+  type ChiasmStructure,
+} from "./networkScience";
 
 export interface Verse {
   id: number;
@@ -35,6 +42,10 @@ export interface ContextBundle {
   ring1: Verse[]; // Direct cross-refs
   ring2: Verse[]; // Refs of refs
   ring3: Verse[]; // Deep links
+  ring1Edges?: import("./types").VisualEdge[];
+  ring2Edges?: import("./types").VisualEdge[];
+  ring3Edges?: import("./types").VisualEdge[];
+  structure?: ChiasmStructure | null;
 }
 
 export interface RingConfig {
@@ -42,6 +53,7 @@ export interface RingConfig {
   ring1Limit: number; // Max direct refs (default: 20)
   ring2Limit: number; // Max secondary refs (default: 30)
   ring3Limit: number; // Max tertiary refs (default: 40)
+  gravity?: Partial<GravityConfig>;
 }
 
 const DEFAULT_CONFIG: RingConfig = {
@@ -49,6 +61,27 @@ const DEFAULT_CONFIG: RingConfig = {
   ring1Limit: 20,
   ring2Limit: 30,
   ring3Limit: 40,
+};
+
+interface GravityConfig {
+  edgeWeight: number;
+  centralityWeight: number;
+  chiasmCenterBonus: number;
+  mirrorBonus: number;
+  structuralEdgeWeight: number;
+}
+
+const DEFAULT_GRAVITY: GravityConfig = {
+  edgeWeight: 1,
+  centralityWeight: 0.35,
+  chiasmCenterBonus: 0.4,
+  mirrorBonus: 0.25,
+  structuralEdgeWeight: 0.96,
+};
+
+type LayerResult = {
+  ids: number[];
+  edges: import("./types").VisualEdge[];
 };
 
 const normalizeConceptReference = (reference: string): string =>
@@ -183,6 +216,176 @@ const buildNarrativeEdges = (
   return narrativeEdges;
 };
 
+const buildStructuralEdges = (
+  sourceIds: number[],
+  structure: ChiasmStructure | null,
+  gravity: GravityConfig,
+): import("./types").VisualEdge[] => {
+  if (!structure || structure.verseIds.length === 0) {
+    return [];
+  }
+
+  const sourceSet = new Set(sourceIds);
+  const structureSet = new Set(structure.verseIds);
+  const mirrorLookup = buildMirrorLookup(structure);
+  const edges: import("./types").VisualEdge[] = [];
+
+  sourceSet.forEach((sourceId) => {
+    if (!structureSet.has(sourceId)) return;
+
+    const mirror = mirrorLookup.get(sourceId);
+    if (mirror && mirror.id !== sourceId) {
+      edges.push({
+        from: sourceId,
+        to: mirror.id,
+        weight: gravity.structuralEdgeWeight,
+        type: "PATTERN",
+        metadata: {
+          source: "structure",
+          structureId: structure.id,
+          mirror: true,
+          label: mirror.label,
+          mirrorLabel: mirror.mirrorLabel,
+        },
+      });
+    }
+
+    if (structure.centerId && structure.centerId !== sourceId) {
+      edges.push({
+        from: sourceId,
+        to: structure.centerId,
+        weight: Math.min(0.98, gravity.structuralEdgeWeight - 0.04),
+        type: "PATTERN",
+        metadata: {
+          source: "structure",
+          structureId: structure.id,
+          center: true,
+        },
+      });
+    }
+  });
+
+  return edges;
+};
+
+async function fetchPriorityLayer(
+  sourceIds: number[],
+  limit: number,
+  excludeSet: Set<number>,
+  gravity: GravityConfig,
+  structure: ChiasmStructure | null,
+): Promise<LayerResult> {
+  if (sourceIds.length === 0) {
+    return { ids: [], edges: [] };
+  }
+
+  console.log(
+    `[Graph Walker]   Fetching weighted neighbors from ${sourceIds.length} source vertices...`,
+  );
+
+  const baseEdges = await fetchAllEdges(sourceIds, {
+    includeDEEPER: true,
+    includeROOTS: true,
+    includeECHOES: true,
+    includePROPHECY: true,
+    includeGENEALOGY: true,
+    includeDISCOVERED: true,
+    useSemanticThreads: true,
+  });
+  const structuralEdges = buildStructuralEdges(sourceIds, structure, gravity);
+  const allEdges = [...baseEdges, ...structuralEdges];
+
+  const sourceSet = new Set(sourceIds);
+  const candidateIds = new Set<number>();
+
+  allEdges.forEach((edge) => {
+    const fromIsSource = sourceSet.has(edge.from);
+    const toIsSource = sourceSet.has(edge.to);
+    if (!fromIsSource && !toIsSource) return;
+
+    const targetId = fromIsSource ? edge.to : edge.from;
+    if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
+    candidateIds.add(targetId);
+  });
+
+  const centralityMap = await fetchCentralityScores([...candidateIds]);
+  const mirrorLookup = structure ? buildMirrorLookup(structure) : new Map();
+
+  const candidates = new Map<
+    number,
+    {
+      score: number;
+      bestEdge: import("./types").VisualEdge;
+      bestSource: number;
+    }
+  >();
+
+  allEdges.forEach((edge) => {
+    const fromIsSource = sourceSet.has(edge.from);
+    const toIsSource = sourceSet.has(edge.to);
+    if (!fromIsSource && !toIsSource) return;
+
+    const sourceId = fromIsSource ? edge.from : edge.to;
+    const targetId = fromIsSource ? edge.to : edge.from;
+    if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
+
+    const edgeWeight = typeof edge.weight === "number" ? edge.weight : 0.6;
+    const centrality = centralityMap.get(targetId) ?? 0.1;
+
+    let score =
+      edgeWeight * gravity.edgeWeight + centrality * gravity.centralityWeight;
+
+    if (structure) {
+      if (structure.centerId && targetId === structure.centerId) {
+        score += gravity.chiasmCenterBonus;
+      }
+      const mirror = mirrorLookup.get(sourceId);
+      if (mirror?.id === targetId) {
+        score += gravity.mirrorBonus;
+      }
+    }
+
+    const existing = candidates.get(targetId);
+    if (!existing) {
+      candidates.set(targetId, {
+        score,
+        bestEdge: edge,
+        bestSource: sourceId,
+      });
+      return;
+    }
+
+    existing.score += edgeWeight * gravity.edgeWeight;
+    if (edgeWeight > (existing.bestEdge.weight ?? 0)) {
+      existing.bestEdge = edge;
+      existing.bestSource = sourceId;
+    }
+  });
+
+  const sorted = Array.from(candidates.entries())
+    .sort((a, b) => b[1].score - a[1].score)
+    .slice(0, limit);
+
+  const ids = sorted.map(([id]) => id);
+  const edges = sorted.map(([id, info]) => ({
+    from: info.bestSource,
+    to: id,
+    weight: info.bestEdge.weight ?? 0.6,
+    type: info.bestEdge.type,
+    metadata: {
+      ...info.bestEdge.metadata,
+      selectionScore: info.score,
+      selectionType: "gravity",
+    },
+  }));
+
+  console.log(
+    `[Graph Walker]   Weighted scoring: ${candidates.size} candidates, returning top ${ids.length}`,
+  );
+
+  return { ids, edges };
+}
+
 /**
  * Build context bundle using budgeted BFS graph traversal
  */
@@ -232,13 +435,30 @@ export async function buildContextBundle(
   // Extract IDs for next layer
   const ring0Ids = ring0.map((v) => v.id);
 
+  const gravity = { ...DEFAULT_GRAVITY, ...(cfg.gravity ?? {}) };
+  const structure = await fetchChiasmStructureForVerse(anchorId);
+
+  if (structure) {
+    console.log(
+      `[Graph Walker] Structural lens: ${structure.type ?? "chiasm"} ${structure.id} (${structure.verseIds.length} verses)`,
+    );
+  }
+
   // ========================================
   // RING 1: Direct Cross-References
   // ========================================
   console.log(`[Graph Walker] Fetching Ring 1 (max ${cfg.ring1Limit})...`);
 
-  const ring1Ids = await fetchLayer(ring0Ids, cfg.ring1Limit, new Set());
+  const ring1Layer = await fetchPriorityLayer(
+    ring0Ids,
+    cfg.ring1Limit,
+    new Set(ring0Ids),
+    gravity,
+    structure,
+  );
+  const ring1Ids = ring1Layer.ids;
   let ring1 = await hydrateVerses(ring1Ids);
+  let ring1Edges = ring1Layer.edges;
 
   console.log(`[Graph Walker] Ring 1: ${ring1.length} verses`);
 
@@ -248,9 +468,16 @@ export async function buildContextBundle(
   console.log(`[Graph Walker] Fetching Ring 2 (max ${cfg.ring2Limit})...`);
 
   const excludeSet = new Set([...ring0Ids, ...ring1Ids]);
-  const ring2IdsRaw = await fetchLayer(ring1Ids, cfg.ring2Limit, excludeSet);
-  const ring2Ids = ring2IdsRaw.filter((id) => !excludeSet.has(id));
+  const ring2Layer = await fetchPriorityLayer(
+    ring1Ids,
+    cfg.ring2Limit,
+    excludeSet,
+    gravity,
+    structure,
+  );
+  const ring2Ids = ring2Layer.ids;
   const ring2 = await hydrateVerses(ring2Ids);
+  const ring2Edges = ring2Layer.edges;
 
   console.log(`[Graph Walker] Ring 2: ${ring2.length} verses`);
 
@@ -260,9 +487,16 @@ export async function buildContextBundle(
   console.log(`[Graph Walker] Fetching Ring 3 (max ${cfg.ring3Limit})...`);
 
   ring2Ids.forEach((id) => excludeSet.add(id));
-  const ring3IdsRaw = await fetchLayer(ring2Ids, cfg.ring3Limit, excludeSet);
-  const ring3Ids = ring3IdsRaw.filter((id) => !excludeSet.has(id));
+  const ring3Layer = await fetchPriorityLayer(
+    ring2Ids,
+    cfg.ring3Limit,
+    excludeSet,
+    gravity,
+    structure,
+  );
+  const ring3Ids = ring3Layer.ids;
   const ring3 = await hydrateVerses(ring3Ids);
+  const ring3Edges = ring3Layer.edges;
 
   console.log(`[Graph Walker] Ring 3: ${ring3.length} verses`);
 
@@ -278,6 +512,16 @@ export async function buildContextBundle(
   const bridgeVerses = await findBridgeVerses(anchor, existingIds);
   if (bridgeVerses.length > 0) {
     ring1 = [...ring1, ...bridgeVerses];
+    const bridgeEdges = bridgeVerses.map((verse) => ({
+      from: anchor.id,
+      to: verse.id,
+      weight: 0.72,
+      type: "ECHOES" as const,
+      metadata: {
+        source: "bridge",
+      },
+    }));
+    ring1Edges = [...ring1Edges, ...bridgeEdges];
     console.log(
       `[Graph Walker] Added ${bridgeVerses.length} bridge verse(s) for ${anchor.book_name} ${anchor.chapter}:${anchor.verse}`,
     );
@@ -298,72 +542,11 @@ export async function buildContextBundle(
     ring1,
     ring2,
     ring3,
+    ring1Edges,
+    ring2Edges,
+    ring3Edges,
+    structure,
   };
-}
-
-/**
- * Fetch next layer of cross-references with budgeting
- *
- * Strategy:
- * - Get all outgoing cross-refs from source IDs
- * - Group by target verse
- * - Sort by "relevance" (how many sources point to each target)
- * - Take top N (limit)
- * - Exclude already-seen vertices
- */
-async function fetchLayer(
-  sourceIds: number[],
-  limit: number,
-  excludeSet: Set<number>,
-): Promise<number[]> {
-  if (sourceIds.length === 0) {
-    return [];
-  }
-
-  console.log(
-    `[Graph Walker]   Fetching refs from ${sourceIds.length} source vertices...`,
-  );
-
-  // Query: Get all cross-refs from source IDs, grouped by target
-  const { data, error } = await supabase
-    .from("cross_references")
-    .select("to_verse_id")
-    .in("from_verse_id", sourceIds);
-
-  if (error) {
-    console.error("[Graph Walker]   Error fetching layer:", error);
-    return [];
-  }
-
-  if (!data || data.length === 0) {
-    console.log(`[Graph Walker]   No cross-references found`);
-    return [];
-  }
-
-  // Count frequency of each target (relevance scoring)
-  const frequencyMap = new Map<number, number>();
-  for (const row of data) {
-    const toId = row.to_verse_id;
-
-    // Skip if already seen
-    if (excludeSet.has(toId)) {
-      continue;
-    }
-
-    frequencyMap.set(toId, (frequencyMap.get(toId) || 0) + 1);
-  }
-
-  // Sort by frequency (descending) and take top N
-  const sortedTargets = Array.from(frequencyMap.entries())
-    .sort((a, b) => b[1] - a[1]) // Sort by count descending
-    .slice(0, limit)
-    .map(([id, _count]) => id);
-
-  console.log(
-    `[Graph Walker]   Found ${data.length} total refs, returning top ${sortedTargets.length}`,
-  );
-
-  return sortedTargets;
 }
 
 /**
@@ -439,6 +622,96 @@ export function formatVerseRef(verse: Verse): string {
 export function formatVerse(verse: Verse): string {
   return `[${formatVerseRef(verse)}] ${verse.text}`;
 }
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const applyGravityMetrics = async (
+  nodes: import("./types").ThreadNode[],
+  structure: ChiasmStructure | null | undefined,
+): Promise<void> => {
+  if (nodes.length === 0) return;
+  const centralityMap = await fetchCentralityScores(
+    nodes.map((node) => node.id),
+  );
+  const mirrorLookup = structure ? buildMirrorLookup(structure) : new Map();
+  const structureSet = structure
+    ? new Set(structure.verseIds)
+    : new Set<number>();
+
+  nodes.forEach((node) => {
+    const centrality = centralityMap.get(node.id) ?? 0.1;
+    const mirror = mirrorLookup.get(node.id);
+    const isCenter = structure?.centerId === node.id;
+    const inStructure = structureSet.has(node.id);
+
+    let mass = 1 + centrality * 2;
+    let structureRole: "center" | "mirror" | "member" | undefined;
+
+    if (isCenter) {
+      mass += 3;
+      structureRole = "center";
+    }
+    if (mirror) {
+      mass += 0.6;
+      structureRole = structureRole ?? "mirror";
+    }
+    if (!structureRole && inStructure) {
+      structureRole = "member";
+    }
+
+    node.centrality = centrality;
+    node.mass = clamp(mass, 1, 6);
+    node.structureId = structure?.id;
+    node.structureRole = structureRole;
+    node.mirrorOf = mirror?.id;
+  });
+};
+
+const buildStructuralMirrorEdges = (
+  nodes: import("./types").ThreadNode[],
+  structure: ChiasmStructure | null | undefined,
+): import("./types").VisualEdge[] => {
+  if (!structure) return [];
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const pairs = buildMirrorPairs(structure);
+
+  return pairs
+    .filter((pair) => nodeIds.has(pair.leftId) && nodeIds.has(pair.rightId))
+    .map((pair) => ({
+      from: pair.leftId,
+      to: pair.rightId,
+      weight: 1,
+      type: "PATTERN" as const,
+      metadata: {
+        source: "structure",
+        structureId: structure.id,
+        mirror: true,
+        label: pair.leftLabel,
+        mirrorLabel: pair.rightLabel,
+      },
+    }));
+};
+
+const dedupeEdges = (
+  edges: import("./types").VisualEdge[],
+): import("./types").VisualEdge[] => {
+  const seen = new Set<string>();
+  const deduped: import("./types").VisualEdge[] = [];
+
+  edges.forEach((edge) => {
+    const key =
+      edge.from < edge.to
+        ? `${edge.from}|${edge.to}|${edge.type}`
+        : `${edge.to}|${edge.from}|${edge.type}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(edge);
+  });
+
+  return deduped;
+};
 
 /**
  * Build visual context bundle with parent-child relationships for graph visualization
@@ -520,33 +793,18 @@ export async function buildVisualBundle(
   // ========================================
   // STEP 5: Add Ring 1 (direct cross-references, depth 1)
   // ========================================
-  // Fetch the actual cross-reference data to determine parents
-  const { data: ring1Refs } = await supabase
-    .from("cross_references")
-    .select("from_verse_id, to_verse_id")
-    .in("from_verse_id", [anchorId, ...bundle.ring0.map((v) => v.id)])
-    .in(
-      "to_verse_id",
-      bundle.ring1.map((v) => v.id),
-    );
-
-  // Create a map of verse -> parent for Ring 1
-  const ring1ParentMap = new Map<number, number>();
-  if (ring1Refs) {
-    for (const ref of ring1Refs) {
-      if (!ring1ParentMap.has(ref.to_verse_id)) {
-        // Prefer anchor as parent if it directly links
-        if (ref.from_verse_id === anchorId) {
-          ring1ParentMap.set(ref.to_verse_id, anchorId);
-        } else {
-          ring1ParentMap.set(ref.to_verse_id, ref.from_verse_id);
-        }
-      }
+  const ring1Edges = bundle.ring1Edges ?? [];
+  const ring1EdgeMap = new Map<number, import("./types").VisualEdge>();
+  ring1Edges.forEach((edge) => {
+    const existing = ring1EdgeMap.get(edge.to);
+    if (!existing || (edge.weight ?? 0) > (existing.weight ?? 0)) {
+      ring1EdgeMap.set(edge.to, edge);
     }
-  }
+  });
 
   bundle.ring1.forEach((v) => {
-    const parentId = ring1ParentMap.get(v.id) || bundle.anchor.id;
+    const selectedEdge = ring1EdgeMap.get(v.id);
+    const parentId = selectedEdge?.from || bundle.anchor.id;
     const node: import("./types").ThreadNode = {
       ...v,
       depth: 1,
@@ -562,35 +820,27 @@ export async function buildVisualBundle(
     edges.push({
       from: parentId,
       to: v.id,
-      weight: 0.8,
-      type: "DEEPER",
+      weight: selectedEdge?.weight ?? 0.8,
+      type: selectedEdge?.type ?? "DEEPER",
+      metadata: selectedEdge?.metadata,
     });
   });
 
   // ========================================
   // STEP 6: Add Ring 2 (depth 2)
   // ========================================
-  const ring1Ids = bundle.ring1.map((v) => v.id);
-  const { data: ring2Refs } = await supabase
-    .from("cross_references")
-    .select("from_verse_id, to_verse_id")
-    .in("from_verse_id", ring1Ids)
-    .in(
-      "to_verse_id",
-      bundle.ring2.map((v) => v.id),
-    );
-
-  const ring2ParentMap = new Map<number, number>();
-  if (ring2Refs) {
-    for (const ref of ring2Refs) {
-      if (!ring2ParentMap.has(ref.to_verse_id)) {
-        ring2ParentMap.set(ref.to_verse_id, ref.from_verse_id);
-      }
+  const ring2Edges = bundle.ring2Edges ?? [];
+  const ring2EdgeMap = new Map<number, import("./types").VisualEdge>();
+  ring2Edges.forEach((edge) => {
+    const existing = ring2EdgeMap.get(edge.to);
+    if (!existing || (edge.weight ?? 0) > (existing.weight ?? 0)) {
+      ring2EdgeMap.set(edge.to, edge);
     }
-  }
+  });
 
   bundle.ring2.forEach((v) => {
-    const parentId = ring2ParentMap.get(v.id) || bundle.anchor.id;
+    const selectedEdge = ring2EdgeMap.get(v.id);
+    const parentId = selectedEdge?.from || bundle.anchor.id;
     const node: import("./types").ThreadNode = {
       ...v,
       depth: 2,
@@ -606,35 +856,27 @@ export async function buildVisualBundle(
     edges.push({
       from: parentId,
       to: v.id,
-      weight: 0.6,
-      type: "DEEPER",
+      weight: selectedEdge?.weight ?? 0.6,
+      type: selectedEdge?.type ?? "DEEPER",
+      metadata: selectedEdge?.metadata,
     });
   });
 
   // ========================================
   // STEP 7: Add Ring 3 (depth 3)
   // ========================================
-  const ring2Ids = bundle.ring2.map((v) => v.id);
-  const { data: ring3Refs } = await supabase
-    .from("cross_references")
-    .select("from_verse_id, to_verse_id")
-    .in("from_verse_id", ring2Ids)
-    .in(
-      "to_verse_id",
-      bundle.ring3.map((v) => v.id),
-    );
-
-  const ring3ParentMap = new Map<number, number>();
-  if (ring3Refs) {
-    for (const ref of ring3Refs) {
-      if (!ring3ParentMap.has(ref.to_verse_id)) {
-        ring3ParentMap.set(ref.to_verse_id, ref.from_verse_id);
-      }
+  const ring3Edges = bundle.ring3Edges ?? [];
+  const ring3EdgeMap = new Map<number, import("./types").VisualEdge>();
+  ring3Edges.forEach((edge) => {
+    const existing = ring3EdgeMap.get(edge.to);
+    if (!existing || (edge.weight ?? 0) > (existing.weight ?? 0)) {
+      ring3EdgeMap.set(edge.to, edge);
     }
-  }
+  });
 
   bundle.ring3.forEach((v) => {
-    const parentId = ring3ParentMap.get(v.id) || bundle.anchor.id;
+    const selectedEdge = ring3EdgeMap.get(v.id);
+    const parentId = selectedEdge?.from || bundle.anchor.id;
     const node: import("./types").ThreadNode = {
       ...v,
       depth: 3,
@@ -650,10 +892,13 @@ export async function buildVisualBundle(
     edges.push({
       from: parentId,
       to: v.id,
-      weight: 0.5,
-      type: "DEEPER",
+      weight: selectedEdge?.weight ?? 0.5,
+      type: selectedEdge?.type ?? "DEEPER",
+      metadata: selectedEdge?.metadata,
     });
   });
+
+  await applyGravityMetrics(nodes, bundle.structure);
 
   // ========================================
   // STEP 8: Calculate "spine" heuristic
@@ -665,6 +910,16 @@ export async function buildVisualBundle(
   if (narrativeEdges.length > 0) {
     console.log(
       `[Visual Bundle] Added ${narrativeEdges.length} narrative chain edges`,
+    );
+  }
+
+  const structuralMirrorEdges = buildStructuralMirrorEdges(
+    nodes,
+    bundle.structure,
+  );
+  if (structuralMirrorEdges.length > 0) {
+    console.log(
+      `[Visual Bundle] Added ${structuralMirrorEdges.length} structural mirror edge(s)`,
     );
   }
 
@@ -689,7 +944,12 @@ export async function buildVisualBundle(
   });
 
   // Merge all edges
-  const allEdges = [...edges, ...narrativeEdges, ...additionalEdges];
+  const allEdges = dedupeEdges([
+    ...edges,
+    ...narrativeEdges,
+    ...structuralMirrorEdges,
+    ...additionalEdges,
+  ]);
 
   console.log(
     `[Visual Bundle] Complete with multi-strand: ${nodes.length} nodes, ${allEdges.length} total edges`,
@@ -701,6 +961,7 @@ export async function buildVisualBundle(
     PROPHECY: allEdges.filter((e) => e.type === "PROPHECY").length,
     GENEALOGY: allEdges.filter((e) => e.type === "GENEALOGY").length,
     NARRATIVE: allEdges.filter((e) => e.type === "NARRATIVE").length,
+    PATTERN: allEdges.filter((e) => e.type === "PATTERN").length,
   });
 
   return {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 
 interface SemanticConnectionModalProps {
   fromVerse: {
@@ -28,6 +28,11 @@ interface SemanticConnectionModalProps {
   explanation?: string;
   isLLMDiscovered?: boolean;
   connectedVerseIds?: number[];
+  connectedVersesPreview?: Array<{
+    id: number;
+    reference: string;
+    text: string;
+  }>;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -66,6 +71,7 @@ export function SemanticConnectionModal({
   explanation: _explanation, // Unused - we always fetch fresh synopsis
   isLLMDiscovered,
   connectedVerseIds,
+  connectedVersesPreview,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
   const [verses, setVerses] = useState<
@@ -75,6 +81,35 @@ export function SemanticConnectionModal({
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
+  const hasCluster =
+    Array.isArray(connectedVerseIds) && connectedVerseIds.length > 2;
+  const previewVerses = useMemo(() => {
+    if (
+      Array.isArray(connectedVersesPreview) &&
+      connectedVersesPreview.length > 0
+    ) {
+      return connectedVersesPreview;
+    }
+    if (hasCluster) {
+      return [];
+    }
+    return [
+      {
+        id: fromVerse.id,
+        reference: fromVerse.reference,
+        text: fromVerse.text,
+      },
+      {
+        id: toVerse.id,
+        reference: toVerse.reference,
+        text: toVerse.text,
+      },
+    ];
+  }, [connectedVersesPreview, fromVerse, toVerse, hasCluster]);
+
+  useEffect(() => {
+    setVerses(previewVerses);
+  }, [previewVerses]);
 
   // Adjust position to keep modal within viewport (horizontally)
   useEffect(() => {
@@ -110,7 +145,7 @@ export function SemanticConnectionModal({
       setLoading(true);
       setError(null);
       setSynopsis("");
-      setVerses([]);
+      setVerses(previewVerses);
 
       try {
         // Use all connected verse IDs if available, otherwise just the two endpoints
@@ -187,6 +222,7 @@ export function SemanticConnectionModal({
     isLLMDiscovered,
     // Use JSON.stringify to create stable dependency for array
     JSON.stringify(connectedVerseIds || []),
+    previewVerses,
   ]);
 
   // Close on click outside
@@ -312,6 +348,10 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
                   {verse.reference}
                 </div>
               ))
+            ) : hasCluster ? (
+              <div className="text-xs text-neutral-400">
+                Loading {connectedVerseIds?.length ?? 0} verses...
+              </div>
             ) : (
               // Fallback while loading
               <>

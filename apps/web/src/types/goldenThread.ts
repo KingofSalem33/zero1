@@ -50,6 +50,11 @@ export interface ThreadNode {
   ringSource: string; // "ring0" | "ring1" | "ring2" | "ring3"
   parallelPassages?: ParallelPassage[]; // Parallel accounts (synoptic parallels, etc.)
   isStackedWith?: number; // If this node is hidden due to being a parallel, points to the representative node ID
+  centrality?: number; // 0-1, precomputed hub score
+  mass?: number; // 1-6, gravity mass used for layout
+  structureId?: number; // Literary structure reference (if applicable)
+  structureRole?: "center" | "mirror" | "member";
+  mirrorOf?: number; // Verse ID of the mirror pair (if applicable)
 }
 
 export interface VisualEdge {
@@ -57,7 +62,7 @@ export interface VisualEdge {
   to: number;
   weight: number; // 1.0 = strongest, 0.5 = weakest
   type: EdgeType; // Type of connection
-  metadata?: Record<string, any>; // Optional metadata (e.g., Strong's number, citation type)
+  metadata?: Record<string, unknown>; // Optional metadata (e.g., Strong's number, citation type)
 }
 
 export interface VisualContextBundle {
