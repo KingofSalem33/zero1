@@ -92,6 +92,47 @@ router.post("/synopsis", async (req, res) => {
         connectionType as keyof typeof connectionDescriptions
       ] || "semantic connection";
 
+    const rawTopicContext = Array.isArray(req.body.topicContext)
+      ? req.body.topicContext
+      : [];
+    const topicContext = rawTopicContext
+      .filter(
+        (topic: unknown) =>
+          topic && typeof topic === "object" && !Array.isArray(topic),
+      )
+      .map(
+        (topic: {
+          label?: unknown;
+          styleType?: unknown;
+          overlap?: unknown;
+        }) => {
+          const label =
+            typeof topic.label === "string"
+              ? topic.label
+              : typeof topic.styleType === "string"
+                ? topic.styleType
+                : "Other";
+          const overlap =
+            typeof topic.overlap === "number" && Number.isFinite(topic.overlap)
+              ? topic.overlap
+              : null;
+          return { label, overlap };
+        },
+      )
+      .slice(0, 6);
+
+    const topicContextText =
+      topicContext.length > 0
+        ? `\nOther available topic lenses for this same connection (overlap with the current selection):\n${topicContext
+            .map(
+              (topic) =>
+                `- ${topic.label}${topic.overlap !== null ? ` (${Math.round(topic.overlap * 100)}% overlap)` : ""}`,
+            )
+            .join(
+              "\n",
+            )}\n\nWhen writing the synopsis, make it distinct from these other lenses: focus on what THIS topic uniquely clarifies or reframes. If overlap is high (>=60%), explicitly contrast the angle rather than restating shared points.\n`
+        : "";
+
     // Build verse list for prompt
     const verseList = sortedVerses
       .map(
@@ -112,6 +153,7 @@ router.post("/synopsis", async (req, res) => {
 ${verseList}
 
 These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "same words" : connectionType === "PURPLE" ? "same teaching" : connectionType === "CYAN" ? "prophecy fulfilled" : connectionType === "GENEALOGY" ? "lineage" : connectionType === "TYPOLOGY" ? "similar story" : connectionType === "FULFILLMENT" ? "prophecy fulfilled" : connectionType === "CONTRAST" ? "opposite ideas" : connectionType === "PROGRESSION" ? "progression" : connectionType === "PATTERN" ? "pattern" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
+${topicContextText}
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. What shared themes or concepts connect these verses
@@ -123,6 +165,7 @@ Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words
 ${verseList}
 
 These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} thread.
+${topicContextText}
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. The overarching theme or pattern connecting ALL these verses

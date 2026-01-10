@@ -96,6 +96,8 @@ const EDGE_STYLES = {
   },
 } as const;
 
+type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
+
 // Testament boundaries for line pattern system
 const OLD_TESTAMENT_BOOKS = [
   "Gen",
@@ -246,6 +248,16 @@ interface DiscoveredConnection {
   confidence: number;
 }
 
+interface ConnectionTopicGroup {
+  styleType: ConnectionStyleType;
+  label: string;
+  color: string;
+  count: number;
+  verses: ThreadNode[];
+  verseIds: number[];
+  edgeIds: string[];
+}
+
 const nodeTypes = {
   verseNode: VerseNode,
 };
@@ -285,16 +297,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [clickedConnection, setClickedConnection] = useState<{
     fromVerse: { id: number; reference: string; text: string };
     toVerse: { id: number; reference: string; text: string };
-    connectionType:
-      | "GOLD"
-      | "PURPLE"
-      | "CYAN"
-      | "GENEALOGY"
-      | "TYPOLOGY"
-      | "FULFILLMENT"
-      | "CONTRAST"
-      | "PROGRESSION"
-      | "PATTERN";
+    connectionType: ConnectionStyleType;
     similarity: number;
     position: { x: number; y: number };
     explanation?: string;
@@ -306,6 +309,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       reference: string;
       text: string;
     }>;
+    connectionTopics?: ConnectionTopicGroup[];
+    baseVerseId?: number;
   } | null>(null);
 
   // Parallel passages modal state
@@ -399,9 +404,249 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     [bundle],
   );
 
-  // Handler for node click (Focus Mode)
+  const selectPrimaryEdge = useCallback(
+    (edgeIds: string[]): Edge | null => {
+      const candidates = edges.filter((edge) => edgeIds.includes(edge.id));
+      if (candidates.length === 0) return null;
+      return candidates.reduce((best, current) => {
+        const bestWeight = (best.data as EdgeData | undefined)?.weight ?? 0.7;
+        const currentWeight =
+          (current.data as EdgeData | undefined)?.weight ?? 0.7;
+        return currentWeight > bestWeight ? current : best;
+      }, candidates[0]);
+    },
+    [edges],
+  );
+
+  const buildPreviewVerses = useCallback(
+    (ids: number[]) => {
+      if (!bundle) return [];
+      return ids
+        .map((id) => bundle.nodes.find((n) => n.id === id))
+        .filter(
+          (node): node is ThreadNode =>
+            node !== undefined && typeof node.id === "number",
+        )
+        .map((node) => ({
+          id: node.id,
+          reference: `${node.book_name} ${node.chapter}:${node.verse}`,
+          text: node.text,
+        }));
+    },
+    [bundle],
+  );
+
+  const buildConnectionTopics = useCallback(
+    (nodeId: number) => {
+      if (!bundle) return null;
+
+      const verse = bundle.nodes.find((n) => n.id === nodeId);
+      if (!verse) return null;
+
+      const nodeIdString = nodeId.toString();
+      const incidentEdges = edges.filter(
+        (edge) =>
+          (edge.source === nodeIdString || edge.target === nodeIdString) &&
+          !(edge.data as EdgeData | undefined)?.isSynthetic,
+      );
+
+      const groups = new Map<
+        ConnectionStyleType,
+        { edgeIds: Set<string>; verseIds: Set<number> }
+      >();
+
+      incidentEdges.forEach((edge) => {
+        const edgeData = edge.data as
+          | (EdgeData & { visualStyleType?: string })
+          | undefined;
+        const styleType = (edgeData?.styleType ||
+          edgeData?.visualStyleType ||
+          "GREY") as keyof typeof EDGE_STYLES;
+        if (styleType === "GREY") {
+          return;
+        }
+        const connectionStyle = styleType as ConnectionStyleType;
+        const otherId =
+          edge.source === nodeIdString
+            ? Number(edge.target)
+            : Number(edge.source);
+        if (!Number.isFinite(otherId)) return;
+
+        if (!groups.has(connectionStyle)) {
+          groups.set(connectionStyle, {
+            edgeIds: new Set<string>(),
+            verseIds: new Set<number>(),
+          });
+        }
+        const entry = groups.get(connectionStyle);
+        entry?.edgeIds.add(edge.id);
+        entry?.verseIds.add(otherId);
+      });
+
+      const buildGroup = (
+        styleType: ConnectionStyleType,
+        entry: { edgeIds: Set<string>; verseIds: Set<number> },
+      ): ConnectionTopicGroup => {
+        const verseIds = Array.from(entry.verseIds);
+        const verses = verseIds
+          .map((id) => bundle.nodes.find((n) => n.id === id))
+          .filter(
+            (node): node is ThreadNode =>
+              node !== undefined && typeof node.id === "number",
+          );
+        return {
+          styleType,
+          label: EDGE_STYLES[styleType].label,
+          color: EDGE_STYLES[styleType].color,
+          count: verses.length,
+          verses,
+          verseIds,
+          edgeIds: Array.from(entry.edgeIds),
+        };
+      };
+
+      const groupList = Array.from(groups.entries()).map(([styleType, entry]) =>
+        buildGroup(styleType, entry),
+      );
+
+      groupList.sort((a, b) => b.count - a.count);
+
+      return {
+        verse,
+        groups: groupList,
+      };
+    },
+    [bundle, edges],
+  );
+
+  const pickDefaultTopic = useCallback(
+    (groups: ConnectionTopicGroup[], preferredStyle?: string) => {
+      if (preferredStyle) {
+        const preferredGroup = groups.find(
+          (group) => group.styleType === preferredStyle,
+        );
+        if (preferredGroup) return preferredGroup;
+      }
+
+      if (groups.length === 0) return null;
+
+      let bestGroup = groups[0];
+      let bestWeight = -1;
+      groups.forEach((group) => {
+        const primaryEdge = selectPrimaryEdge(group.edgeIds);
+        const weight = (primaryEdge?.data as EdgeData | undefined)?.weight ?? 0;
+        if (weight > bestWeight) {
+          bestWeight = weight;
+          bestGroup = group;
+        }
+      });
+      return bestGroup;
+    },
+    [selectPrimaryEdge],
+  );
+
+  const openConnectionModalForGroup = useCallback(
+    (
+      baseVerse: ThreadNode,
+      group: ConnectionTopicGroup,
+      position: { x: number; y: number },
+      topicGroups: ConnectionTopicGroup[],
+      primaryEdgeOverride?: Edge | null,
+    ) => {
+      if (!bundle) return;
+
+      const primaryEdge =
+        primaryEdgeOverride ?? selectPrimaryEdge(group.edgeIds);
+      const edgeData = primaryEdge?.data as EdgeData | undefined;
+
+      const baseId = baseVerse.id;
+      const otherId = primaryEdge
+        ? primaryEdge.source === baseId.toString()
+          ? Number(primaryEdge.target)
+          : Number(primaryEdge.source)
+        : (group.verseIds[0] ?? baseId);
+
+      const fromVerse = baseVerse;
+      const toVerse = bundle.nodes.find((n) => n.id === otherId) ?? baseVerse;
+
+      const similarity = edgeData?.weight ?? 0.8;
+      const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
+      const llmExplanation = edgeData?.explanation;
+      const llmConfidence = edgeData?.confidence;
+
+      const connectedVerseIds = Array.from(
+        new Set([baseId, ...group.verseIds]),
+      );
+
+      const connectedVersesPreview = buildPreviewVerses(connectedVerseIds);
+
+      if (group.edgeIds.length > 0 || group.verseIds.length > 0) {
+        setSelectedBranch({
+          edgeIds: new Set(group.edgeIds),
+          nodeIds: new Set(connectedVerseIds),
+          styleType: group.styleType,
+          edgeType: "DEEPER",
+          pathPreview: "Connection",
+        });
+      } else {
+        setSelectedBranch(null);
+      }
+
+      setClickedConnection({
+        fromVerse: {
+          id: fromVerse.id,
+          reference: `${fromVerse.book_name} ${fromVerse.chapter}:${fromVerse.verse}`,
+          text: fromVerse.text,
+        },
+        toVerse: {
+          id: toVerse.id,
+          reference: `${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}`,
+          text: toVerse.text,
+        },
+        connectionType: group.styleType,
+        similarity: isLLMDiscovered ? llmConfidence || 0 : similarity,
+        position,
+        explanation: llmExplanation,
+        confidence: llmConfidence,
+        isLLMDiscovered,
+        connectedVerseIds,
+        connectedVersesPreview,
+        connectionTopics: topicGroups,
+        baseVerseId: baseId,
+      });
+    },
+    [buildPreviewVerses, bundle, selectPrimaryEdge],
+  );
+
+  const handleSelectConnectionTopic = useCallback(
+    (styleType: ConnectionTopicGroup["styleType"]) => {
+      if (!bundle || !clickedConnection) return;
+      if (clickedConnection.connectionType === styleType) return;
+      if (!clickedConnection.connectionTopics) return;
+
+      const baseVerseId =
+        clickedConnection.baseVerseId ?? clickedConnection.fromVerse.id;
+      const baseVerse = bundle.nodes.find((n) => n.id === baseVerseId);
+      if (!baseVerse) return;
+
+      const group = clickedConnection.connectionTopics.find(
+        (topic) => topic.styleType === styleType,
+      );
+      if (!group) return;
+
+      openConnectionModalForGroup(
+        baseVerse,
+        group,
+        clickedConnection.position,
+        clickedConnection.connectionTopics,
+      );
+    },
+    [bundle, clickedConnection, openConnectionModalForGroup],
+  );
+
+  // Handler for node click (Focus Mode or Connection Card)
   const handleNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
       try {
         console.log(`[Click DEBUG] Node clicked:`, {
           id: node.id,
@@ -412,7 +657,64 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           position: node.position,
         });
 
-        // Toggle focus: if already focused, unfocus; otherwise focus
+        setSelectedBranch(null);
+
+        if (event.shiftKey) {
+          setFocusedNodeId((prev) => {
+            const newFocusId = prev === node.id ? null : node.id;
+            console.log(
+              `[Click DEBUG] Focus mode ${newFocusId ? "ENABLED" : "DISABLED"} for node ${node.id}`,
+            );
+            return newFocusId;
+          });
+          return;
+        }
+
+        const nodeId = Number(node.id);
+        const topicData = buildConnectionTopics(nodeId);
+
+        if (topicData && topicData.groups.length > 0) {
+          const preferredStyle =
+            typeof node.data?.semanticConnectionType === "string"
+              ? node.data.semanticConnectionType
+              : undefined;
+          const selectedGroup = pickDefaultTopic(
+            topicData.groups,
+            preferredStyle,
+          );
+          if (selectedGroup) {
+            const parentId =
+              topicData.verse.parentId ??
+              (topicData.verse.depth === 1 ? bundle?.rootId : undefined);
+            const parentEdge = parentId
+              ? edges.find((edge) => {
+                  const sourceId = Number(edge.source);
+                  const targetId = Number(edge.target);
+                  return (
+                    (sourceId === nodeId && targetId === parentId) ||
+                    (sourceId === parentId && targetId === nodeId)
+                  );
+                })
+              : undefined;
+            const parentEdgeStyle = parentEdge
+              ? ((parentEdge.data as EdgeData | undefined)?.styleType as
+                  | ConnectionStyleType
+                  | undefined)
+              : undefined;
+            const edgeOverride =
+              parentEdgeStyle === selectedGroup.styleType ? parentEdge : null;
+
+            openConnectionModalForGroup(
+              topicData.verse,
+              selectedGroup,
+              { x: event.clientX, y: event.clientY },
+              topicData.groups,
+              edgeOverride,
+            );
+            return;
+          }
+        }
+
         setFocusedNodeId((prev) => {
           const newFocusId = prev === node.id ? null : node.id;
           console.log(
@@ -421,12 +723,17 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           return newFocusId;
         });
       } catch (error) {
-        console.error(`[Click DEBUG] ❌ Error handling node click:`, error);
-        // Reset focus mode on error
+        console.error(`[Click DEBUG] Error handling node click:`, error);
         setFocusedNodeId(null);
       }
     },
-    [],
+    [
+      buildConnectionTopics,
+      bundle?.rootId,
+      edges,
+      openConnectionModalForGroup,
+      pickDefaultTopic,
+    ],
   );
 
   // Pre-compute branch clusters when bundle or edges change
@@ -768,8 +1075,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         if (!edgeSet.has(edgeKey)) {
           dagreGraph.setEdge(fromId, toId);
 
-          // Synthetic edges use GENEALOGY color
-          const edgeStyle = EDGE_STYLES["GENEALOGY"];
+          // Synthetic edges use GREY color to avoid implying lineage
+          const edgeStyle = EDGE_STYLES["GREY"];
 
           // Get source and target verses for line pattern
           const parentVerse = visibleNodes.find((n) => n.id === node.parentId);
@@ -787,18 +1094,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             target: toId,
             type: "smoothstep",
             data: {
-              styleType: "CYAN",
-              edgeType: "GENEALOGY",
+              styleType: "GREY",
+              edgeType: "NARRATIVE",
               isSynthetic: true,
               isLLMDiscovered: false,
               isStructural: false,
               strokeDashArray, // Store final pattern for animation restoration
-              baseWidth: 2, // Store base width for hover effects
+              baseWidth: edgeStyle.width, // Store base width for hover effects
               weight: 0.4,
             },
             style: {
-              stroke: `url(#edge-gradient-GENEALOGY)`, // Use directional gradient
-              strokeWidth: 2,
+              stroke: `url(#edge-gradient-GREY)`, // Use directional gradient
+              strokeWidth: edgeStyle.width,
               strokeLinecap: "round",
               opacity: 0, // Start invisible for entrance animation
               strokeDasharray: "10", // Temporary for entrance animation
@@ -1628,14 +1935,17 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       const edgeData = edge.data as EdgeData & { visualStyleType?: string };
-      // 🌟 GOLDEN THREAD: Use visualStyleType to ignore grey secondary edges
+      // dYOY GOLDEN THREAD: Use visualStyleType to ignore grey secondary edges
       const visualStyleType = edgeData?.visualStyleType || edgeData?.styleType;
       // For connection details popup, use original semantic type
-      const styleType = edgeData?.styleType;
+      const styleType = edgeData?.styleType as
+        | ConnectionStyleType
+        | "GREY"
+        | undefined;
 
       // Only handle colored branches (not GREY)
       if (visualStyleType === "GREY" || !visualStyleType) return;
-      if (!bundle) return;
+      if (!bundle || !styleType || styleType === "GREY") return;
 
       // Get the from and to verse data
       const fromId = parseInt(edge.source);
@@ -1645,62 +1955,42 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       if (!fromVerse || !toVerse) return;
 
-      // Get the edge metadata
-      const bundleEdge = bundle.edges.find(
-        (e) => e.from === fromId && e.to === toId,
-      );
-      const similarity =
-        bundleEdge?.metadata?.similarity || bundleEdge?.weight || 0;
-
-      // Check if this is an LLM-discovered connection
-      const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
-      const llmExplanation = edgeData?.explanation;
-      const llmConfidence = edgeData?.confidence;
-
-      // Get the cluster for this edge (contains all connected verses)
-      const cluster = branchClusters.get(edge.id);
-      const connectedVerseIds = cluster
-        ? Array.from(cluster.nodeIds)
-        : [fromId, toId];
-      setSelectedBranch(cluster || null);
-      const connectedVersesPreview = connectedVerseIds
-        .map((id) => bundle.nodes.find((n) => n.id === id))
-        .filter(
-          (node): node is ThreadNode =>
-            node !== undefined && typeof node.id === "number",
-        )
-        .map((node) => ({
-          id: node.id,
-          reference: `${node.book_name} ${node.chapter}:${node.verse}`,
-          text: node.text,
-        }));
-
       // Use viewport coordinates for fixed-position modal rendering.
       const posX = event.clientX;
       const posY = event.clientY;
 
-      setClickedConnection({
-        fromVerse: {
-          id: fromVerse.id,
-          reference: `${fromVerse.book_name} ${fromVerse.chapter}:${fromVerse.verse}`,
-          text: fromVerse.text,
-        },
-        toVerse: {
-          id: toVerse.id,
-          reference: `${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}`,
-          text: toVerse.text,
-        },
-        connectionType: styleType,
-        similarity: isLLMDiscovered ? llmConfidence || 0 : similarity,
-        position: { x: posX, y: posY },
-        explanation: llmExplanation,
-        confidence: llmConfidence,
-        isLLMDiscovered,
-        connectedVerseIds, // All verses in this cluster
-        connectedVersesPreview,
-      });
+      const topicData = buildConnectionTopics(fromVerse.id);
+      let topicGroups = topicData?.groups ?? [];
+      let selectedGroup = topicGroups.find(
+        (group) => group.styleType === styleType,
+      );
+
+      if (!selectedGroup) {
+        selectedGroup = {
+          styleType,
+          label: EDGE_STYLES[styleType].label,
+          color: EDGE_STYLES[styleType].color,
+          count: 1,
+          verses: [toVerse],
+          verseIds: [toVerse.id],
+          edgeIds: [edge.id],
+        };
+        if (topicGroups.length === 0) {
+          topicGroups = [selectedGroup];
+        } else {
+          topicGroups = [selectedGroup, ...topicGroups];
+        }
+      }
+
+      openConnectionModalForGroup(
+        fromVerse,
+        selectedGroup,
+        { x: posX, y: posY },
+        topicGroups,
+        edge,
+      );
     },
-    [bundle, branchClusters],
+    [buildConnectionTopics, bundle, openConnectionModalForGroup],
   );
 
   const handleEdgeMouseEnter = useCallback(
@@ -2113,8 +2403,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                   Interactions
                 </div>
                 <div className="space-y-1">
+                  <div className="text-white text-xs">Click node → Details</div>
                   <div className="text-white text-xs">
-                    Click node → Focus Mode
+                    Shift+Click node → Focus Mode
                   </div>
                   <div className="text-white text-xs">ESC → Exit Focus</div>
                   <div className="text-white text-xs">Click edge → Details</div>
@@ -2143,6 +2434,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           isLLMDiscovered={clickedConnection.isLLMDiscovered}
           connectedVerseIds={clickedConnection.connectedVerseIds}
           connectedVersesPreview={clickedConnection.connectedVersesPreview}
+          connectionTopics={clickedConnection.connectionTopics}
+          onSelectTopic={handleSelectConnectionTopic}
         />
       )}
 

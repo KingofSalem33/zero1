@@ -7,6 +7,17 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 
+type ConnectionType =
+  | "GOLD"
+  | "PURPLE"
+  | "CYAN"
+  | "GENEALOGY"
+  | "TYPOLOGY"
+  | "FULFILLMENT"
+  | "CONTRAST"
+  | "PROGRESSION"
+  | "PATTERN";
+
 interface SemanticConnectionModalProps {
   fromVerse: {
     id: number;
@@ -18,16 +29,7 @@ interface SemanticConnectionModalProps {
     reference: string;
     text: string;
   };
-  connectionType:
-    | "GOLD"
-    | "PURPLE"
-    | "CYAN"
-    | "GENEALOGY"
-    | "TYPOLOGY"
-    | "FULFILLMENT"
-    | "CONTRAST"
-    | "PROGRESSION"
-    | "PATTERN";
+  connectionType: ConnectionType;
   similarity: number;
   position: { x: number; y: number };
   onClose: () => void;
@@ -41,6 +43,14 @@ interface SemanticConnectionModalProps {
     reference: string;
     text: string;
   }>;
+  connectionTopics?: Array<{
+    styleType: ConnectionType;
+    label: string;
+    color: string;
+    count: number;
+    verseIds?: number[];
+  }>;
+  onSelectTopic?: (styleType: ConnectionType) => void;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -82,6 +92,8 @@ export function SemanticConnectionModal({
   isLLMDiscovered,
   connectedVerseIds,
   connectedVersesPreview,
+  connectionTopics,
+  onSelectTopic,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
   const [verses, setVerses] = useState<
@@ -182,6 +194,35 @@ export function SemanticConnectionModal({
           `[SemanticConnectionModal] Fetching synopsis for ${normalizedVerseIds.length} connected verses`,
         );
 
+        const activeSet = new Set(normalizedVerseIds);
+        const topicContext = Array.isArray(connectionTopics)
+          ? connectionTopics
+              .filter((topic) => topic.styleType !== connectionType)
+              .map((topic) => {
+                const rawIds = Array.isArray(topic.verseIds)
+                  ? topic.verseIds
+                  : [];
+                const topicIds = rawIds
+                  .map((id) => Number(id))
+                  .filter((id) => Number.isFinite(id) && id > 0);
+                const topicSet = new Set<number>([fromVerse.id, ...topicIds]);
+                let intersection = 0;
+                topicSet.forEach((id) => {
+                  if (activeSet.has(id)) intersection += 1;
+                });
+                const union = new Set<number>([
+                  ...Array.from(activeSet),
+                  ...Array.from(topicSet),
+                ]).size;
+                const overlap = union > 0 ? intersection / union : 0;
+                return {
+                  styleType: topic.styleType,
+                  label: topic.label,
+                  overlap,
+                };
+              })
+          : [];
+
         const response = await fetch(
           `${API_URL}/api/semantic-connection/synopsis`,
           {
@@ -192,6 +233,7 @@ export function SemanticConnectionModal({
               connectionType,
               similarity,
               isLLMDiscovered,
+              topicContext,
             }),
           },
         );
@@ -237,6 +279,7 @@ export function SemanticConnectionModal({
     // Use JSON.stringify to create stable dependency for array
     JSON.stringify(connectedVerseIds || []),
     previewVerses,
+    JSON.stringify(connectionTopics || []),
   ]);
 
   // Close on click outside
@@ -305,7 +348,7 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
         top: `${adjustedPosition.y}px`,
       }}
     >
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm max-h-[80vh]">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -328,7 +371,7 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
         </button>
 
         {/* Content */}
-        <div className="p-3 pr-8">
+        <div className="max-h-[80vh] overflow-y-auto p-3 pr-8">
           {/* Header */}
           <div className="flex items-center gap-2 mb-2">
             <div
@@ -483,6 +526,39 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
               </svg>
             </button>
           </div>
+
+          {connectionTopics && connectionTopics.length > 1 && (
+            <div className="mt-4 border-t border-white/10 pt-3">
+              <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+                Topics
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {connectionTopics.map((topic) => {
+                  const isActive = topic.styleType === connectionType;
+                  return (
+                    <button
+                      key={topic.styleType}
+                      type="button"
+                      disabled={isActive}
+                      onClick={() => onSelectTopic?.(topic.styleType)}
+                      className="px-2 py-1 rounded-full text-[10px] font-semibold transition-colors disabled:cursor-default"
+                      style={{
+                        backgroundColor: isActive
+                          ? `${topic.color}30`
+                          : "rgba(255,255,255,0.06)",
+                        color: isActive ? topic.color : "#E5E7EB",
+                        border: `1px solid ${
+                          isActive ? topic.color : "rgba(255,255,255,0.12)"
+                        }`,
+                      }}
+                    >
+                      {topic.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
