@@ -28,16 +28,62 @@ interface ChapterFooterProps {
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
-// Subtle, scholarly color distinctions - whispers not shouts
+// Subtle, scholarly color distinctions aligned with map colors
 const LENS_COLORS = {
-  PROPHECY: "text-purple-300/70 border-purple-500/20 bg-purple-500/5",
-  TYPOLOGY: "text-rose-300/70 border-rose-500/20 bg-rose-500/5",
-  THREAD: "text-amber-300/70 border-amber-500/20 bg-amber-500/5",
-  PATTERN: "text-cyan-300/70 border-cyan-500/20 bg-cyan-500/5",
-  ROOTS: "text-emerald-300/70 border-emerald-500/20 bg-emerald-500/5",
+  PROPHECY: "text-cyan-300/80 border-cyan-500/30 bg-cyan-500/10",
+  TYPOLOGY: "text-orange-300/80 border-orange-500/30 bg-orange-500/10",
+  THREAD: "text-purple-300/80 border-purple-500/30 bg-purple-500/10",
+  PATTERN: "text-blue-300/80 border-blue-500/30 bg-blue-500/10",
+  ROOTS: "text-amber-300/80 border-amber-500/30 bg-amber-500/10",
   WORLD: "text-slate-300/70 border-slate-500/20 bg-slate-500/5",
-  EXPLORE: "text-blue-300/70 border-blue-500/20 bg-blue-500/5",
-  GOLDEN: "text-yellow-300/70 border-yellow-500/20 bg-yellow-500/5",
+  EXPLORE: "text-indigo-300/70 border-indigo-500/20 bg-indigo-500/5",
+  GOLDEN: "text-yellow-300/80 border-yellow-500/30 bg-yellow-500/10",
+};
+
+const LENS_LABELS = {
+  PROPHECY: "Prophecy",
+  TYPOLOGY: "Similar Story",
+  THREAD: "Themes",
+  PATTERN: "Structure",
+  ROOTS: "Word Study",
+  GOLDEN: "Golden Thread",
+  WORLD: "Context",
+  EXPLORE: "Explore",
+};
+
+const LENS_TOOLTIPS = {
+  PROPHECY: {
+    title: "Prophecy",
+    items: ["Prophecy Fulfilled (canonical)", "Prophecy Fulfilled (inferred)"],
+  },
+  TYPOLOGY: {
+    title: "Similar Story",
+    items: ["Similar Story connections"],
+  },
+  THREAD: {
+    title: "Themes",
+    items: ["Same Teaching links", "Progression of ideas"],
+  },
+  PATTERN: {
+    title: "Structure",
+    items: ["Pattern connections"],
+  },
+  ROOTS: {
+    title: "Word Study",
+    items: ["Same Words links"],
+  },
+  WORLD: {
+    title: "Context",
+    items: ["Historical and cultural background"],
+  },
+  EXPLORE: {
+    title: "Explore",
+    items: ["Related chapters and themes"],
+  },
+  GOLDEN: {
+    title: "Golden Thread",
+    items: ["Cross-testament continuity"],
+  },
 };
 
 export function ChapterFooter({
@@ -184,6 +230,8 @@ export function ChapterFooter({
                 const absoluteIndex = startIndex + relativeIndex;
                 const isActive = absoluteIndex === currentCardIndex;
                 const lensColor = LENS_COLORS[card.lens];
+                const lensLabel = LENS_LABELS[card.lens];
+                const lensTooltip = LENS_TOOLTIPS[card.lens];
 
                 return (
                   <button
@@ -227,7 +275,7 @@ export function ChapterFooter({
                     <span
                       className={`text-[10px] uppercase tracking-wider font-normal flex-shrink-0`}
                     >
-                      {card.lens}
+                      {lensLabel}
                     </span>
 
                     {/* Title - Smooth reveal */}
@@ -259,6 +307,21 @@ export function ChapterFooter({
                         d="M9 5l7 7-7 7"
                       />
                     </svg>
+
+                    {/* Tooltip */}
+                    <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-md border border-white/10 bg-neutral-900/95 p-2 text-left text-[11px] text-neutral-200 opacity-0 shadow-xl transition-opacity duration-200 group-hover:opacity-100">
+                      <div className="text-[10px] uppercase tracking-wide text-neutral-400">
+                        {lensTooltip.title}
+                      </div>
+                      <div className="mt-1 text-[10px] text-neutral-400">
+                        This lens reveals:
+                      </div>
+                      <div className="mt-1 space-y-0.5">
+                        {lensTooltip.items.map((item) => (
+                          <div key={item}>- {item}</div>
+                        ))}
+                      </div>
+                    </div>
 
                     {/* Active Indicator - Very subtle */}
                     {isActive && (

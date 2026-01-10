@@ -76,15 +76,15 @@ router.post("/synopsis", async (req, res) => {
 
     // Determine connection description
     const connectionDescriptions = {
-      GOLD: "lexical connection (same-testament, similar language and concepts)",
-      PURPLE:
-        "theological connection (cross-testament, expressing the same truth)",
-      CYAN: "prophetic connection (Old Testament prophecy pointing to New Testament fulfillment)",
-      TYPOLOGY: "typological pattern (shadow → substance)",
-      FULFILLMENT: "prophetic fulfillment (prophecy → event)",
-      CONTRAST: "theological contrast (inversion or opposition)",
-      PROGRESSION: "doctrinal progression (covenant development)",
-      PATTERN: "structural pattern (chiastic, numerical, or literary)",
+      GOLD: "same words (key words or phrases appear in both verses)",
+      PURPLE: "same teaching (shared theological truth)",
+      CYAN: "prophecy fulfilled (Old Testament prophecy -> New Testament event)",
+      GENEALOGY: "lineage connection (family line continuity)",
+      TYPOLOGY: "similar story (type/shadow mirroring later fulfillment)",
+      FULFILLMENT: "prophecy fulfilled (inferred connection)",
+      CONTRAST: "opposite ideas (contrasting teachings)",
+      PROGRESSION: "progression (later verse develops earlier idea)",
+      PATTERN: "pattern (literary or structural symmetry)",
     };
 
     const connectionDesc =
@@ -111,7 +111,7 @@ router.post("/synopsis", async (req, res) => {
 
 ${verseList}
 
-These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
+These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "same words" : connectionType === "PURPLE" ? "same teaching" : connectionType === "CYAN" ? "prophecy fulfilled" : connectionType === "GENEALOGY" ? "lineage" : connectionType === "TYPOLOGY" ? "similar story" : connectionType === "FULFILLMENT" ? "prophecy fulfilled" : connectionType === "CONTRAST" ? "opposite ideas" : connectionType === "PROGRESSION" ? "progression" : connectionType === "PATTERN" ? "pattern" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. What shared themes or concepts connect these verses

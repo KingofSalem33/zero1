@@ -10,7 +10,9 @@ interface VerseNodeData {
   onExpand: () => void;
   onShowParallels?: (verseId: number) => void; // Show parallel passages modal
   depth?: number; // Depth from anchor for size scaling
-  semanticConnectionType?: string; // 🌟 GOLDEN THREAD: Type of connection from anchor (GOLD/PURPLE/CYAN/GREY)
+  semanticConnectionType?: string; // 🌟 GOLDEN THREAD: Type of connection for this node (GOLD/PURPLE/CYAN/GREY)
+  isDimmed?: boolean;
+  branchHighlight?: { color: string; glowColor: string };
 }
 
 export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
@@ -20,7 +22,9 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     isAnchor,
     onShowParallels,
     depth,
-    semanticConnectionType, // 🌟 GOLDEN THREAD: Semantic connection from anchor
+    semanticConnectionType, // 🌟 GOLDEN THREAD: Semantic connection for this node
+    isDimmed,
+    branchHighlight,
   } = data;
   const [hasEntered, setHasEntered] = React.useState(false);
 
@@ -78,17 +82,41 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
       glow: "0 0 10px #22D3EE, 0 0 20px #0891B2",
       border: "#0891B2",
     },
+    GENEALOGY: {
+      glow: "0 0 10px #34D399, 0 0 20px #10B981",
+      border: "#10B981",
+    },
+    TYPOLOGY: {
+      glow: "0 0 10px #F59E0B, 0 0 20px #EA580C",
+      border: "#EA580C",
+    },
+    FULFILLMENT: {
+      glow: "0 0 10px #5EEAD4, 0 0 20px #14B8A6",
+      border: "#14B8A6",
+    },
+    CONTRAST: {
+      glow: "0 0 10px #F87171, 0 0 20px #DC2626",
+      border: "#DC2626",
+    },
+    PROGRESSION: {
+      glow: "0 0 10px #4ADE80, 0 0 20px #16A34A",
+      border: "#16A34A",
+    },
+    PATTERN: {
+      glow: "0 0 10px #93C5FD, 0 0 20px #3B82F6",
+      border: "#3B82F6",
+    },
     GREY: {
       glow: "0 0 6px #9CA3AF",
       border: "#6B7280",
     },
   };
 
-  const isFirstDegree = nodeDepth === 1 && semanticConnectionType;
-  const glowStyle = isFirstDegree
+  const glowStyle = semanticConnectionType
     ? semanticGlowStyles[semanticConnectionType]
     : null;
   let width: number, height: number, padding: string;
+  const bookLabel = verse.book_name || verse.book_abbrev.toUpperCase();
 
   if (isAnchor) {
     width = 180;
@@ -106,6 +134,14 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     width = 85;
     height = 35;
     padding = "px-1.5 py-0.5";
+  }
+
+  // Sprint 1: Scale node size by mass for hub prominence
+  // Super-hubs (mass 5-8) get up to 40% larger, normal nodes (mass 1-2) stay at base size
+  if (!isAnchor && verse.mass) {
+    const massScale = 1 + (verse.mass - 1) * 0.06; // 1.0x at mass=1, 1.42x at mass=8
+    width = Math.round(width * massScale);
+    height = Math.round(height * massScale);
   }
 
   return (
@@ -156,7 +192,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
             borderWidth: "3px",
             animation: "glow-pulse 2s ease-in-out infinite",
           }),
-          // 🌟 GOLDEN THREAD: Semantic glow for first-degree nodes (shows connection type)
+          // 🌟 GOLDEN THREAD: Semantic glow for connected nodes (shows connection type)
           ...(!isAnchor &&
             glowStyle && {
               boxShadow: glowStyle.glow,
@@ -164,8 +200,20 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
               borderWidth: "2.5px",
               animation: glowStyle.animation, // Only GOLD has animation (sparkle effect)
             }),
+          ...(branchHighlight && {
+            boxShadow: `0 0 16px ${branchHighlight.glowColor}, 0 0 8px ${branchHighlight.color}`,
+            borderColor: branchHighlight.color,
+            borderWidth: "3px",
+            zIndex: 2,
+          }),
+          ...(isDimmed && {
+            boxShadow: "none",
+            borderColor: "#D1D5DB",
+            borderWidth: "1px",
+            animation: "none",
+          }),
           // Entrance animation
-          opacity: hasEntered ? 1 : 0,
+          opacity: hasEntered ? (isDimmed ? 0.25 : 1) : 0,
           transform: hasEntered
             ? "translateY(0) scale(1)"
             : "translateY(-10px) scale(0.95)",
@@ -184,7 +232,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
                   : "text-[9px] font-mono font-medium whitespace-nowrap"
           }
         >
-          {verse.book_abbrev.toUpperCase()} {verse.chapter}:{verse.verse}
+          {bookLabel} {verse.chapter}:{verse.verse}
         </div>
         {/* Show verse preview for anchor or highlighted nodes */}
         {(isAnchor || isHighlighted) && (

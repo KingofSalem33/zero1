@@ -648,6 +648,13 @@ const applyGravityMetrics = async (
     let mass = 1 + centrality * 2;
     let structureRole: "center" | "mirror" | "member" | undefined;
 
+    // Sprint 1: Exponential scaling for super-hubs to amplify visual prominence
+    if (centrality > 0.9) {
+      mass *= 1.5; // Top 10%: 50% boost (e.g., Luke 24:44)
+    } else if (centrality > 0.8) {
+      mass *= 1.3; // Top 20%: 30% boost (e.g., Isaiah 59:21)
+    }
+
     if (isCenter) {
       mass += 3;
       structureRole = "center";
@@ -661,7 +668,7 @@ const applyGravityMetrics = async (
     }
 
     node.centrality = centrality;
-    node.mass = clamp(mass, 1, 6);
+    node.mass = clamp(mass, 1, 8); // Sprint 1: Increased ceiling from 6 to 8
     node.structureId = structure?.id;
     node.structureRole = structureRole;
     node.mirrorOf = mirror?.id;

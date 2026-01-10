@@ -89,7 +89,15 @@ export function ParallelPassagesModal({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
-  const parallels = primaryVerse.parallelPassages || [];
+  const primaryKey = `${primaryVerse.book_abbrev}:${primaryVerse.chapter}:${primaryVerse.verse}`;
+  const seenParallelKeys = new Set<string>();
+  const parallels = (primaryVerse.parallelPassages || []).filter((parallel) => {
+    const key = `${parallel.book_abbrev}:${parallel.chapter}:${parallel.verse}`;
+    if (key === primaryKey) return false;
+    if (seenParallelKeys.has(key)) return false;
+    seenParallelKeys.add(key);
+    return true;
+  });
   if (parallels.length === 0) return null;
 
   return (

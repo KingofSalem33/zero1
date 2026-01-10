@@ -100,6 +100,7 @@ const EDGE_DISTANCE_MAP: Record<string, number> = {
   GOLD: 90, // ⬆️ Lexical connections - some breathing room while staying connected
   PURPLE: 130, // ⬆️ Theological connections - moderate distance
   CYAN: 110, // ⬆️ Prophetic connections - moderate distance
+  GENEALOGY: 125, // ⬆️ Lineage connections - moderate distance
   GREY: 180, // ⬆️ Weak/synthetic connections - push farther for contrast
 };
 

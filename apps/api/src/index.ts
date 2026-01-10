@@ -282,12 +282,12 @@ Generate a footer for this chapter based ONLY on the connected verses listed abo
 Example: "John declares the Word was God, shows the Word creating all things, then becoming flesh and dwelling among men, then people choosing to receive or reject Him. The eternal God became a man so we could see Him and believe."
 
 **CARD TYPES (prioritize in order)**
-1. **PROPHECY** - OT → NT fulfillments, Messianic prophecies
-2. **TYPOLOGY** - Events/people foreshadowing Christ (Isaac → Christ)
-3. **THREAD** - Theological arcs (Creation→Fall→Redemption, Exodus pattern)
-4. **PATTERN** - Literary structures (chiasms, sevens, repeated phrases)
-5. **ROOTS** - Hebrew/Greek wordplay, lost-in-translation insights
-6. **WORLD** - Historical/cultural context changing interpretation
+1. **PROPHECY** - Prophecy fulfilled (OT → NT, messianic fulfillments)
+2. **TYPOLOGY** - Similar story (types/shadows mirroring later fulfillment)
+3. **THREAD** - Themes (same teaching, progression of ideas)
+4. **PATTERN** - Structure (chiasms, sevens, repeated phrases)
+5. **ROOTS** - Word study (Hebrew/Greek roots, key word meaning)
+6. **WORLD** - Context (historical/cultural background)
 
 **CARD QUALITY**
 ✅ "Let There Be Light → I Am the Light" (John echoing Genesis)

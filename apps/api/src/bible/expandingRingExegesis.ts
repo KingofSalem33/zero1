@@ -282,10 +282,27 @@ export async function deduplicateVerses(
         const representative =
           (node1.similarity || 0) >= (node2.similarity || 0) ? node1 : node2;
         const parallel = representative === node1 ? node2 : node1;
+        const representativeKey = `${representative.book_abbrev}:${representative.chapter}:${representative.verse}`;
+        const parallelKey = `${parallel.book_abbrev}:${parallel.chapter}:${parallel.verse}`;
+
+        if (representative.id === parallel.id) {
+          continue;
+        }
+        if (representativeKey === parallelKey) {
+          continue;
+        }
 
         // Initialize parallelPassages array if needed
         if (!representative.parallelPassages) {
           representative.parallelPassages = [];
+        }
+        const existingParallelKeys = new Set(
+          representative.parallelPassages.map(
+            (entry) => `${entry.book_abbrev}:${entry.chapter}:${entry.verse}`,
+          ),
+        );
+        if (existingParallelKeys.has(parallelKey)) {
+          continue;
         }
 
         // Add parallel to representative's stack

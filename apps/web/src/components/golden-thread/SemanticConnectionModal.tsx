@@ -22,6 +22,7 @@ interface SemanticConnectionModalProps {
     | "GOLD"
     | "PURPLE"
     | "CYAN"
+    | "GENEALOGY"
     | "TYPOLOGY"
     | "FULFILLMENT"
     | "CONTRAST"
@@ -45,24 +46,26 @@ interface SemanticConnectionModalProps {
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
 const CONNECTION_LABELS = {
-  GOLD: "Lexical Connection",
-  PURPLE: "Theological Connection",
-  CYAN: "Prophetic Connection",
-  TYPOLOGY: "Typological Pattern",
-  FULFILLMENT: "Prophetic Fulfillment",
-  CONTRAST: "Theological Contrast",
-  PROGRESSION: "Doctrinal Progression",
-  PATTERN: "Structural Pattern",
+  GOLD: "Same Words",
+  PURPLE: "Same Teaching",
+  CYAN: "Prophecy Fulfilled",
+  GENEALOGY: "Lineage",
+  TYPOLOGY: "Similar Story",
+  FULFILLMENT: "Prophecy Fulfilled",
+  CONTRAST: "Opposite Ideas",
+  PROGRESSION: "Progression",
+  PATTERN: "Pattern",
 };
 
 const CONNECTION_COLORS = {
-  GOLD: "#F59E0B",
-  PURPLE: "#8B5CF6",
-  CYAN: "#06B6D4",
-  TYPOLOGY: "#F97316",
+  GOLD: "#D97706",
+  PURPLE: "#7C3AED",
+  CYAN: "#0891B2",
+  GENEALOGY: "#10B981",
+  TYPOLOGY: "#EA580C",
   FULFILLMENT: "#14B8A6",
-  CONTRAST: "#EF4444",
-  PROGRESSION: "#22C55E",
+  CONTRAST: "#DC2626",
+  PROGRESSION: "#16A34A",
   PATTERN: "#3B82F6",
 };
 
