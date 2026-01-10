@@ -92,10 +92,12 @@ router.post("/synopsis", async (req, res) => {
         connectionType as keyof typeof connectionDescriptions
       ] || "semantic connection";
 
+    type TopicContextEntry = { label: string; overlap: number | null };
+
     const rawTopicContext = Array.isArray(req.body.topicContext)
       ? req.body.topicContext
       : [];
-    const topicContext = rawTopicContext
+    const topicContext: TopicContextEntry[] = rawTopicContext
       .filter(
         (topic: unknown) =>
           topic && typeof topic === "object" && !Array.isArray(topic),
@@ -125,7 +127,7 @@ router.post("/synopsis", async (req, res) => {
       topicContext.length > 0
         ? `\nOther available topic lenses for this same connection (overlap with the current selection):\n${topicContext
             .map(
-              (topic) =>
+              (topic: TopicContextEntry) =>
                 `- ${topic.label}${topic.overlap !== null ? ` (${Math.round(topic.overlap * 100)}% overlap)` : ""}`,
             )
             .join(
