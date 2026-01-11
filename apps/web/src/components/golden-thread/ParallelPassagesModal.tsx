@@ -24,13 +24,19 @@ function getSimilarityStyle(similarity: number) {
       fontWeight: "font-normal" as const,
       opacity: "opacity-100" as const,
     };
-  } else {
-    return {
-      fontWeight: "font-normal" as const,
-      opacity: "opacity-70" as const,
-    };
   }
+
+  return {
+    fontWeight: "font-normal" as const,
+    opacity: "opacity-70" as const,
+  };
 }
+
+const normalizeToken = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, "");
+
+const makeVerseKey = (book: string, chapter: number, verse: number) =>
+  `${normalizeToken(book)}:${chapter}:${verse}`;
 
 export function ParallelPassagesModal({
   primaryVerse,
@@ -46,7 +52,7 @@ export function ParallelPassagesModal({
     if (!modalRef.current) return;
 
     const modalRect = modalRef.current.getBoundingClientRect();
-    const modalWidth = modalRect.width || 400;
+    const modalWidth = modalRect.width || 320;
 
     let newX = position.x;
     let newY = position.y;
@@ -89,10 +95,28 @@ export function ParallelPassagesModal({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
-  const primaryKey = `${primaryVerse.book_abbrev}:${primaryVerse.chapter}:${primaryVerse.verse}`;
+  const primaryBook = primaryVerse.book_name || primaryVerse.book_abbrev;
+  const primaryKey = makeVerseKey(
+    primaryBook,
+    primaryVerse.chapter,
+    primaryVerse.verse,
+  );
+  const primaryTokens = [primaryVerse.book_name, primaryVerse.book_abbrev]
+    .filter(Boolean)
+    .map((value) => normalizeToken(value as string));
   const seenParallelKeys = new Set<string>();
+  const isSameReference = (reference?: string) => {
+    if (!reference) return false;
+    const ref = normalizeToken(reference);
+    const verseToken = `${primaryVerse.chapter}:${primaryVerse.verse}`;
+    if (!ref.includes(verseToken)) return false;
+    return primaryTokens.some((token) => ref.includes(token));
+  };
   const parallels = (primaryVerse.parallelPassages || []).filter((parallel) => {
-    const key = `${parallel.book_abbrev}:${parallel.chapter}:${parallel.verse}`;
+    if (parallel.id === primaryVerse.id) return false;
+    if (isSameReference(parallel.reference)) return false;
+    const parallelBook = parallel.book_name || parallel.book_abbrev || "";
+    const key = makeVerseKey(parallelBook, parallel.chapter, parallel.verse);
     if (key === primaryKey) return false;
     if (seenParallelKeys.has(key)) return false;
     seenParallelKeys.add(key);
@@ -103,37 +127,37 @@ export function ParallelPassagesModal({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/20 z-40" />
+      <div className="fixed inset-0 bg-black/10 z-40" />
 
       {/* Modal */}
       <div
         ref={modalRef}
-        className="fixed z-50 bg-white dark:bg-neutral-900 rounded-lg shadow-2xl border border-neutral-200 dark:border-neutral-700 max-w-md w-full"
+        className="fixed z-50 w-[280px] sm:w-[320px] max-w-[90vw] rounded-lg border border-white/10 bg-neutral-900/95 shadow-xl backdrop-blur"
         style={{
           left: `${adjustedPosition.x}px`,
           top: `${adjustedPosition.y}px`,
-          maxHeight: "calc(100vh - 100px)",
+          maxHeight: "calc(100vh - 140px)",
           overflowY: "auto",
         }}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 border-b border-white/10 px-3 py-2 flex items-center justify-between bg-neutral-900/95">
           <div>
-            <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+            <div className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide">
               Parallel Accounts
             </div>
-            <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mt-0.5">
+            <div className="text-xs font-medium text-neutral-200 mt-0.5">
               {primaryVerse.book_name} {primaryVerse.chapter}:
               {primaryVerse.verse}
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+            className="text-neutral-500 hover:text-neutral-200 transition-colors"
             aria-label="Close"
           >
             <svg
-              className="w-5 h-5"
+              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -149,20 +173,18 @@ export function ParallelPassagesModal({
         </div>
 
         {/* Primary Verse */}
-        <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-800">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
-              Primary
-            </span>
+        <div className="px-3 py-2 border-b border-white/10">
+          <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">
+            Primary
           </div>
-          <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
+          <p className="text-[11px] text-neutral-300 leading-relaxed line-clamp-2">
             {primaryVerse.text}
           </p>
         </div>
 
         {/* Parallel Passages List */}
-        <div className="p-4 space-y-2">
-          <div className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-3">
+        <div className="px-3 py-2 space-y-2">
+          <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide mb-2">
             Also Found In
           </div>
           {parallels.map((parallel) => {
@@ -171,20 +193,19 @@ export function ParallelPassagesModal({
               <button
                 key={parallel.id}
                 onClick={() => onNavigateToPassage?.(parallel)}
-                className={`w-full text-left p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${style.opacity}`}
+                className={`w-full text-left px-2.5 py-2 rounded-md border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors ${style.opacity}`}
               >
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1">
                   <span
-                    className={`text-sm ${style.fontWeight} text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5`}
+                    className={`text-[12px] ${style.fontWeight} text-neutral-100`}
                   >
-                    <span className="text-base">📖</span>
                     {parallel.reference}
                   </span>
-                  <span className="font-mono text-xs text-neutral-400 dark:text-neutral-500">
+                  <span className="font-mono text-[10px] text-neutral-500">
                     {Math.round(parallel.similarity * 100)}%
                   </span>
                 </div>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 leading-relaxed">
+                <p className="text-[11px] text-neutral-400 line-clamp-1 leading-relaxed">
                   {parallel.text}
                 </p>
               </button>
@@ -193,8 +214,8 @@ export function ParallelPassagesModal({
         </div>
 
         {/* Footer hint */}
-        <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border-t border-neutral-200 dark:border-neutral-700 text-xs text-neutral-500 dark:text-neutral-400">
-          Click a passage to view in Bible reader • ESC to close
+        <div className="px-3 py-2 border-t border-white/10 text-[10px] text-neutral-500">
+          Click a passage to open. ESC to close.
         </div>
       </div>
     </>

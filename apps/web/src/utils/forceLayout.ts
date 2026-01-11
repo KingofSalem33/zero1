@@ -62,23 +62,23 @@ type EdgeData = {
  */
 const FORCE_CONFIG = {
   // Center force: Pull all nodes toward anchor (gravity)
-  CENTER_STRENGTH: 0.25, // ⬇️ Reduced from 0.3 - weaker gravity = more spread
+  CENTER_STRENGTH: 0.18, // ⬇️ Reduced from 0.3 - weaker gravity = more spread
 
   // Link force: How strongly connected nodes pull together
-  LINK_STRENGTH: 1.2, // ⬇️ Reduced from 1.5 - less pull = more space between clusters
+  LINK_STRENGTH: 1.0, // ⬇️ Reduced from 1.5 - less pull = more space between clusters
 
   // Charge force: Repulsion strength
-  ANCHOR_REPULSION: -4000, // Kept at -4000 - strong "sun" effect is good
-  BASE_REPULSION: -600, // ⬆️ Increased from -400 - MORE repulsion = more space between nodes
+  ANCHOR_REPULSION: -5200, // Kept at -4000 - strong "sun" effect is good
+  BASE_REPULSION: -950, // ⬆️ Increased from -400 - MORE repulsion = more space between nodes
 
   // Radial force: Organizes nodes into depth-based rings
-  RADIAL_STRENGTH: 0.5, // ⬇️ Reduced from 0.6 - softer depth rings
-  RADIAL_BASE_RADIUS: 180, // ⬆️ Increased from 140 - spread depth rings farther apart
-  RADIAL_OFFSET: 80, // ⬆️ Increased from 50 - push first ring farther from center
+  RADIAL_STRENGTH: 0.55, // ⬇️ Reduced from 0.6 - softer depth rings
+  RADIAL_BASE_RADIUS: 240, // ⬆️ Increased from 140 - spread depth rings farther apart
+  RADIAL_OFFSET: 120, // ⬆️ Increased from 50 - push first ring farther from center
 
   // Collision: Prevent node overlap
   ANCHOR_RADIUS: 120, // Kept at 120 - good anchor prominence
-  NODE_BASE_RADIUS: 55, // ⬆️ Increased from 45 - more personal space per node
+  NODE_BASE_RADIUS: 70, // ⬆️ Increased from 45 - more personal space per node
 
   // Simulation: How many iterations to run
   SIMULATION_TICKS: 300, // 300 ticks = stable layout
@@ -92,16 +92,16 @@ const clamp = (value: number, min: number, max: number): number =>
  * Stronger connections = shorter distance = nodes pulled closer
  */
 const EDGE_DISTANCE_MAP: Record<string, number> = {
-  TYPOLOGY: 110,
-  FULFILLMENT: 100,
-  CONTRAST: 150,
-  PROGRESSION: 120,
-  PATTERN: 85,
-  GOLD: 90, // ⬆️ Lexical connections - some breathing room while staying connected
-  PURPLE: 130, // ⬆️ Theological connections - moderate distance
-  CYAN: 110, // ⬆️ Prophetic connections - moderate distance
-  GENEALOGY: 125, // ⬆️ Lineage connections - moderate distance
-  GREY: 180, // ⬆️ Weak/synthetic connections - push farther for contrast
+  TYPOLOGY: 140,
+  FULFILLMENT: 130,
+  CONTRAST: 180,
+  PROGRESSION: 150,
+  PATTERN: 120,
+  GOLD: 120, // ⬆️ Lexical connections - some breathing room while staying connected
+  PURPLE: 160, // ⬆️ Theological connections - moderate distance
+  CYAN: 140, // ⬆️ Prophetic connections - moderate distance
+  GENEALOGY: 155, // ⬆️ Lineage connections - moderate distance
+  GREY: 210, // ⬆️ Weak/synthetic connections - push farther for contrast
 };
 
 /**
@@ -115,7 +115,7 @@ function getLinkDistance(edge: Edge): number {
   const weight = typeof edgeData?.weight === "number" ? edgeData.weight : 0.7;
   const structuralFactor = edgeData?.isStructural ? 0.7 : 1;
   const weighted = base * (1.15 - weight * 0.5) * structuralFactor;
-  return clamp(weighted, 60, 220);
+  return clamp(weighted, 80, 260);
 }
 
 function getLinkStrength(edge: ForceLink): number {

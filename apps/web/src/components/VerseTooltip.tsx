@@ -8,10 +8,15 @@ interface VerseTooltipProps {
   position: { top: number; left: number };
   onClose: () => void;
   onTrace?: (reference: string) => void;
+  accentColor?: string;
+  maxWidthClassName?: string;
 }
 
 const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
-  ({ reference, position, onClose, onTrace }, ref) => {
+  (
+    { reference, position, onClose, onTrace, accentColor, maxWidthClassName },
+    ref,
+  ) => {
     const [verseText, setVerseText] = useState<string>("");
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<"synopsis" | "root">("synopsis");
@@ -31,6 +36,18 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
     const tooltipRef = useRef<HTMLDivElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const isStreamingRef = useRef(false);
+    const accent = accentColor || "#D4AF37";
+    const tooltipMaxWidth = maxWidthClassName || "max-w-sm";
+
+    const toRgba = (hex: string, alpha: number) => {
+      const normalized = hex.replace("#", "");
+      if (normalized.length !== 6) return `rgba(212,175,55,${alpha})`;
+      const r = parseInt(normalized.slice(0, 2), 16);
+      const g = parseInt(normalized.slice(2, 4), 16);
+      const b = parseInt(normalized.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+    const accentMuted = toRgba(accent, 0.2);
 
     useEffect(() => {
       // Fetch verse text from API
@@ -251,7 +268,9 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
         }}
       >
         {/* Compact card matching highlight tooltip */}
-        <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+        <div
+          className={`relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden ${tooltipMaxWidth}`}
+        >
           {/* Close button */}
           <button
             onClick={onClose}
@@ -279,16 +298,28 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
               <>
                 {/* Synopsis View */}
                 {/* Reference header */}
-                <div className="font-bold text-[#D4AF37] text-xs mb-2 uppercase tracking-wide">
+                <div
+                  className="font-bold text-xs mb-2 uppercase tracking-wide"
+                  style={{ color: accent }}
+                >
                   {reference}
                 </div>
 
                 {/* Verse text */}
                 {isLoading ? (
                   <div className="flex items-center gap-2 py-1.5">
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
+                    <div
+                      className="w-1 h-1 rounded-full animate-pulse"
+                      style={{ backgroundColor: accent }}
+                    />
+                    <div
+                      className="w-1 h-1 rounded-full animate-pulse [animation-delay:150ms]"
+                      style={{ backgroundColor: accent }}
+                    />
+                    <div
+                      className="w-1 h-1 rounded-full animate-pulse [animation-delay:300ms]"
+                      style={{ backgroundColor: accent }}
+                    />
                     <span className="text-xs text-neutral-400 ml-1 font-medium">
                       Loading
                     </span>
@@ -307,7 +338,11 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                             onTrace(reference);
                             onClose();
                           }}
-                          className="group px-3 py-1.5 bg-[#D4AF37]/20 hover:bg-[#D4AF37]/30 text-[#D4AF37] hover:text-[#E5C158] text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
+                          className="group px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 hover:brightness-110"
+                          style={{
+                            backgroundColor: accentMuted,
+                            color: accent,
+                          }}
                         >
                           <span>Trace</span>
                           <svg
@@ -377,9 +412,18 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
 
                   {isLoadingRoot ? (
                     <div className="flex items-center gap-2 py-1.5">
-                      <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
-                      <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
-                      <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
+                      <div
+                        className="w-1 h-1 rounded-full animate-pulse"
+                        style={{ backgroundColor: accent }}
+                      />
+                      <div
+                        className="w-1 h-1 rounded-full animate-pulse [animation-delay:150ms]"
+                        style={{ backgroundColor: accent }}
+                      />
+                      <div
+                        className="w-1 h-1 rounded-full animate-pulse [animation-delay:300ms]"
+                        style={{ backgroundColor: accent }}
+                      />
                       <span className="text-xs text-neutral-400 ml-1 font-medium">
                         Translating from original{" "}
                         {rootLanguage || "Hebrew/Greek"}...
@@ -408,7 +452,10 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                             <div className="space-y-2 py-2">
                               {/* Word header with Strong's number */}
                               <div className="text-[13px]">
-                                <span className="font-semibold text-[#D4AF37]">
+                                <span
+                                  className="font-semibold"
+                                  style={{ color: accent }}
+                                >
                                   {rootInsights[currentRootCardIndex].word}
                                 </span>
                                 {rootInsights[currentRootCardIndex]
@@ -466,9 +513,14 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                                     onClick={() => setCurrentRootCardIndex(idx)}
                                     className={`h-1.5 rounded-full transition-all ${
                                       idx === currentRootCardIndex
-                                        ? "w-4 bg-[#D4AF37]"
+                                        ? "w-4"
                                         : "w-1.5 bg-neutral-600 hover:bg-neutral-500"
                                     }`}
+                                    style={
+                                      idx === currentRootCardIndex
+                                        ? { backgroundColor: accent }
+                                        : undefined
+                                    }
                                     aria-label={`View word ${idx + 1}`}
                                   />
                                 ))}

@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useRef,
   useLayoutEffect,
+  useMemo,
 } from "react";
 import {
   ReactFlow,
@@ -32,35 +33,35 @@ const EDGE_STYLES = {
   GREY: {
     color: "#6B7280", // Neutral grey
     glowColor: "#9CA3AF",
-    width: 1.5,
+    width: 1,
     label: "Reference",
     description: "Cross-references",
   },
   GOLD: {
     color: "#D97706", // Richer, warmer gold - same roots, shared DNA
     glowColor: "#FBBF24",
-    width: 3,
+    width: 2,
     label: "Same Words",
     description: "Key words or phrases appear in both verses",
   },
   PURPLE: {
     color: "#7C3AED", // Deeper, more royal purple - theological echo across time
     glowColor: "#A78BFA",
-    width: 3,
+    width: 2,
     label: "Same Teaching",
     description: "Verses share the same theological truth",
   },
   CYAN: {
     color: "#0891B2", // Sharper, more electric cyan - prophetic arrow (past -> future)
     glowColor: "#22D3EE",
-    width: 3,
+    width: 2,
     label: "Prophecy Fulfilled",
     description: "Old Testament prophecy -> New Testament event",
   },
   GENEALOGY: {
     color: "#10B981",
     glowColor: "#34D399",
-    width: 3,
+    width: 2,
     label: "Lineage",
     description: "Family line connections across Scripture",
   },
@@ -68,35 +69,35 @@ const EDGE_STYLES = {
   TYPOLOGY: {
     color: "#EA580C", // Earthy orange - shadow foreshadowing substance
     glowColor: "#F59E0B", // Divine gold glow
-    width: 3,
+    width: 2,
     label: "Similar Story",
     description: "Events or people mirror each other",
   },
   FULFILLMENT: {
     color: "#14B8A6", // Teal
     glowColor: "#5EEAD4",
-    width: 3,
+    width: 2,
     label: "Prophecy Fulfilled",
     description: "Prophecy fulfilled here (inferred)",
   },
   CONTRAST: {
     color: "#DC2626", // Softer but still bold red - spiritual opposition
     glowColor: "#F87171",
-    width: 3,
+    width: 2,
     label: "Opposite Ideas",
     description: "Verses show contrasting teachings",
   },
   PROGRESSION: {
     color: "#16A34A", // More verdant, life-giving green - covenant unfolding
     glowColor: "#4ADE80",
-    width: 3,
+    width: 2,
     label: "Progression",
     description: "Later verse builds on the earlier idea",
   },
   PATTERN: {
     color: "#3B82F6", // Blue
     glowColor: "#93C5FD",
-    width: 3,
+    width: 2,
     label: "Pattern",
     description: "Same literary or structural pattern",
   },
@@ -104,108 +105,9 @@ const EDGE_STYLES = {
 
 type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
 
-// Testament boundaries for line pattern system
-const OLD_TESTAMENT_BOOKS = [
-  "Gen",
-  "Exo",
-  "Lev",
-  "Num",
-  "Deu",
-  "Jos",
-  "Jdg",
-  "Rth",
-  "1Sa",
-  "2Sa",
-  "1Ki",
-  "2Ki",
-  "1Ch",
-  "2Ch",
-  "Ezr",
-  "Neh",
-  "Est",
-  "Job",
-  "Psa",
-  "Pro",
-  "Ecc",
-  "Sng",
-  "Isa",
-  "Jer",
-  "Lam",
-  "Eze",
-  "Dan",
-  "Hos",
-  "Joe",
-  "Amo",
-  "Oba",
-  "Jon",
-  "Mic",
-  "Nah",
-  "Hab",
-  "Zep",
-  "Hag",
-  "Zec",
-  "Mal",
-];
-
-const NEW_TESTAMENT_BOOKS = [
-  "Mat",
-  "Mar",
-  "Luk",
-  "Jhn",
-  "Act",
-  "Rom",
-  "1Co",
-  "2Co",
-  "Gal",
-  "Eph",
-  "Phl",
-  "Col",
-  "1Th",
-  "2Th",
-  "1Ti",
-  "2Ti",
-  "Tit",
-  "Phm",
-  "Heb",
-  "Jas",
-  "1Pe",
-  "2Pe",
-  "1Jo",
-  "2Jo",
-  "3Jo",
-  "Jde",
-  "Rev",
-];
-
 const formatBookLabel = (bookAbbrev: string, bookName?: string): string => {
   if (bookName) return bookName;
   return bookAbbrev.toUpperCase();
-};
-
-// Helper: Check if two books are in the same testament
-const isSameTestament = (bookAbbrev1: string, bookAbbrev2: string): boolean => {
-  const book1InOT = OLD_TESTAMENT_BOOKS.includes(bookAbbrev1);
-  const book2InOT = OLD_TESTAMENT_BOOKS.includes(bookAbbrev2);
-  const book1InNT = NEW_TESTAMENT_BOOKS.includes(bookAbbrev1);
-  const book2InNT = NEW_TESTAMENT_BOOKS.includes(bookAbbrev2);
-
-  return (book1InOT && book2InOT) || (book1InNT && book2InNT);
-};
-
-// Helper: Get stroke dash pattern based on connection type
-const getStrokeDashArray = (
-  fromBookAbbrev: string,
-  toBookAbbrev: string,
-  isLLMDiscovered: boolean,
-): string => {
-  // Dotted: LLM-discovered patterns
-  if (isLLMDiscovered) return "2,3";
-
-  // Dashed: Cross-testament
-  if (!isSameTestament(fromBookAbbrev, toBookAbbrev)) return "5,5";
-
-  // Solid: Same-testament
-  return "0";
 };
 
 // Map edge types to visual categories
@@ -239,7 +141,6 @@ interface EdgeData {
   confidence?: number;
   isLLMDiscovered?: boolean;
   isStructural?: boolean;
-  strokeDashArray?: string; // Line pattern: "0" (solid), "5,5" (dashed), "2,3" (dotted)
   isSynthetic?: boolean; // For synthetic hierarchy edges
   baseWidth?: number; // Calculated width based on similarity strength
   weight?: number;
@@ -342,7 +243,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     visible: boolean;
     expanded: boolean;
     position: { x: number; y: number };
-  }>({ visible: false, expanded: false, position: { x: 0, y: 0 } });
+    count: number;
+  }>({ visible: false, expanded: false, position: { x: 0, y: 0 }, count: 0 });
 
   // Focus Mode state
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
@@ -376,6 +278,43 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setHoveredBranch(null);
     setSelectedBranch(null);
   }, [bundle?.rootId]);
+
+  const connectionCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    edges.forEach((edge) => {
+      const edgeData = edge.data as EdgeData & { visualStyleType?: string };
+      const visualStyleType =
+        edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+      if (visualStyleType === "GREY") return;
+      const sourceId = Number(edge.source);
+      const targetId = Number(edge.target);
+      if (Number.isFinite(sourceId)) {
+        counts.set(sourceId, (counts.get(sourceId) ?? 0) + 1);
+      }
+      if (Number.isFinite(targetId)) {
+        counts.set(targetId, (counts.get(targetId) ?? 0) + 1);
+      }
+    });
+    return counts;
+  }, [edges]);
+
+  useEffect(() => {
+    if (!bundle || connectionCounts.size === 0) return;
+    setNodes((nds) =>
+      nds.map((node) => {
+        const nodeId = Number(node.id);
+        const count = connectionCounts.get(nodeId) ?? 0;
+        if (node.data.connectionCount === count) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            connectionCount: count,
+          },
+        };
+      }),
+    );
+  }, [bundle, connectionCounts]);
 
   useEffect(() => {
     autoCenteredRef.current = false;
@@ -590,16 +529,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const llmExplanation = edgeData?.explanation;
       const llmConfidence = edgeData?.confidence;
 
-      const connectedVerseIds = Array.from(
+      const highlightVerseIds = Array.from(
         new Set([baseId, ...group.verseIds]),
       );
+      const connectedVerseIds =
+        bundle.rootId === baseId ? group.verseIds : highlightVerseIds;
 
       const connectedVersesPreview = buildPreviewVerses(connectedVerseIds);
 
       if (group.edgeIds.length > 0 || group.verseIds.length > 0) {
         setSelectedBranch({
           edgeIds: new Set(group.edgeIds),
-          nodeIds: new Set(connectedVerseIds),
+          nodeIds: new Set(highlightVerseIds),
           styleType: group.styleType,
           edgeType: "DEEPER",
           pathPreview: "Connection",
@@ -967,6 +908,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           semanticConnectionType,
           isDimmed: false,
           branchHighlight: undefined,
+          discoveryPulseKey: undefined,
+          connectionCount: 0,
         },
         position: { x: 0, y: 0 },
       };
@@ -1031,32 +974,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         });
       });
 
-      const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-      const placeholderEdges: Edge[] = bundle.edges
-        .filter(
-          (edge) =>
-            visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to),
-        )
-        .slice(0, 160)
-        .map((edge) => ({
-          id: `placeholder-${edge.from}-${edge.to}`,
-          source: edge.from.toString(),
-          target: edge.to.toString(),
-          type: "smoothstep",
-          data: {
-            styleType: "GREY",
-            visualStyleType: "GREY",
-            isSynthetic: true,
-            strokeDashArray: "0",
-            baseWidth: 1,
-          },
-          style: {
-            stroke: "rgba(148, 163, 184, 0.35)",
-            strokeWidth: 1,
-          },
-        }));
-
-      return { nodes: placeholderNodes, edges: placeholderEdges };
+      return { nodes: placeholderNodes, edges: [] };
     },
     [
       applyNodeTransition,
@@ -1106,6 +1024,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
     // Create edges (only between visible nodes) with 3-color system
     const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+    const layoutEdges: Edge[] = [];
     const reactFlowEdges: Edge[] = [];
     const edgeSet = new Set<string>(); // Track edges to avoid duplicates
 
@@ -1140,28 +1059,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const isLLMDiscovered = edgeMetadata.source === "llm";
         const isStructural = edgeMetadata.source === "structure";
 
-        // Get source and target verses for line pattern
-        const fromVerse = visibleNodes.find((n) => n.id === edge.from);
-        const toVerse = visibleNodes.find((n) => n.id === edge.to);
-        const strokeDashArray =
-          fromVerse && toVerse
-            ? getStrokeDashArray(
-                fromVerse.book_abbrev,
-                toVerse.book_abbrev,
-                isLLMDiscovered,
-              )
-            : "0"; // Default to solid if verses not found
-
         // Calculate width based on similarity strength
         // Similarity range: 0-1, Width multiplier: 0.7-1.3
         const similarity = edgeMetadata.similarity || edge.weight || 0.8; // Default to 0.8
         const widthMultiplier = 0.7 + similarity * 0.6; // Maps 0→0.7, 1→1.3
 
         // 🌟 GOLDEN THREAD: Anchor rays are thicker (aggressive contrast)
-        const baseWidth = isAnchorRay ? 4 : edgeStyle.width * widthMultiplier;
+        const baseWidth = isAnchorRay ? 2.5 : edgeStyle.width * widthMultiplier;
         const finalWidth = isAnchorRay ? baseWidth : baseWidth;
 
-        reactFlowEdges.push({
+        const edgePayload: Edge = {
           id: `e${fromId}-${toId}`,
           source: fromId,
           target: toId,
@@ -1178,7 +1085,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             explanation: edgeMetadata.explanation,
             confidence: edgeMetadata.confidence,
             isAnchorRay, // 🌟 Flag for hover interaction
-            strokeDashArray, // Store final pattern for animation restoration
             baseWidth: finalWidth, // Store calculated width for hover effects
             weight: edge.weight,
             selectionScore: edgeMetadata.selectionScore,
@@ -1188,13 +1094,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             strokeWidth: finalWidth, // 🌟 Thicker for anchor rays
             strokeLinecap: "round",
             opacity: 0, // Start invisible for entrance animation
-            strokeDasharray: "10", // Temporary for entrance animation
-            strokeDashoffset: "10",
             // 🌟 GOLDEN THREAD: Stronger glow for anchor rays
             filter: isAnchorRay
-              ? `drop-shadow(0 0 6px ${edgeStyle.glowColor}80)` // Stronger glow for anchor rays
+              ? `drop-shadow(0 0 3px ${edgeStyle.glowColor}35)` // Stronger glow for anchor rays
               : visualStyleType !== "GREY"
-                ? `drop-shadow(0 0 3px ${edgeStyle.glowColor}40)` // 40 = 25% opacity in hex
+                ? `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)` // 40 = 25% opacity in hex
                 : "none",
             transition:
               "opacity 150ms ease-in-out, stroke-width 150ms ease-in-out, filter 150ms ease-in-out",
@@ -1206,7 +1110,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             : visualStyleType !== "GREY"
               ? 20
               : 10, // Grey secondary edges have smallest interaction area
-        });
+        };
+
+        layoutEdges.push(edgePayload);
+        if (visualStyleType !== "GREY") {
+          reactFlowEdges.push(edgePayload);
+        }
 
         edgeSet.add(edgeKey);
       });
@@ -1226,17 +1135,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           // Synthetic edges use GREY color to avoid implying lineage
           const edgeStyle = EDGE_STYLES["GREY"];
 
-          // Get source and target verses for line pattern
-          const parentVerse = visibleNodes.find((n) => n.id === node.parentId);
-          const strokeDashArray = parentVerse
-            ? getStrokeDashArray(
-                parentVerse.book_abbrev,
-                node.book_abbrev,
-                false, // Not LLM-discovered
-              )
-            : "5,5"; // Default to dashed if parent not found
-
-          reactFlowEdges.push({
+          const syntheticEdge: Edge = {
             id: `e${fromId}-${toId}-synthetic`,
             source: fromId,
             target: toId,
@@ -1247,7 +1146,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               isSynthetic: true,
               isLLMDiscovered: false,
               isStructural: false,
-              strokeDashArray, // Store final pattern for animation restoration
               baseWidth: edgeStyle.width, // Store base width for hover effects
               weight: 0.4,
             },
@@ -1256,13 +1154,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               strokeWidth: edgeStyle.width,
               strokeLinecap: "round",
               opacity: 0, // Start invisible for entrance animation
-              strokeDasharray: "10", // Temporary for entrance animation
-              strokeDashoffset: "10",
               // Subtle glow for synthetic edges
-              filter: `drop-shadow(0 0 3px ${edgeStyle.glowColor}40)`, // 40 = 25% opacity
+              filter: `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`, // 40 = 25% opacity
               transition: "all 150ms ease-in-out",
             },
-          });
+          };
+
+          layoutEdges.push(syntheticEdge);
 
           edgeSet.add(edgeKey);
         }
@@ -1276,7 +1174,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       const positionMap = calculateForceLayout(
         reactFlowNodes,
-        reactFlowEdges,
+        layoutEdges,
         bundle.rootId,
       );
 
@@ -1521,40 +1419,57 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setEdgesAnimated(false);
 
     let edgeTimer: number | null = null;
+    let layoutTimer: number | null = null;
+    let layoutFrame: number | null = null;
+    const layoutDelay = initialExpansionDone ? 0 : 140;
+
     if (!autoCenteredRef.current) {
       window.requestAnimationFrame(() => {
         centerMapView(0);
       });
     }
 
-    const frame = window.requestAnimationFrame(() => {
-      const { nodes: layoutedNodes, edges: layoutedEdges } =
-        getLayoutedElements(bundle, layoutExpandedNodes, handleExpandNode);
-      const transitionedNodes = layoutedNodes.map(applyNodeTransition);
-      setNodes(transitionedNodes);
-      setEdges(layoutedEdges);
+    const runLayout = () => {
+      layoutFrame = window.requestAnimationFrame(() => {
+        const { nodes: layoutedNodes, edges: layoutedEdges } =
+          getLayoutedElements(bundle, layoutExpandedNodes, handleExpandNode);
+        const transitionedNodes = layoutedNodes.map(applyNodeTransition);
+        setNodes(transitionedNodes);
+        setEdges(layoutedEdges);
 
-      // Reset edge animation state and trigger after node entrance
-      const maxNodeDepth = Math.max(
-        ...layoutedNodes.map((n) => (n.data.verse.depth as number) || 0),
-        0,
-      );
-      const nodeEntranceTime = Math.min(maxNodeDepth * 80 + 400, 1200); // Wait for nodes to enter
+        // Reset edge animation state and trigger after node entrance
+        const maxNodeDepth = Math.max(
+          ...layoutedNodes.map((n) => (n.data.verse.depth as number) || 0),
+          0,
+        );
+        const nodeEntranceTime = Math.min(maxNodeDepth * 80 + 400, 1200); // Wait for nodes to enter
 
-      edgeTimer = window.setTimeout(() => {
-        setEdgesAnimated(true);
-      }, nodeEntranceTime);
+        edgeTimer = window.setTimeout(() => {
+          setEdgesAnimated(true);
+        }, nodeEntranceTime);
 
-      if (!autoCenteredRef.current) {
-        window.requestAnimationFrame(() => {
-          centerMapView(520);
-          autoCenteredRef.current = true;
-        });
-      }
-    });
+        if (!autoCenteredRef.current) {
+          window.requestAnimationFrame(() => {
+            centerMapView(520);
+            autoCenteredRef.current = true;
+          });
+        }
+      });
+    };
+
+    if (layoutDelay > 0) {
+      layoutTimer = window.setTimeout(runLayout, layoutDelay);
+    } else {
+      runLayout();
+    }
 
     return () => {
-      window.cancelAnimationFrame(frame);
+      if (layoutTimer) {
+        window.clearTimeout(layoutTimer);
+      }
+      if (layoutFrame) {
+        window.cancelAnimationFrame(layoutFrame);
+      }
       if (edgeTimer) {
         window.clearTimeout(edgeTimer);
       }
@@ -1658,6 +1573,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         if (data.error) {
           console.warn("[LLM Discovery] API error:", data.error, data.message);
           console.warn("[LLM Discovery] Rate limited - try again later");
+          setDiscovering(false);
           return;
         }
 
@@ -1674,6 +1590,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             progress: 100,
             message: "Discovery complete",
           });
+          setTimeout(() => {
+            setDiscovering(false);
+          }, 2000);
           return;
         }
 
@@ -1704,16 +1623,31 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         setDiscoveryHighlightIndex(0);
 
         // Add discovered edges to the map
+        const edgeFinalStyles = new Map<
+          string,
+          { opacity: number; filter: string }
+        >();
+        const pulseNodeIds = new Set<number>();
         const newEdges = (connections as DiscoveredConnection[]).map((conn) => {
           const styleType =
             TYPE_TO_STYLE_MAP[conn.type] || TYPE_TO_STYLE_MAP.DEEPER;
           const edgeStyle = EDGE_STYLES[styleType];
 
-          // LLM-discovered edges always use dotted pattern
-          const strokeDashArray = "2,3"; // Dotted for LLM-discovered
+          const finalOpacity = 0.6;
+          const finalFilter = `drop-shadow(0 0 3px ${edgeStyle.glowColor}35)`;
+
+          const edgeId = `llm-${conn.type}-${conn.from}-${conn.to}`;
+
+          edgeFinalStyles.set(edgeId, {
+            opacity: finalOpacity,
+            filter: finalFilter,
+          });
+
+          pulseNodeIds.add(conn.from);
+          pulseNodeIds.add(conn.to);
 
           return {
-            id: `llm-${conn.type}-${conn.from}-${conn.to}`,
+            id: edgeId,
             source: conn.from.toString(),
             target: conn.to.toString(),
             type: "smoothstep",
@@ -1724,19 +1658,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               confidence: conn.confidence,
               isLLMDiscovered: true,
               isStructural: false,
-              strokeDashArray, // Store pattern for consistency
               baseWidth: edgeStyle.width, // Store base width for hover effects
               weight: conn.confidence,
             },
             style: {
               stroke: `url(#edge-gradient-${styleType})`, // Use directional gradient
               strokeWidth: edgeStyle.width,
-              strokeDasharray: strokeDashArray, // Dotted for LLM-discovered
-              opacity: 0.7,
-              // Subtle glow for LLM-discovered edges
-              filter: `drop-shadow(0 0 3px ${edgeStyle.glowColor}40)`, // 40 = 25% opacity
+              strokeLinecap: "round",
+              opacity: 0,
+              filter: `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`, // Start subtle
+              transition: "opacity 450ms ease, filter 450ms ease",
             },
-            animated: true,
+            animated: false,
           };
         });
 
@@ -1745,6 +1678,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         );
 
         // Deduplicate edges by ID when adding
+        let appliedNewEdgeIds: string[] = [];
         setEdges((prev) => {
           const existingIds = new Set(prev.map((e) => e.id));
           const uniqueNewEdges = newEdges.filter((e) => !existingIds.has(e.id));
@@ -1757,8 +1691,44 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           console.log(
             `[LLM Discovery] Adding ${uniqueNewEdges.length} unique edges (${newEdges.length - uniqueNewEdges.length} duplicates filtered)`,
           );
+          appliedNewEdgeIds = uniqueNewEdges.map((edge) => edge.id);
           return [...prev, ...uniqueNewEdges];
         });
+
+        if (appliedNewEdgeIds.length > 0) {
+          const pulseKey = Date.now();
+          setNodes((nds) =>
+            nds.map((node) => {
+              const nodeId = Number(node.id);
+              if (!pulseNodeIds.has(nodeId)) return node;
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  discoveryPulseKey: pulseKey + nodeId,
+                },
+              };
+            }),
+          );
+
+          window.setTimeout(() => {
+            setEdges((eds) =>
+              eds.map((edge) => {
+                if (!appliedNewEdgeIds.includes(edge.id)) return edge;
+                const finalStyle = edgeFinalStyles.get(edge.id);
+                if (!finalStyle) return edge;
+                return {
+                  ...edge,
+                  style: {
+                    ...edge.style,
+                    opacity: finalStyle.opacity,
+                    filter: finalStyle.filter,
+                  },
+                };
+              }),
+            );
+          }, 80);
+        }
 
         setDiscoveryProgress({
           phase: "complete",
@@ -1769,7 +1739,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         // Hide progress bar after a brief moment
         setTimeout(() => {
           setDiscovering(false);
-        }, 1500);
+        }, 2000);
       } catch (error) {
         console.error("[LLM Discovery] Error:", error);
         // Silent fail - user still gets algorithmic connections
@@ -1822,21 +1792,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
         const isSynthetic = edgeData?.isSynthetic;
         const finalOpacity =
-          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
-
-        // Restore the proper line pattern (solid, dashed, or dotted)
-        const storedPattern = edgeData?.strokeDashArray;
-        const finalStrokeDasharray = storedPattern || "0"; // Default to solid
+          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.2 : 0.45;
 
         return {
           ...edge,
           style: {
             ...edge.style,
             opacity: finalOpacity,
-            strokeDasharray: finalStrokeDasharray, // Restore stored pattern
-            strokeDashoffset: "0",
-            transition:
-              "stroke-dashoffset 600ms cubic-bezier(0.4, 0, 0.2, 1), opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+            transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
             transitionDelay: `${idx * 50}ms`, // Stagger each edge by 50ms
           },
         };
@@ -1870,12 +1833,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           const baseWidth = edgeData?.baseWidth || edgeStyle.width;
           const isSynthetic = edgeData?.isSynthetic;
           const defaultOpacity =
-            visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
+            visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.2 : 0.45;
 
           // Restore subtle glow for colored edges
           const baseFilter =
             visualStyleType !== "GREY"
-              ? `drop-shadow(0 0 3px ${edgeStyle.glowColor}40)`
+              ? `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`
               : "none";
 
           return {
@@ -1937,10 +1900,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           ...edge,
           style: {
             ...edge.style,
-            opacity: isInBranch ? 1 : 0.3,
+            opacity: isInBranch ? 1 : 0.2,
             filter:
               isInBranch && isColoredEdge
-                ? `drop-shadow(0 0 8px ${edgeStyle.glowColor})`
+                ? `drop-shadow(0 0 5px ${edgeStyle.glowColor})`
                 : "none",
             strokeWidth: isInBranch ? baseWidth + 1 : baseWidth,
           },
@@ -1977,8 +1940,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             stroke: `url(#edge-gradient-${visualStyleType})`,
             strokeWidth: isHovered ? baseWidth + 1 : baseWidth,
             filter: isHovered
-              ? `drop-shadow(0 0 8px ${edgeStyle.glowColor}90)`
-              : `drop-shadow(0 0 6px ${edgeStyle.glowColor}60)`,
+              ? `drop-shadow(0 0 5px ${edgeStyle.glowColor}45)`
+              : `drop-shadow(0 0 3px ${edgeStyle.glowColor}30)`,
           },
         };
       }),
@@ -2100,7 +2063,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
         const isSynthetic = edgeData?.isSynthetic;
         const defaultOpacity =
-          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.4 : 0.7;
+          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.2 : 0.45;
 
         return {
           ...edge,
@@ -2143,6 +2106,40 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   }, []);
 
   // Edge hover handlers
+  const getBranchPreviewCount = useCallback(
+    (edge: Edge): number => {
+      const edgeData = edge.data as EdgeData & { visualStyleType?: string };
+      const styleType =
+        edgeData?.styleType || edgeData?.visualStyleType || "GREY";
+      if (styleType === "GREY") return 0;
+
+      const baseId = Number(edge.source);
+      if (!Number.isFinite(baseId)) return 0;
+
+      const connected = new Set<number>();
+      edges.forEach((candidate) => {
+        const candidateData = candidate.data as EdgeData & {
+          visualStyleType?: string;
+        };
+        const candidateStyle =
+          candidateData?.styleType || candidateData?.visualStyleType || "GREY";
+        if (candidateStyle !== styleType) return;
+
+        const sourceId = Number(candidate.source);
+        const targetId = Number(candidate.target);
+        if (sourceId === baseId && Number.isFinite(targetId)) {
+          connected.add(targetId);
+        } else if (targetId === baseId && Number.isFinite(sourceId)) {
+          connected.add(sourceId);
+        }
+      });
+
+      const isAnchorBase = bundle?.rootId === baseId;
+      return isAnchorBase ? connected.size : connected.size + 1;
+    },
+    [bundle?.rootId, edges],
+  );
+
   // Handle edge click for colored branches
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
@@ -2208,6 +2205,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const handleEdgeMouseEnter = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       const isFastMoving = checkMouseVelocity(event.clientX, event.clientY);
+      const previewCount = getBranchPreviewCount(edge);
 
       // 🌟 GOLDEN THREAD: Boost anchor ray glow on hover
       const edgeData = edge.data as {
@@ -2239,6 +2237,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           visible: false,
           expanded: false,
           position: { x: 0, y: 0 },
+          count: previewCount,
         });
         return;
       }
@@ -2249,6 +2248,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           visible: true,
           expanded: false,
           position: { x: event.clientX, y: event.clientY },
+          count: previewCount,
         });
 
         // Expand tooltip after another 500ms (800ms total)
@@ -2260,7 +2260,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         }, 500);
       }, 300);
     },
-    [branchClusters, checkMouseVelocity],
+    [branchClusters, checkMouseVelocity, getBranchPreviewCount],
   );
 
   const handleEdgeMouseLeave = useCallback(() => {
@@ -2272,6 +2272,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       visible: false,
       expanded: false,
       position: { x: 0, y: 0 },
+      count: 0,
     });
 
     // Clear timers
@@ -2287,6 +2288,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     // Clear velocity tracking
     mousePositionsRef.current = [];
   }, []);
+
+  const tooltipCount =
+    hoveredBranch && tooltipState.count > 0
+      ? tooltipState.count
+      : hoveredBranch
+        ? hoveredBranch.nodeIds.size
+        : 0;
 
   return (
     <div className="h-full w-full relative">
@@ -2338,8 +2346,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                 </span>
               </div>
               <div className="text-xs text-gray-300">
-                {hoveredBranch.edgeIds.size}{" "}
-                {hoveredBranch.edgeIds.size === 1 ? "verse" : "verses"} in
+                {tooltipCount} {tooltipCount === 1 ? "verse" : "verses"} in
                 branch
               </div>
 
@@ -2566,56 +2573,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                         </span>
                       </div>
                     ))}
-                </div>
-              </div>
-
-              {/* Line Patterns */}
-              <div>
-                <div className="text-gray-400 text-xs font-semibold uppercase mb-2">
-                  Line Patterns
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <svg width="24" height="2" className="flex-shrink-0">
-                      <line
-                        x1="0"
-                        y1="1"
-                        x2="24"
-                        y2="1"
-                        stroke="white"
-                        strokeWidth="2"
-                      />
-                    </svg>
-                    <span className="text-white text-xs">Same Testament</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <svg width="24" height="2" className="flex-shrink-0">
-                      <line
-                        x1="0"
-                        y1="1"
-                        x2="24"
-                        y2="1"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeDasharray="5,3"
-                      />
-                    </svg>
-                    <span className="text-white text-xs">Cross Testament</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <svg width="24" height="2" className="flex-shrink-0">
-                      <line
-                        x1="0"
-                        y1="1"
-                        x2="24"
-                        y2="1"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeDasharray="2,2"
-                      />
-                    </svg>
-                    <span className="text-white text-xs">AI Discovered</span>
-                  </div>
                 </div>
               </div>
 

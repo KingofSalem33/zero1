@@ -6,6 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
+import VerseTooltip from "../VerseTooltip";
 
 type ConnectionType =
   | "GOLD"
@@ -102,7 +103,12 @@ export function SemanticConnectionModal({
   const [loading, setLoading] = useState(true); // Always load synopsis for comprehensive analysis
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const verseTooltipRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
+  const [selectedVerseTooltip, setSelectedVerseTooltip] = useState<{
+    reference: string;
+    position: { top: number; left: number };
+  } | null>(null);
   const hasCluster =
     Array.isArray(connectedVerseIds) && connectedVerseIds.length > 2;
   const previewVerses = useMemo(() => {
@@ -132,6 +138,15 @@ export function SemanticConnectionModal({
   useEffect(() => {
     setVerses(previewVerses);
   }, [previewVerses]);
+
+  useEffect(() => {
+    setSelectedVerseTooltip(null);
+  }, [verses]);
+
+  const handleClose = useCallback(() => {
+    setSelectedVerseTooltip(null);
+    onClose();
+  }, [onClose]);
 
   const clampToViewport = useCallback(() => {
     if (!modalRef.current) return;
@@ -287,30 +302,31 @@ export function SemanticConnectionModal({
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       const clickedInsideModal = modalRef.current?.contains(target);
+      const clickedInsideTooltip = verseTooltipRef.current?.contains(target);
 
-      if (!clickedInsideModal) {
-        onClose();
+      if (!clickedInsideModal && !clickedInsideTooltip) {
+        handleClose();
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose]);
+  }, [handleClose]);
 
   // Close on Escape
   useEffect(() => {
     const handleEscape = (event: Event) => {
-      if ("key" in event && event.key === "Escape") onClose();
+      if ("key" in event && event.key === "Escape") handleClose();
     };
 
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
+  }, [handleClose]);
 
   const handleTrace = () => {
     const tracePrompt = `Trace the ${CONNECTION_LABELS[connectionType].toLowerCase()} between ${fromVerse.reference} and ${toVerse.reference}. Explore the semantic themes and theological significance of this connection.`;
     onTrace(tracePrompt);
-    onClose();
+    handleClose();
   };
 
   const handleGoDeeper = () => {
@@ -333,7 +349,32 @@ Using the KJV text above and the synopsis as a starting point, explain the *theo
 Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
 
     onGoDeeper(goDeeperPrompt);
-    onClose();
+    handleClose();
+  };
+
+  const handleVerseChipClick = (
+    verse: { reference: string },
+    event: React.MouseEvent<HTMLElement>,
+  ) => {
+    event.stopPropagation();
+    const chipRect = event.currentTarget.getBoundingClientRect();
+    const modalRect = modalRef.current?.getBoundingClientRect();
+
+    if (!modalRect) return;
+
+    const spacing = 10;
+    const top = chipRect.bottom - modalRect.top + spacing;
+    const left = chipRect.left - modalRect.left + chipRect.width / 2;
+
+    setSelectedVerseTooltip((current) => {
+      if (current?.reference === verse.reference) {
+        return null;
+      }
+      return {
+        reference: verse.reference,
+        position: { top, left },
+      };
+    });
   };
 
   const connectionColor = CONNECTION_COLORS[connectionType];
@@ -351,7 +392,7 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
       <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm max-h-[80vh]">
         {/* Close button */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
           aria-label="Close"
         >
@@ -393,17 +434,19 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
           <div className="flex flex-wrap gap-2 mb-3">
             {verses.length > 0 ? (
               verses.map((verse, idx) => (
-                <div
+                <button
                   key={idx}
-                  className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                  type="button"
+                  onClick={(event) => handleVerseChipClick(verse, event)}
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-110"
                   style={{
                     backgroundColor: `${connectionColor}20`,
                     color: connectionColor,
                   }}
-                  title={verse.text}
+                  aria-label={`View ${verse.reference}`}
                 >
                   {verse.reference}
-                </div>
+                </button>
               ))
             ) : hasCluster ? (
               <div className="text-xs text-neutral-400">
@@ -412,7 +455,9 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
             ) : (
               // Fallback while loading
               <>
-                <div
+                <button
+                  type="button"
+                  onClick={(event) => handleVerseChipClick(fromVerse, event)}
                   className="px-2.5 py-1 rounded-full text-xs font-semibold"
                   style={{
                     backgroundColor: `${connectionColor}20`,
@@ -420,8 +465,10 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
                   }}
                 >
                   {fromVerse.reference}
-                </div>
-                <div
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => handleVerseChipClick(toVerse, event)}
                   className="px-2.5 py-1 rounded-full text-xs font-semibold"
                   style={{
                     backgroundColor: `${connectionColor}20`,
@@ -429,7 +476,7 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
                   }}
                 >
                   {toVerse.reference}
-                </div>
+                </button>
               </>
             )}
           </div>
@@ -561,6 +608,17 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
           )}
         </div>
       </div>
+
+      {selectedVerseTooltip && (
+        <VerseTooltip
+          ref={verseTooltipRef}
+          reference={selectedVerseTooltip.reference}
+          position={selectedVerseTooltip.position}
+          onClose={() => setSelectedVerseTooltip(null)}
+          accentColor={connectionColor}
+          maxWidthClassName="max-w-[92vw] w-[420px]"
+        />
+      )}
     </div>
   );
 

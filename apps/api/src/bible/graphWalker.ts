@@ -810,6 +810,8 @@ export async function buildVisualBundle(
   });
 
   bundle.ring1.forEach((v) => {
+    if (v.id === anchorId) return; // Skip the anchor itself
+
     const selectedEdge = ring1EdgeMap.get(v.id);
     const parentId = selectedEdge?.from || bundle.anchor.id;
     const node: import("./types").ThreadNode = {
@@ -846,6 +848,8 @@ export async function buildVisualBundle(
   });
 
   bundle.ring2.forEach((v) => {
+    if (v.id === anchorId) return; // Skip the anchor itself
+
     const selectedEdge = ring2EdgeMap.get(v.id);
     const parentId = selectedEdge?.from || bundle.anchor.id;
     const node: import("./types").ThreadNode = {
@@ -882,6 +886,8 @@ export async function buildVisualBundle(
   });
 
   bundle.ring3.forEach((v) => {
+    if (v.id === anchorId) return; // Skip the anchor itself
+
     const selectedEdge = ring3EdgeMap.get(v.id);
     const parentId = selectedEdge?.from || bundle.anchor.id;
     const node: import("./types").ThreadNode = {
