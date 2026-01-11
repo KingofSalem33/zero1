@@ -169,6 +169,8 @@ const nodeTypes = {
   verseNode: VerseNode,
 };
 
+const DISCOVERY_BATCH_SIZE = 12;
+
 interface NarrativeMapProps {
   bundle: VisualContextBundle | null;
   highlightedRefs: string[]; // ["John 3:16", "Romans 5:8"]
@@ -186,6 +188,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
   const [discovering, setDiscovering] = useState(false);
+  const [analyzedVerseIds, setAnalyzedVerseIds] = useState<Set<number>>(
+    new Set(),
+  );
   const [initialExpansionDone, setInitialExpansionDone] = useState(false);
   // 🌟 GOLDEN THREAD: Track hovered anchor ray for glow emphasis
   const [hoveredAnchorRay, setHoveredAnchorRay] = useState<string | null>(null);
@@ -205,6 +210,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [edgesAnimated, setEdgesAnimated] = useState(false);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const autoCenteredRef = useRef(false);
+  const autoDiscoveryRunRef = useRef(false);
 
   // Semantic connection modal state
   const [clickedConnection, setClickedConnection] = useState<{
@@ -278,6 +284,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setHoveredBranch(null);
     setSelectedBranch(null);
   }, [bundle?.rootId]);
+
+  useEffect(() => {
+    autoDiscoveryRunRef.current = false;
+    setAnalyzedVerseIds(new Set());
+    setDiscoveryHighlights([]);
+    setDiscoveryHighlightIndex(0);
+  }, [bundle]);
 
   const connectionCounts = useMemo(() => {
     const counts = new Map<number, number>();
@@ -1486,11 +1499,59 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     initialExpansionDone,
   ]);
 
-  // Discover additional LLM connections automatically
-  useEffect(() => {
-    if (!bundle || discovering) return;
+  const selectVersesForDiscovery = useCallback(
+    (excludeIds: Set<number>) => {
+      if (!bundle) return [];
 
-    const discoverAdditionalConnections = async () => {
+      const allNodes = bundle.nodes || [];
+      const availableNodes = allNodes.filter(
+        (node) => !excludeIds.has(node.id),
+      );
+      if (availableNodes.length === 0) return [];
+
+      if (availableNodes.length <= DISCOVERY_BATCH_SIZE) {
+        return availableNodes;
+      }
+
+      // Priority: anchor + spine + centrality
+      const selected = new Set<number>();
+
+      // 1. Anchor (depth 0)
+      const anchor = availableNodes.find((n) => n.depth === 0);
+      if (anchor) selected.add(anchor.id);
+
+      // 2. Spine nodes
+      const spineNodes = availableNodes.filter((n) => n.isSpine);
+      spineNodes.forEach((n) => selected.add(n.id));
+
+      // 3. Fill with highest centrality
+      const centrality = new Map<number, number>();
+      availableNodes.forEach((n) => {
+        const connections = (bundle.edges || []).filter(
+          (e) => e.from === n.id || e.to === n.id,
+        ).length;
+        centrality.set(n.id, connections);
+      });
+
+      const remainingSlots = Math.max(DISCOVERY_BATCH_SIZE - selected.size, 0);
+      const remaining = availableNodes
+        .filter((n) => !selected.has(n.id))
+        .sort((a, b) => {
+          const aCentrality = centrality.get(a.id) || 0;
+          const bCentrality = centrality.get(b.id) || 0;
+          return bCentrality - aCentrality;
+        })
+        .slice(0, remainingSlots);
+
+      remaining.forEach((n) => selected.add(n.id));
+      const selection = availableNodes.filter((n) => selected.has(n.id));
+      return selection.slice(0, DISCOVERY_BATCH_SIZE);
+    },
+    [bundle],
+  );
+
+  const runDiscovery = useCallback(
+    async (coreVerses: ThreadNode[]) => {
       try {
         setDiscovering(true);
         setDiscoveryProgress({
@@ -1498,50 +1559,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           progress: 10,
           message: "Selecting key verses...",
         });
-        console.log("[LLM Discovery] Starting automatic discovery...");
-
-        // Select core verses (top 12 or all if <12)
-        const allNodes = bundle.nodes || [];
-        let coreVerses = allNodes;
-
-        if (allNodes.length > 12) {
-          // Priority: anchor + spine + centrality
-          const selected = new Set<number>();
-
-          // 1. Anchor (depth 0)
-          const anchor = allNodes.find((n) => n.depth === 0);
-          if (anchor) selected.add(anchor.id);
-
-          // 2. Spine nodes
-          const spineNodes = allNodes.filter((n) => n.isSpine);
-          spineNodes.forEach((n) => selected.add(n.id));
-
-          // 3. Fill with highest centrality
-          const centrality = new Map<number, number>();
-          allNodes.forEach((n) => {
-            const connections = (bundle.edges || []).filter(
-              (e) => e.from === n.id || e.to === n.id,
-            ).length;
-            centrality.set(n.id, connections);
-          });
-
-          const remaining = allNodes
-            .filter((n) => !selected.has(n.id))
-            .sort((a, b) => {
-              const aCentrality = centrality.get(a.id) || 0;
-              const bCentrality = centrality.get(b.id) || 0;
-              return bCentrality - aCentrality;
-            })
-            .slice(0, 12 - selected.size);
-
-          remaining.forEach((n) => selected.add(n.id));
-          coreVerses = allNodes.filter((n) => selected.has(n.id));
-        }
+        console.log("[LLM Discovery] Starting discovery...");
 
         setDiscoveryProgress({
           phase: "analyzing",
           progress: 30,
-          message: `Analyzing ${coreVerses.length} verses...`,
+          message: "Analyzing verses...",
         });
         console.log(
           `[LLM Discovery] Analyzing ${coreVerses.length} core verses`,
@@ -1577,6 +1600,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           return;
         }
 
+        setAnalyzedVerseIds((prev) => {
+          const next = new Set(prev);
+          coreVerses.forEach((verse) => next.add(verse.id));
+          return next;
+        });
+
         const { connections, fromCache } = data;
         console.log(
           `[LLM Discovery] Found ${connections.length} connections (${fromCache ? "cached" : "new"})`,
@@ -1603,7 +1632,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         });
 
         const verseLabel = (id: number) => {
-          const verse = bundle.nodes.find((node) => node.id === id);
+          const verse = bundle?.nodes.find((node) => node.id === id);
           if (!verse) return "Unknown";
           return `${verse.book_name} ${verse.chapter}:${verse.verse}`;
         };
@@ -1614,7 +1643,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             const label =
               EDGE_STYLES[TYPE_TO_STYLE_MAP[conn.type] || "GREY"].label;
             return {
-              title: `${verseLabel(conn.from)} → ${verseLabel(conn.to)}`,
+              title: `${verseLabel(conn.from)} ƒ+' ${verseLabel(conn.to)}`,
               subtitle: `Connection found: ${label}`,
             };
           });
@@ -1746,10 +1775,50 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         setDiscoveryHighlights([]);
         setDiscovering(false);
       }
-    };
+    },
+    [bundle],
+  );
 
-    discoverAdditionalConnections();
-  }, [bundle]);
+  const startDiscovery = useCallback(
+    async (mode: "auto" | "deep") => {
+      if (!bundle || discovering) return;
+      const coreVerses = selectVersesForDiscovery(analyzedVerseIds);
+      if (coreVerses.length < 2) {
+        if (mode === "deep") {
+          console.log("[LLM Discovery] No additional verses available");
+        }
+        return;
+      }
+      await runDiscovery(coreVerses);
+    },
+    [
+      analyzedVerseIds,
+      bundle,
+      discovering,
+      runDiscovery,
+      selectVersesForDiscovery,
+    ],
+  );
+
+  // Discover additional LLM connections automatically
+  useEffect(() => {
+    if (!bundle || discovering || autoDiscoveryRunRef.current) return;
+    autoDiscoveryRunRef.current = true;
+    void startDiscovery("auto");
+  }, [bundle, discovering, startDiscovery]);
+
+  const remainingVerseCount = useMemo(() => {
+    if (!bundle) return 0;
+    let count = 0;
+    bundle.nodes.forEach((node) => {
+      if (!analyzedVerseIds.has(node.id)) count += 1;
+    });
+    return count;
+  }, [bundle, analyzedVerseIds]);
+
+  const deepCrawlDisabled =
+    !initialExpansionDone || discovering || remainingVerseCount < 2;
+  const deepCrawlLabel = discovering ? "Crawling..." : "Deep Crawl";
 
   const shouldShowOverlay = !bundle || discovering || !initialExpansionDone;
 
@@ -2576,18 +2645,25 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                 </div>
               </div>
 
-              {/* Interactions */}
               <div>
                 <div className="text-gray-400 text-xs font-semibold uppercase mb-2">
-                  Interactions
+                  Explore
                 </div>
-                <div className="space-y-1">
-                  <div className="text-white text-xs">Click node → Details</div>
-                  <div className="text-white text-xs">
-                    Shift+Click node → Focus Mode
-                  </div>
-                  <div className="text-white text-xs">ESC → Exit Focus</div>
-                  <div className="text-white text-xs">Click edge → Details</div>
+                <button
+                  type="button"
+                  onClick={() => startDiscovery("deep")}
+                  disabled={deepCrawlDisabled}
+                  title={
+                    deepCrawlDisabled
+                      ? "No more verses to analyze"
+                      : "Analyze more verses for new connections"
+                  }
+                  className="w-full px-3 py-2 rounded-md text-xs font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/15 text-white"
+                >
+                  {deepCrawlLabel}
+                </button>
+                <div className="mt-1 text-[10px] text-gray-500">
+                  Expand the map with more connections.
                 </div>
               </div>
             </div>
