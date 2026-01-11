@@ -14,6 +14,7 @@ import { useChatStream } from "../hooks/useChatStream";
 import { NarrativeMap } from "./golden-thread/NarrativeMap";
 import { useGoldenThreadHighlighting } from "../hooks/useGoldenThreadHighlighting";
 import type { VisualContextBundle } from "../types/goldenThread";
+import type { GoDeeperPayload, PendingPrompt } from "../types/chat";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -60,6 +61,7 @@ interface ChatMessage {
   id: string;
   type: "user" | "ai";
   content: string;
+  rawContent?: string;
   timestamp: Date;
   visualBundle?: VisualContextBundle; // Reference genealogy tree for this message
 }
@@ -93,12 +95,12 @@ interface UnifiedWorkspaceProps {
   onOpenNewWorkspace?: () => void;
   messages?: ChatMessage[];
   onMessagesChange?: (messages: ChatMessage[]) => void;
-  pendingPrompt?: string;
+  pendingPrompt?: GoDeeperPayload;
   onPromptConsumed?: () => void;
   bibleStudyMode?: boolean;
   onExitBibleStudy?: () => void;
   onTrace?: (text: string) => void; // Canonical trace handler from App
-  onGoDeeper?: (prompt: string) => void; // Go Deeper handler for Bible Study
+  onGoDeeper?: (prompt: GoDeeperPayload) => void; // Go Deeper handler for Bible Study
   onShowVisualization?: (bundle: VisualContextBundle) => void; // Show full-screen map with existing bundle
 }
 
@@ -624,7 +626,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     useChatStream(handleMapData);
 
   // Track processed prompt to prevent StrictMode double-invocation
-  const processedPromptRef = useRef<string | null>(null);
+  const processedPromptRef = useRef<GoDeeperPayload | null>(null);
 
   // Handle pending prompt from Bible reader (auto-start stream)
   useEffect(() => {
@@ -635,6 +637,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       }
 
       processedPromptRef.current = pendingPrompt;
+      const normalizedPrompt: PendingPrompt =
+        typeof pendingPrompt === "string"
+          ? { displayText: pendingPrompt, prompt: pendingPrompt }
+          : pendingPrompt;
 
       // Auto-start stream with the prompt from Bible footer
       const startPendingPrompt = async () => {
@@ -648,7 +654,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         const newMessage: ChatMessage = {
           id: Date.now().toString(),
           type: "user",
-          content: pendingPrompt,
+          content: normalizedPrompt.displayText,
+          rawContent: normalizedPrompt.prompt,
           timestamp: new Date(),
         };
         const updatedMessages = [...messages, newMessage];
@@ -657,11 +664,16 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         // Convert ChatMessage format to API format (role/content)
         const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
           role: msg.type === "user" ? "user" : "assistant",
-          content: msg.content,
+          content: msg.rawContent ?? msg.content,
         }));
 
         // Start streaming AI response
-        await startStream(pendingPrompt, "user", historyForAPI, bibleStudyMode);
+        await startStream(
+          normalizedPrompt.prompt,
+          "user",
+          historyForAPI,
+          bibleStudyMode,
+        );
         setIsProcessing(false);
 
         // Notify parent that prompt has been consumed
@@ -840,7 +852,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     // Convert ChatMessage format to API format (role/content)
     const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
       role: msg.type === "user" ? "user" : "assistant",
-      content: msg.content,
+      content: msg.rawContent ?? msg.content,
     }));
 
     // Start streaming AI response with updated message history
@@ -887,7 +899,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     // Convert ChatMessage format to API format (role/content)
     const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
       role: msg.type === "user" ? "user" : "assistant",
-      content: msg.content,
+      content: msg.rawContent ?? msg.content,
     }));
 
     // Start streaming AI response - this will build a new genealogy tree
@@ -1579,7 +1591,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                             d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
                                           />
                                         </svg>
-                                        View Tree
+                                        View Map
                                       </button>
                                       <span
                                         className={`text-[11px] ${

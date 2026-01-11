@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import VerseTooltip from "../VerseTooltip";
+import type { GoDeeperPayload } from "../../types/chat";
 
 type ConnectionType =
   | "GOLD"
@@ -35,7 +36,7 @@ interface SemanticConnectionModalProps {
   position: { x: number; y: number };
   onClose: () => void;
   onTrace: (prompt: string) => void;
-  onGoDeeper: (prompt: string) => void;
+  onGoDeeper: (prompt: GoDeeperPayload) => void;
   explanation?: string;
   isLLMDiscovered?: boolean;
   connectedVerseIds?: number[];
@@ -348,7 +349,11 @@ ${toVerse.reference}: "${toVerse.text}"
 Using the KJV text above and the synopsis as a starting point, explain the *theological significance* of this link to the Christian faith.
 Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
 
-    onGoDeeper(goDeeperPrompt);
+    const displayText = `Discuss the ${CONNECTION_LABELS[
+      connectionType
+    ].toLowerCase()} connection between ${fromVerse.reference} and ${toVerse.reference}.`;
+
+    onGoDeeper({ displayText, prompt: goDeeperPrompt });
     handleClose();
   };
 

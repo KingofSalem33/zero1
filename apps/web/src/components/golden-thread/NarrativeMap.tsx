@@ -27,6 +27,7 @@ import type {
   EdgeType,
   ThreadNode,
 } from "../../types/goldenThread";
+import type { GoDeeperPayload } from "../../types/chat";
 
 // Refined Color System with Intentional Color Psychology
 const EDGE_STYLES = {
@@ -175,7 +176,7 @@ interface NarrativeMapProps {
   bundle: VisualContextBundle | null;
   highlightedRefs: string[]; // ["John 3:16", "Romans 5:8"]
   onTrace?: (prompt: string) => void;
-  onGoDeeper?: (prompt: string) => void;
+  onGoDeeper?: (prompt: GoDeeperPayload) => void;
 }
 
 const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
@@ -1818,7 +1819,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
   const deepCrawlDisabled =
     !initialExpansionDone || discovering || remainingVerseCount < 2;
-  const deepCrawlLabel = discovering ? "Crawling..." : "Deep Crawl";
+  const deepCrawlLabel = discovering ? "Crawling..." : "Deep Seach";
 
   const shouldShowOverlay = !bundle || discovering || !initialExpansionDone;
 

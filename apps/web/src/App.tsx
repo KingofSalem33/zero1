@@ -4,6 +4,7 @@ import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
 import { useAuth } from "./contexts/AuthContext";
 import { BibleHighlightsProvider } from "./contexts/BibleHighlightsContext";
 import type { VisualContextBundle } from "./types/goldenThread";
+import type { GoDeeperPayload } from "./types/chat";
 import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
 
 // Lazy load heavy components for code splitting
@@ -33,9 +34,8 @@ function App() {
   const [viewMode, setViewMode] = useState<"reader" | "chat" | "highlights">(
     "reader",
   );
-  const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(
-    null,
-  );
+  const [pendingChatPrompt, setPendingChatPrompt] =
+    useState<GoDeeperPayload | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Trace visualization state (lifted to App level for use from any context)
@@ -108,7 +108,7 @@ function App() {
   };
 
   // Navigate from Bible to Chat with a prompt
-  const handleNavigateToChat = (prompt: string) => {
+  const handleNavigateToChat = (prompt: GoDeeperPayload) => {
     setViewMode("chat"); // Switch to chat view
     setPendingChatPrompt(prompt); // Queue the prompt
   };
@@ -156,7 +156,7 @@ function App() {
   }, []);
 
   // Handle "Go Deeper" - navigates to chat and sends the formatted prompt
-  const handleGoDeeper = useCallback((prompt: string) => {
+  const handleGoDeeper = useCallback((prompt: GoDeeperPayload) => {
     console.log("[App] Go Deeper requested with prompt:", prompt);
     handleNavigateToChat(prompt);
   }, []);
