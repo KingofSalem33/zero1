@@ -533,6 +533,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [showVisualization, setShowVisualization] = useState(false);
   const [pendingVisualBundle, setPendingVisualBundle] =
     useState<VisualContextBundle | null>(null); // Store bundle until message is complete
+  const [mapPrepActive, setMapPrepActive] = useState(false);
+  const [mapPrepCount, setMapPrepCount] = useState<number | null>(null);
+  const [mapReadyMessageId, setMapReadyMessageId] = useState<string | null>(
+    null,
+  );
   const { highlightedRefs, addReferencesFromText, resetHighlights } =
     useGoldenThreadHighlighting();
 
@@ -610,6 +615,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const handleMapData = useCallback((bundle: VisualContextBundle) => {
     // Store the bundle to attach to the message, but don't show it yet
     setPendingVisualBundle(bundle);
+    setMapPrepActive(true);
+    setMapPrepCount(bundle.nodes?.length ?? 0);
   }, []);
 
   // Use simple chat stream hook for LLM-only mode
@@ -632,6 +639,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       // Auto-start stream with the prompt from Bible footer
       const startPendingPrompt = async () => {
         setIsProcessing(true);
+        setMapPrepActive(true);
+        setMapPrepCount(0);
+        setMapReadyMessageId(null);
+        setPendingVisualBundle(null);
 
         // Add user message to chat
         const newMessage: ChatMessage = {
@@ -676,6 +687,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       processedPromptRef.current = null;
     }
   }, [pendingPrompt]);
+
+  useEffect(() => {
+    if (!mapReadyMessageId) return;
+    const timer = window.setTimeout(() => {
+      setMapReadyMessageId(null);
+    }, 4200);
+    return () => window.clearTimeout(timer);
+  }, [mapReadyMessageId]);
 
   // Track citations from streaming content for Golden Thread highlighting
   // Only update when streaming is complete to avoid performance issues
@@ -762,14 +781,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       console.log("[UnifiedWorkspace] ✅ Adding completed message to array");
       addedStreamingMessageRef.current = true;
 
+      const newMessage = {
+        id: Date.now().toString(),
+        type: "ai" as const,
+        content: streamingMessage.content,
+        timestamp: new Date(),
+        visualBundle: pendingVisualBundle || undefined,
+      };
+
       setMessages((prev) => {
-        const newMessage = {
-          id: Date.now().toString(),
-          type: "ai" as const,
-          content: streamingMessage.content,
-          timestamp: new Date(),
-          visualBundle: pendingVisualBundle || undefined,
-        };
         console.log(
           "[UnifiedWorkspace] Created message - ID:",
           newMessage.id,
@@ -789,6 +809,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
       // Clear tool badges and pending bundle when streaming is complete
       setToolsUsed([]);
+      setMapPrepActive(false);
+      setMapPrepCount(null);
+      setMapReadyMessageId(newMessage.visualBundle ? newMessage.id : null);
       setPendingVisualBundle(null);
     }
   }, [streamingMessage?.isComplete, pendingVisualBundle]);
@@ -797,6 +820,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     if (!currentInput.trim() || isProcessing || isStreaming) return;
 
     setIsProcessing(true);
+    setMapPrepActive(true);
+    setMapPrepCount(0);
+    setMapReadyMessageId(null);
+    setPendingVisualBundle(null);
     const userMessage = currentInput.trim();
 
     // Add user message to chat
@@ -1418,6 +1445,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 shouldShowButtons:
                   message.type === "ai" && message.id !== "streaming",
               });
+              const isMapReady = mapReadyMessageId === message.id;
+              const mapVerseCount = message.visualBundle?.nodes?.length ?? 0;
 
               return (
                 <div key={message.id}>
@@ -1521,32 +1550,48 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                     </svg>
                                   </button>
                                   {message.visualBundle && (
-                                    <button
-                                      onClick={() => {
-                                        if (onShowVisualization) {
-                                          onShowVisualization(
-                                            message.visualBundle!,
-                                          );
-                                          resetHighlights();
-                                        }
-                                      }}
-                                      className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 rounded-md transition-colors"
-                                    >
-                                      <svg
-                                        className="w-4 h-4"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => {
+                                          if (onShowVisualization) {
+                                            onShowVisualization(
+                                              message.visualBundle!,
+                                            );
+                                            resetHighlights();
+                                          }
+                                        }}
+                                        className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                                          isMapReady
+                                            ? "text-emerald-200 bg-emerald-500/10 ring-1 ring-emerald-400/40 animate-pulse"
+                                            : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
+                                        }`}
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                                        />
-                                      </svg>
-                                      View Tree
-                                    </button>
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                                          />
+                                        </svg>
+                                        View Tree
+                                      </button>
+                                      <span
+                                        className={`text-[11px] ${
+                                          isMapReady
+                                            ? "text-emerald-200/90"
+                                            : "text-neutral-500"
+                                        }`}
+                                      >
+                                        Map ready · {mapVerseCount} verse
+                                        {mapVerseCount === 1 ? "" : "s"}
+                                      </span>
+                                    </div>
                                   )}
                                 </div>
                               )}
@@ -1587,6 +1632,29 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       onVerseClick={handleVerseClick}
                       onTrace={handleGoDeeper}
                     />
+                    {mapPrepActive && (
+                      <div className="inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
+                        <svg
+                          className="w-3.5 h-3.5 text-cyan-200/90"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                          />
+                        </svg>
+                        <span>Preparing map...</span>
+                        {mapPrepCount !== null && mapPrepCount > 0 && (
+                          <span className="text-cyan-100/70">
+                            ({mapPrepCount} verses found)
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1623,6 +1691,29 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
                   <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
                 </div>
+                {mapPrepActive && (
+                  <div className="ml-[2.625rem] inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
+                    <svg
+                      className="w-3.5 h-3.5 text-cyan-200/90"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                      />
+                    </svg>
+                    <span>Preparing map...</span>
+                    {mapPrepCount !== null && mapPrepCount > 0 && (
+                      <span className="text-cyan-100/70">
+                        ({mapPrepCount} verses found)
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1663,7 +1754,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     </svg>
                   </button>
                 </div>
-                <div className="flex-1 overflow-y-auto relative">
+                <div className="flex-1 min-h-0 overflow-y-auto relative">
                   <NarrativeMap
                     bundle={visualBundle}
                     highlightedRefs={highlightedRefs}

@@ -450,24 +450,13 @@ function App() {
               </div>
 
               {/* Map Container */}
-              <div className="flex-1 overflow-hidden relative">
-                {visualBundle ? (
-                  <NarrativeMap
-                    bundle={visualBundle}
-                    highlightedRefs={[]}
-                    onTrace={handleTrace}
-                    onGoDeeper={handleGoDeeper}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center space-y-4">
-                      <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin mx-auto" />
-                      <p className="text-neutral-400 text-sm">
-                        Loading trace visualization...
-                      </p>
-                    </div>
-                  </div>
-                )}
+              <div className="flex-1 min-h-0 overflow-hidden relative">
+                <NarrativeMap
+                  bundle={visualBundle}
+                  highlightedRefs={[]}
+                  onTrace={handleTrace}
+                  onGoDeeper={handleGoDeeper}
+                />
               </div>
             </div>
           </div>

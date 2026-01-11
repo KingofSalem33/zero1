@@ -1,10 +1,17 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useLayoutEffect,
+} from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   useNodesState,
   useEdgesState,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import type { Node, Edge } from "@xyflow/react";
 import dagre from "dagre"; // LEGACY: Will be replaced by force-directed layout
@@ -13,8 +20,7 @@ import { calculateForceLayout } from "../../utils/forceLayout";
 import { VerseNode } from "./VerseNode";
 import { SemanticConnectionModal } from "./SemanticConnectionModal";
 import { ParallelPassagesModal } from "./ParallelPassagesModal";
-import { MapSkeleton } from "./MapSkeleton";
-import { DiscoveryProgress } from "./DiscoveryProgress";
+import { DiscoveryOverlay } from "./DiscoveryOverlay";
 import type {
   VisualContextBundle,
   EdgeType,
@@ -291,7 +297,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     progress: 0,
     message: "Initializing...",
   });
+  const [discoveryHighlights, setDiscoveryHighlights] = useState<
+    Array<{ title: string; subtitle: string }>
+  >([]);
+  const [discoveryHighlightIndex, setDiscoveryHighlightIndex] = useState(0);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
+  const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const autoCenteredRef = useRef(false);
 
   // Semantic connection modal state
   const [clickedConnection, setClickedConnection] = useState<{
@@ -364,6 +376,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setHoveredBranch(null);
     setSelectedBranch(null);
   }, [bundle?.rootId]);
+
+  useEffect(() => {
+    autoCenteredRef.current = false;
+  }, [bundle?.rootId, bundle?.nodes?.length, bundle?.edges?.length]);
 
   // Mouse velocity tracking (for tooltip spam prevention)
   const mousePositionsRef = useRef<
@@ -834,49 +850,72 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     [],
   );
 
-  // Radial layout algorithm with anchor at center
-  const getLayoutedElements = (
-    bundle: VisualContextBundle,
-    expandedIds: Set<number>,
-    onExpand: (nodeId: number) => void,
-  ) => {
-    // === FEATURE FLAG: Force-Directed Layout ===
-    // Set to true to use new neural network layout, false for legacy radial layout
-    const USE_FORCE_LAYOUT = true;
+  const getNodeDimensions = useCallback(
+    (verse: ThreadNode, isAnchor: boolean) => {
+      const nodeDepth = verse.depth || 0;
+      if (isAnchor) return { width: 180, height: 90 };
+      if (nodeDepth === 1) return { width: 120, height: 50 };
+      if (nodeDepth === 2) return { width: 100, height: 42 };
+      return { width: 85, height: 35 };
+    },
+    [],
+  );
 
-    // For dagre edge routing, we still create the graph (legacy - only used if USE_FORCE_LAYOUT = false)
-    const dagreGraph = new dagre.graphlib.Graph();
-    dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({
-      rankdir: "TB",
-      ranksep: 40,
-      nodesep: 30,
-      marginx: 20,
-      marginy: 20,
-    });
+  const getVisibleNodes = useCallback(
+    (bundle: VisualContextBundle, expandedIds: Set<number>) =>
+      bundle.nodes.filter((node) => {
+        if (node.isVisible) return true;
+        if (expandedIds.has(node.id)) return true;
+        if (node.parentId && expandedIds.has(node.parentId)) return true;
+        return false;
+      }),
+    [],
+  );
 
-    // Filter to visible nodes: (1) marked as visible OR (2) in expanded set OR (3) child of expanded node
-    const visibleNodes = bundle.nodes.filter((node) => {
-      // Always show nodes marked as visible
-      if (node.isVisible) return true;
-
-      // Show if this node itself is in the expanded set
-      if (expandedIds.has(node.id)) return true;
-
-      // Show if parent is expanded
-      if (node.parentId && expandedIds.has(node.parentId)) return true;
-
-      return false;
-    });
-
+  const buildEdgeTypeLookup = useCallback((bundle: VisualContextBundle) => {
     const edgeTypeLookup = new Map<string, EdgeType>();
-    bundle.edges.forEach((edge) => {
+    (bundle.edges || []).forEach((edge) => {
       edgeTypeLookup.set(`${edge.from}:${edge.to}`, edge.type);
       edgeTypeLookup.set(`${edge.to}:${edge.from}`, edge.type);
     });
+    return edgeTypeLookup;
+  }, []);
 
-    // Create nodes (only visible ones)
-    const reactFlowNodes: Node[] = visibleNodes.map((verse) => {
+  const buildInitialExpandedNodes = useCallback(
+    (bundle: VisualContextBundle) => {
+      const nodesToExpand = new Set<number>();
+
+      if (bundle.rootId) {
+        nodesToExpand.add(bundle.rootId);
+        bundle.nodes.forEach((node) => {
+          if (node.depth !== undefined && node.depth <= 1) {
+            nodesToExpand.add(node.id);
+          }
+        });
+      }
+
+      return nodesToExpand;
+    },
+    [],
+  );
+
+  const centerMapView = useCallback((duration: number) => {
+    const instance = flowInstanceRef.current;
+    if (!instance) return;
+    instance.fitView({
+      padding: 0.2,
+      duration,
+      includeHiddenNodes: true,
+    });
+  }, []);
+
+  const buildVerseNode = useCallback(
+    (
+      verse: ThreadNode,
+      bundle: VisualContextBundle,
+      expandedIds: Set<number>,
+      edgeTypeLookup: Map<string, EdgeType>,
+    ): Node => {
       const nodeId = verse.id.toString();
       const isAnchor = verse.id === bundle.rootId;
       const isHighlighted = highlightedRefs.some((ref) => {
@@ -891,27 +930,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         );
       });
 
-      // Node size varies by depth: anchor (180x90), depth 1 (120x50), depth 2 (100x42), depth 3+ (85x35)
-      const nodeDepth = verse.depth || 0;
-      let nodeWidth: number, nodeHeight: number;
-
-      if (isAnchor) {
-        nodeWidth = 180;
-        nodeHeight = 90;
-      } else if (nodeDepth === 1) {
-        nodeWidth = 120;
-        nodeHeight = 50;
-      } else if (nodeDepth === 2) {
-        nodeWidth = 100;
-        nodeHeight = 42;
-      } else {
-        nodeWidth = 85;
-        nodeHeight = 35;
-      }
-
-      dagreGraph.setNode(nodeId, { width: nodeWidth, height: nodeHeight });
-
-      // Recalculate collapsed count based on what's already expanded
       const allChildren = bundle.nodes.filter((n) => n.parentId === verse.id);
       const visibleChildren = allChildren.filter(
         (child) =>
@@ -920,12 +938,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       );
       const actualCollapsedCount = allChildren.length - visibleChildren.length;
 
-      // 🌟 GOLDEN THREAD: Determine semantic connection type for visible nodes
-      // This will be shown as a colored border/halo around the node
       let semanticConnectionType: string | undefined;
       if (!isAnchor) {
         const inferredParentId =
-          verse.parentId ?? (nodeDepth === 1 ? bundle.rootId : undefined);
+          verse.parentId ?? (verse.depth === 1 ? bundle.rootId : undefined);
         if (inferredParentId) {
           const edgeType = edgeTypeLookup.get(
             `${inferredParentId}:${verse.id}`,
@@ -945,15 +961,147 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           isHighlighted,
           isAnchor,
           collapsedChildCount: actualCollapsedCount,
-          onExpand: () => onExpand(verse.id),
+          onExpand: () => handleExpandNode(verse.id),
           onShowParallels: (verseId: number) => handleShowParallels(verseId),
-          depth: verse.depth, // Pass depth for size scaling
-          semanticConnectionType, // 🌟 GOLDEN THREAD: Type of connection for this node
+          depth: verse.depth,
+          semanticConnectionType,
           isDimmed: false,
           branchHighlight: undefined,
         },
-        position: { x: 0, y: 0 }, // Will be set by radial layout
+        position: { x: 0, y: 0 },
       };
+    },
+    [handleExpandNode, handleShowParallels, highlightedRefs],
+  );
+
+  const applyNodeTransition = useCallback((node: Node): Node => {
+    return {
+      ...node,
+      style: {
+        ...(node.style || {}),
+        transition: "transform 360ms ease, opacity 360ms ease",
+      },
+    };
+  }, []);
+
+  const buildPlaceholderLayout = useCallback(
+    (bundle: VisualContextBundle, expandedIds: Set<number>) => {
+      const visibleNodes = getVisibleNodes(bundle, expandedIds);
+      const edgeTypeLookup = buildEdgeTypeLookup(bundle);
+      const placeholderNodes = visibleNodes
+        .map((verse) =>
+          buildVerseNode(verse, bundle, expandedIds, edgeTypeLookup),
+        )
+        .map(applyNodeTransition);
+
+      const nodesByDepth = new Map<number, Node[]>();
+      placeholderNodes.forEach((node) => {
+        const depth =
+          typeof node.data.depth === "number"
+            ? node.data.depth
+            : node.data.verse.depth || 1;
+        const bucket = depth <= 0 ? 0 : Math.min(depth, 4);
+        if (!nodesByDepth.has(bucket)) nodesByDepth.set(bucket, []);
+        nodesByDepth.get(bucket)!.push(node);
+      });
+
+      const anchor = placeholderNodes.find((node) => node.data.isAnchor);
+      if (anchor) {
+        const dimensions = getNodeDimensions(anchor.data.verse, true);
+        anchor.position = {
+          x: -dimensions.width / 2,
+          y: -dimensions.height / 2,
+        };
+      }
+
+      nodesByDepth.forEach((nodesAtDepth, depth) => {
+        if (depth === 0) return;
+        const radius = 180 + (depth - 1) * 140;
+        const angleStep = (2 * Math.PI) / nodesAtDepth.length;
+        nodesAtDepth.forEach((node, index) => {
+          const angle = index * angleStep - Math.PI / 2;
+          const dimensions = getNodeDimensions(
+            node.data.verse,
+            node.data.isAnchor,
+          );
+          node.position = {
+            x: radius * Math.cos(angle) - dimensions.width / 2,
+            y: radius * Math.sin(angle) - dimensions.height / 2,
+          };
+        });
+      });
+
+      const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+      const placeholderEdges: Edge[] = bundle.edges
+        .filter(
+          (edge) =>
+            visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to),
+        )
+        .slice(0, 160)
+        .map((edge) => ({
+          id: `placeholder-${edge.from}-${edge.to}`,
+          source: edge.from.toString(),
+          target: edge.to.toString(),
+          type: "smoothstep",
+          data: {
+            styleType: "GREY",
+            visualStyleType: "GREY",
+            isSynthetic: true,
+            strokeDashArray: "0",
+            baseWidth: 1,
+          },
+          style: {
+            stroke: "rgba(148, 163, 184, 0.35)",
+            strokeWidth: 1,
+          },
+        }));
+
+      return { nodes: placeholderNodes, edges: placeholderEdges };
+    },
+    [
+      applyNodeTransition,
+      buildEdgeTypeLookup,
+      buildVerseNode,
+      getNodeDimensions,
+      getVisibleNodes,
+    ],
+  );
+
+  // Radial layout algorithm with anchor at center
+  const getLayoutedElements = (
+    bundle: VisualContextBundle,
+    expandedIds: Set<number>,
+    _onExpand: (nodeId: number) => void,
+  ) => {
+    // === FEATURE FLAG: Force-Directed Layout ===
+    // Set to true to use new neural network layout, false for legacy radial layout
+    const USE_FORCE_LAYOUT = true;
+
+    // For dagre edge routing, we still create the graph (legacy - only used if USE_FORCE_LAYOUT = false)
+    const dagreGraph = new dagre.graphlib.Graph();
+    dagreGraph.setDefaultEdgeLabel(() => ({}));
+    dagreGraph.setGraph({
+      rankdir: "TB",
+      ranksep: 40,
+      nodesep: 30,
+      marginx: 20,
+      marginy: 20,
+    });
+
+    const visibleNodes = getVisibleNodes(bundle, expandedIds);
+
+    const edgeTypeLookup = buildEdgeTypeLookup(bundle);
+
+    // Create nodes (only visible ones)
+    const reactFlowNodes: Node[] = visibleNodes.map((verse) =>
+      buildVerseNode(verse, bundle, expandedIds, edgeTypeLookup),
+    );
+
+    visibleNodes.forEach((verse) => {
+      const nodeId = verse.id.toString();
+      const isAnchor = verse.id === bundle.rootId;
+      const { width, height } = getNodeDimensions(verse, isAnchor);
+      dagreGraph.setNode(nodeId, { width, height });
     });
 
     // Create edges (only between visible nodes) with 3-color system
@@ -1335,27 +1483,19 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   };
 
   // Auto-expand anchor and depth 1 nodes on initial load
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!bundle) {
       setInitialExpansionDone(false);
+      setExpandedNodes(new Set());
       return;
     }
 
     if (initialExpansionDone) return;
 
     // Only expand the anchor node - its direct children (depth 1) will become visible
-    const nodesToExpand = new Set<number>();
+    const nodesToExpand = buildInitialExpandedNodes(bundle);
 
-    if (bundle.rootId) {
-      nodesToExpand.add(bundle.rootId);
-
-      // Also find and expand any nodes at depth 0 or 1 to show the first circle
-      bundle.nodes.forEach((node) => {
-        if (node.depth !== undefined && node.depth <= 1) {
-          nodesToExpand.add(node.id);
-        }
-      });
-
+    if (nodesToExpand.size > 0) {
       console.log(
         `[NarrativeMap] Auto-expanding anchor + depth 0-1 nodes: ${nodesToExpand.size} nodes`,
         Array.from(nodesToExpand).slice(0, 10),
@@ -1364,36 +1504,72 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
     setExpandedNodes(nodesToExpand);
     setInitialExpansionDone(true);
-  }, [bundle, initialExpansionDone]);
+  }, [bundle, buildInitialExpandedNodes, initialExpansionDone]);
 
   // Update layout when bundle, highlights, or expanded nodes change
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!bundle) {
       return;
     }
 
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
-      bundle,
-      expandedNodes,
-      handleExpandNode,
-    );
-    setNodes(layoutedNodes);
-    setEdges(layoutedEdges);
-
-    // Reset edge animation state and trigger after node entrance
+    const layoutExpandedNodes = initialExpansionDone
+      ? expandedNodes
+      : buildInitialExpandedNodes(bundle);
+    const placeholder = buildPlaceholderLayout(bundle, layoutExpandedNodes);
+    setNodes(placeholder.nodes);
+    setEdges(placeholder.edges);
     setEdgesAnimated(false);
-    const maxNodeDepth = Math.max(
-      ...layoutedNodes.map((n) => (n.data.verse.depth as number) || 0),
-      0,
-    );
-    const nodeEntranceTime = Math.min(maxNodeDepth * 80 + 400, 1200); // Wait for nodes to enter
 
-    const timer = setTimeout(() => {
-      setEdgesAnimated(true);
-    }, nodeEntranceTime);
+    let edgeTimer: number | null = null;
+    if (!autoCenteredRef.current) {
+      window.requestAnimationFrame(() => {
+        centerMapView(0);
+      });
+    }
 
-    return () => clearTimeout(timer);
-  }, [bundle, highlightedRefs, expandedNodes, handleExpandNode]);
+    const frame = window.requestAnimationFrame(() => {
+      const { nodes: layoutedNodes, edges: layoutedEdges } =
+        getLayoutedElements(bundle, layoutExpandedNodes, handleExpandNode);
+      const transitionedNodes = layoutedNodes.map(applyNodeTransition);
+      setNodes(transitionedNodes);
+      setEdges(layoutedEdges);
+
+      // Reset edge animation state and trigger after node entrance
+      const maxNodeDepth = Math.max(
+        ...layoutedNodes.map((n) => (n.data.verse.depth as number) || 0),
+        0,
+      );
+      const nodeEntranceTime = Math.min(maxNodeDepth * 80 + 400, 1200); // Wait for nodes to enter
+
+      edgeTimer = window.setTimeout(() => {
+        setEdgesAnimated(true);
+      }, nodeEntranceTime);
+
+      if (!autoCenteredRef.current) {
+        window.requestAnimationFrame(() => {
+          centerMapView(520);
+          autoCenteredRef.current = true;
+        });
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (edgeTimer) {
+        window.clearTimeout(edgeTimer);
+      }
+    };
+  }, [
+    applyNodeTransition,
+    buildInitialExpandedNodes,
+    buildPlaceholderLayout,
+    bundle,
+    centerMapView,
+    expandedNodes,
+    handleExpandNode,
+    highlightedRefs,
+    initialExpansionDone,
+  ]);
 
   // Discover additional LLM connections automatically
   useEffect(() => {
@@ -1450,7 +1626,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         setDiscoveryProgress({
           phase: "analyzing",
           progress: 30,
-          message: `Analyzing ${coreVerses.length} verses with AI...`,
+          message: `Analyzing ${coreVerses.length} verses...`,
         });
         console.log(
           `[LLM Discovery] Analyzing ${coreVerses.length} core verses`,
@@ -1473,7 +1649,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         setDiscoveryProgress({
           phase: "analyzing",
           progress: 60,
-          message: "Processing AI insights...",
+          message: "Processing insights...",
         });
 
         const data = await response.json();
@@ -1492,6 +1668,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         if (connections.length === 0) {
           console.log("[LLM Discovery] No new connections discovered");
+          setDiscoveryHighlights([]);
           setDiscoveryProgress({
             phase: "complete",
             progress: 100,
@@ -1505,6 +1682,26 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           progress: 75,
           message: `Mapping ${connections.length} connections...`,
         });
+
+        const verseLabel = (id: number) => {
+          const verse = bundle.nodes.find((node) => node.id === id);
+          if (!verse) return "Unknown";
+          return `${verse.book_name} ${verse.chapter}:${verse.verse}`;
+        };
+
+        const highlights = (connections as DiscoveredConnection[])
+          .slice(0, 6)
+          .map((conn) => {
+            const label =
+              EDGE_STYLES[TYPE_TO_STYLE_MAP[conn.type] || "GREY"].label;
+            return {
+              title: `${verseLabel(conn.from)} → ${verseLabel(conn.to)}`,
+              subtitle: `Connection found: ${label}`,
+            };
+          });
+
+        setDiscoveryHighlights(highlights);
+        setDiscoveryHighlightIndex(0);
 
         // Add discovered edges to the map
         const newEdges = (connections as DiscoveredConnection[]).map((conn) => {
@@ -1576,12 +1773,27 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       } catch (error) {
         console.error("[LLM Discovery] Error:", error);
         // Silent fail - user still gets algorithmic connections
+        setDiscoveryHighlights([]);
         setDiscovering(false);
       }
     };
 
     discoverAdditionalConnections();
   }, [bundle]);
+
+  const shouldShowOverlay = !bundle || discovering || !initialExpansionDone;
+
+  useEffect(() => {
+    if (!discovering || discoveryHighlights.length === 0) return;
+
+    const timer = window.setInterval(() => {
+      setDiscoveryHighlightIndex(
+        (prev) => (prev + 1) % discoveryHighlights.length,
+      );
+    }, 3600);
+
+    return () => window.clearInterval(timer);
+  }, [discovering, discoveryHighlights]);
 
   // Pre-compute branch clusters when edges change
   useEffect(() => {
@@ -2076,20 +2288,25 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     mousePositionsRef.current = [];
   }, []);
 
-  if (!bundle) {
-    return <MapSkeleton />;
-  }
-
   return (
     <div className="h-full w-full relative">
-      {/* Discovery Progress Bar */}
-      {discovering && (
-        <DiscoveryProgress
-          phase={discoveryProgress.phase}
-          progress={discoveryProgress.progress}
-          message={discoveryProgress.message}
-        />
-      )}
+      <DiscoveryOverlay
+        phase={bundle ? discoveryProgress.phase : "selecting"}
+        progress={bundle ? discoveryProgress.progress : 0}
+        message={bundle ? discoveryProgress.message : "Preparing map..."}
+        visible={shouldShowOverlay}
+        highlightTitle={
+          discovering
+            ? discoveryHighlights[discoveryHighlightIndex]?.title
+            : undefined
+        }
+        highlightSubtitle={
+          discovering
+            ? discoveryHighlights[discoveryHighlightIndex]?.subtitle
+            : undefined
+        }
+        showHint={bundle ? true : false}
+      />
 
       {/* Tooltip */}
       {tooltipState.visible && hoveredBranch && (
@@ -2155,6 +2372,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         minZoom={0.2}
         maxZoom={2.0}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+        onInit={(instance) => {
+          flowInstanceRef.current = instance;
+        }}
+        className="h-full w-full"
+        style={{ width: "100%", height: "100%" }}
       >
         {/* SVG gradient definitions for directional edge colors */}
         <svg style={{ position: "absolute", width: 0, height: 0 }}>
