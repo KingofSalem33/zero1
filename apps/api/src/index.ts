@@ -691,6 +691,7 @@ app.post(
         message,
         oratoryMode = false,
         history = [], // Used in Oratory mode for thread awareness
+        promptMode,
         // userId = "anonymous", // Not used in streaming mode
       } = chatRequestSchema.parse(req.body);
 
@@ -800,7 +801,7 @@ Teach with conviction as one who lives the Word—declarative, confident, rooted
         // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
         // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)
         console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
-        await explainScriptureWithKernelStream(res, message);
+        await explainScriptureWithKernelStream(res, message, true, promptMode);
         console.log("[Exegesis STREAM] KERNEL pipeline completed");
       }
 

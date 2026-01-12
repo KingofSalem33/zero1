@@ -58,6 +58,7 @@ export function useChatStream(
       userId?: string,
       history?: unknown[],
       oratoryMode?: boolean,
+      promptMode?: string,
     ) => {
       // Cancel any existing stream
       if (abortControllerRef.current) {
@@ -89,6 +90,7 @@ export function useChatStream(
             userId: userId || "anonymous",
             history: history || [],
             oratoryMode: oratoryMode || false,
+            ...(promptMode ? { promptMode } : {}),
           }),
           signal: abortController.signal,
         });

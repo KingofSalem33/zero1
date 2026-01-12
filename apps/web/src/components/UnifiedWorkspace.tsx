@@ -14,7 +14,7 @@ import { useChatStream } from "../hooks/useChatStream";
 import { NarrativeMap } from "./golden-thread/NarrativeMap";
 import { useGoldenThreadHighlighting } from "../hooks/useGoldenThreadHighlighting";
 import type { VisualContextBundle } from "../types/goldenThread";
-import type { GoDeeperPayload, PendingPrompt } from "../types/chat";
+import type { GoDeeperPayload, PendingPrompt, PromptMode } from "../types/chat";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -155,6 +155,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const messagesFetchedRef = useRef(false);
+  const lastPromptModeRef = useRef<PromptMode | null>(null);
+  const [nextSuggestedRef, setNextSuggestedRef] = useState<string | null>(null);
+  const [nextSuggestedMode, setNextSuggestedMode] = useState<PromptMode | null>(
+    null,
+  );
 
   // Removed auto-generation of micro-steps
   // Micro-steps will be generated and executed seamlessly when "Ask AI" is clicked
@@ -628,6 +633,32 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Track processed prompt to prevent StrictMode double-invocation
   const processedPromptRef = useRef<GoDeeperPayload | null>(null);
 
+  const extractSuggestedReference = useCallback(
+    (text: string): string | null => {
+      const questionIndex = text.lastIndexOf("?");
+      if (questionIndex === -1) return null;
+      const tail = text.slice(
+        Math.max(0, questionIndex - 240),
+        questionIndex + 1,
+      );
+      const matches = tail.match(
+        /\[(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?\]/g,
+      );
+      if (!matches || matches.length === 0) return null;
+      return matches[matches.length - 1].replace(/^\[|\]$/g, "");
+    },
+    [],
+  );
+
+  const isAffirmation = useCallback((text: string): boolean => {
+    const normalized = text.trim().toLowerCase();
+    if (!normalized) return false;
+    if (normalized.split(/\s+/).length > 6) return false;
+    return /^(yes|yep|yeah|sure|ok|okay|alright|go ahead|continue|lets go|let us go|do it|please)[.!]*$/.test(
+      normalized,
+    );
+  }, []);
+
   // Handle pending prompt from Bible reader (auto-start stream)
   useEffect(() => {
     if (pendingPrompt && !isStreaming && !isProcessing) {
@@ -649,6 +680,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         setMapPrepCount(0);
         setMapReadyMessageId(null);
         setPendingVisualBundle(null);
+        lastPromptModeRef.current = normalizedPrompt.mode ?? null;
 
         // Add user message to chat
         const newMessage: ChatMessage = {
@@ -673,6 +705,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           "user",
           historyForAPI,
           bibleStudyMode,
+          normalizedPrompt.mode,
         );
         setIsProcessing(false);
 
@@ -800,6 +833,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         timestamp: new Date(),
         visualBundle: pendingVisualBundle || undefined,
       };
+      const suggestedRef = extractSuggestedReference(newMessage.content);
+      if (lastPromptModeRef.current === "go_deeper_short" && suggestedRef) {
+        setNextSuggestedRef(suggestedRef);
+        setNextSuggestedMode("go_deeper_short");
+      }
 
       setMessages((prev) => {
         console.log(
@@ -837,12 +875,23 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setMapReadyMessageId(null);
     setPendingVisualBundle(null);
     const userMessage = currentInput.trim();
+    const shouldUseSuggested =
+      nextSuggestedRef && nextSuggestedMode && isAffirmation(userMessage);
+    const apiMessage = shouldUseSuggested ? nextSuggestedRef : userMessage;
+    const displayMessage = userMessage;
+    const promptMode = shouldUseSuggested ? nextSuggestedMode : undefined;
+    if (shouldUseSuggested) {
+      setNextSuggestedRef(null);
+      setNextSuggestedMode(null);
+    }
+    lastPromptModeRef.current = promptMode ?? null;
 
     // Add user message to chat
     const newMessage: ChatMessage = {
       id: Date.now().toString(),
       type: "user",
-      content: userMessage,
+      content: displayMessage,
+      rawContent: apiMessage,
       timestamp: new Date(),
     };
     const updatedMessages = [...messages, newMessage];
@@ -856,7 +905,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }));
 
     // Start streaming AI response with updated message history
-    await startStream(userMessage, "user", historyForAPI, bibleStudyMode);
+    await startStream(
+      apiMessage,
+      "user",
+      historyForAPI,
+      bibleStudyMode,
+      promptMode,
+    );
     setIsProcessing(false);
   };
 

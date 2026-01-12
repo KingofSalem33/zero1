@@ -8,6 +8,10 @@ import React, {
 import { createPortal } from "react-dom";
 import VerseTooltip from "../VerseTooltip";
 import type { GoDeeperPayload } from "../../types/chat";
+import {
+  buildGoDeeperDisplayText,
+  buildGoDeeperPrompt,
+} from "../../prompts/semanticConnection";
 
 type ConnectionType =
   | "GOLD"
@@ -331,29 +335,26 @@ export function SemanticConnectionModal({
   };
 
   const handleGoDeeper = () => {
-    // Format the prompt according to the user's specification
-    const goDeeperPrompt = `TASK: Expound upon the significance of this connection.
+    const connectionLabel = CONNECTION_LABELS[connectionType];
+    const goDeeperPrompt = buildGoDeeperPrompt({
+      fromVerse,
+      toVerse,
+      connectionLabel,
+      synopsis,
+      nextCandidates,
+      topicHints,
+    });
+    const displayText = buildGoDeeperDisplayText({
+      connectionLabel,
+      fromReference: fromVerse.reference,
+      toReference: toVerse.reference,
+    });
 
-=== THE DATA ===
-[SOURCE ANCHOR]
-${fromVerse.reference}: "${fromVerse.text}"
-
-[TARGET CONNECTION]
-${toVerse.reference}: "${toVerse.text}"
-
-[METADATA]
-- Type: ${CONNECTION_LABELS[connectionType]}
-- Previous Synopsis: "${synopsis}"
-
-=== INSTRUCTION ===
-Using the KJV text above and the synopsis as a starting point, explain the *theological significance* of this link to the Christian faith.
-Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
-
-    const displayText = `Discuss the ${CONNECTION_LABELS[
-      connectionType
-    ].toLowerCase()} connection between ${fromVerse.reference} and ${toVerse.reference}.`;
-
-    onGoDeeper({ displayText, prompt: goDeeperPrompt });
+    onGoDeeper({
+      displayText,
+      prompt: goDeeperPrompt,
+      mode: "go_deeper_short",
+    });
     handleClose();
   };
 
@@ -384,6 +385,23 @@ Do not just repeat the synopsis. Go deeper. Explain *why* this matters.`;
 
   const connectionColor = CONNECTION_COLORS[connectionType];
   const connectionLabel = CONNECTION_LABELS[connectionType];
+  const nextCandidates = useMemo(
+    () =>
+      verses
+        .filter((verse) => verse.id !== fromVerse.id && verse.id !== toVerse.id)
+        .slice(0, 3),
+    [verses, fromVerse.id, toVerse.id],
+  );
+  const topicHints = useMemo(() => {
+    if (!Array.isArray(connectionTopics) || connectionTopics.length === 0) {
+      return [];
+    }
+    return connectionTopics
+      .filter((topic) => typeof topic.label === "string" && topic.label.trim())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map((topic) => `${topic.label} (${topic.count})`);
+  }, [connectionTopics]);
 
   const modalContent = (
     <div

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROMPT_MODES } from "../prompts/systemPrompts";
 
 export const webSearchSchema = z.object({
   q: z.string().describe("Search query"),
@@ -45,6 +46,10 @@ export const chatRequestSchema = z.object({
     .boolean()
     .optional()
     .describe("Enable Oratory mode for Scripture retrieval"),
+  promptMode: z
+    .enum(PROMPT_MODES)
+    .optional()
+    .describe("Prompt formatting mode for streaming exegesis"),
 });
 
 export const chatJsonResponseSchema = z.object({
