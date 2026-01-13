@@ -6,6 +6,7 @@ import {
 } from "../bible/pericopeSearch";
 import { buildPericopeBundle } from "../bible/pericopeGraphWalker";
 import { supabase } from "../db";
+import { ENV } from "../env";
 
 const router = express.Router();
 
@@ -66,7 +67,9 @@ router.get("/verse/:verseId", async (req, res) => {
     }
 
     const source =
-      typeof req.query.source === "string" ? req.query.source : "SBL";
+      typeof req.query.source === "string"
+        ? req.query.source
+        : ENV.PERICOPE_SOURCE || "SIL_AI";
     const pericope = await getPericopeForVerse(verseId, source);
 
     if (!pericope) {
@@ -76,6 +79,74 @@ router.get("/verse/:verseId", async (req, res) => {
     }
 
     return res.json(pericope);
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+router.get("/status", async (_req, res) => {
+  try {
+    const defaultSource = ENV.PERICOPE_SOURCE || "SIL_AI";
+    const [
+      { count: pericopesTotal, error: pericopeError },
+      { count: embeddingsTotal, error: embeddingsError },
+      { count: connectionsTotal, error: connectionsError },
+      { count: mapTotal, error: mapError },
+      { count: silAiCount, error: silAiError },
+      { count: sblCount, error: sblError },
+    ] = await Promise.all([
+      supabase.from("pericopes").select("id", { count: "exact", head: true }),
+      supabase
+        .from("pericope_embeddings")
+        .select("pericope_id", { count: "exact", head: true })
+        .eq("embedding_type", "full_text"),
+      supabase
+        .from("pericope_connections")
+        .select("id", { count: "exact", head: true }),
+      supabase
+        .from("verse_pericope_map")
+        .select("id", { count: "exact", head: true }),
+      supabase
+        .from("pericopes")
+        .select("id", { count: "exact", head: true })
+        .eq("source", "SIL_AI"),
+      supabase
+        .from("pericopes")
+        .select("id", { count: "exact", head: true })
+        .eq("source", "SBL"),
+    ]);
+
+    if (
+      pericopeError ||
+      embeddingsError ||
+      connectionsError ||
+      mapError ||
+      silAiError ||
+      sblError
+    ) {
+      return res.status(500).json({
+        error: "Failed to load pericope status",
+        details:
+          pericopeError?.message ||
+          embeddingsError?.message ||
+          connectionsError?.message ||
+          mapError?.message ||
+          silAiError?.message ||
+          sblError?.message,
+      });
+    }
+
+    return res.json({
+      defaultSource,
+      pericopesTotal: pericopesTotal ?? 0,
+      pericopesBySource: {
+        SIL_AI: silAiCount ?? 0,
+        SBL: sblCount ?? 0,
+      },
+      embeddingsTotal: embeddingsTotal ?? 0,
+      connectionsTotal: connectionsTotal ?? 0,
+      verseMapTotal: mapTotal ?? 0,
+    });
   } catch (error) {
     return res.status(500).json({ error: (error as Error).message });
   }

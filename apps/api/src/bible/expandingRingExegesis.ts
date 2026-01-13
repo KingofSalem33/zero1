@@ -893,7 +893,10 @@ export async function explainScriptureWithKernelStream(
   console.log("[Fast Stream] Starting single-pass teaching generation...");
 
   const systemPrompt = buildSystemPrompt(promptMode);
-  const pericope = await getPericopeForVerse(anchorId, "SBL");
+  const pericope = await getPericopeForVerse(
+    anchorId,
+    ENV.PERICOPE_SOURCE || "SIL_AI",
+  );
   const pericopeContext = pericope
     ? `${buildPericopeContextBlock(pericope)}\n\n`
     : "";
