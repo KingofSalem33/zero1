@@ -17,6 +17,10 @@ import { ENV } from "../env";
 import type { ParallelPassage } from "./types";
 import { areSameTestament } from "./testamentUtil";
 import { type PromptMode, buildSystemPrompt } from "../prompts/systemPrompts";
+import {
+  buildPericopeContextBlock,
+  getPericopeForVerse,
+} from "./pericopeSearch";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -889,7 +893,12 @@ export async function explainScriptureWithKernelStream(
   console.log("[Fast Stream] Starting single-pass teaching generation...");
 
   const systemPrompt = buildSystemPrompt(promptMode);
-  const userMessage = generateGenealogyUserMessage(userPrompt, visualBundle);
+  const pericope = await getPericopeForVerse(anchorId, "SBL");
+  const pericopeContext = pericope
+    ? `${buildPericopeContextBlock(pericope)}\n\n`
+    : "";
+  const userMessage =
+    pericopeContext + generateGenealogyUserMessage(userPrompt, visualBundle);
 
   await runModelStream(
     res,

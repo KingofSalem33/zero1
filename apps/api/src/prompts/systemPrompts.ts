@@ -74,7 +74,7 @@ const FORMAT_GO_DEEPER_SHORT = `**FORMATTING (Concise Mode)**
 - Include a short, specific header (H2) for clarity, then one paragraph
 - End the paragraph with two tight parts:
   1) a sentence that states the next connection explicitly (name the thread and the next passage)
-  2) a short confirmation question like "Want to explore [Book Ch:v] next?"
+  2) a short confirmation question that names [Book Ch:v] but varies phrasing (do not repeat "next")
 - The question should feel like a gentle continuation, not an interrogation
 - Avoid quiz tone. Do not use "How does/Why does" question forms
 - If NEXT NODES are provided, pick one and name it in the final question using [Book Ch:v]

@@ -106,11 +106,6 @@ const EDGE_STYLES = {
 
 type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
 
-const formatBookLabel = (bookAbbrev: string, bookName?: string): string => {
-  if (bookName) return bookName;
-  return bookAbbrev.toUpperCase();
-};
-
 // Map edge types to visual categories
 const TYPE_TO_STYLE_MAP: Record<string, keyof typeof EDGE_STYLES> = {
   DEEPER: "GREY", // Regular cross-references = subtle grey
@@ -238,6 +233,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     verse: ThreadNode;
     position: { x: number; y: number };
   } | null>(null);
+
+  const formatNodeReference = useCallback(
+    (node: ThreadNode) =>
+      node.displaySubLabel || `${node.book_name} ${node.chapter}:${node.verse}`,
+    [],
+  );
 
   // Branch highlighting state
   const [hoveredBranch, setHoveredBranch] = useState<BranchCluster | null>(
@@ -398,11 +399,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         )
         .map((node) => ({
           id: node.id,
-          reference: `${node.book_name} ${node.chapter}:${node.verse}`,
+          reference: formatNodeReference(node),
           text: node.text,
         }));
     },
-    [bundle],
+    [bundle, formatNodeReference],
   );
 
   const buildConnectionTopics = useCallback(
@@ -566,12 +567,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       setClickedConnection({
         fromVerse: {
           id: fromVerse.id,
-          reference: `${fromVerse.book_name} ${fromVerse.chapter}:${fromVerse.verse}`,
+          reference: formatNodeReference(fromVerse),
           text: fromVerse.text,
         },
         toVerse: {
           id: toVerse.id,
-          reference: `${toVerse.book_name} ${toVerse.chapter}:${toVerse.verse}`,
+          reference: formatNodeReference(toVerse),
           text: toVerse.text,
         },
         connectionType: group.styleType,
@@ -766,11 +767,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         // Generate path preview
         const pathPreview = pathNodes
           .slice(0, 3)
-          .map(
-            (n) =>
-              `${formatBookLabel(n.book_abbrev, n.book_name)} ${n.chapter}:${n.verse}`,
-          )
-          .join(" → ");
+          .map((n) => n.displayLabel || formatNodeReference(n))
+          .join(" -> ");
 
         const edgeType =
           (allEdges.find((e) => e.id === startEdgeId)?.data as EdgeData)
@@ -1635,7 +1633,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const verseLabel = (id: number) => {
           const verse = bundle?.nodes.find((node) => node.id === id);
           if (!verse) return "Unknown";
-          return `${verse.book_name} ${verse.chapter}:${verse.verse}`;
+          return verse.displayLabel || formatNodeReference(verse);
         };
 
         const highlights = (connections as DiscoveredConnection[])

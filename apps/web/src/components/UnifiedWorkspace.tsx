@@ -545,8 +545,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [mapReadyMessageId, setMapReadyMessageId] = useState<string | null>(
     null,
   );
+  const [mapGranularity, setMapGranularity] = useState<"verse" | "pericope">(
+    "verse",
+  );
+  const [pericopeBundle, setPericopeBundle] =
+    useState<VisualContextBundle | null>(null);
+  const [pericopeLoading, setPericopeLoading] = useState(false);
+  const [pericopeError, setPericopeError] = useState<string | null>(null);
   const { highlightedRefs, addReferencesFromText, resetHighlights } =
     useGoldenThreadHighlighting();
+  const activeBundle =
+    mapGranularity === "pericope" ? pericopeBundle : visualBundle;
+  const activeHighlightedRefs =
+    mapGranularity === "pericope" ? [] : highlightedRefs;
 
   // TTS state management
   /* global HTMLAudioElement */
@@ -740,6 +751,66 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }, 4200);
     return () => window.clearTimeout(timer);
   }, [mapReadyMessageId]);
+
+  useEffect(() => {
+    if (!visualBundle) return;
+    setMapGranularity("verse");
+    setPericopeBundle(null);
+    setPericopeError(null);
+  }, [visualBundle?.rootId]);
+
+  useEffect(() => {
+    if (!visualBundle || mapGranularity !== "pericope") return;
+    let isActive = true;
+
+    const fetchPericopeBundle = async () => {
+      setPericopeLoading(true);
+      setPericopeError(null);
+      try {
+        const pericopeResponse = await fetch(
+          `${API_URL}/api/pericope/verse/${visualBundle.rootId}?source=SBL`,
+        );
+        if (!pericopeResponse.ok) {
+          throw new Error("No pericope available for this anchor");
+        }
+        const pericope = await pericopeResponse.json();
+        const bundleResponse = await fetch(
+          `${API_URL}/api/pericope/genealogy`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pericopeId: pericope.id,
+            }),
+          },
+        );
+        if (!bundleResponse.ok) {
+          throw new Error("Failed to load pericope map");
+        }
+        const bundle = await bundleResponse.json();
+        if (isActive) {
+          setPericopeBundle(bundle);
+        }
+      } catch (error) {
+        if (isActive) {
+          setPericopeError(
+            error instanceof Error ? error.message : "Pericope map failed",
+          );
+          setPericopeBundle(null);
+        }
+      } finally {
+        if (isActive) {
+          setPericopeLoading(false);
+        }
+      }
+    };
+
+    fetchPericopeBundle();
+
+    return () => {
+      isActive = false;
+    };
+  }, [API_URL, mapGranularity, visualBundle]);
 
   // Track citations from streaming content for Golden Thread highlighting
   // Only update when streaming is complete to avoid performance issues
@@ -1794,13 +1865,48 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         {useMemo(
           () =>
             showVisualization &&
-            visualBundle && (
+            activeBundle && (
               <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
-                  <h3 className="text-sm font-semibold text-neutral-300">
-                    Theological Thread Explorer (
-                    {visualBundle.nodes?.length || 0} verses)
-                  </h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-neutral-300">
+                      Theological Thread Explorer (
+                      {activeBundle.nodes?.length || 0}{" "}
+                      {mapGranularity === "pericope" ? "stories" : "verses"})
+                    </h3>
+                    <div className="flex items-center rounded-full bg-neutral-800/70 p-1 text-[11px]">
+                      <button
+                        onClick={() => setMapGranularity("verse")}
+                        className={
+                          mapGranularity === "verse"
+                            ? "px-2.5 py-1 rounded-full bg-neutral-700 text-white"
+                            : "px-2.5 py-1 rounded-full text-neutral-400 hover:text-neutral-200"
+                        }
+                      >
+                        Verses
+                      </button>
+                      <button
+                        onClick={() => setMapGranularity("pericope")}
+                        className={
+                          mapGranularity === "pericope"
+                            ? "px-2.5 py-1 rounded-full bg-neutral-700 text-white"
+                            : "px-2.5 py-1 rounded-full text-neutral-400 hover:text-neutral-200"
+                        }
+                      >
+                        Stories
+                      </button>
+                    </div>
+                    {pericopeLoading && mapGranularity === "pericope" && (
+                      <span className="text-xs text-neutral-400">
+                        Loading story map...
+                      </span>
+                    )}
+                    {pericopeError && mapGranularity === "pericope" && (
+                      <span className="text-xs text-red-400">
+                        {pericopeError}
+                      </span>
+                    )}
+                  </div>
                   <button
                     onClick={() => setShowVisualization(false)}
                     className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
@@ -1822,21 +1928,30 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   </button>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto relative">
-                  <NarrativeMap
-                    bundle={visualBundle}
-                    highlightedRefs={highlightedRefs}
-                    onTrace={handleGoDeeper}
-                    onGoDeeper={onGoDeeper}
-                  />
+                  {mapGranularity === "pericope" && !activeBundle ? (
+                    <div className="p-6 text-sm text-neutral-400">
+                      No story map available for this anchor yet.
+                    </div>
+                  ) : (
+                    <NarrativeMap
+                      bundle={activeBundle}
+                      highlightedRefs={activeHighlightedRefs}
+                      onTrace={handleGoDeeper}
+                      onGoDeeper={onGoDeeper}
+                    />
+                  )}
                 </div>
               </div>
             ),
           [
             showVisualization,
-            visualBundle,
-            highlightedRefs,
+            activeBundle,
+            activeHighlightedRefs,
             handleGoDeeper,
             onGoDeeper,
+            mapGranularity,
+            pericopeLoading,
+            pericopeError,
           ],
         )}
       </div>

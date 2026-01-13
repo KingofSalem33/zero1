@@ -31,6 +31,7 @@ import synopsisRouter from "./routes/synopsis";
 import rootTranslationRouter from "./routes/root-translation";
 import semanticConnectionRouter from "./routes/semantic-connection";
 import discoverConnectionsRouter from "./routes/discover-connections";
+import pericopeRouter from "./routes/pericope";
 import { generateSuggestedCards } from "./bible/suggestedTopics";
 import {
   rankVersesBySimilarity,
@@ -197,6 +198,9 @@ app.use("/api/verse", optionalAuth, verseRouter);
 
 // Mount semantic connection routes (AI synopsis of verse connections)
 app.use("/api/semantic-connection", optionalAuth, semanticConnectionRouter);
+
+// Mount pericope routes (narrative-level search)
+app.use("/api/pericope", optionalAuth, pericopeRouter);
 
 // Mount connection discovery routes (LLM-discovered theological connections)
 // Use aiLimiter (50/min) instead of apiLimiter (100/15min) for better dev experience

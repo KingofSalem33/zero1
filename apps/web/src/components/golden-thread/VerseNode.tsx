@@ -176,6 +176,9 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     : null;
   let width: number, height: number, padding: string;
   const bookLabel = verse.book_name || verse.book_abbrev.toUpperCase();
+  const primaryLabel =
+    verse.displayLabel ?? `${bookLabel} ${verse.chapter}:${verse.verse}`;
+  const secondaryLabel = verse.displaySubLabel;
 
   if (isAnchor) {
     width = 180;
@@ -331,8 +334,23 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
                   : "text-[9px] font-mono font-medium whitespace-nowrap"
           }
         >
-          {bookLabel} {verse.chapter}:{verse.verse}
+          {primaryLabel}
         </div>
+        {secondaryLabel && (
+          <div
+            className={
+              isAnchor
+                ? "text-[10px] font-mono text-neutral-600 whitespace-nowrap"
+                : nodeDepth <= 1
+                  ? "text-[9px] font-mono text-neutral-600 whitespace-nowrap"
+                  : nodeDepth === 2
+                    ? "text-[8px] font-mono text-neutral-600 whitespace-nowrap"
+                    : "text-[7px] font-mono text-neutral-600 whitespace-nowrap"
+            }
+          >
+            {secondaryLabel}
+          </div>
+        )}
         {/* Show verse preview for anchor or highlighted nodes */}
         {(isAnchor || isHighlighted) && (
           <div

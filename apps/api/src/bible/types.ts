@@ -81,6 +81,8 @@ export interface ThreadNode {
   chapter: number;
   verse: number;
   text: string;
+  displayLabel?: string;
+  displaySubLabel?: string;
   depth: number; // 0=anchor, 1=ring1, 2=ring2, 3=ring3
   parentId?: number; // ID of verse that links to this one
   isSpine: boolean; // Is this node on the golden path (anchor to deepest leaf)?
