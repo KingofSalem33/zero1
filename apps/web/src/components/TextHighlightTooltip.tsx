@@ -886,11 +886,13 @@ export function TextHighlightTooltip({
 
   const handleRootTranslation = async () => {
     if (selectedText) {
-      setViewMode("root");
-      // Reset state before streaming new content
+      // Reset state and show loading BEFORE switching views
       setRootInsights([]);
       setPlainMeaning("");
       setCurrentRootCardIndex(0);
+      setIsLoadingRoot(true);
+      // Switch to root view only after loading state is set
+      setViewMode("root");
       await generateRootTranslation(selectedText);
     }
   };
@@ -1144,7 +1146,7 @@ export function TextHighlightTooltip({
                       <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
                         Direct Translation
                       </h4>
-                      <p className="text-[13px] text-neutral-200 leading-relaxed italic">
+                      <p className="text-[13px] text-neutral-200 leading-relaxed italic break-words">
                         {plainMeaning}
                       </p>
                     </div>
@@ -1195,7 +1197,7 @@ export function TextHighlightTooltip({
                             <div className="space-y-2 text-[12px] leading-relaxed">
                               {rootInsights[currentRootCardIndex]
                                 .definition && (
-                                <p className="text-neutral-300 italic">
+                                <p className="text-neutral-300 italic break-words">
                                   {
                                     rootInsights[currentRootCardIndex]
                                       .definition
@@ -1203,7 +1205,7 @@ export function TextHighlightTooltip({
                                 </p>
                               )}
                               {rootInsights[currentRootCardIndex].insight && (
-                                <p className="text-neutral-200">
+                                <p className="text-neutral-200 break-words">
                                   {rootInsights[currentRootCardIndex].insight}
                                 </p>
                               )}

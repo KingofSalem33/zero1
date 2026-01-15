@@ -2690,6 +2690,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           connectedVersesPreview={clickedConnection.connectedVersesPreview}
           connectionTopics={clickedConnection.connectionTopics}
           onSelectTopic={handleSelectConnectionTopic}
+          visualBundle={bundle || undefined}
         />
       )}
 

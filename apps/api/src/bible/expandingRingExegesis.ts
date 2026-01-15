@@ -18,8 +18,9 @@ import type { ParallelPassage } from "./types";
 import { areSameTestament } from "./testamentUtil";
 import { type PromptMode, buildSystemPrompt } from "../prompts/systemPrompts";
 import {
-  buildPericopeContextBlock,
-  getPericopeForVerse,
+  searchPericopesByQuery,
+  getPericopeById,
+  type PericopeDetail,
 } from "./pericopeSearch";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
@@ -57,6 +58,17 @@ export interface ReferenceVisualBundle {
   edges: ReferenceTreeEdge[];
   rootId?: number; // Anchor verse ID for circular layout
   lens?: string; // Lens type (e.g., "NONE", "MESSIANIC")
+  // Pericope metadata if resolution was pericope-first
+  pericopeContext?: {
+    id: number;
+    title: string;
+    summary: string;
+    themes: string[];
+    archetypes: string[];
+    shadows: string[];
+    rangeRef: string;
+  };
+  resolutionType?: "pericope_first" | "verse_first";
 }
 
 interface TreeStats {
@@ -377,6 +389,44 @@ export async function resolveMultipleAnchors(
   userPrompt: string,
   maxAnchors: number = 3,
 ): Promise<number[]> {
+  // Step 0: Check for structured "go deeper" prompt with explicit anchors
+  const sourceAnchorMatch = userPrompt.match(/\[SOURCE ANCHOR\]\s*([^:]+:\d+)/);
+  const targetConnectionMatch = userPrompt.match(
+    /\[TARGET CONNECTION\]\s*([^:]+:\d+)/,
+  );
+
+  if (sourceAnchorMatch && targetConnectionMatch) {
+    const sourceRef = parseExplicitReference(sourceAnchorMatch[1]);
+    const targetRef = parseExplicitReference(targetConnectionMatch[1]);
+
+    const anchorIds: number[] = [];
+
+    if (sourceRef) {
+      const sourceId = await getVerseId(
+        sourceRef.book,
+        sourceRef.chapter,
+        sourceRef.verse,
+      );
+      if (sourceId) anchorIds.push(sourceId);
+    }
+
+    if (targetRef) {
+      const targetId = await getVerseId(
+        targetRef.book,
+        targetRef.chapter,
+        targetRef.verse,
+      );
+      if (targetId) anchorIds.push(targetId);
+    }
+
+    if (anchorIds.length > 0) {
+      console.log(
+        `[Multi-Anchor] ✅ Extracted ${anchorIds.length} anchors from structured prompt`,
+      );
+      return anchorIds;
+    }
+  }
+
   // Step 1: Check for explicit reference (e.g., "John 3:16")
   const explicitRef = parseExplicitReference(userPrompt);
   if (explicitRef) {
@@ -548,6 +598,76 @@ export async function resolveAnchor(
 }
 
 /**
+ * Detect if query is conceptual (story-level) vs specific (verse-level)
+ */
+function isConceptualQuery(query: string): boolean {
+  const conceptualKeywords = [
+    "stories about",
+    "passages about",
+    "narratives about",
+    "tell me about",
+    "explain",
+    "what does the bible say",
+    "theme of",
+    "examples of",
+    "when jesus",
+    "where god",
+    "how did",
+    "why did",
+  ];
+
+  const lowerQuery = query.toLowerCase();
+  return conceptualKeywords.some((kw) => lowerQuery.includes(kw));
+}
+
+/**
+ * Try to resolve query to a pericope FIRST (for conceptual queries)
+ * Falls back gracefully if no pericope match found
+ */
+export async function resolvePericopeFirst(userPrompt: string): Promise<{
+  pericopeId: number;
+  anchorVerseId: number;
+  allVerseIds: number[];
+  resolutionSource: "pericope_semantic";
+} | null> {
+  // Skip pericope search for structured "go deeper" prompts - we already have explicit verses
+  if (
+    userPrompt.includes("[SOURCE ANCHOR]") &&
+    userPrompt.includes("[TARGET CONNECTION]")
+  ) {
+    return null;
+  }
+
+  // Only try pericope resolution for conceptual queries
+  if (!isConceptualQuery(userPrompt)) {
+    return null;
+  }
+
+  // Search pericope embeddings
+  const pericopes = await searchPericopesByQuery(userPrompt, {
+    limit: 1,
+    similarityThreshold: 0.55, // Slightly lower than verse threshold
+  });
+
+  if (pericopes.length === 0) {
+    return null;
+  }
+
+  // Get full pericope details
+  const pericope = await getPericopeById(pericopes[0].id);
+  if (!pericope) {
+    return null;
+  }
+
+  return {
+    pericopeId: pericope.id,
+    anchorVerseId: pericope.verseIds[0], // First verse as anchor
+    allVerseIds: pericope.verseIds,
+    resolutionSource: "pericope_semantic",
+  };
+}
+
+/**
  * Genealogy tree context for the LLM.
  * Depth is informative, not prescriptive for order.
  */
@@ -625,6 +745,47 @@ GUIDANCE FOR HOW TO USE THIS DATA:
 - Treat these verses as resources to draw from, not a sequence to walk through.
 - Choose the verses that best clarify the anchor and the user's question.
 - Arrange them in the order that makes the most sense for the reader.`;
+}
+
+/**
+ * Build layered user message: Narrative → Verses → Question
+ *
+ * This is the KEY CHANGE: ordering context from highest level (story)
+ * to lowest level (verse details) to user question
+ */
+export function buildLayeredUserMessage(
+  userPrompt: string,
+  visualBundle: ReferenceVisualBundle,
+  pericopeDetail: PericopeDetail | null,
+): string {
+  const layers: string[] = [];
+
+  // LAYER 1: NARRATIVE CONTEXT (if available)
+  if (pericopeDetail) {
+    const themes = pericopeDetail.themes?.join(", ") || "";
+    const archetypes = pericopeDetail.archetypes?.join(", ") || "";
+    const shadows =
+      pericopeDetail.shadows && pericopeDetail.shadows.length > 0
+        ? pericopeDetail.shadows.map((s) => `  - ${s}`).join("\n")
+        : "";
+
+    layers.push(`[NARRATIVE CONTEXT]
+
+Pericope: ${pericopeDetail.title_generated || pericopeDetail.title} (${pericopeDetail.rangeRef})
+${themes ? `Themes: ${themes}` : ""}
+${archetypes ? `Archetypes: ${archetypes}` : ""}
+${shadows ? `Typological Shadows:\n${shadows}` : ""}
+Context: ${pericopeDetail.summary || pericopeDetail.full_text.slice(0, 420) + "..."}`);
+  }
+
+  // LAYER 2: VERSE DETAILS (genealogy tree)
+  const genealogyBlock = generateGenealogyUserMessage(userPrompt, visualBundle);
+  layers.push(genealogyBlock);
+
+  // LAYER 3: USER QUESTION (refocused)
+  // No change - already included in genealogyBlock
+
+  return layers.join("\n\n───\n\n");
 }
 
 /**
@@ -808,6 +969,7 @@ export async function explainScriptureWithKernelStream(
   userPrompt: string,
   useMultiAnchor: boolean = true, // Enable multi-anchor synthesis by default
   promptMode: PromptMode = "exegesis_long",
+  prebuiltVisualBundle?: ReferenceVisualBundle | null, // Pre-built bundle to skip tree rebuilding
 ): Promise<{
   anchor: Verse;
   anchorId: number | null;
@@ -816,15 +978,92 @@ export async function explainScriptureWithKernelStream(
   sim1?: unknown;
   sim2?: unknown;
 }> {
-  // Try multi-anchor synthesis first for richer context
-  let anchorIds: number[] = [];
-  let visualBundle: ReferenceVisualBundle;
+  // If we have a pre-built bundle, use it and skip all resolution/tree building
+  if (
+    prebuiltVisualBundle &&
+    prebuiltVisualBundle.nodes &&
+    prebuiltVisualBundle.nodes.length > 0
+  ) {
+    console.log(
+      `[Expanding Ring] ✅ Using pre-built visual bundle (${prebuiltVisualBundle.nodes.length} nodes) - skipping tree rebuild`,
+    );
 
-  if (useMultiAnchor) {
-    anchorIds = await resolveMultipleAnchors(userPrompt, 3);
+    const visualBundle: ReferenceVisualBundle = prebuiltVisualBundle;
+    const anchorId = visualBundle.rootId || visualBundle.nodes[0]?.id || null;
+
+    // Extract anchor verse from pre-built bundle nodes
+    const anchorNode = visualBundle.nodes.find((n) => n.id === anchorId);
+    const anchor: Verse | null = anchorNode
+      ? {
+          id: anchorNode.id,
+          book_abbrev: anchorNode.book_abbrev,
+          book_name: anchorNode.book_name,
+          chapter: anchorNode.chapter,
+          verse: anchorNode.verse,
+          text: anchorNode.text,
+        }
+      : null;
+
+    if (!anchor) {
+      throw new Error("Pre-built bundle has no valid anchor verse");
+    }
+
+    // Build user message from the pre-built bundle
+    const userMessage = buildLayeredUserMessage(userPrompt, visualBundle, null);
+    const systemPrompt = buildSystemPrompt(promptMode);
+
+    // Stream the response directly
+    await runModelStream(
+      res,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      { model: ENV.OPENAI_SMART_MODEL },
+    );
+
+    return {
+      anchor,
+      anchorId,
+      treeStats: {
+        totalNodes: visualBundle.nodes.length,
+        maxDepth: 0,
+        depthDistribution: {},
+      },
+      visualBundle,
+    };
   }
 
-  // Fallback to single anchor if multi-anchor fails or is disabled
+  // Original path: Build tree from scratch
+  let anchorIds: number[] = [];
+  let visualBundle: ReferenceVisualBundle;
+  let pericopeContext: Awaited<ReturnType<typeof getPericopeById>> | null =
+    null;
+  let resolutionType: "pericope_first" | "verse_first" = "verse_first";
+
+  // Try pericope-first resolution for conceptual queries
+  const pericopeResolution = await resolvePericopeFirst(userPrompt);
+  if (pericopeResolution) {
+    // Use pericope's verses as anchors
+    anchorIds = pericopeResolution.allVerseIds.slice(0, useMultiAnchor ? 3 : 1);
+
+    // Get pericope context
+    pericopeContext = await getPericopeById(pericopeResolution.pericopeId);
+    resolutionType = "pericope_first";
+
+    console.log(
+      `[Expanding Ring] ✅ Resolved via pericope: ${pericopeContext?.title} (${anchorIds.length} verses)`,
+    );
+  }
+
+  // Fallback: If pericope resolution failed, use verse-first
+  if (anchorIds.length === 0) {
+    if (useMultiAnchor) {
+      anchorIds = await resolveMultipleAnchors(userPrompt, 3);
+    }
+  }
+
+  // Final fallback to single anchor if multi-anchor fails or is disabled
   if (anchorIds.length === 0) {
     const singleAnchor = await resolveAnchor(userPrompt);
     if (singleAnchor) {
@@ -885,6 +1124,20 @@ export async function explainScriptureWithKernelStream(
   const treeStats = computeTreeStats(visualBundle);
   const anchor = buildAnchorFromTree(visualBundle, anchorId);
 
+  // Attach resolution metadata
+  visualBundle.resolutionType = resolutionType; // From Phase 1, line 889
+  if (pericopeContext) {
+    visualBundle.pericopeContext = {
+      id: pericopeContext.id,
+      title: pericopeContext.title_generated || pericopeContext.title,
+      summary: pericopeContext.summary || "",
+      themes: pericopeContext.themes || [],
+      archetypes: pericopeContext.archetypes || [],
+      shadows: pericopeContext.shadows || [],
+      rangeRef: pericopeContext.rangeRef,
+    };
+  }
+
   // Send map data first
   res.write("event: map_data\n");
   res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
@@ -893,15 +1146,12 @@ export async function explainScriptureWithKernelStream(
   console.log("[Fast Stream] Starting single-pass teaching generation...");
 
   const systemPrompt = buildSystemPrompt(promptMode);
-  const pericope = await getPericopeForVerse(
-    anchorId,
-    ENV.PERICOPE_SOURCE || "SIL_AI",
+  // Use layered prompt builder (pericope context already fetched in Phase 1)
+  const userMessage = buildLayeredUserMessage(
+    userPrompt,
+    visualBundle,
+    pericopeContext, // From Phase 1, line 898
   );
-  const pericopeContext = pericope
-    ? `${buildPericopeContextBlock(pericope)}\n\n`
-    : "";
-  const userMessage =
-    pericopeContext + generateGenealogyUserMessage(userPrompt, visualBundle);
 
   await runModelStream(
     res,

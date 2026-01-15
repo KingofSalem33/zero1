@@ -50,6 +50,15 @@ export const chatRequestSchema = z.object({
     .enum(PROMPT_MODES)
     .optional()
     .describe("Prompt formatting mode for streaming exegesis"),
+  visualBundle: z
+    .object({
+      nodes: z.array(z.any()),
+      edges: z.array(z.any()),
+      rootId: z.number(),
+      lens: z.string(),
+    })
+    .optional()
+    .describe("Pre-built visual context bundle to skip tree rebuilding"),
 });
 
 export const chatJsonResponseSchema = z.object({

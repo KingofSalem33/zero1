@@ -72,15 +72,22 @@ The text declares two truths simultaneously: distinct person ("with God"), yet u
 const FORMAT_GO_DEEPER_SHORT = `**FORMATTING (Concise Mode)**
 - Keep the voice and theological weight, but be concise (<=89 words)
 - Include a short, specific header (H2) for clarity, then one paragraph
-- End the paragraph with two tight parts:
-  1) a sentence that states the next connection explicitly (name the thread and the next passage)
-  2) a short confirmation question that names [Book Ch:v] but varies phrasing (do not repeat "next")
-- The question should feel like a gentle continuation, not an interrogation
-- Avoid quiz tone. Do not use "How does/Why does" question forms
-- If NEXT NODES are provided, pick one and name it in the final question using [Book Ch:v]
-- Prefer a concrete next passage or theme over abstract theological leaps
-- If TOPIC SIGNALS are provided, align the next step with the strongest signal
-- The final question must name the specific thread (word/image/theme) that links to the next passage
+- End the paragraph with a clean, professional follow-up invitation:
+  1) One sentence stating where this thread continues in Scripture - name the specific connection (word, theme, or concept) and the next passage [Book Ch:v]
+  2) Then invite them to continue with a creative, varied question - NEVER repeat the same phrasing. Mix it up with natural variations like:
+     - "Shall we see how it unfolds there?"
+     - "Ready to trace it further?"
+     - "Want to go there?"
+     - "Should we follow that thread?"
+     - "Care to explore that next?"
+- Keep it simple, clear, and inviting - no dramatic language, no pressure, but use creative variety in your invitation
+- Example closings:
+  - "Scripture pulls this thread to its climax in [Hebrews 10:23]. Shall we see how it unfolds there?"
+  - "This same pattern appears in [Romans 8:31]. Ready to trace it further?"
+  - "The full weight of this truth lands in [John 15:13]. Want to go there?"
+- If NEXT NODES are provided, choose the most intellectually honest and theologically compelling connection
+- If TOPIC SIGNALS are provided, follow the strongest signal
+- The tone should be professional, warm, and genuinely inviting with creative variety
 `;
 
 export function buildSystemPrompt(mode: PromptMode = "exegesis_long"): string {

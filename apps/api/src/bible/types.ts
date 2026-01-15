@@ -96,6 +96,12 @@ export interface ThreadNode {
   structureId?: number; // Literary structure reference (if applicable)
   structureRole?: "center" | "mirror" | "member";
   mirrorOf?: number; // Verse ID of the mirror pair (if applicable)
+  // Pericope metadata (optional)
+  pericopeId?: number; // ID of parent pericope
+  pericopeTitle?: string; // Display title (title_generated || title)
+  pericopeType?: string; // "narrative", "parable", "teaching", etc.
+  pericopeThemes?: string[]; // Theological themes
+  isPericopeAnchor?: boolean; // True if this verse is the pericope anchor
 }
 
 export interface VisualEdge {
@@ -111,6 +117,17 @@ export interface VisualContextBundle {
   edges: VisualEdge[]; // Parent-child relationships with types
   rootId: number; // Anchor verse ID
   lens: string; // "NONE" | "MESSIANIC" | "NARRATIVE" | "THEOLOGY"
+  // Pericope metadata if resolution was pericope-first
+  pericopeContext?: {
+    id: number;
+    title: string;
+    summary: string;
+    themes: string[];
+    archetypes: string[];
+    shadows: string[];
+    rangeRef: string;
+  };
+  resolutionType?: "pericope_first" | "verse_first";
 }
 
 /**

@@ -170,7 +170,7 @@ app.use(
     },
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // Increased limit for visual bundle data
 
 // Apply global API rate limiting
 app.use("/api/", apiLimiter);
@@ -696,6 +696,7 @@ app.post(
         oratoryMode = false,
         history = [], // Used in Oratory mode for thread awareness
         promptMode,
+        visualBundle,
         // userId = "anonymous", // Not used in streaming mode
       } = chatRequestSchema.parse(req.body);
 
@@ -805,7 +806,13 @@ Teach with conviction as one who lives the Word—declarative, confident, rooted
         // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
         // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)
         console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
-        await explainScriptureWithKernelStream(res, message, true, promptMode);
+        await explainScriptureWithKernelStream(
+          res,
+          message,
+          true,
+          promptMode,
+          visualBundle,
+        );
         console.log("[Exegesis STREAM] KERNEL pipeline completed");
       }
 

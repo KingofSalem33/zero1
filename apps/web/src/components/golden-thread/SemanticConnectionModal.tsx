@@ -57,6 +57,7 @@ interface SemanticConnectionModalProps {
     verseIds?: number[];
   }>;
   onSelectTopic?: (styleType: ConnectionType) => void;
+  visualBundle?: import("../../types/goldenThread").VisualContextBundle; // Pre-built map data
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -100,6 +101,7 @@ export function SemanticConnectionModal({
   connectedVersesPreview,
   connectionTopics,
   onSelectTopic,
+  visualBundle,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
   const [verses, setVerses] = useState<
@@ -354,6 +356,7 @@ export function SemanticConnectionModal({
       displayText,
       prompt: goDeeperPrompt,
       mode: "go_deeper_short",
+      visualBundle, // Pass pre-built map data to skip rebuilding
     });
     handleClose();
   };

@@ -717,6 +717,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           historyForAPI,
           bibleStudyMode,
           normalizedPrompt.mode,
+          normalizedPrompt.visualBundle,
         );
         setIsProcessing(false);
 

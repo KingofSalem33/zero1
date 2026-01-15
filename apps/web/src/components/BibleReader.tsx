@@ -1,4 +1,4 @@
-/* global Range */
+/* global Range, HTMLButtonElement */
 import React, { useState, useEffect, useRef } from "react";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
@@ -127,13 +127,16 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   const { addHighlight, getHighlightForVerse } = useBibleHighlightsContext();
   const contentTopRef = useRef<HTMLDivElement>(null);
   const bookSelectorRef = useRef<HTMLDivElement>(null);
+  const selectedBookButtonRef = useRef<HTMLButtonElement>(null);
 
   // Load book data from GitHub
   useEffect(() => {
     const loadBook = async () => {
       setLoading(true);
       try {
-        const bookFileName = selectedBook.replace(/ /g, "%20");
+        // Map display names to GitHub filenames
+        // GitHub repo uses no spaces for "Song of Solomon" -> "SongofSolomon"
+        const bookFileName = selectedBook.replace(/ /g, "");
         const response = await fetch(
           `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
         );
@@ -167,6 +170,19 @@ const BibleReader: React.FC<BibleReaderProps> = ({
       });
     }
   }, [selectedBook, selectedChapter]);
+
+  // Scroll to selected book when dropdown opens
+  useEffect(() => {
+    if (showBookSelector && selectedBookButtonRef.current) {
+      // Use setTimeout to ensure the dropdown is fully rendered
+      setTimeout(() => {
+        selectedBookButtonRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 0);
+    }
+  }, [showBookSelector]);
 
   // Close book selector when clicking outside
   useEffect(() => {
@@ -409,6 +425,9 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                     {BIBLE_BOOKS.slice(0, 39).map((book) => (
                       <button
                         key={book}
+                        ref={
+                          selectedBook === book ? selectedBookButtonRef : null
+                        }
                         type="button"
                         onMouseDown={() => {
                           setSelectedBook(book);
@@ -430,6 +449,9 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                     {BIBLE_BOOKS.slice(39).map((book) => (
                       <button
                         key={book}
+                        ref={
+                          selectedBook === book ? selectedBookButtonRef : null
+                        }
                         type="button"
                         onMouseDown={() => {
                           setSelectedBook(book);

@@ -19,6 +19,7 @@ import { searchVersesByQuery } from "./semanticSearch";
 import { getTestament } from "./testamentUtil";
 import { ensureVersesHaveText } from "./verseText";
 import { fetchAllEdges } from "./edgeFetchers";
+import { getPericopeForVerse } from "./pericopeSearch";
 import {
   buildMirrorPairs,
   buildMirrorLookup,
@@ -911,6 +912,33 @@ export async function buildVisualBundle(
     });
   });
 
+  // ========================================
+  // STEP 7.5: Hydrate pericope metadata for anchor and ring0 nodes
+  // ========================================
+  const anchorPericopeMap = new Map<
+    number,
+    Awaited<ReturnType<typeof getPericopeForVerse>>
+  >();
+
+  for (const node of nodes.filter((n) => n.depth === 0)) {
+    const pericope = await getPericopeForVerse(
+      node.id,
+      ENV.PERICOPE_SOURCE || "SIL_AI",
+    );
+
+    if (pericope) {
+      // Attach pericope metadata to node
+      node.pericopeId = pericope.id;
+      node.pericopeTitle = pericope.title_generated || pericope.title;
+      node.pericopeType = pericope.pericope_type || undefined;
+      node.pericopeThemes = pericope.themes || undefined;
+      node.isPericopeAnchor = node.id === pericope.verseIds[0];
+
+      // Cache for return value
+      anchorPericopeMap.set(pericope.id, pericope);
+    }
+  }
+
   await applyGravityMetrics(nodes, bundle.structure);
 
   // ========================================
@@ -977,11 +1005,30 @@ export async function buildVisualBundle(
     PATTERN: allEdges.filter((e) => e.type === "PATTERN").length,
   });
 
+  // Get first pericope from cache if available
+  const firstPericope =
+    anchorPericopeMap.size > 0
+      ? Array.from(anchorPericopeMap.values())[0]
+      : null;
+
   return {
     nodes,
     edges: allEdges,
     rootId: bundle.anchor.id,
     lens: "NONE",
+    // Include pericope context if anchor is part of one
+    pericopeContext: firstPericope
+      ? {
+          id: firstPericope.id,
+          title: firstPericope.title_generated || firstPericope.title,
+          summary: firstPericope.summary || "",
+          themes: firstPericope.themes || [],
+          archetypes: firstPericope.archetypes || [],
+          shadows: firstPericope.shadows || [],
+          rangeRef: firstPericope.rangeRef,
+        }
+      : undefined,
+    resolutionType: undefined, // Will be set by calling code in Phase 3
   };
 }
 
