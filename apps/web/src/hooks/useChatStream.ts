@@ -60,6 +60,7 @@ export function useChatStream(
       oratoryMode?: boolean,
       promptMode?: string,
       visualBundle?: unknown,
+      mapSession?: unknown,
     ) => {
       // Cancel any existing stream
       if (abortControllerRef.current) {
@@ -93,6 +94,7 @@ export function useChatStream(
             oratoryMode: oratoryMode || false,
             ...(promptMode ? { promptMode } : {}),
             ...(visualBundle ? { visualBundle } : {}),
+            ...(mapSession ? { mapSession } : {}),
           }),
           signal: abortController.signal,
         });

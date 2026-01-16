@@ -10,6 +10,12 @@ export type GoDeeperPromptInput = {
   synopsis: string;
   nextCandidates?: VerseExcerpt[];
   topicHints?: string[];
+  pericopeContext?: {
+    title: string;
+    summary: string;
+    rangeRef: string;
+    themes?: string[];
+  };
 };
 
 export const buildGoDeeperPrompt = ({
@@ -19,7 +25,17 @@ export const buildGoDeeperPrompt = ({
   synopsis,
   nextCandidates = [],
   topicHints = [],
-}: GoDeeperPromptInput): string => `TASK: Reveal why this connection matters and create irresistible momentum toward the next step.
+  pericopeContext,
+}: GoDeeperPromptInput): string => {
+  const storyContext = pericopeContext
+    ? `\n[STORY CONTEXT]\n${pericopeContext.title} (${pericopeContext.rangeRef})\nSummary: ${pericopeContext.summary}\n${
+        pericopeContext.themes?.length
+          ? `Themes: ${pericopeContext.themes.join(", ")}`
+          : ""
+      }`
+    : "";
+
+  return `TASK: Reveal why this connection matters and create irresistible momentum toward the next step.
 
 === THE DATA ===
 [SOURCE ANCHOR]
@@ -31,18 +47,19 @@ ${toVerse.reference}: "${toVerse.text}"
 [METADATA]
 - Type: ${connectionLabel}
 - Previous Synopsis: "${synopsis}"
+${storyContext}
 ${nextCandidates.length > 0 ? "\n[NEXT NODES]\n" : ""}${nextCandidates
-  .map(
-    (verse) =>
-      `- [${verse.reference}] "${verse.text.slice(0, 220)}${
-        verse.text.length > 220 ? "..." : ""
-      }"`,
-  )
-  .join(
-    "\n",
-  )}${topicHints.length > 0 ? "\n\n[TOPIC SIGNALS]\n" : ""}${topicHints
-  .map((hint) => `- ${hint}`)
-  .join("\n")}
+    .map(
+      (verse) =>
+        `- [${verse.reference}] "${verse.text.slice(0, 220)}${
+          verse.text.length > 220 ? "..." : ""
+        }"`,
+    )
+    .join(
+      "\n",
+    )}${topicHints.length > 0 ? "\n\n[TOPIC SIGNALS]\n" : ""}${topicHints
+    .map((hint) => `- ${hint}`)
+    .join("\n")}
 
 === INSTRUCTION ===
 Using the KJV text above and the synopsis as foundation, explain the theological weight of this connection—why it matters to the life of faith. Do not repeat the synopsis. Dig deeper. Show what's at stake.
@@ -64,6 +81,7 @@ Example closings (vary these!):
 - "The full weight of this truth lands in [John 15:13]. Want to go there?"
 
 Keep it professional, warm, and inviting with creative variety. No dramatic language, no pressure—just a genuine invitation to continue the journey.`;
+};
 
 export const buildGoDeeperDisplayText = ({
   connectionLabel,

@@ -1778,9 +1778,20 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     [bundle],
   );
 
+  const remainingVerseCount = useMemo(() => {
+    if (!bundle) return 0;
+    let count = 0;
+    bundle.nodes.forEach((node) => {
+      if (!analyzedVerseIds.has(node.id)) count += 1;
+    });
+    return count;
+  }, [bundle, analyzedVerseIds]);
+
+  const isPericopeBundle = bundle?.lens === "NARRATIVE";
+
   const startDiscovery = useCallback(
     async (mode: "auto" | "deep") => {
-      if (!bundle || discovering) return;
+      if (!bundle || discovering || isPericopeBundle) return;
       const coreVerses = selectVersesForDiscovery(analyzedVerseIds);
       if (coreVerses.length < 2) {
         if (mode === "deep") {
@@ -1794,6 +1805,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       analyzedVerseIds,
       bundle,
       discovering,
+      isPericopeBundle,
       runDiscovery,
       selectVersesForDiscovery,
     ],
@@ -1806,18 +1818,17 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     void startDiscovery("auto");
   }, [bundle, discovering, startDiscovery]);
 
-  const remainingVerseCount = useMemo(() => {
-    if (!bundle) return 0;
-    let count = 0;
-    bundle.nodes.forEach((node) => {
-      if (!analyzedVerseIds.has(node.id)) count += 1;
-    });
-    return count;
-  }, [bundle, analyzedVerseIds]);
-
   const deepCrawlDisabled =
-    !initialExpansionDone || discovering || remainingVerseCount < 2;
+    isPericopeBundle ||
+    !initialExpansionDone ||
+    discovering ||
+    remainingVerseCount < 2;
   const deepCrawlLabel = discovering ? "Crawling..." : "Deep Seach";
+  const deepCrawlTitle = isPericopeBundle
+    ? "Deep search is available in verse view"
+    : deepCrawlDisabled
+      ? "No more verses to analyze"
+      : "Analyze more verses for new connections";
 
   const shouldShowOverlay = !bundle || discovering || !initialExpansionDone;
 
@@ -2652,11 +2663,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                   type="button"
                   onClick={() => startDiscovery("deep")}
                   disabled={deepCrawlDisabled}
-                  title={
-                    deepCrawlDisabled
-                      ? "No more verses to analyze"
-                      : "Analyze more verses for new connections"
-                  }
+                  title={deepCrawlTitle}
                   className="w-full px-3 py-2 rounded-md text-xs font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/15 text-white"
                 >
                   {deepCrawlLabel}

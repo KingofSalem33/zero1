@@ -85,6 +85,7 @@ const FORMAT_GO_DEEPER_SHORT = `**FORMATTING (Concise Mode)**
   - "Scripture pulls this thread to its climax in [Hebrews 10:23]. Shall we see how it unfolds there?"
   - "This same pattern appears in [Romans 8:31]. Ready to trace it further?"
   - "The full weight of this truth lands in [John 15:13]. Want to go there?"
+- If NEXT TARGET is provided, you MUST use it exactly in the invitation and do not choose another passage
 - If NEXT NODES are provided, choose the most intellectually honest and theologically compelling connection
 - If TOPIC SIGNALS are provided, follow the strongest signal
 - The tone should be professional, warm, and genuinely inviting with creative variety

@@ -42,6 +42,7 @@ import {
   resolveMultipleAnchors,
   deduplicateVerses,
 } from "./bible/expandingRingExegesis";
+import { buildPericopeBundle } from "./bible/pericopeGraphWalker";
 import { buildVisualBundle } from "./bible/graphWalker";
 import { findResonantScripture } from "./bible/oratoryValidation";
 import bookmarksRouter from "./routes/bookmarks";
@@ -661,6 +662,22 @@ app.post(
       // Remove duplicate/parallel passages
       visualBundle = await deduplicateVerses(visualBundle);
 
+      if (visualBundle.pericopeContext?.id) {
+        try {
+          const pericopeBundle = await buildPericopeBundle(
+            visualBundle.pericopeContext.id,
+          );
+          if (pericopeBundle) {
+            visualBundle.pericopeBundle = pericopeBundle;
+          }
+        } catch (error) {
+          console.warn(
+            "[Trace] Pericope bundle build failed:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+
       console.log(
         `[Trace] ✅ Visual bundle built: ${visualBundle.nodes.length} nodes, ${visualBundle.edges.length} edges`,
       );
@@ -697,6 +714,7 @@ app.post(
         history = [], // Used in Oratory mode for thread awareness
         promptMode,
         visualBundle,
+        mapSession,
         // userId = "anonymous", // Not used in streaming mode
       } = chatRequestSchema.parse(req.body);
 
@@ -812,6 +830,7 @@ Teach with conviction as one who lives the Word—declarative, confident, rooted
           true,
           promptMode,
           visualBundle,
+          mapSession,
         );
         console.log("[Exegesis STREAM] KERNEL pipeline completed");
       }

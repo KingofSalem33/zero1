@@ -12,6 +12,8 @@ const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
 const BibleReader = lazy(() => import("./components/BibleReader"));
 const HighlightsLibrary = lazy(() => import("./components/HighlightsLibrary"));
 
+const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+
 interface Chat {
   id: string;
   title: string;
@@ -123,7 +125,6 @@ function App() {
       setVisualBundle(null); // Clear previous bundle
 
       // Call the trace API endpoint
-      const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
       const response = await fetch(`${API_URL}/api/trace`, {
         method: "POST",
         headers: {
@@ -423,11 +424,12 @@ function App() {
             <div className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
-                <h3 className="text-sm font-semibold text-neutral-200">
-                  Theological Thread Explorer
-                  {visualBundle &&
-                    ` (${visualBundle.nodes?.length || 0} verses)`}
-                </h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-neutral-200">
+                    Theological Thread Explorer (
+                    {visualBundle?.nodes?.length || 0} verses)
+                  </h3>
+                </div>
                 <button
                   onClick={() => setShowVisualization(false)}
                   className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"

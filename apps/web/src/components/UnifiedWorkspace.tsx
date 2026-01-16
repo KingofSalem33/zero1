@@ -14,9 +14,32 @@ import { useChatStream } from "../hooks/useChatStream";
 import { NarrativeMap } from "./golden-thread/NarrativeMap";
 import { useGoldenThreadHighlighting } from "../hooks/useGoldenThreadHighlighting";
 import type { VisualContextBundle } from "../types/goldenThread";
-import type { GoDeeperPayload, PendingPrompt, PromptMode } from "../types/chat";
+import type {
+  GoDeeperPayload,
+  PendingPrompt,
+  PromptMode,
+  MapSession,
+  MapConnection,
+} from "../types/chat";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+
+const EDGE_TYPE_TO_STYLE: Record<string, string> = {
+  DEEPER: "GREY",
+  ROOTS: "GOLD",
+  ECHOES: "PURPLE",
+  PROPHECY: "CYAN",
+  GENEALOGY: "GENEALOGY",
+  NARRATIVE: "GREY",
+  TYPOLOGY: "TYPOLOGY",
+  FULFILLMENT: "FULFILLMENT",
+  CONTRAST: "CONTRAST",
+  PROGRESSION: "PROGRESSION",
+  PATTERN: "PATTERN",
+};
+
+const REFERENCE_REGEX =
+  /((?:\x5B\s*)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\s*\x5D)?)/g;
 
 // Removed MicroStep interface - no longer using cards UI
 
@@ -156,10 +179,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const composerRef = useRef<HTMLDivElement>(null);
   const messagesFetchedRef = useRef(false);
   const lastPromptModeRef = useRef<PromptMode | null>(null);
-  const [nextSuggestedRef, setNextSuggestedRef] = useState<string | null>(null);
-  const [nextSuggestedMode, setNextSuggestedMode] = useState<PromptMode | null>(
-    null,
-  );
+  const [nextSuggestedPrompt, setNextSuggestedPrompt] =
+    useState<PendingPrompt | null>(null);
 
   // Removed auto-generation of micro-steps
   // Micro-steps will be generated and executed seamlessly when "Ask AI" is clicked
@@ -532,11 +553,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     return "What's on your mind?";
   };
 
-  // State for genealogy visualization (legacy - kept for backwards compatibility)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Active map session bundle (kept while map flag is on)
   const [visualBundle, setVisualBundle] = useState<VisualContextBundle | null>(
     null,
   );
+  const [mapSession, setMapSession] = useState<MapSession | null>(null);
   const [showVisualization, setShowVisualization] = useState(false);
   const [pendingVisualBundle, setPendingVisualBundle] =
     useState<VisualContextBundle | null>(null); // Store bundle until message is complete
@@ -545,19 +566,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [mapReadyMessageId, setMapReadyMessageId] = useState<string | null>(
     null,
   );
-  const [mapGranularity, setMapGranularity] = useState<"verse" | "pericope">(
-    "verse",
-  );
-  const [pericopeBundle, setPericopeBundle] =
-    useState<VisualContextBundle | null>(null);
-  const [pericopeLoading, setPericopeLoading] = useState(false);
-  const [pericopeError, setPericopeError] = useState<string | null>(null);
   const { highlightedRefs, addReferencesFromText, resetHighlights } =
     useGoldenThreadHighlighting();
-  const activeBundle =
-    mapGranularity === "pericope" ? pericopeBundle : visualBundle;
-  const activeHighlightedRefs =
-    mapGranularity === "pericope" ? [] : highlightedRefs;
+  const activeBundle = visualBundle;
+  const activeHighlightedRefs = highlightedRefs;
 
   // TTS state management
   /* global HTMLAudioElement */
@@ -632,6 +644,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Now stores the bundle but doesn't display it automatically
   const handleMapData = useCallback((bundle: VisualContextBundle) => {
     // Store the bundle to attach to the message, but don't show it yet
+    setVisualBundle((prev) => {
+      if (prev && bundle.rootId !== prev.rootId) {
+        setMapSession(null);
+        setNextSuggestedPrompt(null);
+      }
+      return bundle;
+    });
     setPendingVisualBundle(bundle);
     setMapPrepActive(true);
     setMapPrepCount(bundle.nodes?.length ?? 0);
@@ -653,10 +672,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         questionIndex + 1,
       );
       const matches = tail.match(
-        /\[(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?\]/g,
+        /\x5B(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?\x5D/g,
       );
       if (!matches || matches.length === 0) return null;
-      return matches[matches.length - 1].replace(/^\[|\]$/g, "");
+      return matches[matches.length - 1].replace(/^\x5B|\x5D$/g, "");
     },
     [],
   );
@@ -669,6 +688,415 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       normalized,
     );
   }, []);
+
+  const normalizeReference = useCallback((value: string) => {
+    return value
+      .replace(/[\x5B\x5D]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }, []);
+
+  const formatNodeReference = useCallback(
+    (node: VisualContextBundle["nodes"][number]) =>
+      node.displaySubLabel || `${node.book_name} ${node.chapter}:${node.verse}`,
+    [],
+  );
+
+  const buildReferenceLookup = useCallback(
+    (bundle: VisualContextBundle) => {
+      const lookup = new Map<string, number>();
+      bundle.nodes.forEach((node) => {
+        const canonical = formatNodeReference(node);
+        lookup.set(normalizeReference(canonical), node.id);
+        if (node.displayLabel) {
+          lookup.set(normalizeReference(node.displayLabel), node.id);
+        }
+        if (node.book_abbrev) {
+          lookup.set(
+            normalizeReference(
+              `${node.book_abbrev} ${node.chapter}:${node.verse}`,
+            ),
+            node.id,
+          );
+        }
+      });
+      return lookup;
+    },
+    [formatNodeReference, normalizeReference],
+  );
+
+  const extractReferences = useCallback((text: string): string[] => {
+    const matches = text.match(REFERENCE_REGEX);
+    if (!matches) return [];
+    return matches.map((value) =>
+      value.replace(/^\s*\x5B|\x5D\s*$/g, "").trim(),
+    );
+  }, []);
+
+  const buildEdgeKey = useCallback(
+    (connectionType: string, fromId: number, toId: number) => {
+      const a = Math.min(fromId, toId);
+      const b = Math.max(fromId, toId);
+      return `${connectionType}:${a}-${b}`;
+    },
+    [],
+  );
+
+  const getEdgeStyleType = useCallback((edgeType: string | undefined) => {
+    if (!edgeType) return "GREY";
+    return EDGE_TYPE_TO_STYLE[edgeType] || "GREY";
+  }, []);
+
+  const findBestEdge = useCallback(
+    (bundle: VisualContextBundle, fromId: number, toId: number) => {
+      const candidates = (bundle.edges || []).filter(
+        (edge) =>
+          (edge.from === fromId && edge.to === toId) ||
+          (edge.from === toId && edge.to === fromId),
+      );
+      if (candidates.length === 0) return null;
+      return candidates.reduce((best, current) => {
+        const bestWeight = typeof best.weight === "number" ? best.weight : 0.7;
+        const currentWeight =
+          typeof current.weight === "number" ? current.weight : 0.7;
+        return currentWeight > bestWeight ? current : best;
+      }, candidates[0]);
+    },
+    [],
+  );
+
+  const resolveConnectionType = useCallback(
+    (
+      bundle: VisualContextBundle,
+      fromId: number,
+      toId: number,
+      fallback: string,
+    ) => {
+      const bestEdge = findBestEdge(bundle, fromId, toId);
+      if (!bestEdge) return fallback;
+      return getEdgeStyleType(bestEdge.type);
+    },
+    [findBestEdge, getEdgeStyleType],
+  );
+
+  const buildClusterFromBundle = useCallback(
+    (
+      bundle: VisualContextBundle,
+      baseId: number,
+      connectionType: string,
+      seedVerseIds: number[] = [],
+    ) => {
+      const verseIdSet = new Set<number>(seedVerseIds);
+      verseIdSet.add(baseId);
+      (bundle.edges || []).forEach((edge) => {
+        const styleType = getEdgeStyleType(edge.type);
+        if (styleType !== connectionType) return;
+        if (edge.from === baseId) {
+          verseIdSet.add(edge.to);
+        } else if (edge.to === baseId) {
+          verseIdSet.add(edge.from);
+        }
+      });
+      return {
+        baseId,
+        verseIds: Array.from(verseIdSet),
+        connectionType,
+      };
+    },
+    [getEdgeStyleType],
+  );
+
+  const buildClusterEdges = useCallback(
+    (
+      bundle: VisualContextBundle,
+      cluster: NonNullable<MapSession["cluster"]>,
+    ) =>
+      cluster.verseIds
+        .filter((id) => id !== cluster.baseId)
+        .map((id) => {
+          const bestEdge = findBestEdge(bundle, cluster.baseId, id);
+          return {
+            fromId: cluster.baseId,
+            toId: id,
+            connectionType: cluster.connectionType,
+            weight: bestEdge?.weight ?? 0.7,
+          };
+        }),
+    [findBestEdge],
+  );
+
+  const buildAllClusters = useCallback(
+    (bundle: VisualContextBundle) => {
+      const clusters = new Map<
+        string,
+        {
+          key: string;
+          baseId: number;
+          connectionType: string;
+          verseIds: Set<number>;
+          totalWeight: number;
+        }
+      >();
+      (bundle.edges || []).forEach((edge) => {
+        const styleType = getEdgeStyleType(edge.type);
+        const weight = typeof edge.weight === "number" ? edge.weight : 0.7;
+        const addEdge = (baseId: number, otherId: number) => {
+          const key = `${baseId}:${styleType}`;
+          if (!clusters.has(key)) {
+            clusters.set(key, {
+              key,
+              baseId,
+              connectionType: styleType,
+              verseIds: new Set<number>(),
+              totalWeight: 0,
+            });
+          }
+          const cluster = clusters.get(key);
+          if (cluster) {
+            cluster.verseIds.add(otherId);
+            cluster.totalWeight += weight;
+          }
+        };
+        addEdge(edge.from, edge.to);
+        addEdge(edge.to, edge.from);
+      });
+      return Array.from(clusters.values()).map((cluster) => ({
+        ...cluster,
+        verseIds: Array.from(cluster.verseIds),
+      }));
+    },
+    [getEdgeStyleType],
+  );
+
+  const pickNextConnection = useCallback(
+    (
+      bundle: VisualContextBundle,
+      cluster: MapSession["cluster"] | undefined,
+      visited: Set<string>,
+    ): {
+      nextConnection: MapConnection | null;
+      nextCluster: MapSession["cluster"] | undefined;
+    } => {
+      if (cluster) {
+        const edges = buildClusterEdges(bundle, cluster);
+        const nextInCluster = edges
+          .filter(
+            (edge) =>
+              !visited.has(
+                buildEdgeKey(edge.connectionType, edge.fromId, edge.toId),
+              ),
+          )
+          .sort((a, b) => {
+            if (b.weight !== a.weight) return b.weight - a.weight;
+            return a.toId - b.toId;
+          })[0];
+        if (nextInCluster) {
+          return {
+            nextConnection: {
+              fromId: nextInCluster.fromId,
+              toId: nextInCluster.toId,
+              connectionType: nextInCluster.connectionType,
+            },
+            nextCluster: cluster,
+          };
+        }
+      }
+
+      const clusters = buildAllClusters(bundle)
+        .map((entry) => ({
+          ...entry,
+          edgeKeys: entry.verseIds.map((id) =>
+            buildEdgeKey(entry.connectionType, entry.baseId, id),
+          ),
+        }))
+        .filter((entry) => entry.edgeKeys.some((key) => !visited.has(key)));
+
+      if (clusters.length === 0) {
+        return { nextConnection: null, nextCluster: cluster };
+      }
+
+      const sameBaseClusters = cluster
+        ? clusters.filter(
+            (candidate) =>
+              candidate.baseId === cluster.baseId &&
+              candidate.connectionType !== cluster.connectionType,
+          )
+        : [];
+
+      const candidateClusters =
+        sameBaseClusters.length > 0 ? sameBaseClusters : clusters;
+
+      candidateClusters.sort((a, b) => {
+        if (b.totalWeight !== a.totalWeight) {
+          return b.totalWeight - a.totalWeight;
+        }
+        if (b.verseIds.length !== a.verseIds.length) {
+          return b.verseIds.length - a.verseIds.length;
+        }
+        if (a.baseId !== b.baseId) return a.baseId - b.baseId;
+        return a.connectionType.localeCompare(b.connectionType);
+      });
+
+      const selectedCluster = candidateClusters[0];
+      const nextId = selectedCluster.verseIds
+        .filter(
+          (id) =>
+            !visited.has(
+              buildEdgeKey(
+                selectedCluster.connectionType,
+                selectedCluster.baseId,
+                id,
+              ),
+            ),
+        )
+        .sort((a, b) => a - b)[0];
+
+      if (!nextId) {
+        return { nextConnection: null, nextCluster: cluster };
+      }
+
+      return {
+        nextConnection: {
+          fromId: selectedCluster.baseId,
+          toId: nextId,
+          connectionType: selectedCluster.connectionType,
+        },
+        nextCluster: {
+          baseId: selectedCluster.baseId,
+          verseIds: selectedCluster.verseIds,
+          connectionType: selectedCluster.connectionType,
+        },
+      };
+    },
+    [buildAllClusters, buildClusterEdges, buildEdgeKey],
+  );
+
+  const buildMapSessionPayload = useCallback(
+    ({
+      bundle,
+      seedSession,
+      existingSession,
+      inputText,
+      useQueuedConnection,
+    }: {
+      bundle: VisualContextBundle;
+      seedSession?: MapSession | null;
+      existingSession?: MapSession | null;
+      inputText?: string;
+      useQueuedConnection: boolean;
+    }) => {
+      const visited = new Set<string>(
+        seedSession?.visitedEdgeKeys || existingSession?.visitedEdgeKeys || [],
+      );
+      let cluster = seedSession?.cluster || existingSession?.cluster;
+      let currentConnection =
+        seedSession?.currentConnection || existingSession?.currentConnection;
+
+      const references = inputText ? extractReferences(inputText) : [];
+      const lookup = buildReferenceLookup(bundle);
+      const referencedIds = references
+        .map((ref) => lookup.get(normalizeReference(ref)))
+        .filter((id): id is number => typeof id === "number");
+      const offMapReferences = references.filter(
+        (ref) => !lookup.has(normalizeReference(ref)),
+      );
+
+      if (!seedSession) {
+        if (useQueuedConnection && existingSession?.nextConnection) {
+          currentConnection = existingSession.nextConnection;
+        } else if (referencedIds.length > 0) {
+          const baseId =
+            referencedIds.length > 1
+              ? referencedIds[0]
+              : cluster?.baseId || bundle.rootId || referencedIds[0];
+          let toId =
+            referencedIds.length > 1
+              ? referencedIds[1]
+              : referencedIds[0] === baseId
+                ? bundle.rootId || referencedIds[0]
+                : referencedIds[0];
+          if (toId === baseId) {
+            const fallbackId = cluster?.verseIds?.find((id) => id !== baseId);
+            if (fallbackId) {
+              toId = fallbackId;
+            }
+          }
+          const connectionType = resolveConnectionType(
+            bundle,
+            baseId,
+            toId,
+            cluster?.connectionType || "GREY",
+          );
+          currentConnection = { fromId: baseId, toId, connectionType };
+          cluster = buildClusterFromBundle(bundle, baseId, connectionType, [
+            baseId,
+            toId,
+          ]);
+        }
+      }
+
+      if (currentConnection) {
+        visited.add(
+          buildEdgeKey(
+            currentConnection.connectionType,
+            currentConnection.fromId,
+            currentConnection.toId,
+          ),
+        );
+      }
+
+      const { nextConnection, nextCluster } = pickNextConnection(
+        bundle,
+        cluster,
+        visited,
+      );
+
+      const session: MapSession = {
+        cluster: nextCluster || cluster,
+        currentConnection,
+        nextConnection,
+        visitedEdgeKeys: Array.from(visited),
+        offMapReferences: offMapReferences.length
+          ? offMapReferences
+          : undefined,
+        exhausted: !nextConnection,
+      };
+
+      return {
+        session,
+        queuedConnection: nextConnection,
+      };
+    },
+    [
+      buildClusterFromBundle,
+      buildEdgeKey,
+      buildReferenceLookup,
+      extractReferences,
+      normalizeReference,
+      pickNextConnection,
+      resolveConnectionType,
+    ],
+  );
+
+  const buildConnectionPrompt = useCallback(
+    (bundle: VisualContextBundle, connection: MapConnection): PendingPrompt => {
+      const fromNode = bundle.nodes.find(
+        (node) => node.id === connection.fromId,
+      );
+      const toNode = bundle.nodes.find((node) => node.id === connection.toId);
+      const fromRef = fromNode ? formatNodeReference(fromNode) : "Unknown";
+      const toRef = toNode ? formatNodeReference(toNode) : "Unknown";
+      const promptText = `Discuss the connection between ${fromRef} and ${toRef}.`;
+      return {
+        displayText: promptText,
+        prompt: promptText,
+        mode: "go_deeper_short",
+        visualBundle: bundle,
+      };
+    },
+    [formatNodeReference],
+  );
 
   // Handle pending prompt from Bible reader (auto-start stream)
   useEffect(() => {
@@ -692,6 +1120,30 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         setMapReadyMessageId(null);
         setPendingVisualBundle(null);
         lastPromptModeRef.current = normalizedPrompt.mode ?? null;
+        if (normalizedPrompt.visualBundle) {
+          setVisualBundle(normalizedPrompt.visualBundle);
+        }
+
+        const bundleForMap = normalizedPrompt.visualBundle || visualBundle;
+        let mapSessionPayload: MapSession | undefined;
+        if (bundleForMap && (normalizedPrompt.mapSession || mapSession)) {
+          const { session, queuedConnection } = buildMapSessionPayload({
+            bundle: bundleForMap,
+            seedSession: normalizedPrompt.mapSession || null,
+            existingSession: mapSession,
+            inputText: normalizedPrompt.displayText,
+            useQueuedConnection: false,
+          });
+          mapSessionPayload = session;
+          setMapSession(session);
+          if (queuedConnection) {
+            setNextSuggestedPrompt(
+              buildConnectionPrompt(bundleForMap, queuedConnection),
+            );
+          } else {
+            setNextSuggestedPrompt(null);
+          }
+        }
 
         // Add user message to chat
         const newMessage: ChatMessage = {
@@ -717,7 +1169,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           historyForAPI,
           bibleStudyMode,
           normalizedPrompt.mode,
-          normalizedPrompt.visualBundle,
+          bundleForMap || undefined,
+          mapSessionPayload,
         );
         setIsProcessing(false);
 
@@ -736,6 +1189,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     startStream,
     onPromptConsumed,
     bibleStudyMode,
+    visualBundle,
+    mapSession,
+    buildMapSessionPayload,
+    buildConnectionPrompt,
   ]);
 
   // Reset processed prompt when prompt is consumed
@@ -752,66 +1209,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }, 4200);
     return () => window.clearTimeout(timer);
   }, [mapReadyMessageId]);
-
-  useEffect(() => {
-    if (!visualBundle) return;
-    setMapGranularity("verse");
-    setPericopeBundle(null);
-    setPericopeError(null);
-  }, [visualBundle?.rootId]);
-
-  useEffect(() => {
-    if (!visualBundle || mapGranularity !== "pericope") return;
-    let isActive = true;
-
-    const fetchPericopeBundle = async () => {
-      setPericopeLoading(true);
-      setPericopeError(null);
-      try {
-        const pericopeResponse = await fetch(
-          `${API_URL}/api/pericope/verse/${visualBundle.rootId}?source=SBL`,
-        );
-        if (!pericopeResponse.ok) {
-          throw new Error("No pericope available for this anchor");
-        }
-        const pericope = await pericopeResponse.json();
-        const bundleResponse = await fetch(
-          `${API_URL}/api/pericope/genealogy`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pericopeId: pericope.id,
-            }),
-          },
-        );
-        if (!bundleResponse.ok) {
-          throw new Error("Failed to load pericope map");
-        }
-        const bundle = await bundleResponse.json();
-        if (isActive) {
-          setPericopeBundle(bundle);
-        }
-      } catch (error) {
-        if (isActive) {
-          setPericopeError(
-            error instanceof Error ? error.message : "Pericope map failed",
-          );
-          setPericopeBundle(null);
-        }
-      } finally {
-        if (isActive) {
-          setPericopeLoading(false);
-        }
-      }
-    };
-
-    fetchPericopeBundle();
-
-    return () => {
-      isActive = false;
-    };
-  }, [API_URL, mapGranularity, visualBundle]);
 
   // Track citations from streaming content for Golden Thread highlighting
   // Only update when streaming is complete to avoid performance issues
@@ -903,12 +1300,23 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         type: "ai" as const,
         content: streamingMessage.content,
         timestamp: new Date(),
-        visualBundle: pendingVisualBundle || undefined,
+        visualBundle: pendingVisualBundle || visualBundle || undefined,
       };
-      const suggestedRef = extractSuggestedReference(newMessage.content);
-      if (lastPromptModeRef.current === "go_deeper_short" && suggestedRef) {
-        setNextSuggestedRef(suggestedRef);
-        setNextSuggestedMode("go_deeper_short");
+      if (visualBundle && mapSession?.nextConnection) {
+        setNextSuggestedPrompt(
+          buildConnectionPrompt(visualBundle, mapSession.nextConnection),
+        );
+      } else {
+        const suggestedRef = extractSuggestedReference(newMessage.content);
+        if (lastPromptModeRef.current === "go_deeper_short" && suggestedRef) {
+          setNextSuggestedPrompt({
+            displayText: suggestedRef,
+            prompt: suggestedRef,
+            mode: "go_deeper_short",
+          });
+        } else {
+          setNextSuggestedPrompt(null);
+        }
       }
 
       setMessages((prev) => {
@@ -936,7 +1344,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       setMapReadyMessageId(newMessage.visualBundle ? newMessage.id : null);
       setPendingVisualBundle(null);
     }
-  }, [streamingMessage?.isComplete, pendingVisualBundle]);
+  }, [
+    streamingMessage?.isComplete,
+    pendingVisualBundle,
+    visualBundle,
+    mapSession,
+    buildConnectionPrompt,
+    extractSuggestedReference,
+  ]);
 
   const handleSendMessage = async () => {
     if (!currentInput.trim() || isProcessing || isStreaming) return;
@@ -948,13 +1363,16 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setPendingVisualBundle(null);
     const userMessage = currentInput.trim();
     const shouldUseSuggested =
-      nextSuggestedRef && nextSuggestedMode && isAffirmation(userMessage);
-    const apiMessage = shouldUseSuggested ? nextSuggestedRef : userMessage;
+      nextSuggestedPrompt && isAffirmation(userMessage);
+    const apiMessage = shouldUseSuggested
+      ? nextSuggestedPrompt.prompt
+      : userMessage;
     const displayMessage = userMessage;
-    const promptMode = shouldUseSuggested ? nextSuggestedMode : undefined;
+    const promptMode = shouldUseSuggested
+      ? nextSuggestedPrompt?.mode
+      : undefined;
     if (shouldUseSuggested) {
-      setNextSuggestedRef(null);
-      setNextSuggestedMode(null);
+      setNextSuggestedPrompt(null);
     }
     lastPromptModeRef.current = promptMode ?? null;
 
@@ -976,6 +1394,26 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       content: msg.rawContent ?? msg.content,
     }));
 
+    const bundleForMap = visualBundle;
+    let mapSessionPayload: MapSession | undefined;
+    if (bundleForMap) {
+      const { session, queuedConnection } = buildMapSessionPayload({
+        bundle: bundleForMap,
+        existingSession: mapSession,
+        inputText: userMessage,
+        useQueuedConnection: shouldUseSuggested,
+      });
+      mapSessionPayload = session;
+      setMapSession(session);
+      if (queuedConnection) {
+        setNextSuggestedPrompt(
+          buildConnectionPrompt(bundleForMap, queuedConnection),
+        );
+      } else {
+        setNextSuggestedPrompt(null);
+      }
+    }
+
     // Start streaming AI response with updated message history
     await startStream(
       apiMessage,
@@ -983,6 +1421,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       historyForAPI,
       bibleStudyMode,
       promptMode,
+      bundleForMap || undefined,
+      mapSessionPayload,
     );
     setIsProcessing(false);
   };
@@ -1029,8 +1469,36 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       content: msg.rawContent ?? msg.content,
     }));
 
-    // Start streaming AI response - this will build a new genealogy tree
-    await startStream(reference, "user", historyForAPI);
+    const bundleForMap = visualBundle;
+    let mapSessionPayload: MapSession | undefined;
+    if (bundleForMap) {
+      const { session, queuedConnection } = buildMapSessionPayload({
+        bundle: bundleForMap,
+        existingSession: mapSession,
+        inputText: reference,
+        useQueuedConnection: false,
+      });
+      mapSessionPayload = session;
+      setMapSession(session);
+      if (queuedConnection) {
+        setNextSuggestedPrompt(
+          buildConnectionPrompt(bundleForMap, queuedConnection),
+        );
+      } else {
+        setNextSuggestedPrompt(null);
+      }
+    }
+
+    // Start streaming AI response
+    await startStream(
+      reference,
+      "user",
+      historyForAPI,
+      bibleStudyMode,
+      undefined,
+      bundleForMap || undefined,
+      mapSessionPayload,
+    );
     setIsProcessing(false);
   };
 
@@ -1872,41 +2340,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   <div className="flex items-center gap-3">
                     <h3 className="text-sm font-semibold text-neutral-300">
                       Theological Thread Explorer (
-                      {activeBundle.nodes?.length || 0}{" "}
-                      {mapGranularity === "pericope" ? "stories" : "verses"})
+                      {activeBundle.nodes?.length || 0} verses)
                     </h3>
-                    <div className="flex items-center rounded-full bg-neutral-800/70 p-1 text-[11px]">
-                      <button
-                        onClick={() => setMapGranularity("verse")}
-                        className={
-                          mapGranularity === "verse"
-                            ? "px-2.5 py-1 rounded-full bg-neutral-700 text-white"
-                            : "px-2.5 py-1 rounded-full text-neutral-400 hover:text-neutral-200"
-                        }
-                      >
-                        Verses
-                      </button>
-                      <button
-                        onClick={() => setMapGranularity("pericope")}
-                        className={
-                          mapGranularity === "pericope"
-                            ? "px-2.5 py-1 rounded-full bg-neutral-700 text-white"
-                            : "px-2.5 py-1 rounded-full text-neutral-400 hover:text-neutral-200"
-                        }
-                      >
-                        Stories
-                      </button>
-                    </div>
-                    {pericopeLoading && mapGranularity === "pericope" && (
-                      <span className="text-xs text-neutral-400">
-                        Loading story map...
-                      </span>
-                    )}
-                    {pericopeError && mapGranularity === "pericope" && (
-                      <span className="text-xs text-red-400">
-                        {pericopeError}
-                      </span>
-                    )}
                   </div>
                   <button
                     onClick={() => setShowVisualization(false)}
@@ -1929,18 +2364,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   </button>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto relative">
-                  {mapGranularity === "pericope" && !activeBundle ? (
-                    <div className="p-6 text-sm text-neutral-400">
-                      No story map available for this anchor yet.
-                    </div>
-                  ) : (
-                    <NarrativeMap
-                      bundle={activeBundle}
-                      highlightedRefs={activeHighlightedRefs}
-                      onTrace={handleGoDeeper}
-                      onGoDeeper={onGoDeeper}
-                    />
-                  )}
+                  <NarrativeMap
+                    bundle={activeBundle}
+                    highlightedRefs={activeHighlightedRefs}
+                    onTrace={handleGoDeeper}
+                    onGoDeeper={onGoDeeper}
+                  />
                 </div>
               </div>
             ),
@@ -1950,9 +2379,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             activeHighlightedRefs,
             handleGoDeeper,
             onGoDeeper,
-            mapGranularity,
-            pericopeLoading,
-            pericopeError,
           ],
         )}
       </div>

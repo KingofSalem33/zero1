@@ -86,6 +86,12 @@ const CONNECTION_COLORS = {
   PATTERN: "#3B82F6",
 };
 
+const buildEdgeKey = (connectionType: string, fromId: number, toId: number) => {
+  const a = Math.min(fromId, toId);
+  const b = Math.max(fromId, toId);
+  return `${connectionType}:${a}-${b}`;
+};
+
 export function SemanticConnectionModal({
   fromVerse,
   toVerse,
@@ -104,6 +110,14 @@ export function SemanticConnectionModal({
   visualBundle,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
+  const [pericopeSupport, setPericopeSupport] = useState<{
+    title: string;
+    rangeRef: string;
+    summary: string;
+    themes?: string[];
+    source?: string;
+    shared?: boolean;
+  } | null>(null);
   const [verses, setVerses] = useState<
     Array<{ id: number; reference: string; text: string }>
   >([]);
@@ -193,6 +207,7 @@ export function SemanticConnectionModal({
       setLoading(true);
       setError(null);
       setSynopsis("");
+      setPericopeSupport(null);
       setVerses(previewVerses);
 
       try {
@@ -279,6 +294,7 @@ export function SemanticConnectionModal({
         }
 
         setSynopsis(data.synopsis || "");
+        setPericopeSupport(data.pericopeSupport || null);
         setVerses(orderedVerses);
       } catch (err) {
         console.error(
@@ -338,6 +354,15 @@ export function SemanticConnectionModal({
 
   const handleGoDeeper = () => {
     const connectionLabel = CONNECTION_LABELS[connectionType];
+    const clusterVerseIds = Array.isArray(connectedVerseIds)
+      ? connectedVerseIds
+      : [];
+    if (!clusterVerseIds.includes(fromVerse.id)) {
+      clusterVerseIds.unshift(fromVerse.id);
+    }
+    if (!clusterVerseIds.includes(toVerse.id)) {
+      clusterVerseIds.push(toVerse.id);
+    }
     const goDeeperPrompt = buildGoDeeperPrompt({
       fromVerse,
       toVerse,
@@ -345,6 +370,8 @@ export function SemanticConnectionModal({
       synopsis,
       nextCandidates,
       topicHints,
+      pericopeContext:
+        visualBundle?.pericopeContext || pericopeSupport || undefined,
     });
     const displayText = buildGoDeeperDisplayText({
       connectionLabel,
@@ -357,6 +384,24 @@ export function SemanticConnectionModal({
       prompt: goDeeperPrompt,
       mode: "go_deeper_short",
       visualBundle, // Pass pre-built map data to skip rebuilding
+      mapSession: {
+        cluster: {
+          baseId: fromVerse.id,
+          verseIds:
+            clusterVerseIds.length > 0
+              ? clusterVerseIds
+              : [fromVerse.id, toVerse.id],
+          connectionType,
+        },
+        currentConnection: {
+          fromId: fromVerse.id,
+          toId: toVerse.id,
+          connectionType,
+        },
+        visitedEdgeKeys: [
+          buildEdgeKey(connectionType, fromVerse.id, toVerse.id),
+        ],
+      },
     });
     handleClose();
   };
@@ -530,9 +575,11 @@ export function SemanticConnectionModal({
             )}
             {error && <div className="text-red-400 text-xs">{error}</div>}
             {!loading && !error && (
-              <div className="text-[13px] text-white/80 leading-relaxed">
-                {synopsis}
-              </div>
+              <>
+                <div className="text-[13px] text-white/80 leading-relaxed">
+                  {synopsis}
+                </div>
+              </>
             )}
           </div>
 

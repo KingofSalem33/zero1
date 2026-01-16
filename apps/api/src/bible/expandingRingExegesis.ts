@@ -14,7 +14,7 @@ import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
 import { supabase } from "../db";
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
-import type { ParallelPassage } from "./types";
+import type { ParallelPassage, PericopeBundle } from "./types";
 import { areSameTestament } from "./testamentUtil";
 import { type PromptMode, buildSystemPrompt } from "../prompts/systemPrompts";
 import {
@@ -22,6 +22,7 @@ import {
   getPericopeById,
   type PericopeDetail,
 } from "./pericopeSearch";
+import { buildPericopeBundle } from "./pericopeGraphWalker";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -69,6 +70,7 @@ export interface ReferenceVisualBundle {
     rangeRef: string;
   };
   resolutionType?: "pericope_first" | "verse_first";
+  pericopeBundle?: PericopeBundle;
 }
 
 interface TreeStats {
@@ -76,6 +78,27 @@ interface TreeStats {
   maxDepth: number;
   depthDistribution: Record<number, number>;
 }
+
+type MapSession = {
+  cluster?: {
+    baseId: number;
+    verseIds: number[];
+    connectionType: string;
+  };
+  currentConnection?: {
+    fromId: number;
+    toId: number;
+    connectionType: string;
+  };
+  nextConnection?: {
+    fromId: number;
+    toId: number;
+    connectionType: string;
+  } | null;
+  visitedEdgeKeys?: string[];
+  offMapReferences?: string[];
+  exhausted?: boolean;
+};
 
 const EMPTY_TREE_STATS: TreeStats = {
   totalNodes: 0,
@@ -742,9 +765,9 @@ Total reference connections: ${visualBundle.edges.length}
 ${genealogyData}
 
 GUIDANCE FOR HOW TO USE THIS DATA:
-- Treat these verses as resources to draw from, not a sequence to walk through.
-- Choose the verses that best clarify the anchor and the user's question.
-- Arrange them in the order that makes the most sense for the reader.`;
+- These verses are the ONLY allowed sources. Do not cite anything outside this list.
+- If MAP SESSION RULES are provided above, follow them exactly.
+- Choose the verses that best clarify the anchor and the user's question.`;
 }
 
 /**
@@ -757,8 +780,15 @@ export function buildLayeredUserMessage(
   userPrompt: string,
   visualBundle: ReferenceVisualBundle,
   pericopeDetail: PericopeDetail | null,
+  mapSession?: MapSession,
 ): string {
   const layers: string[] = [];
+
+  const formatRefById = (id: number) => {
+    const node = visualBundle.nodes.find((n) => n.id === id);
+    if (!node) return `Verse ${id}`;
+    return `${node.book_name} ${node.chapter}:${node.verse}`;
+  };
 
   // LAYER 1: NARRATIVE CONTEXT (if available)
   if (pericopeDetail) {
@@ -776,6 +806,44 @@ ${themes ? `Themes: ${themes}` : ""}
 ${archetypes ? `Archetypes: ${archetypes}` : ""}
 ${shadows ? `Typological Shadows:\n${shadows}` : ""}
 Context: ${pericopeDetail.summary || pericopeDetail.full_text.slice(0, 420) + "..."}`);
+  }
+
+  if (mapSession) {
+    const lines: string[] = [];
+    lines.push("[MAP SESSION RULES]");
+    lines.push(
+      "You must use ONLY verses listed in the tree below. Do not cite anything else.",
+    );
+    if (mapSession.offMapReferences && mapSession.offMapReferences.length > 0) {
+      lines.push(
+        `The user referenced ${mapSession.offMapReferences
+          .map((ref) => `"${ref}"`)
+          .join(", ")}, which is not in this map. Say this plainly.`,
+      );
+    }
+    if (mapSession.currentConnection) {
+      lines.push(
+        `CURRENT CONNECTION: [${formatRefById(
+          mapSession.currentConnection.fromId,
+        )}] <> [${formatRefById(
+          mapSession.currentConnection.toId,
+        )}] (Type: ${mapSession.currentConnection.connectionType})`,
+      );
+    }
+    if (mapSession.exhausted) {
+      lines.push(
+        "STATUS: All connections in this map have been explored. Say this plainly and ask if they want another topic.",
+      );
+    } else if (mapSession.nextConnection) {
+      lines.push(
+        `NEXT TARGET: [${formatRefById(
+          mapSession.nextConnection.fromId,
+        )}] <> [${formatRefById(
+          mapSession.nextConnection.toId,
+        )}] (Type: ${mapSession.nextConnection.connectionType}). Use this exact target in the invitation.`,
+      );
+    }
+    layers.push(lines.join("\n"));
   }
 
   // LAYER 2: VERSE DETAILS (genealogy tree)
@@ -876,6 +944,8 @@ export async function buildMultiAnchorTree(
   // Build a tree from each anchor
   const trees: ReferenceVisualBundle[] = [];
 
+  let primaryPericopeContext: ReferenceVisualBundle["pericopeContext"];
+
   for (let i = 0; i < uniqueAnchorIds.length; i++) {
     const anchorId = uniqueAnchorIds[i];
     console.log(
@@ -899,6 +969,9 @@ export async function buildMultiAnchorTree(
       },
     )) as ReferenceVisualBundle;
 
+    if (i === 0 && tree.pericopeContext) {
+      primaryPericopeContext = tree.pericopeContext;
+    }
     trees.push(tree);
   }
 
@@ -956,6 +1029,7 @@ export async function buildMultiAnchorTree(
     edges: allEdges,
     rootId: uniqueAnchorIds[0], // First anchor is the root for circular layout
     lens: "NONE",
+    pericopeContext: primaryPericopeContext,
   };
 }
 
@@ -970,6 +1044,7 @@ export async function explainScriptureWithKernelStream(
   useMultiAnchor: boolean = true, // Enable multi-anchor synthesis by default
   promptMode: PromptMode = "exegesis_long",
   prebuiltVisualBundle?: ReferenceVisualBundle | null, // Pre-built bundle to skip tree rebuilding
+  mapSession?: MapSession | null,
 ): Promise<{
   anchor: Verse;
   anchorId: number | null;
@@ -1008,8 +1083,19 @@ export async function explainScriptureWithKernelStream(
       throw new Error("Pre-built bundle has no valid anchor verse");
     }
 
+    const pericopeDetail = visualBundle.pericopeContext?.id
+      ? await getPericopeById(visualBundle.pericopeContext.id)
+      : null;
     // Build user message from the pre-built bundle
-    const userMessage = buildLayeredUserMessage(userPrompt, visualBundle, null);
+    res.write("event: map_data\n");
+    res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
+
+    const userMessage = buildLayeredUserMessage(
+      userPrompt,
+      visualBundle,
+      pericopeDetail,
+      mapSession ?? undefined,
+    );
     const systemPrompt = buildSystemPrompt(promptMode);
 
     // Stream the response directly
@@ -1121,6 +1207,10 @@ export async function explainScriptureWithKernelStream(
   // Remove duplicate/parallel passages
   visualBundle = await deduplicateVerses(visualBundle);
 
+  if (!pericopeContext && visualBundle.pericopeContext?.id) {
+    pericopeContext = await getPericopeById(visualBundle.pericopeContext.id);
+  }
+
   const treeStats = computeTreeStats(visualBundle);
   const anchor = buildAnchorFromTree(visualBundle, anchorId);
 
@@ -1137,6 +1227,19 @@ export async function explainScriptureWithKernelStream(
       rangeRef: pericopeContext.rangeRef,
     };
   }
+  if (pericopeContext) {
+    try {
+      const pericopeBundle = await buildPericopeBundle(pericopeContext.id);
+      if (pericopeBundle) {
+        visualBundle.pericopeBundle = pericopeBundle;
+      }
+    } catch (error) {
+      console.warn(
+        "[Expanding Ring] Pericope bundle build failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
 
   // Send map data first
   res.write("event: map_data\n");
@@ -1151,6 +1254,7 @@ export async function explainScriptureWithKernelStream(
     userPrompt,
     visualBundle,
     pericopeContext, // From Phase 1, line 898
+    mapSession ?? undefined,
   );
 
   await runModelStream(

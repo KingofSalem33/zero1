@@ -57,8 +57,39 @@ export const chatRequestSchema = z.object({
       rootId: z.number(),
       lens: z.string(),
     })
+    .passthrough()
     .optional()
     .describe("Pre-built visual context bundle to skip tree rebuilding"),
+  mapSession: z
+    .object({
+      cluster: z
+        .object({
+          baseId: z.number(),
+          verseIds: z.array(z.number()),
+          connectionType: z.string(),
+        })
+        .optional(),
+      currentConnection: z
+        .object({
+          fromId: z.number(),
+          toId: z.number(),
+          connectionType: z.string(),
+        })
+        .optional(),
+      nextConnection: z
+        .object({
+          fromId: z.number(),
+          toId: z.number(),
+          connectionType: z.string(),
+        })
+        .nullable()
+        .optional(),
+      visitedEdgeKeys: z.array(z.string()).optional(),
+      offMapReferences: z.array(z.string()).optional(),
+      exhausted: z.boolean().optional(),
+    })
+    .optional()
+    .describe("Active map session metadata for grounded traversal"),
 });
 
 export const chatJsonResponseSchema = z.object({

@@ -28,6 +28,19 @@ import {
   type ChiasmStructure,
 } from "./networkScience";
 
+type EdgeType = import("./types").EdgeType;
+
+const PERICOPE_VALIDATION = {
+  verseWeight: 0.65,
+  pericopeWeight: 0.35,
+  minSimilarity: 0.35,
+};
+
+const PERICOPE_VALIDATION_EXCLUDE = new Set<EdgeType>([
+  "GENEALOGY",
+  "NARRATIVE",
+]);
+
 export interface Verse {
   id: number;
   book_abbrev: string;
@@ -721,6 +734,195 @@ const dedupeEdges = (
   return deduped;
 };
 
+const cosineSimilarity = (a: number[], b: number[]): number => {
+  if (a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+};
+
+const parseEmbedding = (embedding: unknown): number[] | null => {
+  if (!embedding) return null;
+  try {
+    const parsed =
+      typeof embedding === "string" ? JSON.parse(embedding) : embedding;
+    return Array.isArray(parsed) ? (parsed as number[]) : null;
+  } catch {
+    return null;
+  }
+};
+
+const applyPericopeValidation = async (
+  edges: import("./types").VisualEdge[],
+  nodes: import("./types").ThreadNode[],
+  anchorId: number,
+): Promise<{
+  edges: import("./types").VisualEdge[];
+  nodes: import("./types").ThreadNode[];
+}> => {
+  if (edges.length === 0) {
+    return { edges, nodes };
+  }
+
+  const verseIds = new Set<number>();
+  edges.forEach((edge) => {
+    verseIds.add(edge.from);
+    verseIds.add(edge.to);
+  });
+
+  if (verseIds.size === 0) {
+    return { edges, nodes };
+  }
+
+  const source = ENV.PERICOPE_SOURCE || "SIL_AI";
+  const { data: verseMap, error: verseMapError } = await supabase
+    .from("verse_pericope_map")
+    .select("verse_id, pericope_id")
+    .in("verse_id", Array.from(verseIds))
+    .eq("source", source);
+
+  if (verseMapError || !verseMap) {
+    console.warn(
+      "[Pericope Validation] Failed to load pericope map:",
+      verseMapError?.message,
+    );
+    return { edges, nodes };
+  }
+
+  const pericopeIdByVerse = new Map<number, number>();
+  verseMap.forEach((row) => {
+    if (!pericopeIdByVerse.has(row.verse_id)) {
+      pericopeIdByVerse.set(row.verse_id, row.pericope_id);
+    }
+  });
+
+  const pericopeIds = Array.from(
+    new Set(Array.from(pericopeIdByVerse.values())),
+  );
+
+  if (pericopeIds.length === 0) {
+    console.warn("[Pericope Validation] No pericope IDs found for edges");
+    return { edges, nodes };
+  }
+
+  const { data: embeddingRows, error: embeddingError } = await supabase
+    .from("pericope_embeddings")
+    .select("pericope_id, embedding")
+    .in("pericope_id", pericopeIds)
+    .eq("embedding_type", "full_text");
+
+  if (embeddingError || !embeddingRows) {
+    console.warn(
+      "[Pericope Validation] Failed to load pericope embeddings:",
+      embeddingError?.message,
+    );
+    return { edges, nodes };
+  }
+
+  const embeddingMap = new Map<number, number[]>();
+  embeddingRows.forEach((row) => {
+    const embedding = parseEmbedding(row.embedding);
+    if (embedding) {
+      embeddingMap.set(row.pericope_id, embedding);
+    }
+  });
+
+  const validatedEdges: import("./types").VisualEdge[] = [];
+  let dropped = 0;
+
+  for (const edge of edges) {
+    if (PERICOPE_VALIDATION_EXCLUDE.has(edge.type)) {
+      validatedEdges.push(edge);
+      continue;
+    }
+
+    const fromPericope = pericopeIdByVerse.get(edge.from);
+    const toPericope = pericopeIdByVerse.get(edge.to);
+    const baseWeight = typeof edge.weight === "number" ? edge.weight : 0.6;
+
+    if (!fromPericope || !toPericope) {
+      validatedEdges.push({
+        ...edge,
+        weight: baseWeight * PERICOPE_VALIDATION.verseWeight,
+        metadata: {
+          ...edge.metadata,
+          pericopeSimilarity: null,
+          pericopeValidated: false,
+          pericopeSource: source,
+          pericopeReason: "missing_pericope",
+        },
+      });
+      continue;
+    }
+
+    const fromEmbedding = embeddingMap.get(fromPericope);
+    const toEmbedding = embeddingMap.get(toPericope);
+    if (!fromEmbedding || !toEmbedding) {
+      validatedEdges.push({
+        ...edge,
+        weight: baseWeight * PERICOPE_VALIDATION.verseWeight,
+        metadata: {
+          ...edge.metadata,
+          pericopeSimilarity: null,
+          pericopeValidated: false,
+          pericopeSource: source,
+          pericopeReason: "missing_embedding",
+        },
+      });
+      continue;
+    }
+
+    const pericopeSimilarity =
+      fromPericope === toPericope
+        ? 1
+        : cosineSimilarity(fromEmbedding, toEmbedding);
+
+    if (pericopeSimilarity < PERICOPE_VALIDATION.minSimilarity) {
+      dropped += 1;
+      continue;
+    }
+
+    const combinedWeight =
+      PERICOPE_VALIDATION.verseWeight * baseWeight +
+      PERICOPE_VALIDATION.pericopeWeight * pericopeSimilarity;
+
+    validatedEdges.push({
+      ...edge,
+      weight: combinedWeight,
+      metadata: {
+        ...edge.metadata,
+        pericopeSimilarity,
+        pericopeValidated: true,
+        pericopeSource: source,
+      },
+    });
+  }
+
+  const connectedIds = new Set<number>([anchorId]);
+  validatedEdges.forEach((edge) => {
+    connectedIds.add(edge.from);
+    connectedIds.add(edge.to);
+  });
+
+  const filteredNodes = nodes.filter((node) => connectedIds.has(node.id));
+
+  console.log(
+    `[Pericope Validation] Kept ${validatedEdges.length}/${edges.length} edges (dropped ${dropped})`,
+  );
+
+  return {
+    edges: validatedEdges,
+    nodes: filteredNodes,
+  };
+};
+
 /**
  * Build visual context bundle with parent-child relationships for graph visualization
  * This is used by the Golden Thread UI to render the hierarchical tree
@@ -992,17 +1194,28 @@ export async function buildVisualBundle(
     ...additionalEdges,
   ]);
 
+  const pericopeValidated = await applyPericopeValidation(
+    allEdges,
+    nodes,
+    bundle.anchor.id,
+  );
+  const finalEdges = pericopeValidated.edges;
+  const finalNodes = pericopeValidated.nodes;
+
   console.log(
     `[Visual Bundle] Complete with multi-strand: ${nodes.length} nodes, ${allEdges.length} total edges`,
   );
+  console.log(
+    `[Visual Bundle] Pericope validated: ${finalNodes.length} nodes, ${finalEdges.length} edges`,
+  );
   console.log(`[Visual Bundle] Edge breakdown:`, {
-    DEEPER: allEdges.filter((e) => e.type === "DEEPER").length,
-    ROOTS: allEdges.filter((e) => e.type === "ROOTS").length,
-    ECHOES: allEdges.filter((e) => e.type === "ECHOES").length,
-    PROPHECY: allEdges.filter((e) => e.type === "PROPHECY").length,
-    GENEALOGY: allEdges.filter((e) => e.type === "GENEALOGY").length,
-    NARRATIVE: allEdges.filter((e) => e.type === "NARRATIVE").length,
-    PATTERN: allEdges.filter((e) => e.type === "PATTERN").length,
+    DEEPER: finalEdges.filter((e) => e.type === "DEEPER").length,
+    ROOTS: finalEdges.filter((e) => e.type === "ROOTS").length,
+    ECHOES: finalEdges.filter((e) => e.type === "ECHOES").length,
+    PROPHECY: finalEdges.filter((e) => e.type === "PROPHECY").length,
+    GENEALOGY: finalEdges.filter((e) => e.type === "GENEALOGY").length,
+    NARRATIVE: finalEdges.filter((e) => e.type === "NARRATIVE").length,
+    PATTERN: finalEdges.filter((e) => e.type === "PATTERN").length,
   });
 
   // Get first pericope from cache if available
@@ -1012,8 +1225,8 @@ export async function buildVisualBundle(
       : null;
 
   return {
-    nodes,
-    edges: allEdges,
+    nodes: finalNodes,
+    edges: finalEdges,
     rootId: bundle.anchor.id,
     lens: "NONE",
     // Include pericope context if anchor is part of one

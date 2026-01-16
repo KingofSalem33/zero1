@@ -112,6 +112,13 @@ export interface VisualEdge {
   metadata?: Record<string, unknown>; // Optional metadata (e.g., Strong's number, citation type)
 }
 
+export interface PericopeBundle {
+  nodes: ThreadNode[]; // Pericope nodes (anchor + narrative connections)
+  edges: VisualEdge[]; // Narrative-level connections
+  rootId: number; // Anchor pericope ID
+  lens: string; // "NARRATIVE"
+}
+
 export interface VisualContextBundle {
   nodes: ThreadNode[]; // Flat list of all verses with graph metadata
   edges: VisualEdge[]; // Parent-child relationships with types
@@ -128,6 +135,7 @@ export interface VisualContextBundle {
     rangeRef: string;
   };
   resolutionType?: "pericope_first" | "verse_first";
+  pericopeBundle?: PericopeBundle;
 }
 
 /**
