@@ -28,62 +28,82 @@ const Invitation = ({ children }: { children: React.ReactNode }) => (
 // --- 4. CITATION PARSER (Paragraph) ---
 // Scans text for [Book Ch:v] patterns and turns them into interactive Gold links.
 // Professional typography with optimal readability
+const REFERENCE_PARTS_REGEX =
+  /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g;
+const REFERENCE_MATCH_REGEX =
+  /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/;
+
+const renderReferenceTokens = (
+  text: string,
+  onVerseClick?: (reference: string, event: React.MouseEvent) => void,
+  keyPrefix = "ref",
+) => {
+  const cleaned = text.replace(/\bThesis:\s*/g, "");
+  const parts = cleaned.split(REFERENCE_PARTS_REGEX);
+  return parts.map((part, i) => {
+    const scriptureMatch = part.match(REFERENCE_MATCH_REGEX);
+    if (scriptureMatch) {
+      const reference = scriptureMatch[1];
+      return (
+        <button
+          key={`${keyPrefix}-ref-${i}`}
+          className="text-[#D4AF37] font-bold hover:text-[#F0D77F] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-all duration-200 mx-1 cursor-pointer inline-flex items-center gap-0.5"
+          onClick={(e) => {
+            onVerseClick?.(reference, e);
+          }}
+          title="Click to view verse"
+        >
+          {reference}
+        </button>
+      );
+    }
+    return <span key={`${keyPrefix}-text-${i}`}>{part}</span>;
+  });
+};
+
+const renderInteractiveChildren = (
+  children: React.ReactNode,
+  onVerseClick?: (reference: string, event: React.MouseEvent) => void,
+  keyPrefix = "node",
+): React.ReactNode => {
+  if (typeof children === "string") {
+    return renderReferenceTokens(children, onVerseClick, keyPrefix);
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, index) => (
+      <React.Fragment key={`${keyPrefix}-${index}`}>
+        {renderInteractiveChildren(
+          child,
+          onVerseClick,
+          `${keyPrefix}-${index}`,
+        )}
+      </React.Fragment>
+    ));
+  }
+  if (React.isValidElement(children)) {
+    if (!children.props?.children) return children;
+    return React.cloneElement(children, {
+      children: renderInteractiveChildren(
+        children.props.children,
+        onVerseClick,
+        `${keyPrefix}-child`,
+      ),
+    });
+  }
+  return children;
+};
+
 const InteractiveText = ({
   children,
   onVerseClick,
 }: {
   children: React.ReactNode;
   onVerseClick?: (reference: string, event: React.MouseEvent) => void;
-}) => {
-  if (typeof children === "string") {
-    const cleaned = children.replace(/\bThesis:\s*/g, "");
-
-    // Regex catches ALL Scripture references with or without brackets:
-    // - [John 3:16] (with brackets)
-    // - John 3:16 (without brackets)
-    // - 1 Timothy 3:16 (multi-word books)
-    // - Galatians 2:11-14 (verse ranges)
-    // - Song of Solomon 2:1 (long book names)
-    const parts = cleaned.split(
-      /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g,
-    );
-
-    return (
-      <p className="mb-6 leading-[1.9] text-white font-sans text-[18px] tracking-[-0.01em]">
-        {parts.map((part, i) => {
-          // Check if this part is a Scripture reference
-          const scriptureMatch = part.match(
-            /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/,
-          );
-
-          if (scriptureMatch) {
-            // Extract reference (remove brackets if present)
-            const reference = scriptureMatch[1];
-
-            return (
-              <button
-                key={i}
-                className="text-[#D4AF37] font-bold hover:text-[#F0D77F] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-all duration-200 mx-1 cursor-pointer inline-flex items-center gap-0.5"
-                onClick={(e) => {
-                  onVerseClick?.(reference, e);
-                }}
-                title="Click to view verse"
-              >
-                {reference}
-              </button>
-            );
-          }
-          return <span key={i}>{part}</span>;
-        })}
-      </p>
-    );
-  }
-  return (
-    <p className="mb-6 leading-[1.9] text-white font-sans text-[18px] tracking-[-0.01em]">
-      {children}
-    </p>
-  );
-};
+}) => (
+  <p className="mb-6 leading-[1.9] text-white font-sans text-[18px] tracking-[-0.01em]">
+    {renderInteractiveChildren(children, onVerseClick)}
+  </p>
+);
 
 // --- 5. VERSE TOOLTIP ---
 // Shows verse text in a tooltip when clicking a citation

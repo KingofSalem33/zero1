@@ -1045,6 +1045,7 @@ export async function explainScriptureWithKernelStream(
   promptMode: PromptMode = "exegesis_long",
   prebuiltVisualBundle?: ReferenceVisualBundle | null, // Pre-built bundle to skip tree rebuilding
   mapSession?: MapSession | null,
+  mapMode?: "fast" | "full",
 ): Promise<{
   anchor: Verse;
   anchorId: number | null;
@@ -1121,6 +1122,8 @@ export async function explainScriptureWithKernelStream(
   }
 
   // Original path: Build tree from scratch
+  const isFastMap = mapMode === "fast";
+  const allowMultiAnchor = useMultiAnchor && !isFastMap;
   let anchorIds: number[] = [];
   let visualBundle: ReferenceVisualBundle;
   let pericopeContext: Awaited<ReturnType<typeof getPericopeById>> | null =
@@ -1131,7 +1134,10 @@ export async function explainScriptureWithKernelStream(
   const pericopeResolution = await resolvePericopeFirst(userPrompt);
   if (pericopeResolution) {
     // Use pericope's verses as anchors
-    anchorIds = pericopeResolution.allVerseIds.slice(0, useMultiAnchor ? 3 : 1);
+    anchorIds = pericopeResolution.allVerseIds.slice(
+      0,
+      allowMultiAnchor ? 3 : 1,
+    );
 
     // Get pericope context
     pericopeContext = await getPericopeById(pericopeResolution.pericopeId);
@@ -1144,7 +1150,7 @@ export async function explainScriptureWithKernelStream(
 
   // Fallback: If pericope resolution failed, use verse-first
   if (anchorIds.length === 0) {
-    if (useMultiAnchor) {
+    if (allowMultiAnchor) {
       anchorIds = await resolveMultipleAnchors(userPrompt, 3);
     }
   }
@@ -1176,7 +1182,7 @@ export async function explainScriptureWithKernelStream(
   const anchorId = anchorIds[0]; // Primary anchor for compatibility
 
   // Build tree(s) - use multi-anchor if we have multiple
-  if (anchorIds.length > 1) {
+  if (anchorIds.length > 1 && allowMultiAnchor) {
     console.log(
       `[KERNEL Stream] Using multi-anchor synthesis with ${anchorIds.length} anchors`,
     );
@@ -1185,12 +1191,19 @@ export async function explainScriptureWithKernelStream(
     console.log(`[KERNEL Stream] Using single anchor: ${anchorId}`);
     visualBundle = (await buildVisualBundle(
       anchorId,
-      {
-        ring0Radius: 3,
-        ring1Limit: 20,
-        ring2Limit: 30,
-        ring3Limit: 40,
-      },
+      isFastMap
+        ? {
+            ring0Radius: 1,
+            ring1Limit: 7,
+            ring2Limit: 0,
+            ring3Limit: 0,
+          }
+        : {
+            ring0Radius: 3,
+            ring1Limit: 20,
+            ring2Limit: 30,
+            ring3Limit: 40,
+          },
       {
         includeDEEPER: true,
         includeROOTS: true,

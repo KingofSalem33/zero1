@@ -2689,7 +2689,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             setClickedConnection(null);
             setSelectedBranch(null);
           }}
-          onTrace={onTrace || (() => {})}
           onGoDeeper={onGoDeeper || (() => {})}
           explanation={clickedConnection.explanation}
           isLLMDiscovered={clickedConnection.isLLMDiscovered}

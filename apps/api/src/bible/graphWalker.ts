@@ -973,32 +973,18 @@ export async function buildVisualBundle(
   nodes.push(anchorNode);
   nodeMap.set(bundle.anchor.id, anchorNode);
 
-  // ========================================
-  // STEP 4: Add Ring 0 context verses (same depth as anchor)
-  // ========================================
-  bundle.ring0.forEach((v) => {
-    if (v.id === anchorId) return; // Skip the anchor itself
+  const ring0ContextIds = new Set(
+    bundle.ring0
+      .map((verse) => verse.id)
+      .filter((verseId) => verseId !== anchorId),
+  );
 
-    const node: import("./types").ThreadNode = {
-      ...v,
-      depth: 0,
-      parentId: bundle.anchor.id,
-      isSpine: false,
-      ringSource: "ring0",
-      isVisible: false, // Context verses not on spine
-      collapsedChildCount: 0, // Will be calculated later
-    };
-    nodes.push(node);
-    nodeMap.set(v.id, node);
-
-    // Add edge from anchor to context verse
-    edges.push({
-      from: bundle.anchor.id,
-      to: v.id,
-      weight: 0.9, // High weight for immediate context
-      type: "DEEPER",
-    });
-  });
+  // ========================================
+  // STEP 4: Ring 0 context verses are excluded from the visual bundle to
+  // avoid duplicating the anchor in the map UI.
+  // ========================================
+  // (Ring 0 still informs edge selection, but the context nodes themselves
+  // are not emitted in the bundle.)
 
   // ========================================
   // STEP 5: Add Ring 1 (direct cross-references, depth 1)
@@ -1016,7 +1002,10 @@ export async function buildVisualBundle(
     if (v.id === anchorId) return; // Skip the anchor itself
 
     const selectedEdge = ring1EdgeMap.get(v.id);
-    const parentId = selectedEdge?.from || bundle.anchor.id;
+    const rawParentId = selectedEdge?.from || bundle.anchor.id;
+    const parentId = ring0ContextIds.has(rawParentId)
+      ? bundle.anchor.id
+      : rawParentId;
     const node: import("./types").ThreadNode = {
       ...v,
       depth: 1,
@@ -1199,8 +1188,53 @@ export async function buildVisualBundle(
     nodes,
     bundle.anchor.id,
   );
-  const finalEdges = pericopeValidated.edges;
-  const finalNodes = pericopeValidated.nodes;
+  let finalEdges = pericopeValidated.edges;
+  let finalNodes = pericopeValidated.nodes;
+
+  // Collapse any duplicate anchor references into the true anchor node.
+  const anchorRef = finalNodes.find((n) => n.id === bundle.anchor.id);
+  const anchorKey = anchorRef
+    ? `${anchorRef.book_abbrev}:${anchorRef.chapter}:${anchorRef.verse}`
+    : null;
+
+  if (anchorKey) {
+    const duplicateAnchorIds = new Set<number>(
+      finalNodes
+        .filter(
+          (node) =>
+            node.id !== bundle.anchor.id &&
+            `${node.book_abbrev}:${node.chapter}:${node.verse}` === anchorKey,
+        )
+        .map((node) => node.id),
+    );
+
+    if (duplicateAnchorIds.size > 0) {
+      console.warn(
+        `[Visual Bundle] Collapsing ${duplicateAnchorIds.size} duplicate anchor node(s) into ${bundle.anchor.id}`,
+      );
+
+      finalNodes = finalNodes
+        .filter((node) => !duplicateAnchorIds.has(node.id))
+        .map((node) => ({
+          ...node,
+          parentId: duplicateAnchorIds.has(node.parentId ?? -1)
+            ? bundle.anchor.id
+            : node.parentId,
+        }));
+
+      finalEdges = dedupeEdges(
+        finalEdges
+          .map((edge) => ({
+            ...edge,
+            from: duplicateAnchorIds.has(edge.from)
+              ? bundle.anchor.id
+              : edge.from,
+            to: duplicateAnchorIds.has(edge.to) ? bundle.anchor.id : edge.to,
+          }))
+          .filter((edge) => edge.from !== edge.to),
+      );
+    }
+  }
 
   console.log(
     `[Visual Bundle] Complete with multi-strand: ${nodes.length} nodes, ${allEdges.length} total edges`,

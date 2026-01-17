@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useState,
   useEffect,
   useRef,
@@ -421,7 +421,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               } else if (currentEvent === "error") {
                 throw new Error(data);
               } else if (currentEvent === "project_refresh_request") {
-                // ✅ NEW: Gap #2 Fix - Auto-refresh when backend updates state
+                // NEW: Gap #2 Fix - Auto-refresh when backend updates state
                 try {
                   const refreshData = JSON.parse(data);
                   console.log(
@@ -433,11 +433,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   // Ignore JSON parse errors
                 }
               } else if (currentEvent === "substep_completed") {
-                // ✅ NEW: Gap #2 Fix - Handle substep completion
+                // NEW: Gap #2 Fix - Handle substep completion
                 try {
                   const completionData = JSON.parse(data);
                   console.log(
-                    "✅ [UnifiedWorkspace] Substep completed:",
+                    "[UnifiedWorkspace] Substep completed:",
                     completionData.phase_id,
                     "/",
                     completionData.substep_number,
@@ -457,7 +457,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   // Ignore JSON parse errors
                 }
               } else if (currentEvent === "artifact_completions") {
-                // ✅ NEW: Gap #2 Fix - Handle artifact completions
+                // NEW: Gap #2 Fix - Handle artifact completions
                 try {
                   const artifactData = JSON.parse(data);
                   console.log(
@@ -469,7 +469,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   const completionMessage: ChatMessage = {
                     id: (Date.now() + 3).toString(),
                     type: "ai",
-                    content: `✅ **Artifact Analysis Complete**\n\nCompleted ${artifactData.completed_substeps.length} substep(s):\n${artifactData.completed_substeps.map((s: unknown) => `- P${s.phase_number}.${s.substep_number} (${s.status}, ${s.confidence}% confidence)`).join("\n")}\n\nProgress: ${artifactData.progress}%`,
+                    content: `**Artifact Analysis Complete**\n\nCompleted ${artifactData.completed_substeps.length} substep(s):\n${artifactData.completed_substeps.map((s: unknown) => `- P${s.phase_number}.${s.substep_number} (${s.status}, ${s.confidence}% confidence)`).join("\n")}\n\nProgress: ${artifactData.progress}%`,
                     timestamp: new Date(),
                   };
                   setMessages((prev) => [...prev, completionMessage]);
@@ -478,7 +478,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   // Ignore JSON parse errors
                 }
               } else if (currentEvent === "phase_unlocked") {
-                // ✅ NEW: Gap #2 Fix - Handle phase unlock
+                // NEW: Gap #2 Fix - Handle phase unlock
                 try {
                   const phaseData = JSON.parse(data);
                   console.log(
@@ -515,7 +515,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             msg.id === aiMessageId
               ? {
                   ...msg,
-                  content: `❌ Error: ${errorMessage}`,
+                  content: `Error: ${errorMessage}`,
                 }
               : msg,
           ),
@@ -558,6 +558,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     null,
   );
   const [mapSession, setMapSession] = useState<MapSession | null>(null);
+  const [fullMapPending, setFullMapPending] = useState(false);
+  const [mapPendingFullMessageId, setMapPendingFullMessageId] = useState<
+    string | null
+  >(null);
+  const fullMapRequestRef = useRef<{
+    id: string;
+    prompt: string;
+    messageId?: string;
+  } | null>(null);
   const [showVisualization, setShowVisualization] = useState(false);
   const [pendingVisualBundle, setPendingVisualBundle] =
     useState<VisualContextBundle | null>(null); // Store bundle until message is complete
@@ -1098,6 +1107,71 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     [formatNodeReference],
   );
 
+  const startFullMapFetch = useCallback(
+    async (prompt: string) => {
+      const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      fullMapRequestRef.current = { id: requestId, prompt };
+      setFullMapPending(true);
+
+      try {
+        const response = await fetch(`${API_URL}/api/trace`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: prompt }),
+        });
+
+        if (!response.ok) {
+          setFullMapPending(false);
+          setMapPendingFullMessageId(null);
+          fullMapRequestRef.current = null;
+          return;
+        }
+
+        const bundle: VisualContextBundle = await response.json();
+        const pendingRequest = fullMapRequestRef.current;
+        if (!pendingRequest || pendingRequest.id !== requestId) {
+          return;
+        }
+
+        setVisualBundle(bundle);
+        setFullMapPending(false);
+        setMapPendingFullMessageId(null);
+        fullMapRequestRef.current = null;
+
+        if (pendingRequest.messageId) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === pendingRequest.messageId
+                ? { ...msg, visualBundle: bundle }
+                : msg,
+            ),
+          );
+        }
+
+        setMapSession((prevSession) => {
+          if (!prevSession) return prevSession;
+          const { session, queuedConnection } = buildMapSessionPayload({
+            bundle,
+            existingSession: prevSession,
+            useQueuedConnection: false,
+          });
+          if (queuedConnection) {
+            setNextSuggestedPrompt(
+              buildConnectionPrompt(bundle, queuedConnection),
+            );
+          }
+          return session;
+        });
+      } catch (error) {
+        void error;
+        setFullMapPending(false);
+        setMapPendingFullMessageId(null);
+        fullMapRequestRef.current = null;
+      }
+    },
+    [buildConnectionPrompt, buildMapSessionPayload, setMessages],
+  );
+
   // Handle pending prompt from Bible reader (auto-start stream)
   useEffect(() => {
     if (pendingPrompt && !isStreaming && !isProcessing) {
@@ -1119,7 +1193,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         setMapPrepCount(0);
         setMapReadyMessageId(null);
         setPendingVisualBundle(null);
-        lastPromptModeRef.current = normalizedPrompt.mode ?? null;
+        const inferredPromptMode = normalizedPrompt.mode ?? "go_deeper_short";
+        lastPromptModeRef.current = inferredPromptMode;
         if (normalizedPrompt.visualBundle) {
           setVisualBundle(normalizedPrompt.visualBundle);
         }
@@ -1168,9 +1243,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           "user",
           historyForAPI,
           bibleStudyMode,
-          normalizedPrompt.mode,
+          inferredPromptMode ?? undefined,
           bundleForMap || undefined,
           mapSessionPayload,
+          undefined,
         );
         setIsProcessing(false);
 
@@ -1292,7 +1368,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     );
 
     if (streamingMessage.content && !addedStreamingMessageRef.current) {
-      console.log("[UnifiedWorkspace] ✅ Adding completed message to array");
+      console.log("[UnifiedWorkspace] Adding completed message to array");
       addedStreamingMessageRef.current = true;
 
       const newMessage = {
@@ -1302,6 +1378,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         timestamp: new Date(),
         visualBundle: pendingVisualBundle || visualBundle || undefined,
       };
+      if (fullMapPending && fullMapRequestRef.current) {
+        fullMapRequestRef.current.messageId = newMessage.id;
+        setMapPendingFullMessageId(newMessage.id);
+      }
       if (visualBundle && mapSession?.nextConnection) {
         setNextSuggestedPrompt(
           buildConnectionPrompt(visualBundle, mapSession.nextConnection),
@@ -1349,6 +1429,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     pendingVisualBundle,
     visualBundle,
     mapSession,
+    fullMapPending,
     buildConnectionPrompt,
     extractSuggestedReference,
   ]);
@@ -1368,13 +1449,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       ? nextSuggestedPrompt.prompt
       : userMessage;
     const displayMessage = userMessage;
-    const promptMode = shouldUseSuggested
-      ? nextSuggestedPrompt?.mode
-      : undefined;
-    if (shouldUseSuggested) {
-      setNextSuggestedPrompt(null);
-    }
-    lastPromptModeRef.current = promptMode ?? null;
 
     // Add user message to chat
     const newMessage: ChatMessage = {
@@ -1395,8 +1469,35 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }));
 
     const bundleForMap = visualBundle;
+    const hasActiveBundle = Boolean(bundleForMap);
+    const references = extractReferences(userMessage);
+    const hasExplicitRef = references.length > 0;
+    const offMapReferences =
+      hasActiveBundle && hasExplicitRef
+        ? references.filter(
+            (ref) =>
+              !buildReferenceLookup(bundleForMap!).has(normalizeReference(ref)),
+          )
+        : [];
+    const shouldReanchor =
+      !hasActiveBundle ||
+      (!fullMapPending &&
+        !shouldUseSuggested &&
+        (!hasExplicitRef || offMapReferences.length > 0));
+    const mapPromptMode =
+      shouldReanchor || hasActiveBundle || fullMapPending
+        ? "go_deeper_short"
+        : undefined;
+    const promptMode = shouldUseSuggested
+      ? (nextSuggestedPrompt?.mode ?? mapPromptMode)
+      : mapPromptMode;
+    if (shouldUseSuggested) {
+      setNextSuggestedPrompt(null);
+    }
+    lastPromptModeRef.current = promptMode ?? null;
+
     let mapSessionPayload: MapSession | undefined;
-    if (bundleForMap) {
+    if (bundleForMap && !shouldReanchor) {
       const { session, queuedConnection } = buildMapSessionPayload({
         bundle: bundleForMap,
         existingSession: mapSession,
@@ -1412,18 +1513,31 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       } else {
         setNextSuggestedPrompt(null);
       }
+    } else if (shouldReanchor) {
+      setMapSession(null);
+      setNextSuggestedPrompt(null);
+      setVisualBundle(null);
+      setMapPendingFullMessageId(null);
     }
 
+    const streamBundle = shouldReanchor ? undefined : bundleForMap || undefined;
+    const mapMode = shouldReanchor ? "fast" : undefined;
+
     // Start streaming AI response with updated message history
-    await startStream(
+    const streamPromise = startStream(
       apiMessage,
       "user",
       historyForAPI,
       bibleStudyMode,
       promptMode,
-      bundleForMap || undefined,
+      streamBundle,
       mapSessionPayload,
+      mapMode,
     );
+    if (shouldReanchor) {
+      void startFullMapFetch(userMessage);
+    }
+    await streamPromise;
     setIsProcessing(false);
   };
 
@@ -1470,8 +1584,24 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }));
 
     const bundleForMap = visualBundle;
+    const hasActiveBundle = Boolean(bundleForMap);
+    const hasExplicitRef = true;
+    const offMapReferences =
+      hasActiveBundle && hasExplicitRef
+        ? [reference].filter(
+            (ref) =>
+              !buildReferenceLookup(bundleForMap!).has(normalizeReference(ref)),
+          )
+        : [];
+    const shouldReanchor =
+      !hasActiveBundle || (!fullMapPending && offMapReferences.length > 0);
+    const promptMode =
+      shouldReanchor || hasActiveBundle || fullMapPending
+        ? "go_deeper_short"
+        : undefined;
+
     let mapSessionPayload: MapSession | undefined;
-    if (bundleForMap) {
+    if (bundleForMap && !shouldReanchor) {
       const { session, queuedConnection } = buildMapSessionPayload({
         bundle: bundleForMap,
         existingSession: mapSession,
@@ -1487,18 +1617,28 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       } else {
         setNextSuggestedPrompt(null);
       }
+    } else if (shouldReanchor) {
+      setMapSession(null);
+      setNextSuggestedPrompt(null);
+      setVisualBundle(null);
+      setMapPendingFullMessageId(null);
     }
 
     // Start streaming AI response
-    await startStream(
+    const streamPromise = startStream(
       reference,
       "user",
       historyForAPI,
       bibleStudyMode,
-      undefined,
-      bundleForMap || undefined,
+      promptMode,
+      shouldReanchor ? undefined : bundleForMap || undefined,
       mapSessionPayload,
+      shouldReanchor ? "fast" : undefined,
     );
+    if (shouldReanchor) {
+      void startFullMapFetch(reference);
+    }
+    await streamPromise;
     setIsProcessing(false);
   };
 
@@ -1530,7 +1670,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               Dream it. Build it. Ship it.
             </h1>
             <p className="text-neutral-400 text-base max-w-md mx-auto">
-              AI guides you through 7 phases—from vision to live product
+              AI guides you through 7 phases - from vision to live product
             </p>
           </div>
 
@@ -1631,7 +1771,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               />
               <div className="mt-2 text-xs text-neutral-500">
                 Examples: "Someone creates a task and their teammate gets
-                notified" • "I save a recipe and find it later by ingredient"
+                notified" / "I save a recipe and find it later by ingredient"
               </div>
             </div>
 
@@ -1673,7 +1813,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         </svg>
                       </div>
                     )}
-                    <div className="text-3xl">🧑‍💻</div>
+                    <div className="text-3xl">👨‍💻</div>
                     <div className="text-center">
                       <div className="font-semibold text-sm mb-1">
                         Write Code
@@ -2033,37 +2173,204 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   }
 
   // Main workspace with conversation
+  const isEmptyState =
+    messages.length === 0 &&
+    !isStreaming &&
+    !(streamingMessage?.content && !streamingMessage.isComplete);
+  const showWorkspace = !isEmptyState || showVisualization;
+
   return (
     <div className="flex flex-col h-full">
       {/* Split View: Chat + Visualization */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Messages Container */}
-        <div
-          className={`flex-1 overflow-y-auto px-6 py-8 pb-28 ${showVisualization ? "border-r border-neutral-700" : ""}`}
-        >
-          {/* Message list - always visible */}
-          <div className="max-w-4xl mx-auto space-y-6">
-            {messages.map((message) => {
-              console.log("[Message Render Debug]", {
-                id: message.id,
-                type: message.type,
-                typeCheck: message.type === "ai",
-                idCheck: message.id !== "streaming",
-                shouldShowButtons:
-                  message.type === "ai" && message.id !== "streaming",
-              });
-              const isMapReady = mapReadyMessageId === message.id;
-              const mapVerseCount = message.visualBundle?.nodes?.length ?? 0;
+      {showWorkspace && (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Messages Container */}
+          {!isEmptyState && (
+            <div
+              className={`flex-1 overflow-y-auto px-6 py-8 pb-28 ${showVisualization ? "border-r border-neutral-700" : ""}`}
+            >
+              {/* Message list - always visible */}
+              <div className="max-w-4xl mx-auto space-y-6">
+                {messages.map((message) => {
+                  console.log("[Message Render Debug]", {
+                    id: message.id,
+                    type: message.type,
+                    typeCheck: message.type === "ai",
+                    idCheck: message.id !== "streaming",
+                    shouldShowButtons:
+                      message.type === "ai" && message.id !== "streaming",
+                  });
+                  const isMapReady = mapReadyMessageId === message.id;
+                  const isMapPendingFull =
+                    mapPendingFullMessageId === message.id && fullMapPending;
+                  const mapVerseCount =
+                    message.visualBundle?.nodes?.length ?? 0;
 
-              return (
-                <div key={message.id}>
-                  {message.type === "user" ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800 text-white shadow-sm">
-                        {message.content}
-                      </div>
+                  return (
+                    <div key={message.id}>
+                      {message.type === "user" ? (
+                        <div className="flex justify-end">
+                          <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800 text-white shadow-sm">
+                            {message.content}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                              <svg
+                                className="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                          <div className="ml-[2.625rem]">
+                            {message.content === "Thinking..." ? (
+                              <div className="space-y-3 animate-pulse">
+                                <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
+                                <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
+                                <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                              </div>
+                            ) : (
+                              <>
+                                <MessageStream
+                                  content={message.content}
+                                  onVerseClick={handleVerseClick}
+                                  onTrace={handleGoDeeper}
+                                />
+                                {/* Icons directly after message - AI messages only, not while streaming */}
+                                {message.type === "ai" &&
+                                  message.id !== "streaming" && (
+                                    <div className="max-w-3xl mx-auto px-6 pt-2 flex gap-2">
+                                      <button
+                                        onClick={() =>
+                                          handleTTS(message.id, message.content)
+                                        }
+                                        className={`p-1 rounded-md transition-colors ${
+                                          playingMessageId === message.id
+                                            ? "bg-blue-500/20 text-blue-400"
+                                            : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
+                                        }`}
+                                        title={
+                                          playingMessageId === message.id
+                                            ? "Stop playback"
+                                            : "Read aloud"
+                                        }
+                                      >
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d={
+                                              playingMessageId === message.id
+                                                ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M9 10h6v4H9z"
+                                                : "M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                                            }
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          navigator.clipboard.writeText(
+                                            message.content,
+                                          )
+                                        }
+                                        className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+                                        title="Copy to clipboard"
+                                      >
+                                        <svg
+                                          className="w-4 h-4"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                          />
+                                        </svg>
+                                      </button>
+                                      {message.visualBundle && (
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            onClick={() => {
+                                              if (onShowVisualization) {
+                                                onShowVisualization(
+                                                  message.visualBundle!,
+                                                );
+                                                resetHighlights();
+                                              }
+                                            }}
+                                            className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                                              isMapReady
+                                                ? "text-emerald-200 bg-emerald-500/10 ring-1 ring-emerald-400/40 animate-pulse"
+                                                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
+                                            }`}
+                                          >
+                                            <svg
+                                              className="w-4 h-4"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                                              />
+                                            </svg>
+                                            {isMapPendingFull
+                                              ? "Generating map"
+                                              : "View Map"}
+                                          </button>
+                                          <span
+                                            className={`text-[11px] ${
+                                              isMapReady
+                                                ? "text-emerald-200/90"
+                                                : "text-neutral-500"
+                                            }`}
+                                          >
+                                            {isMapPendingFull
+                                              ? "Generating map"
+                                              : "Map ready"}{" "}
+                                            - {mapVerseCount} verse
+                                            {mapVerseCount === 1 ? "" : "s"}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ) : (
+                  );
+                })}
+
+                {/* Streaming message (renders progressively as content arrives) */}
+                {streamingMessage &&
+                  streamingMessage.content &&
+                  !streamingMessage.isComplete && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
@@ -2082,165 +2389,73 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                           </svg>
                         </div>
                       </div>
-                      <div className="ml-[2.625rem]">
-                        {message.content === "Thinking..." ? (
-                          <div className="space-y-3 animate-pulse">
-                            <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
-                            <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
-                            <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                      <div className="ml-[2.625rem] space-y-2">
+                        <MessageStream
+                          content={streamingMessage.content}
+                          onVerseClick={handleVerseClick}
+                          onTrace={handleGoDeeper}
+                        />
+                        {mapPrepActive && (
+                          <div className="inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
+                            <svg
+                              className="w-3.5 h-3.5 text-cyan-200/90"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                              />
+                            </svg>
+                            <span>Preparing map...</span>
+                            {mapPrepCount !== null && mapPrepCount > 0 && (
+                              <span className="text-cyan-100/70">
+                                ({mapPrepCount} verses found)
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <>
-                            <MessageStream
-                              content={message.content}
-                              onVerseClick={handleVerseClick}
-                              onTrace={handleGoDeeper}
-                            />
-                            {/* Icons directly after message - AI messages only, not while streaming */}
-                            {message.type === "ai" &&
-                              message.id !== "streaming" && (
-                                <div className="max-w-3xl mx-auto px-6 pt-2 flex gap-2">
-                                  <button
-                                    onClick={() =>
-                                      handleTTS(message.id, message.content)
-                                    }
-                                    className={`p-1 rounded-md transition-colors ${
-                                      playingMessageId === message.id
-                                        ? "bg-blue-500/20 text-blue-400"
-                                        : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
-                                    }`}
-                                    title={
-                                      playingMessageId === message.id
-                                        ? "Stop playback"
-                                        : "Read aloud"
-                                    }
-                                  >
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d={
-                                          playingMessageId === message.id
-                                            ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M9 10h6v4H9z"
-                                            : "M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                                        }
-                                      />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      navigator.clipboard.writeText(
-                                        message.content,
-                                      )
-                                    }
-                                    className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
-                                    title="Copy to clipboard"
-                                  >
-                                    <svg
-                                      className="w-4 h-4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                                      />
-                                    </svg>
-                                  </button>
-                                  {message.visualBundle && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => {
-                                          if (onShowVisualization) {
-                                            onShowVisualization(
-                                              message.visualBundle!,
-                                            );
-                                            resetHighlights();
-                                          }
-                                        }}
-                                        className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
-                                          isMapReady
-                                            ? "text-emerald-200 bg-emerald-500/10 ring-1 ring-emerald-400/40 animate-pulse"
-                                            : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
-                                        }`}
-                                      >
-                                        <svg
-                                          className="w-4 h-4"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                                          />
-                                        </svg>
-                                        View Map
-                                      </button>
-                                      <span
-                                        className={`text-[11px] ${
-                                          isMapReady
-                                            ? "text-emerald-200/90"
-                                            : "text-neutral-500"
-                                        }`}
-                                      >
-                                        Map ready · {mapVerseCount} verse
-                                        {mapVerseCount === 1 ? "" : "s"}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                          </>
                         )}
                       </div>
                     </div>
                   )}
-                </div>
-              );
-            })}
 
-            {/* Streaming message (renders progressively as content arrives) */}
-            {streamingMessage &&
-              streamingMessage.content &&
-              !streamingMessage.isComplete && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 10V3L4 14h7v7l9-11h-7z"
-                        />
-                      </svg>
-                    </div>
+                {/* Tool Activity Inline */}
+                {toolsUsed.length > 0 && (
+                  <div className="ml-[2.625rem]">
+                    <ToolBadges tools={toolsUsed} />
                   </div>
-                  <div className="ml-[2.625rem] space-y-2">
-                    <MessageStream
-                      content={streamingMessage.content}
-                      onVerseClick={handleVerseClick}
-                      onTrace={handleGoDeeper}
-                    />
+                )}
+
+                {/* Loading skeleton while streaming */}
+                {isStreaming && !streamingMessage?.content && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm animate-pulse">
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="ml-[2.625rem] space-y-3 animate-pulse">
+                      <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
+                      <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
+                      <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                    </div>
                     {mapPrepActive && (
-                      <div className="inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
+                      <div className="ml-[2.625rem] inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
                         <svg
                           className="w-3.5 h-3.5 text-cyan-200/90"
                           fill="none"
@@ -2263,143 +2478,84 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-
-            {/* Tool Activity Inline */}
-            {toolsUsed.length > 0 && (
-              <div className="ml-[2.625rem]">
-                <ToolBadges tools={toolsUsed} />
-              </div>
-            )}
-
-            {/* Loading skeleton while streaming */}
-            {isStreaming && !streamingMessage?.content && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-sm shadow-sm animate-pulse">
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <div className="ml-[2.625rem] space-y-3 animate-pulse">
-                  <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
-                  <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
-                  <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
-                </div>
-                {mapPrepActive && (
-                  <div className="ml-[2.625rem] inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
-                    <svg
-                      className="w-3.5 h-3.5 text-cyan-200/90"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                      />
-                    </svg>
-                    <span>Preparing map...</span>
-                    {mapPrepCount !== null && mapPrepCount > 0 && (
-                      <span className="text-cyan-100/70">
-                        ({mapPrepCount} verses found)
-                      </span>
-                    )}
-                  </div>
                 )}
+
+                {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
+
+                <div ref={messagesEndRef} />
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-        {/* Genealogy Visualization Panel */}
-        {useMemo(
-          () =>
-            showVisualization &&
-            activeBundle && (
-              <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-sm font-semibold text-neutral-300">
-                      Theological Thread Explorer (
-                      {activeBundle.nodes?.length || 0} verses)
-                    </h3>
-                  </div>
-                  <button
-                    onClick={() => setShowVisualization(false)}
-                    className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
-                    title="Close visualization"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+          {/* Genealogy Visualization Panel */}
+          {useMemo(
+            () =>
+              showVisualization &&
+              activeBundle && (
+                <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-sm font-semibold text-neutral-300">
+                        Theological Thread Explorer (
+                        {activeBundle.nodes?.length || 0} verses)
+                      </h3>
+                    </div>
+                    <button
+                      onClick={() => setShowVisualization(false)}
+                      className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                      title="Close visualization"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto relative">
+                    <NarrativeMap
+                      bundle={activeBundle}
+                      highlightedRefs={activeHighlightedRefs}
+                      onTrace={handleGoDeeper}
+                      onGoDeeper={onGoDeeper}
+                    />
+                  </div>
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto relative">
-                  <NarrativeMap
-                    bundle={activeBundle}
-                    highlightedRefs={activeHighlightedRefs}
-                    onTrace={handleGoDeeper}
-                    onGoDeeper={onGoDeeper}
-                  />
-                </div>
-              </div>
-            ),
-          [
-            showVisualization,
-            activeBundle,
-            activeHighlightedRefs,
-            handleGoDeeper,
-            onGoDeeper,
-          ],
-        )}
-      </div>
+              ),
+            [
+              showVisualization,
+              activeBundle,
+              activeHighlightedRefs,
+              handleGoDeeper,
+              onGoDeeper,
+            ],
+          )}
+        </div>
+      )}
 
       {/* Input Composer */}
       <div
         ref={composerRef}
         className={
-          messages.length === 0
-            ? "flex-1 flex flex-col items-center justify-start px-6 pt-6"
+          isEmptyState
+            ? "flex-1 flex flex-col items-center justify-start px-6 pt-[22vh]"
             : "sticky bottom-0 px-6 py-4 bg-neutral-950/40 backdrop-blur-sm"
         }
       >
         <div
           className={
-            messages.length === 0
-              ? "max-w-3xl w-full space-y-8"
-              : "max-w-4xl mx-auto"
+            isEmptyState ? "max-w-3xl w-full space-y-8" : "max-w-4xl mx-auto"
           }
         >
-          {messages.length === 0 && (
+          {isEmptyState && (
             <div className="text-center mb-10">
               <h1 className="text-4xl font-medium text-neutral-100 tracking-tight">
                 What would you like to examine?
@@ -2490,7 +2646,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
               rows={1}
               disabled={isProcessing}
-              autoFocus={bibleStudyMode && messages.length === 0}
+              autoFocus={bibleStudyMode && isEmptyState}
             />
             {/* Bookmark Button */}
             <button

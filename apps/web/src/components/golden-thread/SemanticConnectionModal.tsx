@@ -39,7 +39,6 @@ interface SemanticConnectionModalProps {
   similarity: number;
   position: { x: number; y: number };
   onClose: () => void;
-  onTrace: (prompt: string) => void;
   onGoDeeper: (prompt: GoDeeperPayload) => void;
   explanation?: string;
   isLLMDiscovered?: boolean;
@@ -99,7 +98,6 @@ export function SemanticConnectionModal({
   similarity,
   position,
   onClose,
-  onTrace,
   onGoDeeper,
   explanation: _explanation, // Unused - we always fetch fresh synopsis
   isLLMDiscovered,
@@ -110,14 +108,6 @@ export function SemanticConnectionModal({
   visualBundle,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
-  const [pericopeSupport, setPericopeSupport] = useState<{
-    title: string;
-    rangeRef: string;
-    summary: string;
-    themes?: string[];
-    source?: string;
-    shared?: boolean;
-  } | null>(null);
   const [verses, setVerses] = useState<
     Array<{ id: number; reference: string; text: string }>
   >([]);
@@ -125,6 +115,12 @@ export function SemanticConnectionModal({
   const [error, setError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const verseTooltipRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<ReturnType<
+    typeof window.AbortController
+  > | null>(null);
+  const requestIdRef = useRef(0);
+  const lastRequestKeyRef = useRef<string | null>(null);
+  const synopsisRef = useRef("");
   const [adjustedPosition, setAdjustedPosition] = useState(position);
   const [selectedVerseTooltip, setSelectedVerseTooltip] = useState<{
     reference: string;
@@ -163,6 +159,10 @@ export function SemanticConnectionModal({
   useEffect(() => {
     setSelectedVerseTooltip(null);
   }, [verses]);
+
+  useEffect(() => {
+    synopsisRef.current = synopsis;
+  }, [synopsis]);
 
   const handleClose = useCallback(() => {
     setSelectedVerseTooltip(null);
@@ -203,13 +203,9 @@ export function SemanticConnectionModal({
 
   // Fetch comprehensive synopsis considering all connected verses
   useEffect(() => {
-    const fetchSynopsis = async () => {
-      setLoading(true);
-      setError(null);
-      setSynopsis("");
-      setPericopeSupport(null);
-      setVerses(previewVerses);
+    let isActive = true;
 
+    const fetchSynopsis = async () => {
       try {
         // Use all connected verse IDs if available, otherwise just the two endpoints
         const verseIds =
@@ -227,11 +223,11 @@ export function SemanticConnectionModal({
           throw new Error("Invalid verse IDs supplied");
         }
 
+        const activeSet = new Set(normalizedVerseIds);
         console.log(
           `[SemanticConnectionModal] Fetching synopsis for ${normalizedVerseIds.length} connected verses`,
         );
 
-        const activeSet = new Set(normalizedVerseIds);
         const topicContext = Array.isArray(connectionTopics)
           ? connectionTopics
               .filter((topic) => topic.styleType !== connectionType)
@@ -260,11 +256,41 @@ export function SemanticConnectionModal({
               })
           : [];
 
+        const requestKey = JSON.stringify({
+          verseIds: normalizedVerseIds,
+          connectionType,
+          similarity,
+          isLLMDiscovered: Boolean(isLLMDiscovered),
+          topicContext,
+        });
+
+        if (lastRequestKeyRef.current === requestKey && synopsisRef.current) {
+          setLoading(false);
+          setError(null);
+          return;
+        }
+
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+
+        const controller = new window.AbortController();
+        abortControllerRef.current = controller;
+        const requestId = (requestIdRef.current += 1);
+
+        setLoading(true);
+        setError(null);
+        if (lastRequestKeyRef.current !== requestKey) {
+          setSynopsis("");
+          setVerses(previewVerses);
+        }
+
         const response = await fetch(
           `${API_URL}/api/semantic-connection/synopsis`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
             body: JSON.stringify({
               verseIds: normalizedVerseIds, // Pass all connected verse IDs
               connectionType,
@@ -293,21 +319,41 @@ export function SemanticConnectionModal({
           throw new Error("Incomplete verse list returned from API");
         }
 
+        if (
+          !isActive ||
+          controller.signal.aborted ||
+          requestId !== requestIdRef.current
+        ) {
+          return;
+        }
+
         setSynopsis(data.synopsis || "");
-        setPericopeSupport(data.pericopeSupport || null);
         setVerses(orderedVerses);
+        lastRequestKeyRef.current = requestKey;
+        setLoading(false);
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
         console.error(
           "[SemanticConnectionModal] Error fetching synopsis:",
           err,
         );
-        setError("Could not load connection analysis");
-      } finally {
-        setLoading(false);
+        if (isActive) {
+          setError("Could not load connection analysis");
+          setLoading(false);
+        }
       }
     };
 
     fetchSynopsis();
+
+    return () => {
+      isActive = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [
     fromVerse.id,
     toVerse.id,
@@ -346,12 +392,6 @@ export function SemanticConnectionModal({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [handleClose]);
 
-  const handleTrace = () => {
-    const tracePrompt = `Trace the ${CONNECTION_LABELS[connectionType].toLowerCase()} between ${fromVerse.reference} and ${toVerse.reference}. Explore the semantic themes and theological significance of this connection.`;
-    onTrace(tracePrompt);
-    handleClose();
-  };
-
   const handleGoDeeper = () => {
     const connectionLabel = CONNECTION_LABELS[connectionType];
     const clusterVerseIds = Array.isArray(connectedVerseIds)
@@ -370,8 +410,6 @@ export function SemanticConnectionModal({
       synopsis,
       nextCandidates,
       topicHints,
-      pericopeContext:
-        visualBundle?.pericopeContext || pericopeSupport || undefined,
     });
     const displayText = buildGoDeeperDisplayText({
       connectionLabel,
@@ -585,36 +623,6 @@ export function SemanticConnectionModal({
 
           {/* Actions */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleTrace}
-              disabled={loading}
-              className="group px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: `${connectionColor}20`,
-                color: connectionColor,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = `${connectionColor}30`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = `${connectionColor}20`;
-              }}
-            >
-              <span>Trace</span>
-              <svg
-                className="w-3 h-3 transition-transform group-hover:translate-x-0.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 7l5 5m0 0l-5 5m5-5H6"
-                />
-              </svg>
-            </button>
             <button
               onClick={handleGoDeeper}
               disabled={loading || !synopsis}

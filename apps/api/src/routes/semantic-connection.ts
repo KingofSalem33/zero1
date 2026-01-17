@@ -3,7 +3,6 @@ import { supabase } from "../db";
 import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import { SEMANTIC_CONNECTION_V1 } from "../prompts";
-import { getPericopeById } from "../bible/pericopeSearch";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 
 const router = Router();
@@ -136,73 +135,6 @@ router.post("/synopsis", async (req, res) => {
             )}\n\nWhen writing the synopsis, make it distinct from these other lenses: focus on what THIS topic uniquely clarifies or reframes. If overlap is high (>=60%), explicitly contrast the angle rather than restating shared points.\n`
         : "";
 
-    const source = ENV.PERICOPE_SOURCE || "SIL_AI";
-    const { data: pericopeMap, error: pericopeMapError } = await supabase
-      .from("verse_pericope_map")
-      .select("verse_id, pericope_id")
-      .in("verse_id", ids)
-      .eq("source", source);
-
-    const pericopeIdByVerse = new Map<number, number>();
-    if (!pericopeMapError && pericopeMap) {
-      pericopeMap.forEach((row) => {
-        if (!pericopeIdByVerse.has(row.verse_id)) {
-          pericopeIdByVerse.set(row.verse_id, row.pericope_id);
-        }
-      });
-    }
-
-    const pericopeIds = Array.from(
-      new Set(Array.from(pericopeIdByVerse.values())),
-    );
-    const pericopeDetails = await Promise.all(
-      pericopeIds.slice(0, 3).map((id) => getPericopeById(id)),
-    );
-    const resolvedPericopes = pericopeDetails.filter(
-      (pericope): pericope is NonNullable<typeof pericope> => Boolean(pericope),
-    );
-    const sharedPericopeId = pericopeIds.length === 1 ? pericopeIds[0] : null;
-    const sharedPericope = sharedPericopeId
-      ? resolvedPericopes.find((p) => p.id === sharedPericopeId)
-      : null;
-    const anchorPericopeId = pericopeIdByVerse.get(ids[0]);
-    const anchorPericope = anchorPericopeId
-      ? resolvedPericopes.find((p) => p.id === anchorPericopeId)
-      : null;
-    const supportPericope =
-      sharedPericope || anchorPericope || resolvedPericopes[0] || null;
-
-    const pericopeSupport = supportPericope
-      ? {
-          title: supportPericope.title_generated || supportPericope.title,
-          rangeRef: supportPericope.rangeRef,
-          summary:
-            supportPericope.summary || supportPericope.full_text.slice(0, 220),
-          themes: supportPericope.themes || [],
-          source,
-          shared: Boolean(sharedPericope),
-        }
-      : null;
-
-    const pericopeContextText =
-      resolvedPericopes.length > 0
-        ? `\nNarrative context (${source} pericopes):\n${
-            sharedPericope
-              ? `Shared pericope: ${sharedPericope.title_generated || sharedPericope.title} (${sharedPericope.rangeRef})\nSummary: ${sharedPericope.summary || sharedPericope.full_text.slice(0, 180)}`
-              : resolvedPericopes
-                  .map((pericope) => {
-                    const summary =
-                      pericope.summary || pericope.full_text.slice(0, 180);
-                    const themes =
-                      pericope.themes && pericope.themes.length > 0
-                        ? `Themes: ${pericope.themes.slice(0, 3).join(", ")}`
-                        : "";
-                    return `- ${pericope.title_generated || pericope.title} (${pericope.rangeRef})\n  Summary: ${summary}${themes ? `\n  ${themes}` : ""}`;
-                  })
-                  .join("\n")
-          }\n`
-        : "";
-
     // Build verse list for prompt
     const verseList = sortedVerses
       .map(
@@ -223,7 +155,6 @@ router.post("/synopsis", async (req, res) => {
 ${verseList}
 
 These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "same words" : connectionType === "PURPLE" ? "same teaching" : connectionType === "CYAN" ? "prophecy fulfilled" : connectionType === "GENEALOGY" ? "lineage" : connectionType === "TYPOLOGY" ? "similar story" : connectionType === "FULFILLMENT" ? "prophecy fulfilled" : connectionType === "CONTRAST" ? "opposite ideas" : connectionType === "PROGRESSION" ? "progression" : connectionType === "PATTERN" ? "pattern" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
-${pericopeContextText}
 ${topicContextText}
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:
@@ -236,7 +167,6 @@ Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words
 ${verseList}
 
 These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} thread.
-${pericopeContextText}
 ${topicContextText}
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:
@@ -297,7 +227,6 @@ Be direct and synthesizing. Maximum 34 words.`;
       connectionType,
       similarity,
       verseCount: sortedVerses.length,
-      pericopeSupport,
     });
   } catch (error) {
     console.error("[Semantic Connection] Error generating synopsis:", error);

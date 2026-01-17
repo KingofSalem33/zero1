@@ -87,6 +87,26 @@ const FORCE_CONFIG = {
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
+const hashString = (value: string): number => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+const mulberry32 = (seed: number) => {
+  let t = seed;
+  return () => {
+    t += 0x6d2b79f5;
+    let result = t;
+    result = Math.imul(result ^ (result >>> 15), result | 1);
+    result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+    return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
 /**
  * Edge type to visual distance mapping
  * Stronger connections = shorter distance = nodes pulled closer
@@ -206,17 +226,22 @@ export function calculateForceLayout(
   // Prepare D3 simulation nodes with relevant properties
   const d3Nodes: ForceNode[] = nodes.map((n) => {
     const nodeData = n.data as VerseNodeData;
+    const isAnchor = nodeData?.isAnchor || false;
+    const seed = hashString(`${anchorId ?? "anchor"}:${n.id}`);
+    const rand = mulberry32(seed);
+    const jitterX = rand() * 400 - 200;
+    const jitterY = rand() * 400 - 200;
     return {
       id: n.id,
       // Initialize positions (anchor at center, others random nearby)
-      x: anchorNode?.id === n.id ? centerX : Math.random() * 400 - 200,
-      y: anchorNode?.id === n.id ? centerY : Math.random() * 400 - 200,
+      x: anchorNode?.id === n.id ? centerX : jitterX,
+      y: anchorNode?.id === n.id ? centerY : jitterY,
       // Node properties for force calculations
       similarity: nodeData?.verse?.similarity || 0,
       depth: nodeData?.verse?.depth || 1,
       mass: nodeData?.verse?.mass || 1,
       centrality: nodeData?.verse?.centrality || 0,
-      isAnchor: nodeData?.isAnchor || false,
+      isAnchor,
     };
   });
 

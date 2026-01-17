@@ -713,6 +713,7 @@ app.post(
         oratoryMode = false,
         history = [], // Used in Oratory mode for thread awareness
         promptMode,
+        mapMode,
         visualBundle,
         mapSession,
         // userId = "anonymous", // Not used in streaming mode
@@ -831,6 +832,7 @@ Teach with conviction as one who lives the Word—declarative, confident, rooted
           promptMode,
           visualBundle,
           mapSession,
+          mapMode,
         );
         console.log("[Exegesis STREAM] KERNEL pipeline completed");
       }

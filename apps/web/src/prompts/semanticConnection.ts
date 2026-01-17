@@ -10,12 +10,6 @@ export type GoDeeperPromptInput = {
   synopsis: string;
   nextCandidates?: VerseExcerpt[];
   topicHints?: string[];
-  pericopeContext?: {
-    title: string;
-    summary: string;
-    rangeRef: string;
-    themes?: string[];
-  };
 };
 
 export const buildGoDeeperPrompt = ({
@@ -25,16 +19,7 @@ export const buildGoDeeperPrompt = ({
   synopsis,
   nextCandidates = [],
   topicHints = [],
-  pericopeContext,
 }: GoDeeperPromptInput): string => {
-  const storyContext = pericopeContext
-    ? `\n[STORY CONTEXT]\n${pericopeContext.title} (${pericopeContext.rangeRef})\nSummary: ${pericopeContext.summary}\n${
-        pericopeContext.themes?.length
-          ? `Themes: ${pericopeContext.themes.join(", ")}`
-          : ""
-      }`
-    : "";
-
   return `TASK: Reveal why this connection matters and create irresistible momentum toward the next step.
 
 === THE DATA ===
@@ -47,7 +32,6 @@ ${toVerse.reference}: "${toVerse.text}"
 [METADATA]
 - Type: ${connectionLabel}
 - Previous Synopsis: "${synopsis}"
-${storyContext}
 ${nextCandidates.length > 0 ? "\n[NEXT NODES]\n" : ""}${nextCandidates
     .map(
       (verse) =>

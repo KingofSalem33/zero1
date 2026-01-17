@@ -50,6 +50,10 @@ export const chatRequestSchema = z.object({
     .enum(PROMPT_MODES)
     .optional()
     .describe("Prompt formatting mode for streaming exegesis"),
+  mapMode: z
+    .enum(["fast", "full"])
+    .optional()
+    .describe("Map generation mode for streaming responses"),
   visualBundle: z
     .object({
       nodes: z.array(z.any()),
