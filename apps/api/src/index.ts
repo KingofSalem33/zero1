@@ -709,6 +709,7 @@ app.post(
       // Validate request body
       const {
         message,
+        history = [], // Used for low-signal follow-ups
         promptMode,
         mapMode,
         visualBundle,
@@ -724,12 +725,36 @@ app.post(
       // Send initial heartbeat
       res.write(`:\n\n`);
 
+      // Detect low-signal affirmations (e.g., "yes, let's do it") after a follow-up question
+      const isLowSignalAffirmation = (text: string): boolean => {
+        const normalized = text.trim();
+        if (normalized.split(/\s+/).length > 12) return false;
+        return /^(yes|yep|yeah|sure|ok|okay|alright|sounds good|let's do it|let's explore|go ahead|proceed|continue|go for it)[\s.!]*$/i.test(
+          normalized,
+        );
+      };
+
+      const lastAssistantQuestion = [...history]
+        .reverse()
+        .find(
+          (msg) =>
+            msg.role === "assistant" &&
+            typeof msg.content === "string" &&
+            msg.content.trim().length > 0 &&
+            msg.content.trim().endsWith("?"),
+        )?.content;
+
+      const effectiveMessage =
+        isLowSignalAffirmation(message) && lastAssistantQuestion
+          ? lastAssistantQuestion
+          : message;
+
       // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
       // SIM-1 (mechanism) + SIM-2 (coherence) + SIM-3 (teaching stream)
       console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
       await explainScriptureWithKernelStream(
         res,
-        message,
+        effectiveMessage,
         true,
         promptMode,
         visualBundle,
