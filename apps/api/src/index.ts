@@ -44,7 +44,6 @@ import {
 } from "./bible/expandingRingExegesis";
 import { buildPericopeBundle } from "./bible/pericopeGraphWalker";
 import { buildVisualBundle } from "./bible/graphWalker";
-import { findResonantScripture } from "./bible/oratoryValidation";
 import bookmarksRouter from "./routes/bookmarks";
 import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
@@ -710,8 +709,6 @@ app.post(
       // Validate request body
       const {
         message,
-        oratoryMode = false,
-        history = [], // Used in Oratory mode for thread awareness
         promptMode,
         mapMode,
         visualBundle,
@@ -727,115 +724,19 @@ app.post(
       // Send initial heartbeat
       res.write(`:\n\n`);
 
-      // Check if this is an Oratory session
-      if (oratoryMode) {
-        console.log("[Oratory] Running Scripture retrieval mode...");
-
-        // Oratory system prompt - Teaching Scripture's answer to their struggle
-        const oratorySystemPrompt = `You are a devout disciple of Jesus with the purpose to teach the Word of the Lord—even to those in pain. You teach the Word, you live the Word, you are the Word. You know that Bible-based truth is THE truth because it is the living Word.
-
-**YOUR EXEGETICAL APPROACH TO PASTORAL NEED**
-When someone comes with grief, temptation, confusion, or struggle—Scripture declares the answer plainly. Your method is rooted solely in the King James Version. No external psychology, no therapeutic frameworks, no modern counseling techniques. Only what the KJV text itself reveals about their situation.
-
-**HARD BOUNDARIES**
-- Address only what they explicitly stated—no inferring hidden emotions or motives
-- Speak from Scripture's authority, not human sympathy
-- Declare what the Word says about their situation, don't speculate beyond it
-- If Scripture addresses it, teach it with conviction. If Scripture is silent, remain silent.
-
-**METHOD**
-1. **Acknowledge their stated struggle plainly** - Reflect what they said without elaboration or assumption
-
-2. **Declare what Scripture says to this**: Open the KJV and show them where God's Word directly addresses their situation. Give the passage (3-4 verses from KJV). Declare what the text says—not what you feel about it.
-
-3. **Point to biblical pattern**: Show them a specific person/story in Scripture (book, chapter, verses) where this same struggle appears. Teach how God's Word reveals His response—through His character and His declared truth.
-
-**THREAD AWARENESS** (when conversation history exists)
-Build on what Scripture has already established in previous exchanges. Don't repeat—go deeper into the same biblical truth, showing how it connects across passages.
-
-**VOICE**
-Teach with conviction as one who lives the Word—declarative, confident, rooted in what Scripture plainly says. Not therapeutic comfort, but biblical truth. Not emotional validation, but the authority of God's Word speaking to their need.
-
-**AVOID**
-❌ Psychological analysis or emotional interpretation beyond what they stated
-❌ Therapeutic language ("I hear you," "that must be hard," "you're not alone")
-❌ Softening Scripture's declarations to make them more palatable
-❌ Offering human wisdom when Scripture has already spoken
-
-**GOAL**: Teach what the living Word declares about their struggle—with authority, clarity, and conviction.`;
-
-        // Build conversation messages with history for thread awareness
-        const conversationMessages = [
-          { role: "system", content: oratorySystemPrompt },
-          ...history,
-          { role: "user", content: message },
-        ];
-
-        // Stream the Oratory response and capture full text
-        const pastoralResponse = await runModelStream(
-          res,
-          conversationMessages,
-          {
-            model: ENV.OPENAI_SMART_MODEL,
-            reasoningEffort: "low", // Explicit low reasoning for faster streaming
-            toolSpecs: [],
-            toolMap: {},
-            keepAlive: true, // Don't close response yet - we need to send resonant Scripture
-            // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
-          },
-        );
-
-        console.log(
-          "[Oratory] Pastoral response completed, finding resonant Scripture...",
-        );
-
-        // Find Scripture that addresses the user's actual issue (not the pastoral response)
-        try {
-          const resonantVerses = await findResonantScripture(
-            message, // User's original issue
-            pastoralResponse, // Pastoral response (for context)
-            3,
-          );
-
-          if (resonantVerses.length > 0) {
-            // Send resonant Scripture as additional SSE event
-            res.write("event: scripture_resonance\n");
-            res.write(
-              `data: ${JSON.stringify({ verses: resonantVerses })}\n\n`,
-            );
-
-            console.log(
-              `[Oratory] ✅ Sent ${resonantVerses.length} resonant verses to validate pastoral response`,
-            );
-          } else {
-            console.log("[Oratory] No resonant verses found");
-          }
-        } catch (error) {
-          console.error("[Oratory] Failed to find resonant Scripture:", error);
-          // Continue without validation - pastoral response is still valid
-        }
-
-        // Now send done event and close response
-        res.write("event: done\n");
-        res.write(`data: ${JSON.stringify({ citations: [] })}\n\n`);
-        res.end();
-
-        console.log("[Oratory] Session completed");
-      } else {
-        // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
-        // SIM-1 (mechanism) → SIM-2 (coherence) → SIM-3 (teaching stream)
-        console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
-        await explainScriptureWithKernelStream(
-          res,
-          message,
-          true,
-          promptMode,
-          visualBundle,
-          mapSession,
-          mapMode,
-        );
-        console.log("[Exegesis STREAM] KERNEL pipeline completed");
-      }
+      // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
+      // SIM-1 (mechanism) + SIM-2 (coherence) + SIM-3 (teaching stream)
+      console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
+      await explainScriptureWithKernelStream(
+        res,
+        message,
+        true,
+        promptMode,
+        visualBundle,
+        mapSession,
+        mapMode,
+      );
+      console.log("[Exegesis STREAM] KERNEL pipeline completed");
 
       // Note: In streaming mode, we don't store the conversation in memory
       // because we don't have access to the full response text

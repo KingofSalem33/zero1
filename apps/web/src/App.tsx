@@ -36,6 +36,7 @@ function App() {
   const [viewMode, setViewMode] = useState<"reader" | "chat" | "highlights">(
     "reader",
   );
+  const [bibleStudyMode, setBibleStudyMode] = useState(false);
   const [pendingChatPrompt, setPendingChatPrompt] =
     useState<GoDeeperPayload | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -106,12 +107,14 @@ function App() {
 
   // Toggle to Bible Reader view
   const handleToggleBible = () => {
+    setBibleStudyMode(false);
     setViewMode("reader");
   };
 
   // Navigate from Bible to Chat with a prompt
   const handleNavigateToChat = (prompt: GoDeeperPayload) => {
     setViewMode("chat"); // Switch to chat view
+    setBibleStudyMode(true);
     setPendingChatPrompt(prompt); // Queue the prompt
   };
 
@@ -172,11 +175,18 @@ function App() {
   // Enter Bible Study (just show chat view)
   const handleEnterBibleStudy = () => {
     setViewMode("chat");
+    setBibleStudyMode(true);
   };
 
   // Open Highlights
   const handleOpenHighlights = () => {
+    setBibleStudyMode(false);
     setViewMode("highlights");
+  };
+
+  const handleResetBibleStudy = () => {
+    setBibleStudyMode(true);
+    handleNewChat();
   };
 
   // Navigate from Highlights to Bible verse
@@ -407,8 +417,9 @@ function App() {
                   onMessagesChange={setCurrentMessages}
                   pendingPrompt={pendingChatPrompt}
                   onPromptConsumed={() => setPendingChatPrompt(null)}
-                  bibleStudyMode={false}
-                  onExitBibleStudy={() => {}}
+                  bibleStudyMode={bibleStudyMode}
+                  onExitBibleStudy={() => setBibleStudyMode(false)}
+                  onResetBibleStudy={handleResetBibleStudy}
                   onTrace={handleTrace}
                   onGoDeeper={handleGoDeeper}
                   onShowVisualization={handleShowVisualization}

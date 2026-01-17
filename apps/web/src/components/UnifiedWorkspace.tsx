@@ -7,7 +7,6 @@
 } from "react";
 import { MessageStream } from "./golden-thread/MessageStream";
 import { ToolBadges } from "./ToolBadges";
-import { VoiceSettings } from "./VoiceSettings";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { BookmarkPanel } from "./BookmarkPanel";
 import { useChatStream } from "../hooks/useChatStream";
@@ -122,6 +121,7 @@ interface UnifiedWorkspaceProps {
   onPromptConsumed?: () => void;
   bibleStudyMode?: boolean;
   onExitBibleStudy?: () => void;
+  onResetBibleStudy?: () => void;
   onTrace?: (text: string) => void; // Canonical trace handler from App
   onGoDeeper?: (prompt: GoDeeperPayload) => void; // Go Deeper handler for Bible Study
   onShowVisualization?: (bundle: VisualContextBundle) => void; // Show full-screen map with existing bundle
@@ -146,6 +146,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   bibleStudyMode = false,
 
   onExitBibleStudy: _onExitBibleStudy,
+  onResetBibleStudy,
   onTrace,
   onGoDeeper,
   onShowVisualization,
@@ -158,6 +159,20 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUploadButton, setShowUploadButton] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [randomTopicLoading, setRandomTopicLoading] = useState<
+    "random" | "ot" | "nt" | null
+  >(null);
+  const [randomTopicsLoading, setRandomTopicsLoading] = useState(false);
+  const [randomPericopes, setRandomPericopes] = useState<
+    Array<{
+      id: number;
+      title: string;
+      rangeRef: string;
+      displayText: string;
+      promptText: string;
+      kind: "random" | "ot" | "nt";
+    }>
+  >([]);
   const [buildApproach, setBuildApproach] = useState<
     "code" | "platform" | "auto" | null
   >(null);
@@ -669,6 +684,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const { streamingMessage, isStreaming, startStream } =
     useChatStream(handleMapData);
 
+  const isEmptyState =
+    messages.length === 0 &&
+    !isStreaming &&
+    !(streamingMessage?.content && !streamingMessage.isComplete);
+  const showWorkspace = !isEmptyState || showVisualization;
   // Track processed prompt to prevent StrictMode double-invocation
   const processedPromptRef = useRef<GoDeeperPayload | null>(null);
 
@@ -1200,6 +1220,22 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         }
 
         const bundleForMap = normalizedPrompt.visualBundle || visualBundle;
+        const referenceSource =
+          normalizedPrompt.prompt || normalizedPrompt.displayText;
+        const references = extractReferences(referenceSource);
+        const hasExplicitRef = references.length > 0;
+        const offMapReferences =
+          bundleForMap && hasExplicitRef
+            ? references.filter(
+                (ref) =>
+                  !buildReferenceLookup(bundleForMap).has(
+                    normalizeReference(ref),
+                  ),
+              )
+            : [];
+        const shouldReanchor =
+          !bundleForMap ||
+          (!fullMapPending && (!hasExplicitRef || offMapReferences.length > 0));
         let mapSessionPayload: MapSession | undefined;
         if (bundleForMap && (normalizedPrompt.mapSession || mapSession)) {
           const { session, queuedConnection } = buildMapSessionPayload({
@@ -1218,6 +1254,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           } else {
             setNextSuggestedPrompt(null);
           }
+        } else if (shouldReanchor) {
+          setMapSession(null);
+          setNextSuggestedPrompt(null);
+          setVisualBundle(null);
+          setMapPendingFullMessageId(null);
         }
 
         // Add user message to chat
@@ -1237,16 +1278,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           content: msg.rawContent ?? msg.content,
         }));
 
+        if (shouldReanchor) {
+          void startFullMapFetch(referenceSource);
+        }
+
         // Start streaming AI response
         await startStream(
-          normalizedPrompt.prompt,
+          referenceSource,
           "user",
           historyForAPI,
-          bibleStudyMode,
           inferredPromptMode ?? undefined,
           bundleForMap || undefined,
           mapSessionPayload,
-          undefined,
+          shouldReanchor ? "fast" : undefined,
         );
         setIsProcessing(false);
 
@@ -1264,11 +1308,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setMessages,
     startStream,
     onPromptConsumed,
-    bibleStudyMode,
     visualBundle,
     mapSession,
     buildMapSessionPayload,
     buildConnectionPrompt,
+    extractReferences,
+    buildReferenceLookup,
+    normalizeReference,
+    fullMapPending,
   ]);
 
   // Reset processed prompt when prompt is consumed
@@ -1434,21 +1481,34 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     extractSuggestedReference,
   ]);
 
-  const handleSendMessage = async () => {
-    if (!currentInput.trim() || isProcessing || isStreaming) return;
+  const handleSendMessage = async (
+    overrideInput?: string | { displayText: string; promptText: string },
+  ) => {
+    const hasOverride = overrideInput !== undefined;
+    const displayText =
+      typeof overrideInput === "string"
+        ? overrideInput
+        : (overrideInput?.displayText ?? currentInput);
+    const promptText =
+      typeof overrideInput === "string"
+        ? overrideInput
+        : (overrideInput?.promptText ?? displayText);
+    const inputText = displayText.trim();
+    const promptInput = promptText.trim();
+    if (!inputText || !promptInput || isProcessing || isStreaming) return;
 
     setIsProcessing(true);
     setMapPrepActive(true);
     setMapPrepCount(0);
     setMapReadyMessageId(null);
     setPendingVisualBundle(null);
-    const userMessage = currentInput.trim();
+    const userMessage = promptInput;
     const shouldUseSuggested =
-      nextSuggestedPrompt && isAffirmation(userMessage);
+      !hasOverride && nextSuggestedPrompt && isAffirmation(inputText);
     const apiMessage = shouldUseSuggested
       ? nextSuggestedPrompt.prompt
       : userMessage;
-    const displayMessage = userMessage;
+    const displayMessage = inputText;
 
     // Add user message to chat
     const newMessage: ChatMessage = {
@@ -1460,7 +1520,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     };
     const updatedMessages = [...messages, newMessage];
     setMessages(updatedMessages);
-    setCurrentInput("");
+    if (!hasOverride) {
+      setCurrentInput("");
+    }
 
     // Convert ChatMessage format to API format (role/content)
     const historyForAPI = updatedMessages.slice(0, -1).map((msg) => ({
@@ -1528,7 +1590,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       apiMessage,
       "user",
       historyForAPI,
-      bibleStudyMode,
       promptMode,
       streamBundle,
       mapSessionPayload,
@@ -1539,6 +1600,164 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
     await streamPromise;
     setIsProcessing(false);
+  };
+
+  const fetchRandomPericope = useCallback(
+    async (
+      kind: "random" | "ot" | "nt",
+      options?: { testament?: "OT" | "NT" },
+    ) => {
+      const params = new URLSearchParams();
+      if (options?.testament) {
+        params.set("testament", options.testament);
+      }
+      const url = params.toString()
+        ? `${API_URL}/api/pericope/random?${params.toString()}`
+        : `${API_URL}/api/pericope/random`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Failed to load random pericope");
+      }
+      const data = (await response.json()) as {
+        pericopeId?: number;
+        prompt?: string;
+        title?: string;
+        rangeRef?: string;
+      };
+
+      const title =
+        typeof data.title === "string" ? data.title.trim() : "Pericope";
+      const rangeRef =
+        typeof data.rangeRef === "string" ? data.rangeRef.trim() : "";
+      const basePrompt =
+        typeof data.prompt === "string" && data.prompt.trim().length > 0
+          ? data.prompt.trim()
+          : rangeRef
+            ? `Go deeper on [${rangeRef}].`
+            : `Go deeper on ${title}.`;
+      const displayText = basePrompt;
+      const promptText = basePrompt;
+
+      return {
+        id: typeof data.pericopeId === "number" ? data.pericopeId : Date.now(),
+        title,
+        rangeRef,
+        displayText,
+        promptText,
+        kind,
+      };
+    },
+    [],
+  );
+
+  const sendPericopePrompt = async (
+    kind: "random" | "ot" | "nt",
+    displayText: string,
+    promptText: string,
+  ) => {
+    if (
+      !bibleStudyMode ||
+      !isEmptyState ||
+      isProcessing ||
+      isStreaming ||
+      randomTopicLoading
+    ) {
+      return;
+    }
+    setRandomTopicLoading(kind);
+    try {
+      if (onGoDeeper) {
+        onGoDeeper({
+          displayText,
+          prompt: promptText,
+          mode: "go_deeper_short",
+        });
+      } else {
+        await handleSendMessage({ displayText, promptText });
+      }
+    } catch (error) {
+      console.error("[UnifiedWorkspace] Random pericope failed:", error);
+      setRandomTopicLoading(null);
+    } finally {
+      if (!onGoDeeper) {
+        setRandomTopicLoading(null);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (randomTopicLoading && !pendingPrompt && !isStreaming && !isProcessing) {
+      setRandomTopicLoading(null);
+    }
+  }, [randomTopicLoading, pendingPrompt, isStreaming, isProcessing]);
+
+  useEffect(() => {
+    if (!bibleStudyMode || !isEmptyState) return;
+    if (randomPericopes.length > 0) return;
+
+    let isActive = true;
+    setRandomTopicsLoading(true);
+
+    const loadTopics = async () => {
+      try {
+        const results = await Promise.all([
+          fetchRandomPericope("random"),
+          fetchRandomPericope("ot", { testament: "OT" }),
+          fetchRandomPericope("nt", { testament: "NT" }),
+        ]);
+
+        if (!isActive) return;
+        const unique = new Map<number, (typeof results)[number]>();
+        results.forEach((item) => {
+          if (item) unique.set(item.id, item);
+        });
+        setRandomPericopes(Array.from(unique.values()));
+      } catch (error) {
+        console.error(
+          "[UnifiedWorkspace] Failed to load pericope topics:",
+          error,
+        );
+      } finally {
+        if (isActive) setRandomTopicsLoading(false);
+      }
+    };
+
+    void loadTopics();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    bibleStudyMode,
+    isEmptyState,
+    randomPericopes.length,
+    fetchRandomPericope,
+  ]);
+
+  const resetBibleStudySession = () => {
+    if (isProcessing || isStreaming) return;
+
+    stopAudio();
+    setCurrentInput("");
+    setMessages([]);
+    setToolsUsed([]);
+    setRandomTopicLoading(null);
+    setRandomTopicsLoading(false);
+    setRandomPericopes([]);
+    setVisualBundle(null);
+    setPendingVisualBundle(null);
+    setMapSession(null);
+    setFullMapPending(false);
+    setMapPendingFullMessageId(null);
+    setMapReadyMessageId(null);
+    fullMapRequestRef.current = null;
+    setMapPrepActive(false);
+    setMapPrepCount(null);
+    setNextSuggestedPrompt(null);
+    setShowVisualization(false);
+    resetHighlights();
+
+    onResetBibleStudy?.();
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1556,6 +1775,57 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       }
     },
     [onTrace],
+  );
+
+  const visualizationPanel = useMemo(
+    () =>
+      showVisualization &&
+      activeBundle && (
+        <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-neutral-300">
+                Theological Thread Explorer ({activeBundle.nodes?.length || 0}{" "}
+                verses)
+              </h3>
+            </div>
+            <button
+              onClick={() => setShowVisualization(false)}
+              className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+              title="Close visualization"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto relative">
+            <NarrativeMap
+              bundle={activeBundle}
+              highlightedRefs={activeHighlightedRefs}
+              onTrace={handleGoDeeper}
+              onGoDeeper={onGoDeeper}
+            />
+          </div>
+        </div>
+      ),
+    [
+      showVisualization,
+      activeBundle,
+      activeHighlightedRefs,
+      handleGoDeeper,
+      onGoDeeper,
+    ],
   );
 
   // Handle verse click from MessageStream component
@@ -1624,12 +1894,17 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       setMapPendingFullMessageId(null);
     }
 
+    setMapPrepActive(true);
+    setMapPrepCount(0);
+    setMapReadyMessageId(null);
+    setPendingVisualBundle(null);
+    lastPromptModeRef.current = promptMode ?? null;
+
     // Start streaming AI response
     const streamPromise = startStream(
       reference,
       "user",
       historyForAPI,
-      bibleStudyMode,
       promptMode,
       shouldReanchor ? undefined : bundleForMap || undefined,
       mapSessionPayload,
@@ -1724,7 +1999,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   )}
                 </button>
                 <button
-                  onClick={handleSendMessage}
+                  onClick={() => handleSendMessage()}
                   disabled={!currentInput.trim() || creating || inspiring}
                   className="btn-primary"
                 >
@@ -2173,12 +2448,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   }
 
   // Main workspace with conversation
-  const isEmptyState =
-    messages.length === 0 &&
-    !isStreaming &&
-    !(streamingMessage?.content && !streamingMessage.isComplete);
-  const showWorkspace = !isEmptyState || showVisualization;
-
   return (
     <div className="flex flex-col h-full">
       {/* Split View: Chat + Visualization */}
@@ -2488,56 +2757,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           )}
 
           {/* Genealogy Visualization Panel */}
-          {useMemo(
-            () =>
-              showVisualization &&
-              activeBundle && (
-                <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-sm font-semibold text-neutral-300">
-                        Theological Thread Explorer (
-                        {activeBundle.nodes?.length || 0} verses)
-                      </h3>
-                    </div>
-                    <button
-                      onClick={() => setShowVisualization(false)}
-                      className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
-                      title="Close visualization"
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto relative">
-                    <NarrativeMap
-                      bundle={activeBundle}
-                      highlightedRefs={activeHighlightedRefs}
-                      onTrace={handleGoDeeper}
-                      onGoDeeper={onGoDeeper}
-                    />
-                  </div>
-                </div>
-              ),
-            [
-              showVisualization,
-              activeBundle,
-              activeHighlightedRefs,
-              handleGoDeeper,
-              onGoDeeper,
-            ],
-          )}
+          {visualizationPanel}
         </div>
       )}
 
@@ -2562,9 +2782,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               </h1>
             </div>
           )}
-          <div
-            className={`relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg ${bibleStudyMode ? "focus-within:ring-2 focus-within:ring-amber-500/50 focus-within:border-amber-500/50" : "focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50"}`}
-          >
+          <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50">
             <button
               onClick={() => setShowUploadButton(!showUploadButton)}
               className="btn-icon-ghost w-8 h-8"
@@ -2648,32 +2866,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               disabled={isProcessing}
               autoFocus={bibleStudyMode && isEmptyState}
             />
-            {/* Bookmark Button */}
             <button
-              onClick={() => setShowBookmarkPanel(true)}
-              className="p-2 rounded-lg text-neutral-400 hover:text-blue-400 hover:bg-white/5 transition-all"
-              title="View bookmarks"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                />
-              </svg>
-            </button>
-            {/* Voice Settings Button */}
-            <VoiceSettings />
-            <button
-              onClick={handleSendMessage}
+              onClick={() => handleSendMessage()}
               disabled={!currentInput.trim() || isProcessing}
-              className="btn-icon-primary"
+              className="btn-icon-ghost text-neutral-300 hover:text-neutral-100"
               title={isProcessing ? "Sending..." : "Send message"}
             >
               {isProcessing ? (
@@ -2695,6 +2891,149 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               )}
             </button>
           </div>
+          {bibleStudyMode && isEmptyState && (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              {randomTopicsLoading && randomPericopes.length === 0 && (
+                <div className="text-xs text-neutral-500">
+                  Loading pericopes...
+                </div>
+              )}
+              {!randomTopicsLoading &&
+                randomPericopes.length > 0 &&
+                ["random", "ot", "nt"].map((kind) => {
+                  const topic = randomPericopes.find(
+                    (entry) => entry.kind === kind,
+                  );
+                  if (!topic) return null;
+
+                  const lensClass =
+                    kind === "ot"
+                      ? "text-amber-300/80 border-amber-500/30 bg-amber-500/10"
+                      : kind === "nt"
+                        ? "text-purple-300/80 border-purple-500/30 bg-purple-500/10"
+                        : "text-slate-300/70 border-slate-500/20 bg-slate-500/5";
+                  const label =
+                    kind === "ot"
+                      ? "Roots"
+                      : kind === "nt"
+                        ? "Thread"
+                        : "Explore";
+                  const titleText = topic.title || "Pericope";
+                  const displayText = topic.displayText;
+                  const titleAttr = topic.rangeRef
+                    ? `${topic.title} (${topic.rangeRef})`
+                    : topic.title;
+
+                  return (
+                    <button
+                      key={topic.id}
+                      onClick={() =>
+                        sendPericopePrompt(
+                          kind as "random" | "ot" | "nt",
+                          displayText,
+                          topic.promptText,
+                        )
+                      }
+                      disabled={
+                        Boolean(randomTopicLoading) ||
+                        isProcessing ||
+                        isStreaming
+                      }
+                      className={`group relative flex items-center gap-2 px-3 py-2 border transition-all duration-300 ${lensClass} bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      title={titleAttr}
+                    >
+                      <svg
+                        className="w-3 h-3 flex-shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
+                      </svg>
+                      <span className="text-[10px] uppercase tracking-wider font-normal flex-shrink-0">
+                        {label}
+                      </span>
+                      <span className="text-xs font-normal text-neutral-300 max-w-[220px] truncate">
+                        {randomTopicLoading === kind ? "Sending..." : titleText}
+                      </span>
+                      <svg
+                        className="w-2.5 h-2.5 flex-shrink-0 text-neutral-500 opacity-60"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </button>
+                  );
+                })}
+            </div>
+          )}
+          {bibleStudyMode && !isEmptyState && (
+            <div className="mt-3 flex items-center justify-center">
+              <button
+                onClick={resetBibleStudySession}
+                disabled={isProcessing || isStreaming}
+                className="group relative flex items-center gap-2 px-3 py-2 border transition-all duration-300 text-slate-300/70 border-slate-500/20 bg-slate-500/5 bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Start a new Bible study session"
+              >
+                <svg
+                  className="w-3 h-3 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M4 4v6h6M20 20v-6h-6"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M20 10a8 8 0 00-14-5M4 14a8 8 0 0014 5"
+                  />
+                </svg>
+                <span className="text-[10px] uppercase tracking-wider font-normal flex-shrink-0">
+                  Session
+                </span>
+                <span className="text-xs font-normal whitespace-nowrap text-neutral-300">
+                  New
+                </span>
+                <svg
+                  className="w-2.5 h-2.5 flex-shrink-0 text-neutral-500 opacity-60"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

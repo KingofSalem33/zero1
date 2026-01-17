@@ -42,10 +42,6 @@ export const chatRequestSchema = z.object({
     )
     .optional()
     .describe("Conversation history"),
-  oratoryMode: z
-    .boolean()
-    .optional()
-    .describe("Enable Oratory mode for Scripture retrieval"),
   promptMode: z
     .enum(PROMPT_MODES)
     .optional()
