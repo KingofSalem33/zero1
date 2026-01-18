@@ -1,58 +1,79 @@
 import React from "react";
 
 export const MapSkeleton: React.FC = () => {
+  const layers = [3, 5, 5, 3];
+  const layerCount = layers.length;
+  const layerX = layers.map((_, idx) =>
+    layerCount === 1 ? 50 : 10 + (80 * idx) / (layerCount - 1),
+  );
+
+  const nodes = layers.flatMap((count, layerIndex) => {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `l${layerIndex}-n${i}`,
+      layerIndex,
+      x: layerX[layerIndex],
+      y: ((i + 1) / (count + 1)) * 100,
+    }));
+  });
+
+  const edges = layers.flatMap((count, layerIndex) => {
+    if (layerIndex >= layerCount - 1) return [];
+    const nextCount = layers[layerIndex + 1];
+    return Array.from({ length: count }, (_, i) =>
+      Array.from({ length: nextCount }, (_, j) => ({
+        id: `e${layerIndex}-${i}-${j}`,
+        from: `l${layerIndex}-n${i}`,
+        to: `l${layerIndex + 1}-n${j}`,
+      })),
+    ).flat();
+  });
+
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+
   return (
     <div className="h-full w-full bg-gray-50 p-8 relative overflow-hidden">
       {/* Header skeleton */}
       <div className="h-8 bg-gray-200 rounded-lg w-64 mb-6 animate-pulse" />
 
-      {/* Graph skeleton - simulated nodes */}
+      {/* Graph skeleton - fully connected MLP */}
       <div className="relative h-[calc(100%-80px)]">
-        {/* Simulated node positions */}
-        {[
-          { left: 50, top: 50 },
-          { left: 200, top: 80 },
-          { left: 350, top: 50 },
-          { left: 120, top: 180 },
-          { left: 280, top: 200 },
-          { left: 160, top: 320 },
-          { left: 320, top: 340 },
-        ].map((pos, i) => (
-          <div
-            key={i}
-            className="absolute bg-gray-300 rounded-lg"
-            style={{
-              width: 120,
-              height: 50,
-              left: `${pos.left}px`,
-              top: `${pos.top}px`,
-              animation: `pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite`,
-              animationDelay: `${i * 150}ms`,
-            }}
-          />
-        ))}
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {edges.map((edge, i) => {
+            const from = nodeMap.get(edge.from);
+            const to = nodeMap.get(edge.to);
+            if (!from || !to) return null;
+            return (
+              <line
+                key={edge.id}
+                x1={from.x}
+                y1={from.y}
+                x2={to.x}
+                y2={to.y}
+                stroke="#d1d5db"
+                strokeWidth={0.4}
+                strokeLinecap="round"
+                style={{
+                  animation: `fadeInOut 2.2s ease-in-out infinite`,
+                  animationDelay: `${(i % 12) * 120}ms`,
+                }}
+              />
+            );
+          })}
 
-        {/* Simulated edges */}
-        <svg className="absolute inset-0 pointer-events-none">
-          {[
-            { x1: 110, y1: 75, x2: 200, y2: 105 },
-            { x1: 260, y1: 105, x2: 350, y2: 75 },
-            { x1: 180, y1: 180, x2: 280, y2: 200 },
-            { x1: 180, y1: 205, x2: 220, y2: 320 },
-            { x1: 340, y1: 225, x2: 380, y2: 340 },
-          ].map((edge, i) => (
-            <line
-              key={i}
-              x1={edge.x1}
-              y1={edge.y1}
-              x2={edge.x2}
-              y2={edge.y2}
-              stroke="#d1d5db"
-              strokeWidth={2}
-              strokeLinecap="round"
+          {nodes.map((node, i) => (
+            <circle
+              key={node.id}
+              cx={node.x}
+              cy={node.y}
+              r={2.3}
+              fill="#d1d5db"
               style={{
-                animation: `fadeInOut 2s ease-in-out infinite`,
-                animationDelay: `${i * 300}ms`,
+                animation: `pulse 1.6s ease-in-out infinite`,
+                animationDelay: `${(i % 10) * 140}ms`,
               }}
             />
           ))}
@@ -86,6 +107,10 @@ export const MapSkeleton: React.FC = () => {
         @keyframes fadeInOut {
           0%, 100% { opacity: 0.2; }
           50% { opacity: 0.6; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.95; }
         }
       `}</style>
     </div>

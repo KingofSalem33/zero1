@@ -107,6 +107,106 @@ const EMPTY_TREE_STATS: TreeStats = {
   depthDistribution: {},
 };
 
+const normalizeReferenceKey = (node: ReferenceTreeNode): string => {
+  const book = (node.book_name || node.book_abbrev || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+  return `${book} ${node.chapter}:${node.verse}`;
+};
+
+const collapseDuplicateReferencesInBundle = (
+  bundle: ReferenceVisualBundle,
+): ReferenceVisualBundle => {
+  const nodes = bundle.nodes || [];
+  const edges = bundle.edges || [];
+  if (nodes.length < 2) return bundle;
+
+  const degreeMap = new Map<number, number>();
+  edges.forEach((edge) => {
+    degreeMap.set(edge.from, (degreeMap.get(edge.from) ?? 0) + 1);
+    degreeMap.set(edge.to, (degreeMap.get(edge.to) ?? 0) + 1);
+  });
+
+  const groups = new Map<string, number[]>();
+  nodes.forEach((node) => {
+    const key = node.referenceKey || normalizeReferenceKey(node);
+    const list = groups.get(key) || [];
+    list.push(node.id);
+    groups.set(key, list);
+  });
+
+  const anchorId = bundle.rootId;
+  const collapseMap = new Map<number, number>();
+  groups.forEach((ids) => {
+    if (ids.length <= 1) return;
+
+    let canonicalId = anchorId && ids.includes(anchorId) ? anchorId : ids[0];
+
+    if (canonicalId !== anchorId) {
+      canonicalId = ids.reduce((best, current) => {
+        const bestNode = nodes.find((n) => n.id === best);
+        const currentNode = nodes.find((n) => n.id === current);
+        if (!bestNode || !currentNode) return best;
+
+        if (currentNode.depth < bestNode.depth) return current;
+        if (currentNode.depth > bestNode.depth) return best;
+
+        const bestDegree = degreeMap.get(best) ?? 0;
+        const currentDegree = degreeMap.get(current) ?? 0;
+        if (currentDegree > bestDegree) return current;
+        if (currentDegree < bestDegree) return best;
+
+        const bestCentrality = bestNode.similarity ?? 0;
+        const currentCentrality = currentNode.similarity ?? 0;
+        if (currentCentrality > bestCentrality) return current;
+
+        return best;
+      }, canonicalId);
+    }
+
+    ids.forEach((id) => {
+      if (id !== canonicalId) collapseMap.set(id, canonicalId);
+    });
+  });
+
+  if (collapseMap.size === 0) return bundle;
+
+  const filteredNodes = nodes
+    .filter((node) => !collapseMap.has(node.id))
+    .map((node) => ({
+      ...node,
+      referenceKey: node.referenceKey || normalizeReferenceKey(node),
+      parentId: collapseMap.has(node.parentId ?? -1)
+        ? collapseMap.get(node.parentId ?? -1)
+        : node.parentId,
+    }));
+
+  const edgeSet = new Set<string>();
+  const remappedEdges = edges
+    .map((edge) => ({
+      ...edge,
+      from: collapseMap.get(edge.from) ?? edge.from,
+      to: collapseMap.get(edge.to) ?? edge.to,
+    }))
+    .filter((edge) => edge.from !== edge.to)
+    .filter((edge) => {
+      const key =
+        edge.from < edge.to
+          ? `${edge.from}|${edge.to}`
+          : `${edge.to}|${edge.from}`;
+      if (edgeSet.has(key)) return false;
+      edgeSet.add(key);
+      return true;
+    });
+
+  return {
+    ...bundle,
+    nodes: filteredNodes,
+    edges: remappedEdges,
+  };
+};
+
 /**
  * Compute cosine similarity between two vectors
  */
@@ -1223,7 +1323,8 @@ export async function explainScriptureWithKernelStream(
       `[Expanding Ring] ✅ Using pre-built visual bundle (${prebuiltVisualBundle.nodes.length} nodes) - skipping tree rebuild`,
     );
 
-    const visualBundle: ReferenceVisualBundle = prebuiltVisualBundle;
+    const visualBundle: ReferenceVisualBundle =
+      collapseDuplicateReferencesInBundle(prebuiltVisualBundle);
     const anchorId = visualBundle.rootId || visualBundle.nodes[0]?.id || null;
 
     // Extract anchor verse from pre-built bundle nodes

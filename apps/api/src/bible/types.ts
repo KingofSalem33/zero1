@@ -96,6 +96,7 @@ export interface ThreadNode {
   structureId?: number; // Literary structure reference (if applicable)
   structureRole?: "center" | "mirror" | "member";
   mirrorOf?: number; // Verse ID of the mirror pair (if applicable)
+  referenceKey?: string; // Canonical normalized reference (e.g., "john 1:1")
   // Pericope metadata (optional)
   pericopeId?: number; // ID of parent pericope
   pericopeTitle?: string; // Display title (title_generated || title)

@@ -749,6 +749,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             node.id,
           );
         }
+        if (node.referenceKey) {
+          lookup.set(node.referenceKey, node.id);
+        }
       });
       return lookup;
     },

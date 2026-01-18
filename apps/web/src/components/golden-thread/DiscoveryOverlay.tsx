@@ -35,6 +35,34 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
 }) => {
   const phaseLabel = PHASE_LABELS[phase];
   const phaseColor = PHASE_COLORS[phase];
+  const layers = [3, 5, 5, 3];
+  const width = 200;
+  const height = 120;
+  const layerCount = layers.length;
+  const xPositions = layers.map((_, idx) =>
+    layerCount === 1 ? width / 2 : 20 + (160 * idx) / (layerCount - 1),
+  );
+  const nodes = layers.flatMap((count, layerIdx) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `l${layerIdx}-n${i}`,
+      x: xPositions[layerIdx],
+      y: ((i + 1) / (count + 1)) * height,
+      delay: (i + layerIdx) * 0.15,
+    })),
+  );
+  const nodeLookup = new Map(nodes.map((node) => [node.id, node]));
+  const edges = layers.flatMap((count, layerIdx) => {
+    if (layerIdx >= layerCount - 1) return [];
+    const nextCount = layers[layerIdx + 1];
+    return Array.from({ length: count }, (_, i) =>
+      Array.from({ length: nextCount }, (_, j) => ({
+        id: `e${layerIdx}-${i}-${j}`,
+        from: `l${layerIdx}-n${i}`,
+        to: `l${layerIdx + 1}-n${j}`,
+        delay: ((i + j + layerIdx) % 6) * 0.18,
+      })),
+    ).flat();
+  });
 
   return (
     <div
@@ -83,121 +111,41 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                 className="text-cyan-200/80"
               >
                 <g stroke="currentColor" strokeWidth="1.2">
-                  <line
-                    x1="30"
-                    y1="20"
-                    x2="100"
-                    y2="20"
-                    className="discovery-line"
-                  />
-                  <line
-                    x1="100"
-                    y1="20"
-                    x2="170"
-                    y2="20"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.3s" }}
-                  />
-                  <line
-                    x1="30"
-                    y1="20"
-                    x2="60"
-                    y2="60"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.2s" }}
-                  />
-                  <line
-                    x1="60"
-                    y1="60"
-                    x2="100"
-                    y2="20"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.4s" }}
-                  />
-                  <line
-                    x1="100"
-                    y1="20"
-                    x2="140"
-                    y2="60"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.6s" }}
-                  />
-                  <line
-                    x1="140"
-                    y1="60"
-                    x2="170"
-                    y2="20"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.5s" }}
-                  />
-                  <line
-                    x1="60"
-                    y1="60"
-                    x2="100"
-                    y2="100"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.3s" }}
-                  />
-                  <line
-                    x1="100"
-                    y1="100"
-                    x2="140"
-                    y2="60"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.2s" }}
-                  />
-                  <line
-                    x1="60"
-                    y1="100"
-                    x2="100"
-                    y2="100"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.35s" }}
-                  />
-                  <line
-                    x1="100"
-                    y1="100"
-                    x2="140"
-                    y2="100"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.45s" }}
-                  />
-                  <line
-                    x1="30"
-                    y1="20"
-                    x2="60"
-                    y2="100"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.7s" }}
-                  />
-                  <line
-                    x1="170"
-                    y1="20"
-                    x2="140"
-                    y2="100"
-                    className="discovery-line"
-                    style={{ animationDelay: "0.8s" }}
-                  />
+                  {edges.map((edge) => {
+                    const from = nodeLookup.get(edge.from);
+                    const to = nodeLookup.get(edge.to);
+                    if (!from || !to) return null;
+                    return (
+                      <g key={edge.id}>
+                        <line
+                          x1={from.x}
+                          y1={from.y}
+                          x2={to.x}
+                          y2={to.y}
+                          className="discovery-line-base"
+                        />
+                        <line
+                          x1={from.x}
+                          y1={from.y}
+                          x2={to.x}
+                          y2={to.y}
+                          className="discovery-line-flow"
+                          style={{ animationDelay: `${edge.delay}s` }}
+                        />
+                      </g>
+                    );
+                  })}
                 </g>
 
                 <g fill="currentColor">
-                  {[
-                    { x: 30, y: 20, d: "0s" },
-                    { x: 100, y: 20, d: "0.1s" },
-                    { x: 170, y: 20, d: "0.2s" },
-                    { x: 60, y: 60, d: "0.3s" },
-                    { x: 140, y: 60, d: "0.4s" },
-                    { x: 100, y: 100, d: "0.5s" },
-                    { x: 60, y: 100, d: "0.6s" },
-                    { x: 140, y: 100, d: "0.7s" },
-                  ].map((node) => (
+                  {nodes.map((node) => (
                     <circle
-                      key={`${node.x}-${node.y}`}
+                      key={node.id}
                       cx={node.x}
                       cy={node.y}
                       r="3"
                       className="discovery-node"
-                      style={{ animationDelay: node.d }}
+                      style={{ animationDelay: `${node.delay}s` }}
                     />
                   ))}
                 </g>
@@ -229,11 +177,16 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
       </div>
 
       <style>{`
-        .discovery-line {
-          stroke-dasharray: 2 12;
+        .discovery-line-base {
+          stroke-linecap: round;
+          opacity: 0.3;
+        }
+
+        .discovery-line-flow {
+          stroke-dasharray: 2 10;
           stroke-linecap: round;
           animation: crawl 2.8s linear infinite;
-          opacity: 0.75;
+          opacity: 0.9;
         }
 
         .discovery-node {

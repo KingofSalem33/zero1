@@ -88,7 +88,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     ? Math.min(Math.max(normalizedConnections - 2, 0), 10)
     : 0;
   const hubScale = 1 + hubBoost * 0.045;
-  const showHubBadge = !isAnchor && !isDimmed && normalizedConnections >= 3;
+  const showHubBadge = !isDimmed && normalizedConnections >= 3;
   const hubRingIntensity = Math.min(hubBoost / 10, 1);
   const hubRingColor = `rgba(56, 189, 248, ${0.08 + hubRingIntensity * 0.18})`;
   const hubGlowColor = `rgba(56, 189, 248, ${0.12 + hubRingIntensity * 0.22})`;

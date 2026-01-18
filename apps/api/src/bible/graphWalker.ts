@@ -20,6 +20,7 @@ import { getTestament } from "./testamentUtil";
 import { ensureVersesHaveText } from "./verseText";
 import { fetchAllEdges } from "./edgeFetchers";
 import { getPericopeForVerse } from "./pericopeSearch";
+import { BOOK_NAMES } from "./bookNames";
 import {
   buildMirrorPairs,
   buildMirrorLookup,
@@ -937,6 +938,105 @@ const dedupeEdges = (
   return deduped;
 };
 
+const buildReferenceKey = (node: import("./types").ThreadNode): string => {
+  const rawBook =
+    node.book_name ||
+    BOOK_NAMES[node.book_abbrev?.toLowerCase?.() || ""] ||
+    node.book_abbrev ||
+    "";
+  const normalizedBook = rawBook.toLowerCase().trim().replace(/\s+/g, " ");
+  return `${normalizedBook} ${node.chapter}:${node.verse}`;
+};
+
+const collapseDuplicateReferences = (
+  nodes: import("./types").ThreadNode[],
+  edges: import("./types").VisualEdge[],
+  anchorId: number,
+): {
+  nodes: import("./types").ThreadNode[];
+  edges: import("./types").VisualEdge[];
+  collapsedCount: number;
+} => {
+  const nodeById = new Map<number, import("./types").ThreadNode>();
+  nodes.forEach((node) => nodeById.set(node.id, node));
+
+  const degreeMap = new Map<number, number>();
+  edges.forEach((edge) => {
+    degreeMap.set(edge.from, (degreeMap.get(edge.from) ?? 0) + 1);
+    degreeMap.set(edge.to, (degreeMap.get(edge.to) ?? 0) + 1);
+  });
+
+  const groups = new Map<string, number[]>();
+  nodes.forEach((node) => {
+    const key = node.referenceKey || buildReferenceKey(node);
+    const group = groups.get(key) || [];
+    group.push(node.id);
+    groups.set(key, group);
+  });
+
+  const collapseMap = new Map<number, number>();
+
+  groups.forEach((ids) => {
+    if (ids.length <= 1) return;
+
+    let canonicalId = ids.includes(anchorId) ? anchorId : ids[0];
+    if (canonicalId !== anchorId) {
+      canonicalId = ids.reduce((best, current) => {
+        const bestNode = nodeById.get(best);
+        const currentNode = nodeById.get(current);
+        if (!bestNode || !currentNode) return best;
+
+        if (currentNode.depth < bestNode.depth) return current;
+        if (currentNode.depth > bestNode.depth) return best;
+
+        const bestDegree = degreeMap.get(best) ?? 0;
+        const currentDegree = degreeMap.get(current) ?? 0;
+        if (currentDegree > bestDegree) return current;
+        if (currentDegree < bestDegree) return best;
+
+        const bestCentrality = bestNode.centrality ?? 0;
+        const currentCentrality = currentNode.centrality ?? 0;
+        if (currentCentrality > bestCentrality) return current;
+
+        return best;
+      }, canonicalId);
+    }
+
+    ids.forEach((id) => {
+      if (id !== canonicalId) collapseMap.set(id, canonicalId);
+    });
+  });
+
+  if (collapseMap.size === 0) {
+    return { nodes, edges, collapsedCount: 0 };
+  }
+
+  const filteredNodes = nodes
+    .filter((node) => !collapseMap.has(node.id))
+    .map((node) => ({
+      ...node,
+      parentId: collapseMap.has(node.parentId ?? -1)
+        ? collapseMap.get(node.parentId ?? -1)
+        : node.parentId,
+    }));
+
+  const remappedEdges = dedupeEdges(
+    edges
+      .map((edge) => ({
+        ...edge,
+        from: collapseMap.get(edge.from) ?? edge.from,
+        to: collapseMap.get(edge.to) ?? edge.to,
+      }))
+      .filter((edge) => edge.from !== edge.to),
+  );
+
+  return {
+    nodes: filteredNodes,
+    edges: remappedEdges,
+    collapsedCount: collapseMap.size,
+  };
+};
+
 const cosineSimilarity = (a: number[], b: number[]): number => {
   if (a.length !== b.length) return 0;
   let dot = 0;
@@ -1394,49 +1494,34 @@ export async function buildVisualBundle(
   let finalEdges = pericopeValidated.edges;
   let finalNodes = pericopeValidated.nodes;
 
-  // Collapse any duplicate anchor references into the true anchor node.
-  const anchorRef = finalNodes.find((n) => n.id === bundle.anchor.id);
-  const anchorKey = anchorRef
-    ? `${anchorRef.book_abbrev}:${anchorRef.chapter}:${anchorRef.verse}`
-    : null;
-
-  if (anchorKey) {
-    const duplicateAnchorIds = new Set<number>(
-      finalNodes
-        .filter(
-          (node) =>
-            node.id !== bundle.anchor.id &&
-            `${node.book_abbrev}:${node.chapter}:${node.verse}` === anchorKey,
-        )
-        .map((node) => node.id),
+  const collapsed = collapseDuplicateReferences(
+    finalNodes,
+    finalEdges,
+    bundle.anchor.id,
+  );
+  finalNodes = collapsed.nodes;
+  finalEdges = collapsed.edges;
+  if (collapsed.collapsedCount > 0) {
+    console.warn(
+      `[Visual Bundle] Collapsed ${collapsed.collapsedCount} duplicate reference node(s)`,
     );
+  }
 
-    if (duplicateAnchorIds.size > 0) {
-      console.warn(
-        `[Visual Bundle] Collapsing ${duplicateAnchorIds.size} duplicate anchor node(s) into ${bundle.anchor.id}`,
-      );
-
-      finalNodes = finalNodes
-        .filter((node) => !duplicateAnchorIds.has(node.id))
-        .map((node) => ({
-          ...node,
-          parentId: duplicateAnchorIds.has(node.parentId ?? -1)
-            ? bundle.anchor.id
-            : node.parentId,
-        }));
-
-      finalEdges = dedupeEdges(
-        finalEdges
-          .map((edge) => ({
-            ...edge,
-            from: duplicateAnchorIds.has(edge.from)
-              ? bundle.anchor.id
-              : edge.from,
-            to: duplicateAnchorIds.has(edge.to) ? bundle.anchor.id : edge.to,
-          }))
-          .filter((edge) => edge.from !== edge.to),
-      );
-    }
+  const duplicateRefs = new Map<string, number[]>();
+  finalNodes.forEach((node) => {
+    const key = node.referenceKey || buildReferenceKey(node);
+    const list = duplicateRefs.get(key) || [];
+    list.push(node.id);
+    duplicateRefs.set(key, list);
+  });
+  const remainingDuplicates = Array.from(duplicateRefs.entries()).filter(
+    ([, ids]) => ids.length > 1,
+  );
+  if (remainingDuplicates.length > 0) {
+    console.warn(
+      "[Visual Bundle] Duplicate references remain after collapse:",
+      remainingDuplicates.map(([key, ids]) => `${key} (${ids.join(",")})`),
+    );
   }
 
   console.log(
@@ -1454,6 +1539,11 @@ export async function buildVisualBundle(
     NARRATIVE: finalEdges.filter((e) => e.type === "NARRATIVE").length,
     PATTERN: finalEdges.filter((e) => e.type === "PATTERN").length,
   });
+
+  finalNodes = finalNodes.map((node) => ({
+    ...node,
+    referenceKey: node.referenceKey || buildReferenceKey(node),
+  }));
 
   // Get first pericope from cache if available
   const firstPericope =
