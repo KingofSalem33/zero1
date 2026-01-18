@@ -5,8 +5,13 @@
  */
 
 import { supabase } from "../db";
+import { ENV } from "../env";
 import type { ThreadNode, VisualContextBundle, VisualEdge } from "./types";
-import { getPericopeById, type PericopeDetail } from "./pericopeSearch";
+import {
+  getPericopeById,
+  getPericopeForVerse,
+  type PericopeDetail,
+} from "./pericopeSearch";
 
 type PericopeConnection = {
   source_pericope_id: number;
@@ -86,6 +91,39 @@ const getPericopeConnections = async (
   if (error || !data) return [];
   return data as PericopeConnection[];
 };
+
+export async function buildPericopeScopeForVerse(
+  verseId: number,
+  existingContext?: PericopeDetail | null,
+): Promise<{
+  pericopeContext: PericopeDetail | null;
+  pericopeBundle: VisualContextBundle | null;
+  pericopeIds: number[] | null;
+}> {
+  const pericopeContext =
+    existingContext ||
+    (await getPericopeForVerse(verseId, ENV.PERICOPE_SOURCE || "SIL_AI"));
+
+  if (!pericopeContext) {
+    return { pericopeContext: null, pericopeBundle: null, pericopeIds: null };
+  }
+
+  let pericopeBundle: VisualContextBundle | null = null;
+  try {
+    pericopeBundle = await buildPericopeBundle(pericopeContext.id);
+  } catch (error) {
+    console.warn(
+      "[Pericope Scope] Failed to build pericope bundle:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  const pericopeIds = pericopeBundle?.nodes.map((node) => node.id) ?? [
+    pericopeContext.id,
+  ];
+
+  return { pericopeContext, pericopeBundle, pericopeIds };
+}
 
 export async function buildPericopeBundle(
   pericopeId: number,

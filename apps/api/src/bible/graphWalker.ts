@@ -75,6 +75,11 @@ export interface RingConfig {
     multiplier?: number;
     signalThreshold?: number;
   };
+  scope?: {
+    pericopeIds?: number[];
+    allowedVerseIds?: Set<number>;
+    crossThreshold?: number;
+  };
 }
 
 const DEFAULT_CONFIG: RingConfig = {
@@ -107,6 +112,8 @@ const DEFAULT_GRAVITY: GravityConfig = {
   structuralEdgeWeight: 0.96,
 };
 
+const DEFAULT_CROSS_PERICOPE_THRESHOLD = 0.9;
+
 type LayerResult = {
   ids: number[];
   edges: import("./types").VisualEdge[];
@@ -119,6 +126,35 @@ type LayerResult = {
 
 const normalizeConceptReference = (reference: string): string =>
   reference.replace(/^Psalm\b/i, "Psalms");
+
+const fetchVerseIdsForPericopes = async (
+  pericopeIds: number[],
+  source: string,
+): Promise<Set<number>> => {
+  if (pericopeIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from("verse_pericope_map")
+    .select("verse_id")
+    .in("pericope_id", pericopeIds)
+    .eq("source", source);
+
+  if (error || !data) {
+    console.warn(
+      "[Graph Walker] Failed to load pericope scope verse IDs:",
+      error?.message,
+    );
+    return new Set();
+  }
+
+  const verseIds = new Set<number>();
+  data.forEach((row) => {
+    if (typeof row.verse_id === "number") {
+      verseIds.add(row.verse_id);
+    }
+  });
+  return verseIds;
+};
 
 const fetchVerseByReference = async (
   bookAbbrev: string,
@@ -308,6 +344,10 @@ async function fetchPriorityLayer(
   gravity: GravityConfig,
   structure: ChiasmStructure | null,
   signalThreshold?: number,
+  scope?: {
+    allowedVerseIds?: Set<number>;
+    crossThreshold?: number;
+  },
 ): Promise<LayerResult> {
   if (sourceIds.length === 0) {
     return { ids: [], edges: [] };
@@ -331,6 +371,14 @@ async function fetchPriorityLayer(
 
   const sourceSet = new Set(sourceIds);
   const candidateIds = new Set<number>();
+  const allowedVerseIds =
+    scope?.allowedVerseIds && scope.allowedVerseIds.size > 0
+      ? scope.allowedVerseIds
+      : null;
+  const crossThreshold =
+    typeof scope?.crossThreshold === "number"
+      ? scope.crossThreshold
+      : DEFAULT_CROSS_PERICOPE_THRESHOLD;
 
   allEdges.forEach((edge) => {
     const fromIsSource = sourceSet.has(edge.from);
@@ -339,6 +387,16 @@ async function fetchPriorityLayer(
 
     const targetId = fromIsSource ? edge.to : edge.from;
     if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
+
+    const edgeWeight = typeof edge.weight === "number" ? edge.weight : 0.6;
+    if (
+      allowedVerseIds &&
+      !allowedVerseIds.has(targetId) &&
+      edgeWeight < crossThreshold
+    ) {
+      return;
+    }
+
     candidateIds.add(targetId);
   });
 
@@ -364,6 +422,13 @@ async function fetchPriorityLayer(
     if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
 
     const edgeWeight = typeof edge.weight === "number" ? edge.weight : 0.6;
+    if (
+      allowedVerseIds &&
+      !allowedVerseIds.has(targetId) &&
+      edgeWeight < crossThreshold
+    ) {
+      return;
+    }
     const centrality = centralityMap.get(targetId) ?? 0.1;
 
     let score =
@@ -453,11 +518,35 @@ export async function buildContextBundle(
   const adaptive = cfg.adaptive;
   const clampLimit = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
+  const scopeConfig = cfg.scope;
+  let scopedVerseIds: Set<number> | null = null;
+
+  if (scopeConfig?.allowedVerseIds && scopeConfig.allowedVerseIds.size > 0) {
+    scopedVerseIds = scopeConfig.allowedVerseIds;
+  } else if (scopeConfig?.pericopeIds && scopeConfig.pericopeIds.length > 0) {
+    scopedVerseIds = await fetchVerseIdsForPericopes(
+      scopeConfig.pericopeIds,
+      ENV.PERICOPE_SOURCE || "SIL_AI",
+    );
+  }
+
+  const scope =
+    scopedVerseIds && scopedVerseIds.size > 0
+      ? {
+          allowedVerseIds: scopedVerseIds,
+          crossThreshold: scopeConfig?.crossThreshold,
+        }
+      : undefined;
 
   console.log(
     `[Graph Walker] Building context bundle for verse ID ${anchorId}`,
   );
   console.log(`[Graph Walker] Config:`, cfg);
+  if (scope?.allowedVerseIds) {
+    console.log(
+      `[Graph Walker] Scoped to ${scope.allowedVerseIds.size} verse IDs`,
+    );
+  }
 
   // ========================================
   // RING 0: Anchor + Surrounding Context
@@ -535,6 +624,7 @@ export async function buildContextBundle(
     gravity,
     structure,
     adaptiveEnabled ? adaptiveThreshold : undefined,
+    scope,
   );
   const ring1Ids = ring1Layer.ids;
   let ring1 = await hydrateVerses(ring1Ids);
@@ -574,6 +664,7 @@ export async function buildContextBundle(
           gravity,
           structure,
           adaptiveEnabled ? adaptiveThreshold : undefined,
+          scope,
         )
       : { ids: [], edges: [] };
   const ring2Ids = ring2Layer.ids;
@@ -613,6 +704,7 @@ export async function buildContextBundle(
           gravity,
           structure,
           adaptiveEnabled ? adaptiveThreshold : undefined,
+          scope,
         )
       : { ids: [], edges: [] };
   const ring3Ids = ring3Layer.ids;
@@ -631,9 +723,13 @@ export async function buildContextBundle(
     ...ring3Ids,
   ]);
   const bridgeVerses = await findBridgeVerses(anchor, existingIds);
-  if (bridgeVerses.length > 0) {
-    ring1 = [...ring1, ...bridgeVerses];
-    const bridgeEdges = bridgeVerses.map((verse) => ({
+  const scopedBridges =
+    scope?.allowedVerseIds && scope.allowedVerseIds.size > 0
+      ? bridgeVerses.filter((verse) => scope.allowedVerseIds!.has(verse.id))
+      : bridgeVerses;
+  if (scopedBridges.length > 0) {
+    ring1 = [...ring1, ...scopedBridges];
+    const bridgeEdges = scopedBridges.map((verse) => ({
       from: anchor.id,
       to: verse.id,
       weight: 0.72,
@@ -644,7 +740,7 @@ export async function buildContextBundle(
     }));
     ring1Edges = [...ring1Edges, ...bridgeEdges];
     console.log(
-      `[Graph Walker] Added ${bridgeVerses.length} bridge verse(s) for ${anchor.book_name} ${anchor.chapter}:${anchor.verse}`,
+      `[Graph Walker] Added ${scopedBridges.length} bridge verse(s) for ${anchor.book_name} ${anchor.chapter}:${anchor.verse}`,
     );
   }
 

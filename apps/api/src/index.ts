@@ -42,7 +42,7 @@ import {
   resolveMultipleAnchors,
   deduplicateVerses,
 } from "./bible/expandingRingExegesis";
-import { buildPericopeBundle } from "./bible/pericopeGraphWalker";
+import { buildPericopeScopeForVerse } from "./bible/pericopeGraphWalker";
 import { buildVisualBundle } from "./bible/graphWalker";
 import bookmarksRouter from "./routes/bookmarks";
 import verseRouter from "./routes/verse";
@@ -830,12 +830,23 @@ app.post(
         );
       } else {
         console.log(`[Trace] Using single anchor: ${anchorIds[0]}`);
+        const pericopeScope = await profileTime(
+          "trace.buildPericopeScope",
+          () => buildPericopeScopeForVerse(anchorIds[0]),
+          {
+            file: "bible/pericopeGraphWalker.ts",
+            fn: "buildPericopeScopeForVerse",
+            await: "buildPericopeScopeForVerse",
+          },
+        );
         visualBundle = (await profileTime(
           "trace.buildVisualBundle",
           () =>
             buildVisualBundle(
               anchorIds[0],
-              {},
+              pericopeScope?.pericopeIds
+                ? { scope: { pericopeIds: pericopeScope.pericopeIds } }
+                : {},
               {
                 includeDEEPER: true,
                 includeROOTS: true,
@@ -850,6 +861,23 @@ app.post(
             await: "buildVisualBundle",
           },
         )) as ReferenceVisualBundle;
+
+        if (pericopeScope?.pericopeBundle) {
+          visualBundle.pericopeBundle = pericopeScope.pericopeBundle;
+        }
+        if (pericopeScope?.pericopeContext) {
+          visualBundle.pericopeContext = {
+            id: pericopeScope.pericopeContext.id,
+            title:
+              pericopeScope.pericopeContext.title_generated ||
+              pericopeScope.pericopeContext.title,
+            summary: pericopeScope.pericopeContext.summary || "",
+            themes: pericopeScope.pericopeContext.themes || [],
+            archetypes: pericopeScope.pericopeContext.archetypes || [],
+            shadows: pericopeScope.pericopeContext.shadows || [],
+            rangeRef: pericopeScope.pericopeContext.rangeRef,
+          };
+        }
       }
 
       // Rank verses by semantic similarity
@@ -874,19 +902,23 @@ app.post(
         },
       );
 
-      if (visualBundle.pericopeContext?.id) {
+      if (!visualBundle.pericopeBundle && visualBundle.pericopeContext?.id) {
         try {
-          const pericopeBundle = await profileTime(
-            "trace.buildPericopeBundle",
-            () => buildPericopeBundle(visualBundle.pericopeContext!.id),
+          const pericopeScope = await profileTime(
+            "trace.buildPericopeScopeFallback",
+            () =>
+              buildPericopeScopeForVerse(
+                anchorIds[0],
+                visualBundle.pericopeContext!,
+              ),
             {
               file: "bible/pericopeGraphWalker.ts",
-              fn: "buildPericopeBundle",
-              await: "buildPericopeBundle",
+              fn: "buildPericopeScopeForVerse",
+              await: "buildPericopeScopeForVerse",
             },
           );
-          if (pericopeBundle) {
-            visualBundle.pericopeBundle = pericopeBundle;
+          if (pericopeScope?.pericopeBundle) {
+            visualBundle.pericopeBundle = pericopeScope.pericopeBundle;
           }
         } catch (error) {
           console.warn(

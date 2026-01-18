@@ -23,7 +23,7 @@ import {
   getPericopeById,
   type PericopeDetail,
 } from "./pericopeSearch";
-import { buildPericopeBundle } from "./pericopeGraphWalker";
+import { buildPericopeScopeForVerse } from "./pericopeGraphWalker";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -1083,12 +1083,24 @@ export async function buildMultiAnchorTree(
       `[Multi-Anchor] Building tree ${i + 1}/${uniqueAnchorIds.length} from verse ${anchorId}...`,
     );
 
+    const pericopeScope = await profileTime(
+      "multi_anchor.buildPericopeScope",
+      () => buildPericopeScopeForVerse(anchorId),
+      {
+        file: "bible/pericopeGraphWalker.ts",
+        fn: "buildPericopeScopeForVerse",
+        await: "buildPericopeScopeForVerse",
+      },
+    );
+
     const tree = (await profileTime(
       "multi_anchor.buildVisualBundle",
       () =>
         buildVisualBundle(
           anchorId,
-          {},
+          pericopeScope?.pericopeIds
+            ? { scope: { pericopeIds: pericopeScope.pericopeIds } }
+            : {},
           {
             includeDEEPER: true,
             includeROOTS: true,
@@ -1104,7 +1116,19 @@ export async function buildMultiAnchorTree(
       },
     )) as ReferenceVisualBundle;
 
-    if (i === 0 && tree.pericopeContext) {
+    if (i === 0 && pericopeScope?.pericopeContext) {
+      primaryPericopeContext = {
+        id: pericopeScope.pericopeContext.id,
+        title:
+          pericopeScope.pericopeContext.title_generated ||
+          pericopeScope.pericopeContext.title,
+        summary: pericopeScope.pericopeContext.summary || "",
+        themes: pericopeScope.pericopeContext.themes || [],
+        archetypes: pericopeScope.pericopeContext.archetypes || [],
+        shadows: pericopeScope.pericopeContext.shadows || [],
+        rangeRef: pericopeScope.pericopeContext.rangeRef,
+      };
+    } else if (i === 0 && tree.pericopeContext) {
       primaryPericopeContext = tree.pericopeContext;
     }
     trees.push(tree);
@@ -1280,6 +1304,8 @@ export async function explainScriptureWithKernelStream(
   let visualBundle: ReferenceVisualBundle;
   let pericopeContext: Awaited<ReturnType<typeof getPericopeById>> | null =
     null;
+  let pericopeBundle: PericopeBundle | null = null;
+  let pericopeScopeIds: number[] | null = null;
   let resolutionType: "pericope_first" | "verse_first" = "verse_first";
 
   // Try pericope-first resolution for conceptual queries
@@ -1365,6 +1391,28 @@ export async function explainScriptureWithKernelStream(
 
   const anchorId = anchorIds[0]; // Primary anchor for compatibility
 
+  if (!allowMultiAnchor || anchorIds.length === 1) {
+    const pericopeScope = await profileTime(
+      "exegesis.buildPericopeScope",
+      () => buildPericopeScopeForVerse(anchorId, pericopeContext),
+      {
+        file: "bible/pericopeGraphWalker.ts",
+        fn: "buildPericopeScopeForVerse",
+        await: "buildPericopeScopeForVerse",
+      },
+    );
+
+    if (pericopeScope?.pericopeContext) {
+      pericopeContext = pericopeScope.pericopeContext;
+    }
+    if (pericopeScope?.pericopeBundle) {
+      pericopeBundle = pericopeScope.pericopeBundle as PericopeBundle;
+    }
+    if (pericopeScope?.pericopeIds) {
+      pericopeScopeIds = pericopeScope.pericopeIds;
+    }
+  }
+
   // Build tree(s) - use multi-anchor if we have multiple
   if (anchorIds.length > 1 && allowMultiAnchor) {
     console.log(
@@ -1384,13 +1432,22 @@ export async function explainScriptureWithKernelStream(
     visualBundle = (await profileTime(
       "exegesis.buildVisualBundle",
       () =>
-        buildVisualBundle(anchorId, isFastMap ? { ring3Limit: 0 } : {}, {
-          includeDEEPER: true,
-          includeROOTS: true,
-          includeECHOES: true,
-          includePROPHECY: true,
-          includeGENEALOGY: false,
-        }),
+        buildVisualBundle(
+          anchorId,
+          {
+            ...(isFastMap ? { ring3Limit: 0 } : {}),
+            ...(pericopeScopeIds
+              ? { scope: { pericopeIds: pericopeScopeIds } }
+              : {}),
+          },
+          {
+            includeDEEPER: true,
+            includeROOTS: true,
+            includeECHOES: true,
+            includePROPHECY: true,
+            includeGENEALOGY: false,
+          },
+        ),
       {
         file: "bible/graphWalker.ts",
         fn: "buildVisualBundle",
@@ -1449,19 +1506,22 @@ export async function explainScriptureWithKernelStream(
       rangeRef: pericopeContext.rangeRef,
     };
   }
-  if (pericopeContext) {
+  if (pericopeBundle) {
+    visualBundle.pericopeBundle = pericopeBundle;
+  } else if (pericopeContext) {
     try {
-      const pericopeBundle = await profileTime(
+      const fallbackBundle = await profileTime(
         "exegesis.buildPericopeBundle",
-        () => buildPericopeBundle(pericopeContext.id),
+        () => buildPericopeScopeForVerse(anchorId, pericopeContext),
         {
           file: "bible/pericopeGraphWalker.ts",
-          fn: "buildPericopeBundle",
-          await: "buildPericopeBundle",
+          fn: "buildPericopeScopeForVerse",
+          await: "buildPericopeScopeForVerse",
         },
       );
-      if (pericopeBundle) {
-        visualBundle.pericopeBundle = pericopeBundle;
+      if (fallbackBundle?.pericopeBundle) {
+        visualBundle.pericopeBundle =
+          fallbackBundle.pericopeBundle as PericopeBundle;
       }
     } catch (error) {
       console.warn(
