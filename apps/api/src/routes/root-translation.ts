@@ -7,6 +7,11 @@ import { ROOT_TRANSLATION_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import fs from "fs/promises";
 import path from "path";
+import {
+  getProfiler,
+  profileSpan,
+  profileTime,
+} from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -181,8 +186,18 @@ function stripStrongsNumbers(text: string): string {
 // POST /api/root-translation - Generate translation using Strong's Concordance
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
-    const { selectedText, book, chapter, verse, verses } =
-      rootTranslationRequestSchema.parse(req.body);
+    const profiler = getProfiler();
+    profiler?.setPipeline("root_translation");
+    profiler?.markHandlerStart();
+
+    const { selectedText, book, chapter, verse, verses } = await profileTime(
+      "root_translation.zod_parse",
+      () => rootTranslationRequestSchema.parse(req.body),
+      {
+        file: "routes/root-translation.ts",
+        fn: "rootTranslationRequestSchema.parse",
+      },
+    );
 
     console.log("[Root Translation] Request received:", {
       selectedText: selectedText.substring(0, 50),
@@ -208,8 +223,16 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     // For the MVP, we'll search through the Bible to find matching text with Strong's numbers
 
     // Load the lexicon
-    const lexicon = await loadLexicon();
-    const dataPath = await findStrongsDataPath();
+    const lexicon = await profileTime(
+      "root_translation.loadLexicon",
+      () => loadLexicon(),
+      { file: "routes/root-translation.ts", fn: "loadLexicon" },
+    );
+    const dataPath = await profileTime(
+      "root_translation.findStrongsDataPath",
+      () => findStrongsDataPath(),
+      { file: "routes/root-translation.ts", fn: "findStrongsDataPath" },
+    );
 
     let verseWithStrongs: string | null = null;
 
@@ -223,12 +246,19 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 
     // If book/chapter/verse(s) provided, load directly from Strong's Bible
     if (book && chapter && normalizedVerses.length) {
+      const directStart = process.hrtime.bigint();
       try {
         const bookAbbrev = BOOK_TO_ABBREV[book];
 
         if (bookAbbrev) {
           const bookPath = path.join(dataPath, `${bookAbbrev}.json`);
-          const bookData = JSON.parse(await fs.readFile(bookPath, "utf-8"));
+          const bookData = JSON.parse(
+            await profileTime(
+              "root_translation.readBookFile",
+              () => fs.readFile(bookPath, "utf-8"),
+              { file: "routes/root-translation.ts", fn: "fs.readFile" },
+            ),
+          );
           const chapterKey = `${bookAbbrev}|${chapter}`;
 
           for (const verseNum of normalizedVerses) {
@@ -252,16 +282,29 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         console.error("[Strong's] Error loading verse directly:", error);
         // Fall through to search method
       }
+      profileSpan(
+        "root_translation.direct_lookup",
+        directStart,
+        process.hrtime.bigint(),
+        { file: "routes/root-translation.ts", fn: "direct_lookup" },
+      );
     }
 
     // Fallback: Search through common books if not found directly
     if (!verseWithStrongs) {
+      const fallbackStart = process.hrtime.bigint();
       const commonBooks = ["Jhn", "Gen", "Psa", "Mat", "Rom"];
 
       for (const bookAbbrev of commonBooks) {
         try {
           const bookPath = path.join(dataPath, `${bookAbbrev}.json`);
-          const bookData = JSON.parse(await fs.readFile(bookPath, "utf-8"));
+          const bookData = JSON.parse(
+            await profileTime(
+              "root_translation.readBookFile",
+              () => fs.readFile(bookPath, "utf-8"),
+              { file: "routes/root-translation.ts", fn: "fs.readFile" },
+            ),
+          );
 
           // Search through chapters and verses
           const book = bookData[bookAbbrev];
@@ -292,6 +335,12 @@ router.post("/", readOnlyLimiter, async (req, res) => {
           continue;
         }
       }
+      profileSpan(
+        "root_translation.fallback_search",
+        fallbackStart,
+        process.hrtime.bigint(),
+        { file: "routes/root-translation.ts", fn: "fallback_search" },
+      );
     }
 
     if (!verseWithStrongs) {
@@ -345,36 +394,48 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       .join("\n\n");
 
     // Generate translation using GPT-5-mini with Strong's Concordance grounding
-    const result = (await Promise.race([
-      runModel(
-        [
-          {
-            role: "system",
-            content: ROOT_TRANSLATION_V1.buildSystem(),
-          },
-          {
-            role: "user",
-            content: ROOT_TRANSLATION_V1.buildUser({
-              selectedText,
-              verseWithStrongs,
-              groundingData,
-            }),
-          },
-        ],
-        {
-          model: ENV.OPENAI_FAST_MODEL,
-          verbosity: "medium",
-          promptCacheKey: "root-translation-v1",
-        },
-      ),
-      new Promise((_, reject) =>
-        setTimeout(
-          () =>
-            reject(new Error("Root translation request timed out after 20s")),
-          20000,
-        ),
-      ),
-    ])) as RunModelResult;
+    const result = (await profileTime(
+      "root_translation.runModel",
+      () =>
+        Promise.race([
+          runModel(
+            [
+              {
+                role: "system",
+                content: ROOT_TRANSLATION_V1.buildSystem(),
+              },
+              {
+                role: "user",
+                content: ROOT_TRANSLATION_V1.buildUser({
+                  selectedText,
+                  verseWithStrongs,
+                  groundingData,
+                }),
+              },
+            ],
+            {
+              model: ENV.OPENAI_FAST_MODEL,
+              verbosity: "medium",
+              promptCacheKey: "root-translation-v1",
+            },
+          ),
+          new Promise((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error("Root translation request timed out after 20s"),
+                ),
+              20000,
+            ),
+          ),
+        ]),
+      {
+        file: "ai/runModel.ts",
+        fn: "runModel",
+        await: "client.responses.create",
+        model: ENV.OPENAI_FAST_MODEL,
+      },
+    )) as RunModelResult;
 
     // Log token usage for telemetry
     const tokenUsage = extractTokenUsage(

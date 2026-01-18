@@ -3,6 +3,7 @@ import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
 import { makeOpenAI } from "../ai";
+import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -20,8 +21,16 @@ const ttsRequestSchema = z.object({
 // POST /api/tts - Generate speech from text
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("tts");
+    profiler?.markHandlerStart();
+
     console.log("TTS request body:", JSON.stringify(req.body, null, 2));
-    const { text, voice, model, speed } = ttsRequestSchema.parse(req.body);
+    const { text, voice, model, speed } = await profileTime(
+      "tts.zod_parse",
+      () => ttsRequestSchema.parse(req.body),
+      { file: "routes/tts.ts", fn: "ttsRequestSchema.parse" },
+    );
 
     // Check if OpenAI client is available
     if (!ENV.OPENAI_API_KEY) {
@@ -43,21 +52,31 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     console.log("Calling OpenAI TTS API...");
 
     // Generate speech with timeout
-    const mp3Result = await Promise.race([
-      client.audio.speech.create({
+    const mp3Result = await profileTime(
+      "tts.openai_speech",
+      () =>
+        Promise.race([
+          client.audio.speech.create({
+            model,
+            voice,
+            input: text,
+            speed,
+            response_format: "mp3",
+          }),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("TTS request timed out after 30s")),
+              30000,
+            ),
+          ),
+        ]),
+      {
+        file: "routes/tts.ts",
+        fn: "ttsRequest",
+        await: "client.audio.speech.create",
         model,
-        voice,
-        input: text,
-        speed,
-        response_format: "mp3",
-      }),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("TTS request timed out after 30s")),
-          30000,
-        ),
-      ),
-    ]);
+      },
+    );
 
     // Type assertion - we know the successful result is the speech response
     const mp3 = mp3Result as Awaited<

@@ -5,6 +5,11 @@ import {
   type DiscoveredConnection,
 } from "../bible/connectionDiscovery";
 import crypto from "crypto";
+import {
+  getProfiler,
+  profileSpan,
+  profileTime,
+} from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -71,6 +76,10 @@ async function persistConnections(connections: DiscoveredConnection[]) {
  */
 router.post("/", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("discover_connections");
+    profiler?.markHandlerStart();
+
     const { verseIds } = req.body;
 
     if (!Array.isArray(verseIds) || verseIds.length === 0) {
@@ -84,6 +93,10 @@ router.post("/", async (req, res) => {
     const cached = cache.get(cacheKey);
 
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      const cacheStart = process.hrtime.bigint();
+      profileSpan("discover_connections.cache_hit", cacheStart, cacheStart, {
+        cached: true,
+      });
       console.log(
         `[Discover Connections] Cache hit for ${verseIds.length} verses`,
       );
@@ -95,10 +108,19 @@ router.post("/", async (req, res) => {
     }
 
     // Fetch verse data
-    const { data: verses, error } = await supabase
-      .from("verses")
-      .select("id, book_name, chapter, verse, text")
-      .in("id", verseIds);
+    const { data: verses, error } = await profileTime(
+      "discover_connections.fetch_verses",
+      () =>
+        supabase
+          .from("verses")
+          .select("id, book_name, chapter, verse, text")
+          .in("id", verseIds),
+      {
+        file: "routes/discover-connections.ts",
+        fn: "fetch_verses",
+        await: "supabase.verses.select",
+      },
+    );
 
     if (error || !verses) {
       console.error("[Discover Connections] Error fetching verses:", error);
@@ -114,9 +136,25 @@ router.post("/", async (req, res) => {
     }));
 
     // Discover connections using LLM
-    const connections = await discoverConnections(formattedVerses);
+    const connections = await profileTime(
+      "discover_connections.llm_discover",
+      () => discoverConnections(formattedVerses),
+      {
+        file: "bible/connectionDiscovery.ts",
+        fn: "discoverConnections",
+        await: "discoverConnections",
+      },
+    );
 
-    await persistConnections(connections);
+    await profileTime(
+      "discover_connections.persist",
+      () => persistConnections(connections),
+      {
+        file: "routes/discover-connections.ts",
+        fn: "persistConnections",
+        await: "supabase.llm_connections.upsert",
+      },
+    );
 
     // Cache result
     cache.set(cacheKey, {

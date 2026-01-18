@@ -7,7 +7,7 @@ import type { Request, Response, NextFunction } from "express";
 import { supabase } from "../db";
 
 // Extend Express Request to include userId
- 
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
@@ -17,6 +17,7 @@ declare global {
         id: string;
         email?: string;
       };
+      correlationId?: string;
     }
   }
 }

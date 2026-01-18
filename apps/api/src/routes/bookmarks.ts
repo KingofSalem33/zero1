@@ -3,6 +3,7 @@ import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import fs from "fs/promises";
 import path from "path";
+import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -54,8 +55,16 @@ const createBookmarkSchema = z.object({
 // GET /api/bookmarks - Get all bookmarks for a user
 router.get("/", readOnlyLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("bookmarks_list");
+    profiler?.markHandlerStart();
+
     const userId = (req.query.userId as string) || "anonymous";
-    const bookmarks = await loadBookmarks();
+    const bookmarks = await profileTime(
+      "bookmarks.loadBookmarks",
+      () => loadBookmarks(),
+      { file: "routes/bookmarks.ts", fn: "loadBookmarks" },
+    );
 
     // Filter by user and sort by date (newest first)
     const userBookmarks = bookmarks
@@ -81,9 +90,21 @@ router.get("/", readOnlyLimiter, async (req, res) => {
 // POST /api/bookmarks - Create a new bookmark
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
-    const { text, userId } = createBookmarkSchema.parse(req.body);
+    const profiler = getProfiler();
+    profiler?.setPipeline("bookmarks_create");
+    profiler?.markHandlerStart();
 
-    const bookmarks = await loadBookmarks();
+    const { text, userId } = await profileTime(
+      "bookmarks.zod_parse",
+      () => createBookmarkSchema.parse(req.body),
+      { file: "routes/bookmarks.ts", fn: "createBookmarkSchema.parse" },
+    );
+
+    const bookmarks = await profileTime(
+      "bookmarks.loadBookmarks",
+      () => loadBookmarks(),
+      { file: "routes/bookmarks.ts", fn: "loadBookmarks" },
+    );
 
     // Check for duplicate (same text for same user)
     const duplicate = bookmarks.find(
@@ -109,7 +130,11 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     };
 
     bookmarks.push(newBookmark);
-    await saveBookmarks(bookmarks);
+    await profileTime(
+      "bookmarks.saveBookmarks",
+      () => saveBookmarks(bookmarks),
+      { file: "routes/bookmarks.ts", fn: "saveBookmarks" },
+    );
 
     return res.status(201).json({ bookmark: newBookmark });
   } catch (error) {
@@ -139,10 +164,18 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 // DELETE /api/bookmarks/:id - Delete a bookmark
 router.delete("/:id", readOnlyLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("bookmarks_delete");
+    profiler?.markHandlerStart();
+
     const { id } = req.params;
     const userId = (req.query.userId as string) || "anonymous";
 
-    const bookmarks = await loadBookmarks();
+    const bookmarks = await profileTime(
+      "bookmarks.loadBookmarks",
+      () => loadBookmarks(),
+      { file: "routes/bookmarks.ts", fn: "loadBookmarks" },
+    );
 
     // Find bookmark
     const bookmarkIndex = bookmarks.findIndex(
@@ -161,7 +194,11 @@ router.delete("/:id", readOnlyLimiter, async (req, res) => {
 
     // Remove bookmark
     bookmarks.splice(bookmarkIndex, 1);
-    await saveBookmarks(bookmarks);
+    await profileTime(
+      "bookmarks.saveBookmarks",
+      () => saveBookmarks(bookmarks),
+      { file: "routes/bookmarks.ts", fn: "saveBookmarks" },
+    );
 
     return res.json({ ok: true, message: "Bookmark deleted successfully" });
   } catch (error) {

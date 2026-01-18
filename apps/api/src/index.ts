@@ -77,6 +77,11 @@ import {
   strictLimiter,
   uploadLimiter,
 } from "./middleware/rateLimit";
+import {
+  profilerMiddleware,
+  getProfiler,
+  profileTime,
+} from "./profiling/requestProfiler";
 // Inline Bible study prompt (moved from prompts.ts)
 const BIBLE_STUDY_SYSTEM_PROMPT = `You are a devout disciple of Jesus with the purpose to teach the Word of the Lord. You teach the Word, you live the Word, you are the Word. You know that Bible-based truth is THE truth because it is the living Word.
 
@@ -129,6 +134,7 @@ function combineAndDedupeUrls(
 
 const app = express();
 
+app.use(profilerMiddleware);
 app.use(helmet());
 app.use(
   cors({
@@ -214,6 +220,10 @@ app.use(
 // Chapter footer endpoint (test for Genesis 1)
 app.get("/api/bible/chapter-footer", optionalAuth, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("chapter_footer");
+    profiler?.markHandlerStart();
+
     const book = req.query.book as string;
     const chapter = parseInt(req.query.chapter as string);
 
@@ -230,24 +240,50 @@ app.get("/api/bible/chapter-footer", optionalAuth, async (req, res) => {
     }
 
     // Get anchor verse (first verse of chapter)
-    const anchorId = await getVerseId(parsed.book, chapter, 1);
+    const anchorId = await profileTime(
+      "chapter_footer.getVerseId",
+      () => getVerseId(parsed.book, chapter, 1),
+      {
+        file: "bible/graphWalker.ts",
+        fn: "getVerseId",
+        await: "getVerseId",
+      },
+    );
     if (!anchorId) {
       res.status(404).json({ error: `Could not find ${book} ${chapter}` });
       return;
     }
 
     // Build reference tree from graph (get more candidates for ranking)
-    const tree = await buildReferenceTree(anchorId, {
-      maxDepth: 2,
-      maxNodes: 50, // Get 50 candidates instead of 20
-      maxChildrenPerNode: 999,
-      userQuery: `${book} ${chapter}`, // Enable semantic ranking
-    });
+    const tree = await profileTime(
+      "chapter_footer.buildReferenceTree",
+      () =>
+        buildReferenceTree(anchorId, {
+          maxDepth: 2,
+          maxNodes: 50, // Get 50 candidates instead of 20
+          maxChildrenPerNode: 999,
+          userQuery: `${book} ${chapter}`, // Enable semantic ranking
+        }),
+      {
+        file: "bible/referenceGenealogy.ts",
+        fn: "buildReferenceTree",
+        await: "buildReferenceTree",
+      },
+    );
 
     // Rank verses by semantic similarity to this chapter
-    const rankedTree = await rankVersesBySimilarity(
-      tree as ReferenceVisualBundle,
-      `${book} ${chapter}`,
+    const rankedTree = await profileTime(
+      "chapter_footer.rankVersesBySimilarity",
+      () =>
+        rankVersesBySimilarity(
+          tree as ReferenceVisualBundle,
+          `${book} ${chapter}`,
+        ),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "rankVersesBySimilarity",
+        await: "rankVersesBySimilarity",
+      },
     );
 
     // Format top 15 MOST RELEVANT connected verses for LLM
@@ -320,17 +356,26 @@ Example: "John declares the Word was God, shows the Word creating all things, th
 Return ONLY valid JSON.`;
 
     // Generate with LLM
-    const result = await runModel(
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
+    const result = await profileTime(
+      "chapter_footer.llm.runModel",
+      () =>
+        runModel(
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          {
+            toolSpecs: [],
+            toolMap: {},
+            model: ENV.OPENAI_SMART_MODEL,
+            reasoningEffort: "low", // Explicit low reasoning for faster responses
+            // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
+          },
+        ),
       {
-        toolSpecs: [],
-        toolMap: {},
-        model: ENV.OPENAI_SMART_MODEL,
-        reasoningEffort: "low", // Explicit low reasoning for faster responses
-        // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
+        file: "ai/runModel.ts",
+        fn: "runModel",
+        await: "client.responses.create",
       },
     );
 
@@ -356,7 +401,15 @@ Return ONLY valid JSON.`;
         `[Footer] Generating suggested cards for ${parsed.book} ${chapter}...`,
       );
 
-      const suggestedCards = await generateSuggestedCards(parsed.book, chapter);
+      const suggestedCards = await profileTime(
+        "chapter_footer.generateSuggestedCards",
+        () => generateSuggestedCards(parsed.book, chapter),
+        {
+          file: "bible/suggestedTopics.ts",
+          fn: "generateSuggestedCards",
+          await: "generateSuggestedCards",
+        },
+      );
 
       console.log(
         `[Footer] Generated ${suggestedCards.length} suggested cards`,
@@ -393,7 +446,15 @@ app.post("/api/files", optionalAuth, uploadLimiter, handleFileUpload);
 
 app.get("/api/files", optionalAuth, async (_req, res) => {
   try {
-    const files = await listFiles();
+    const profiler = getProfiler();
+    profiler?.setPipeline("files_list");
+    profiler?.markHandlerStart();
+
+    const files = await profileTime("files.listFiles", () => listFiles(), {
+      file: "files.ts",
+      fn: "listFiles",
+      await: "loadFileIndex",
+    });
     res.json({ files });
   } catch (error) {
     console.error("Error listing files:", error);
@@ -403,7 +464,19 @@ app.get("/api/files", optionalAuth, async (_req, res) => {
 
 app.delete("/api/files/:id", optionalAuth, async (req, res) => {
   try {
-    const success = await deleteFile(req.params.id);
+    const profiler = getProfiler();
+    profiler?.setPipeline("files_delete");
+    profiler?.markHandlerStart();
+
+    const success = await profileTime(
+      "files.deleteFile",
+      () => deleteFile(req.params.id),
+      {
+        file: "files.ts",
+        fn: "deleteFile",
+        await: "deleteFile",
+      },
+    );
 
     if (!success) {
       return res.status(404).json({ error: "File not found" });
@@ -419,6 +492,10 @@ app.delete("/api/files/:id", optionalAuth, async (req, res) => {
 // Memory endpoints (temporarily optional auth for testing)
 app.get("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("memory_get");
+    profiler?.markHandlerStart();
+
     const userId = req.query.userId as string;
     if (!userId) {
       return res
@@ -426,7 +503,11 @@ app.get("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
         .json({ error: "userId query parameter is required" });
     }
 
-    const facts = await getFacts(userId);
+    const facts = await profileTime("memory.getFacts", () => getFacts(userId), {
+      file: "memory.ts",
+      fn: "getFacts",
+      await: "getFacts",
+    });
     return res.json({ facts });
   } catch (error) {
     console.error("Get memory error:", error);
@@ -436,14 +517,26 @@ app.get("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
 
 app.post("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("memory_add");
+    profiler?.markHandlerStart();
+
     const { userId, fact } = req.body;
 
     if (!userId || !fact) {
       return res.status(400).json({ error: "userId and fact are required" });
     }
 
-    await addFact(userId, fact);
-    const facts = await getFacts(userId);
+    await profileTime("memory.addFact", () => addFact(userId, fact), {
+      file: "memory.ts",
+      fn: "addFact",
+      await: "addFact",
+    });
+    const facts = await profileTime("memory.getFacts", () => getFacts(userId), {
+      file: "memory.ts",
+      fn: "getFacts",
+      await: "getFacts",
+    });
     return res.json({
       message: "Fact added successfully",
       facts,
@@ -456,6 +549,10 @@ app.post("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
 
 app.delete("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("memory_clear");
+    profiler?.markHandlerStart();
+
     const userId = req.query.userId as string;
     if (!userId) {
       return res
@@ -463,7 +560,11 @@ app.delete("/api/memory", optionalAuth, strictLimiter, async (req, res) => {
         .json({ error: "userId query parameter is required" });
     }
 
-    await clearFacts(userId);
+    await profileTime("memory.clearFacts", () => clearFacts(userId), {
+      file: "memory.ts",
+      fn: "clearFacts",
+      await: "clearFacts",
+    });
     return res.json({ message: "Facts cleared successfully" });
   } catch (error) {
     console.error("Clear memory error:", error);
@@ -479,16 +580,36 @@ app.post(
   express.json(),
   async (req, res) => {
     try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("memory_extract");
+      profiler?.markHandlerStart();
+
       const { userId } = req.body;
 
       if (!userId) {
         return res.status(400).json({ error: "userId is required" });
       }
 
-      const { getThread } = await import("./memory.js");
+      const { getThread } = await profileTime(
+        "memory.importThread",
+        () => import("./memory.js"),
+        {
+          file: "memory.ts",
+          fn: "getThread",
+          await: "dynamic_import",
+        },
+      );
 
       // Get recent conversation thread
-      const thread = await getThread(userId);
+      const thread = await profileTime(
+        "memory.getThread",
+        () => getThread(userId),
+        {
+          file: "memory.ts",
+          fn: "getThread",
+          await: "getThread",
+        },
+      );
 
       if (thread.length === 0) {
         return res.json({
@@ -514,19 +635,28 @@ ${conversationText}
 
 Return format: ["fact 1", "fact 2", "fact 3"]`;
 
-      const result = await runModel(
-        [
-          {
-            role: "system",
-            content:
-              "You extract key user facts from conversations. Return only a JSON array of strings.",
-          },
-          {
-            role: "user",
-            content: extractionPrompt,
-          },
-        ],
-        { toolSpecs: [], toolMap: {} },
+      const result = await profileTime(
+        "memory.extractFacts.llm",
+        () =>
+          runModel(
+            [
+              {
+                role: "system",
+                content:
+                  "You extract key user facts from conversations. Return only a JSON array of strings.",
+              },
+              {
+                role: "user",
+                content: extractionPrompt,
+              },
+            ],
+            { toolSpecs: [], toolMap: {} },
+          ),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+        },
       );
 
       // Parse extracted facts
@@ -543,19 +673,39 @@ Return format: ["fact 1", "fact 2", "fact 3"]`;
       // Add extracted facts to memory
       let addedCount = 0;
       for (const fact of extractedFacts) {
-        const existingFacts = await getFacts(userId);
+        const existingFacts = await profileTime(
+          "memory.getFacts",
+          () => getFacts(userId),
+          {
+            file: "memory.ts",
+            fn: "getFacts",
+            await: "getFacts",
+          },
+        );
         const isDuplicate = existingFacts.some(
           (existing) =>
             existing.toLowerCase().trim() === fact.toLowerCase().trim(),
         );
 
         if (!isDuplicate) {
-          await addFact(userId, fact);
+          await profileTime("memory.addFact", () => addFact(userId, fact), {
+            file: "memory.ts",
+            fn: "addFact",
+            await: "addFact",
+          });
           addedCount++;
         }
       }
 
-      const allFacts = await getFacts(userId);
+      const allFacts = await profileTime(
+        "memory.getFacts",
+        () => getFacts(userId),
+        {
+          file: "memory.ts",
+          fn: "getFacts",
+          await: "getFacts",
+        },
+      );
 
       return res.json({
         message: `Extracted ${addedCount} new facts`,
@@ -570,6 +720,9 @@ Return format: ["fact 1", "fact 2", "fact 3"]`;
 );
 
 app.get("/health", (_req, res) => {
+  const profiler = getProfiler();
+  profiler?.setPipeline("health");
+  profiler?.markHandlerStart();
   res.json({
     ok: true,
     service: "api",
@@ -580,8 +733,20 @@ app.get("/health", (_req, res) => {
 // Database health check endpoint
 app.get("/api/health/db", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("health_db");
+    profiler?.markHandlerStart();
+
     const forceRefresh = req.query.force === "true";
-    const health = await checkConnectionHealth(forceRefresh);
+    const health = await profileTime(
+      "health_db.checkConnectionHealth",
+      () => checkConnectionHealth(forceRefresh),
+      {
+        file: "db.ts",
+        fn: "checkConnectionHealth",
+        await: "checkConnectionHealth",
+      },
+    );
     res.status(health.healthy ? 200 : 503).json(health);
   } catch (error) {
     console.error("Health check error:", error);
@@ -604,6 +769,10 @@ app.post(
       text: req.body?.text?.substring(0, 50),
     });
     try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("trace");
+      profiler?.markHandlerStart();
+
       const { text } = req.body;
 
       if (!text || typeof text !== "string") {
@@ -611,11 +780,27 @@ app.post(
       }
 
       // Resolve anchor verses from the selected text
-      const anchorIds = await resolveMultipleAnchors(text, 3);
+      const anchorIds = await profileTime(
+        "trace.resolveMultipleAnchors",
+        () => resolveMultipleAnchors(text, 3),
+        {
+          file: "bible/expandingRingExegesis.ts",
+          fn: "resolveMultipleAnchors",
+          await: "resolveMultipleAnchors",
+        },
+      );
 
       if (anchorIds.length === 0) {
         // Fallback to single anchor
-        const singleAnchor = await resolveAnchor(text);
+        const singleAnchor = await profileTime(
+          "trace.resolveAnchor",
+          () => resolveAnchor(text),
+          {
+            file: "bible/expandingRingExegesis.ts",
+            fn: "resolveAnchor",
+            await: "resolveAnchor",
+          },
+        );
         if (singleAnchor) {
           anchorIds.push(singleAnchor);
         }
@@ -634,37 +819,83 @@ app.post(
         console.log(
           `[Trace] Using multi-anchor synthesis with ${anchorIds.length} anchors`,
         );
-        visualBundle = await buildMultiAnchorTree(anchorIds, text);
+        visualBundle = await profileTime(
+          "trace.buildMultiAnchorTree",
+          () => buildMultiAnchorTree(anchorIds, text),
+          {
+            file: "bible/expandingRingExegesis.ts",
+            fn: "buildMultiAnchorTree",
+            await: "buildMultiAnchorTree",
+          },
+        );
       } else {
         console.log(`[Trace] Using single anchor: ${anchorIds[0]}`);
-        visualBundle = (await buildVisualBundle(
-          anchorIds[0],
+        visualBundle = (await profileTime(
+          "trace.buildVisualBundle",
+          () =>
+            buildVisualBundle(
+              anchorIds[0],
+              {
+                ring0Radius: 3,
+                ring1Limit: 20,
+                ring2Limit: 30,
+                ring3Limit: 40,
+                adaptive: {
+                  enabled: true,
+                  startLimit: 3,
+                  minLimit: 2,
+                  multiplier: 2,
+                  signalThreshold: 0.8,
+                },
+              },
+              {
+                includeDEEPER: true,
+                includeROOTS: true,
+                includeECHOES: true,
+                includePROPHECY: true,
+                includeGENEALOGY: false,
+              },
+            ),
           {
-            ring0Radius: 3,
-            ring1Limit: 20,
-            ring2Limit: 30,
-            ring3Limit: 40,
-          },
-          {
-            includeDEEPER: true,
-            includeROOTS: true,
-            includeECHOES: true,
-            includePROPHECY: true,
-            includeGENEALOGY: false,
+            file: "bible/graphWalker.ts",
+            fn: "buildVisualBundle",
+            await: "buildVisualBundle",
           },
         )) as ReferenceVisualBundle;
       }
 
       // Rank verses by semantic similarity
-      visualBundle = await rankVersesBySimilarity(visualBundle, text);
+      visualBundle = await profileTime(
+        "trace.rankVersesBySimilarity",
+        () => rankVersesBySimilarity(visualBundle, text),
+        {
+          file: "bible/expandingRingExegesis.ts",
+          fn: "rankVersesBySimilarity",
+          await: "rankVersesBySimilarity",
+        },
+      );
 
       // Remove duplicate/parallel passages
-      visualBundle = await deduplicateVerses(visualBundle);
+      visualBundle = await profileTime(
+        "trace.deduplicateVerses",
+        () => deduplicateVerses(visualBundle),
+        {
+          file: "bible/expandingRingExegesis.ts",
+          fn: "deduplicateVerses",
+          await: "deduplicateVerses",
+        },
+      );
 
       if (visualBundle.pericopeContext?.id) {
         try {
-          const pericopeBundle = await buildPericopeBundle(
-            visualBundle.pericopeContext.id,
+          const pericopeBundle = await profileTime(
+            "trace.buildPericopeBundle",
+            () => buildPericopeBundle(visualBundle.pericopeContext!.id),
+            {
+              file: "bible/pericopeGraphWalker.ts",
+              fn: "buildPericopeBundle",
+              await: "buildPericopeBundle",
+            },
           );
           if (pericopeBundle) {
             visualBundle.pericopeBundle = pericopeBundle;
@@ -706,7 +937,20 @@ app.post(
       message: req.body?.message?.substring(0, 50),
     });
     try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("chat_stream");
+      profiler?.markHandlerStart();
+
       // Validate request body
+      const parsed = await profileTime(
+        "chat_stream.zod_parse",
+        () => chatRequestSchema.parse(req.body),
+        {
+          file: "ai/schemas.ts",
+          fn: "chatRequestSchema.parse",
+        },
+      );
+
       const {
         message,
         history = [], // Used for low-signal follow-ups
@@ -715,7 +959,7 @@ app.post(
         visualBundle,
         mapSession,
         // userId = "anonymous", // Not used in streaming mode
-      } = chatRequestSchema.parse(req.body);
+      } = parsed;
 
       // Set SSE headers
       res.setHeader("Content-Type", "text/event-stream");
@@ -752,14 +996,23 @@ app.post(
       // Use the KERNEL 3-SIM Pipeline for epistemically rigorous teaching
       // SIM-1 (mechanism) + SIM-2 (coherence) + SIM-3 (teaching stream)
       console.log("[Exegesis STREAM] Running KERNEL 3-SIM pipeline...");
-      await explainScriptureWithKernelStream(
-        res,
-        effectiveMessage,
-        true,
-        promptMode,
-        visualBundle,
-        mapSession,
-        mapMode,
+      await profileTime(
+        "chat_stream.kernel_pipeline",
+        () =>
+          explainScriptureWithKernelStream(
+            res,
+            effectiveMessage,
+            true,
+            promptMode,
+            visualBundle,
+            mapSession,
+            mapMode,
+          ),
+        {
+          file: "bible/expandingRingExegesis.ts",
+          fn: "explainScriptureWithKernelStream",
+          await: "explainScriptureWithKernelStream",
+        },
       );
       console.log("[Exegesis STREAM] KERNEL pipeline completed");
 
@@ -788,13 +1041,30 @@ app.post(
   express.json(),
   async (req, res) => {
     try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("chat");
+      profiler?.markHandlerStart();
+
       // Validate request body
+      const parsed = await profileTime(
+        "chat.zod_parse",
+        () => chatRequestSchema.parse(req.body),
+        {
+          file: "ai/schemas.ts",
+          fn: "chatRequestSchema.parse",
+        },
+      );
+
       const {
         message,
         format = "text",
         userId = "anonymous",
         history = [],
-      } = chatRequestSchema.parse(req.body);
+      } = parsed;
+
+      if (format === "json") {
+        profiler?.setPipeline("chat_json");
+      }
 
       // Detect low-signal affirmations (e.g., "yes, let's do it") after a follow-up question
       const isLowSignalAffirmation = (text: string): boolean => {
@@ -821,7 +1091,13 @@ app.post(
       // - Static system prompt comes first (will be cached)
       // - Variable user context is added as separate message (won't break cache)
       const userFacts =
-        userId && userId !== "anonymous" ? await getFacts(userId) : [];
+        userId && userId !== "anonymous"
+          ? await profileTime("chat.getFacts", () => getFacts(userId), {
+              file: "memory.ts",
+              fn: "getFacts",
+              await: "getFacts",
+            })
+          : [];
 
       const { systemPrompt, userContext } =
         format === "json"
@@ -859,7 +1135,14 @@ app.post(
 
       // Dynamically select relevant tools
       const { toolSpecs: selectedSpecs, toolMap: selectedMap } =
-        selectRelevantTools(message, history);
+        await profileTime(
+          "chat.selectRelevantTools",
+          () => selectRelevantTools(message, history),
+          {
+            file: "ai/tools/selectTools.ts",
+            fn: "selectRelevantTools",
+          },
+        );
 
       // Check if client wants streaming response
       const acceptsStream = req.headers.accept?.includes("text/event-stream");
@@ -873,31 +1156,57 @@ app.post(
         res.flushHeaders();
 
         // Stream the response
-        const text = await runModelStream(res, conversationMessages, {
-          toolSpecs: selectedSpecs,
-          toolMap: selectedMap,
-        });
+        const text = await profileTime(
+          "chat.runModelStream",
+          () =>
+            runModelStream(res, conversationMessages, {
+              toolSpecs: selectedSpecs,
+              toolMap: selectedMap,
+            }),
+          {
+            file: "ai/runModelStream.ts",
+            fn: "runModelStream",
+            await: "client.responses.create",
+          },
+        );
 
         // Store conversation in memory if userId is provided
         if (userId && userId !== "anonymous") {
-          await pushToThread(userId, { role: "user", content: message });
-          await pushToThread(userId, { role: "assistant", content: text });
+          await profileTime(
+            "chat.pushToThread.user",
+            () => pushToThread(userId, { role: "user", content: message }),
+            { file: "memory.ts", fn: "pushToThread", await: "pushToThread" },
+          );
+          await profileTime(
+            "chat.pushToThread.assistant",
+            () => pushToThread(userId, { role: "assistant", content: text }),
+            { file: "memory.ts", fn: "pushToThread", await: "pushToThread" },
+          );
         }
 
         return; // Response already sent via SSE
       }
 
       // Use structured outputs for JSON format (non-streaming)
-      const result = await runModel(conversationMessages, {
-        toolSpecs: selectedSpecs,
-        toolMap: selectedMap,
-        ...(format === "json" && {
-          responseFormat: {
-            type: "json_schema" as const,
-            json_schema: chatResponseJsonSchema,
-          },
-        }),
-      });
+      const result = await profileTime(
+        "chat.runModel",
+        () =>
+          runModel(conversationMessages, {
+            toolSpecs: selectedSpecs,
+            toolMap: selectedMap,
+            ...(format === "json" && {
+              responseFormat: {
+                type: "json_schema" as const,
+                json_schema: chatResponseJsonSchema,
+              },
+            }),
+          }),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+        },
+      );
 
       // Extract URLs from assistant response and combine with tool citations
       const extractedUrls = extractUrls(result.text);
@@ -908,8 +1217,17 @@ app.post(
 
       // Store conversation in memory if userId is provided
       if (userId && userId !== "anonymous") {
-        await pushToThread(userId, { role: "user", content: message });
-        await pushToThread(userId, { role: "assistant", content: result.text });
+        await profileTime(
+          "chat.pushToThread.user",
+          () => pushToThread(userId, { role: "user", content: message }),
+          { file: "memory.ts", fn: "pushToThread", await: "pushToThread" },
+        );
+        await profileTime(
+          "chat.pushToThread.assistant",
+          () =>
+            pushToThread(userId, { role: "assistant", content: result.text }),
+          { file: "memory.ts", fn: "pushToThread", await: "pushToThread" },
+        );
       }
 
       // Handle JSON format response

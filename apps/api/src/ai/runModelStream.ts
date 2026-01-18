@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import pino from "pino";
 import { ENV } from "../env";
 import type { Response } from "express";
+import { profileSpan, profileTime } from "../profiling/requestProfiler";
 
 const logger = pino({ name: "runModelStream" });
 
@@ -323,6 +324,7 @@ export async function runModelStream(
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
   let iterations = 0;
+  let streamStartNs: bigint | null = null;
   let accumulatedResponse = ""; // Accumulate text across ALL iterations
 
   logger.info(
@@ -349,34 +351,46 @@ export async function runModelStream(
         }),
       );
 
-      const stream = await client.responses.create({
-        model,
-        input: conversationMessages,
-        tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
-        tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-        max_output_tokens: 16000,
-        parallel_tool_calls: true,
-        stream: true,
-        text: {
-          verbosity: verbosity,
+      streamStartNs = process.hrtime.bigint();
+      const stream = await profileTime(
+        "llm.stream_create",
+        () =>
+          client.responses.create({
+            model,
+            input: conversationMessages,
+            tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
+            tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
+            max_output_tokens: 16000,
+            parallel_tool_calls: true,
+            stream: true,
+            text: {
+              verbosity: verbosity,
+            },
+            // Only apply reasoning for models that support it (not nano)
+            ...(effectiveReasoningEffort && {
+              reasoning: {
+                effort: effectiveReasoningEffort,
+              },
+            }),
+            // Note: OpenAI prompt caching parameters (if supported by SDK version)
+            // Prompt caching is automatic for prompts > 1024 tokens
+            // These parameters are for advanced optimization when supported
+            ...(promptCacheRetention && {
+              prompt_cache_retention: promptCacheRetention,
+            }),
+            ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
+          }),
+        {
+          file: "ai/runModelStream.ts",
+          fn: "runModelStream",
+          await: "client.responses.create",
+          model,
         },
-        // Only apply reasoning for models that support it (not nano)
-        ...(effectiveReasoningEffort && {
-          reasoning: {
-            effort: effectiveReasoningEffort,
-          },
-        }),
-        // Note: OpenAI prompt caching parameters (if supported by SDK version)
-        // Prompt caching is automatic for prompts > 1024 tokens
-        // These parameters are for advanced optimization when supported
-        ...(promptCacheRetention && {
-          prompt_cache_retention: promptCacheRetention,
-        }),
-        ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
-      });
+      );
 
       let currentIterationContent = ""; // Content from THIS iteration only
       const outputItems: any[] = [];
+      let firstDeltaLogged = false;
 
       // Process stream chunks - Responses API has different event structure
       for await (const event of stream) {
@@ -408,6 +422,22 @@ export async function runModelStream(
             console.log(
               `[runModelStream] Iteration ${iterations}: ✅ ${event.type} delta received (${delta.length} chars)`,
             );
+            if (!firstDeltaLogged) {
+              firstDeltaLogged = true;
+              if (streamStartNs) {
+                profileSpan(
+                  "llm.stream_ttft",
+                  streamStartNs,
+                  process.hrtime.bigint(),
+                  {
+                    file: "ai/runModelStream.ts",
+                    fn: "runModelStream",
+                    await: "first_delta",
+                    model,
+                  },
+                );
+              }
+            }
             sendEvent("content", { delta });
           }
         }
@@ -487,6 +517,25 @@ export async function runModelStream(
         console.log(
           `[runModelStream] No tool calls in iteration ${iterations}. Ending stream with ${accumulatedResponse.length} total chars.`,
         );
+        if (streamStartNs) {
+          profileSpan(
+            "llm.stream_total",
+
+            streamStartNs,
+
+            process.hrtime.bigint(),
+
+            {
+              file: "ai/runModelStream.ts",
+
+              fn: "runModelStream",
+
+              await: "stream_complete",
+
+              model,
+            },
+          );
+        }
         cleanup(); // ✅ Use cleanup function
 
         // Only send done event and close response if keepAlive is false
@@ -519,6 +568,25 @@ export async function runModelStream(
       // If all tool calls were malformed, we're done
       if (validToolCalls.length === 0) {
         logger.warn("All tool calls were malformed, ending stream");
+        if (streamStartNs) {
+          profileSpan(
+            "llm.stream_total",
+
+            streamStartNs,
+
+            process.hrtime.bigint(),
+
+            {
+              file: "ai/runModelStream.ts",
+
+              fn: "runModelStream",
+
+              await: "stream_complete",
+
+              model,
+            },
+          );
+        }
         cleanup(); // ✅ Use cleanup function
 
         // Only send done event and close response if keepAlive is false
@@ -606,7 +674,15 @@ export async function runModelStream(
           if (!toolFn) {
             throw new Error(`Tool function not found: ${toolName}`);
           }
-          const result = await toolFn(args);
+          const result = await profileTime(
+            `tool.${toolName}`,
+            () => toolFn(args),
+            {
+              file: "ai/tools",
+              fn: toolName,
+              await: "tool_execution",
+            },
+          );
 
           // Emit tool_result event
           sendEvent("tool_result", { tool: toolName, result });
@@ -667,6 +743,25 @@ export async function runModelStream(
     console.log(
       `[runModelStream] Max iterations reached. Returning ${accumulatedResponse.length} total chars.`,
     );
+    if (streamStartNs) {
+      profileSpan(
+        "llm.stream_total",
+
+        streamStartNs,
+
+        process.hrtime.bigint(),
+
+        {
+          file: "ai/runModelStream.ts",
+
+          fn: "runModelStream",
+
+          await: "stream_complete",
+
+          model,
+        },
+      );
+    }
     cleanup(); // ✅ Use cleanup function
     sendEvent("done", { citations: [...new Set(allCitations)] });
     res.end();
@@ -676,6 +771,25 @@ export async function runModelStream(
       { error: error instanceof Error ? error.message : error },
       "Streaming failed",
     );
+    if (streamStartNs) {
+      profileSpan(
+        "llm.stream_total",
+
+        streamStartNs,
+
+        process.hrtime.bigint(),
+
+        {
+          file: "ai/runModelStream.ts",
+
+          fn: "runModelStream",
+
+          await: "stream_complete",
+
+          model,
+        },
+      );
+    }
     cleanup(); // ✅ Use cleanup function
     sendEvent("error", {
       message:

@@ -3,6 +3,7 @@ import { toolMap, type ToolName, type ToolMap } from "./tools";
 import { ZodError } from "zod";
 import pino from "pino";
 import { ENV } from "../env";
+import { profileTime } from "../profiling/requestProfiler";
 
 const logger = pino({ name: "runModel" });
 
@@ -220,40 +221,50 @@ export async function runModel(
         "Model configuration for iteration",
       );
 
-      const response = await client.responses.create({
-        model,
-        input: conversationMessages,
-        tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
-        tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-        max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
-        parallel_tool_calls: true,
-        // Text configuration with structured outputs and verbosity
-        text: responseFormat
-          ? {
-              format: {
-                type: "json_schema" as const,
-                name: responseFormat.json_schema.name,
-                schema: responseFormat.json_schema.schema,
+      const response = await profileTime(
+        "llm.responses_create",
+        () =>
+          client.responses.create({
+            model,
+            input: conversationMessages,
+            tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
+            tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
+            max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
+            parallel_tool_calls: true,
+            // Text configuration with structured outputs and verbosity
+            text: responseFormat
+              ? {
+                  format: {
+                    type: "json_schema" as const,
+                    name: responseFormat.json_schema.name,
+                    schema: responseFormat.json_schema.schema,
+                  },
+                  verbosity: verbosity,
+                }
+              : {
+                  verbosity: verbosity,
+                },
+            // Only apply reasoning for models that support it (not nano)
+            ...(effectiveReasoningEffort && {
+              reasoning: {
+                effort: effectiveReasoningEffort,
               },
-              verbosity: verbosity,
-            }
-          : {
-              verbosity: verbosity,
-            },
-        // Only apply reasoning for models that support it (not nano)
-        ...(effectiveReasoningEffort && {
-          reasoning: {
-            effort: effectiveReasoningEffort,
-          },
-        }),
-        // Note: OpenAI prompt caching parameters (if supported by SDK version)
-        // Prompt caching is automatic for prompts > 1024 tokens
-        // These parameters are for advanced optimization when supported
-        ...(promptCacheRetention && {
-          prompt_cache_retention: promptCacheRetention,
-        }),
-        ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
-      });
+            }),
+            // Note: OpenAI prompt caching parameters (if supported by SDK version)
+            // Prompt caching is automatic for prompts > 1024 tokens
+            // These parameters are for advanced optimization when supported
+            ...(promptCacheRetention && {
+              prompt_cache_retention: promptCacheRetention,
+            }),
+            ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
+          }),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+          model,
+        },
+      );
 
       // Log prompt cache performance if available
       if ((response as any).usage?.prompt_tokens_details?.cached_tokens) {
@@ -430,7 +441,15 @@ export async function runModel(
           onToolCall?.(toolName, args);
 
           // Execute tool function with validation
-          const result = await providedToolMap[toolName](args);
+          const result = await profileTime(
+            `tool.${toolName}`,
+            () => providedToolMap[toolName](args),
+            {
+              file: "ai/tools",
+              fn: toolName,
+              await: "tool_execution",
+            },
+          );
 
           // Track tool call success
           // ✅ Fix #10: Only track if under limit

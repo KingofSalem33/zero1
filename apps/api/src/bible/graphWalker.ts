@@ -68,6 +68,13 @@ export interface RingConfig {
   ring2Limit: number; // Max secondary refs (default: 30)
   ring3Limit: number; // Max tertiary refs (default: 40)
   gravity?: Partial<GravityConfig>;
+  adaptive?: {
+    enabled?: boolean;
+    startLimit?: number;
+    minLimit?: number;
+    multiplier?: number;
+    signalThreshold?: number;
+  };
 }
 
 const DEFAULT_CONFIG: RingConfig = {
@@ -96,6 +103,11 @@ const DEFAULT_GRAVITY: GravityConfig = {
 type LayerResult = {
   ids: number[];
   edges: import("./types").VisualEdge[];
+  stats?: {
+    maxScore: number;
+    strongCount: number;
+    threshold: number;
+  };
 };
 
 const normalizeConceptReference = (reference: string): string =>
@@ -288,6 +300,7 @@ async function fetchPriorityLayer(
   excludeSet: Set<number>,
   gravity: GravityConfig,
   structure: ChiasmStructure | null,
+  signalThreshold?: number,
 ): Promise<LayerResult> {
   if (sourceIds.length === 0) {
     return { ids: [], edges: [] };
@@ -393,11 +406,30 @@ async function fetchPriorityLayer(
     },
   }));
 
+  const maxScore = sorted.length > 0 ? sorted[0][1].score : 0;
+  const threshold = typeof signalThreshold === "number" ? signalThreshold : 0;
+  const strongCount =
+    typeof signalThreshold === "number" && maxScore > 0
+      ? sorted.filter(([, info]) => info.score >= maxScore * threshold).length
+      : 0;
+
   console.log(
     `[Graph Walker]   Weighted scoring: ${candidates.size} candidates, returning top ${ids.length}`,
   );
 
-  return { ids, edges };
+  return {
+    ids,
+    edges,
+    ...(typeof signalThreshold === "number"
+      ? {
+          stats: {
+            maxScore,
+            strongCount,
+            threshold,
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -408,6 +440,9 @@ export async function buildContextBundle(
   config: Partial<RingConfig> = {},
 ): Promise<ContextBundle> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
+  const adaptive = cfg.adaptive;
+  const clampLimit = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, value));
 
   console.log(
     `[Graph Walker] Building context bundle for verse ID ${anchorId}`,
@@ -461,14 +496,35 @@ export async function buildContextBundle(
   // ========================================
   // RING 1: Direct Cross-References
   // ========================================
-  console.log(`[Graph Walker] Fetching Ring 1 (max ${cfg.ring1Limit})...`);
+  const adaptiveEnabled = !!adaptive?.enabled;
+  const adaptiveThreshold =
+    typeof adaptive?.signalThreshold === "number"
+      ? adaptive.signalThreshold
+      : 0.8;
+  const adaptiveMultiplier =
+    typeof adaptive?.multiplier === "number" ? adaptive.multiplier : 2;
+  const adaptiveMin =
+    typeof adaptive?.minLimit === "number" ? adaptive.minLimit : 2;
+  const adaptiveStart =
+    typeof adaptive?.startLimit === "number" ? adaptive.startLimit : 3;
+
+  let ring1Limit = cfg.ring1Limit;
+  let ring2Limit = cfg.ring2Limit;
+  let ring3Limit = cfg.ring3Limit;
+
+  if (adaptiveEnabled) {
+    ring1Limit = clampLimit(adaptiveStart, adaptiveMin, cfg.ring1Limit);
+  }
+
+  console.log(`[Graph Walker] Fetching Ring 1 (max ${ring1Limit})...`);
 
   const ring1Layer = await fetchPriorityLayer(
     ring0Ids,
-    cfg.ring1Limit,
+    ring1Limit,
     new Set(ring0Ids),
     gravity,
     structure,
+    adaptiveEnabled ? adaptiveThreshold : undefined,
   );
   const ring1Ids = ring1Layer.ids;
   let ring1 = await hydrateVerses(ring1Ids);
@@ -479,16 +535,37 @@ export async function buildContextBundle(
   // ========================================
   // RING 2: References of References
   // ========================================
-  console.log(`[Graph Walker] Fetching Ring 2 (max ${cfg.ring2Limit})...`);
+  if (adaptiveEnabled) {
+    const strongCount = ring1Layer.stats?.strongCount ?? 0;
+    if (strongCount === 0) {
+      ring2Limit = 0;
+      ring3Limit = 0;
+    } else {
+      ring2Limit = clampLimit(
+        strongCount * adaptiveMultiplier,
+        adaptiveMin,
+        cfg.ring2Limit,
+      );
+    }
+    console.log(
+      `[Graph Walker] Adaptive Ring 2 limit set to ${ring2Limit} (strong: ${strongCount}, threshold: ${adaptiveThreshold})`,
+    );
+  }
+
+  console.log(`[Graph Walker] Fetching Ring 2 (max ${ring2Limit})...`);
 
   const excludeSet = new Set([...ring0Ids, ...ring1Ids]);
-  const ring2Layer = await fetchPriorityLayer(
-    ring1Ids,
-    cfg.ring2Limit,
-    excludeSet,
-    gravity,
-    structure,
-  );
+  const ring2Layer =
+    ring2Limit > 0
+      ? await fetchPriorityLayer(
+          ring1Ids,
+          ring2Limit,
+          excludeSet,
+          gravity,
+          structure,
+          adaptiveEnabled ? adaptiveThreshold : undefined,
+        )
+      : { ids: [], edges: [] };
   const ring2Ids = ring2Layer.ids;
   const ring2 = await hydrateVerses(ring2Ids);
   const ring2Edges = ring2Layer.edges;
@@ -498,16 +575,36 @@ export async function buildContextBundle(
   // ========================================
   // RING 3: Deep Thematic Links
   // ========================================
-  console.log(`[Graph Walker] Fetching Ring 3 (max ${cfg.ring3Limit})...`);
+  if (adaptiveEnabled && ring3Limit > 0) {
+    const strongCount = ring2Layer.stats?.strongCount ?? 0;
+    if (strongCount === 0) {
+      ring3Limit = 0;
+    } else {
+      ring3Limit = clampLimit(
+        strongCount * adaptiveMultiplier,
+        adaptiveMin,
+        cfg.ring3Limit,
+      );
+    }
+    console.log(
+      `[Graph Walker] Adaptive Ring 3 limit set to ${ring3Limit} (strong: ${strongCount}, threshold: ${adaptiveThreshold})`,
+    );
+  }
+
+  console.log(`[Graph Walker] Fetching Ring 3 (max ${ring3Limit})...`);
 
   ring2Ids.forEach((id) => excludeSet.add(id));
-  const ring3Layer = await fetchPriorityLayer(
-    ring2Ids,
-    cfg.ring3Limit,
-    excludeSet,
-    gravity,
-    structure,
-  );
+  const ring3Layer =
+    ring3Limit > 0
+      ? await fetchPriorityLayer(
+          ring2Ids,
+          ring3Limit,
+          excludeSet,
+          gravity,
+          structure,
+          adaptiveEnabled ? adaptiveThreshold : undefined,
+        )
+      : { ids: [], edges: [] };
   const ring3Ids = ring3Layer.ids;
   const ring3 = await hydrateVerses(ring3Ids);
   const ring3Edges = ring3Layer.edges;

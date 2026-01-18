@@ -7,20 +7,34 @@ import {
 import { buildPericopeBundle } from "../bible/pericopeGraphWalker";
 import { supabase } from "../db";
 import { ENV } from "../env";
+import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = express.Router();
 
 router.post("/search", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("pericope_search");
+    profiler?.markHandlerStart();
+
     const { query, limit, threshold, testament, pericopeType } = req.body;
     if (!query) {
       return res.status(400).json({ error: "Query required" });
     }
 
-    const results = await searchPericopesByQuery(query, {
-      limit,
-      similarityThreshold: threshold,
-    });
+    const results = await profileTime(
+      "pericope.searchPericopesByQuery",
+      () =>
+        searchPericopesByQuery(query, {
+          limit,
+          similarityThreshold: threshold,
+        }),
+      {
+        file: "bible/pericopeSearch.ts",
+        fn: "searchPericopesByQuery",
+        await: "searchPericopesByQuery",
+      },
+    );
 
     if (!testament && !pericopeType) {
       return res.json({ results });
@@ -29,10 +43,19 @@ router.post("/search", async (req, res) => {
     const ids = results.map((result) => result.id);
     if (ids.length === 0) return res.json({ results: [] });
 
-    const { data, error } = await supabase
-      .from("pericopes")
-      .select("id, testament, pericope_type")
-      .in("id", ids);
+    const { data, error } = await profileTime(
+      "pericope.searchMetadata",
+      () =>
+        supabase
+          .from("pericopes")
+          .select("id, testament, pericope_type")
+          .in("id", ids),
+      {
+        file: "routes/pericope.ts",
+        fn: "pericope_search_metadata",
+        await: "supabase.pericopes.select",
+      },
+    );
 
     if (error || !data) {
       return res.json({ results });
@@ -61,6 +84,10 @@ router.post("/search", async (req, res) => {
 
 router.get("/random", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("pericope_random");
+    profiler?.markHandlerStart();
+
     const source =
       typeof req.query.source === "string"
         ? req.query.source
@@ -83,7 +110,15 @@ router.get("/random", async (req, res) => {
       countQuery = countQuery.eq("testament", testament);
     }
 
-    const { count, error: countError } = await countQuery;
+    const { count, error: countError } = await profileTime(
+      "pericope.random.count",
+      () => countQuery,
+      {
+        file: "routes/pericope.ts",
+        fn: "pericope_random_count",
+        await: "supabase.pericopes.count",
+      },
+    );
 
     if (countError) {
       return res.status(500).json({
@@ -108,13 +143,29 @@ router.get("/random", async (req, res) => {
       pericopeQuery = pericopeQuery.eq("testament", testament);
     }
 
-    const { data, error: pericopeError } = await pericopeQuery;
+    const { data, error: pericopeError } = await profileTime(
+      "pericope.random.select",
+      () => pericopeQuery,
+      {
+        file: "routes/pericope.ts",
+        fn: "pericope_random_select",
+        await: "supabase.pericopes.select",
+      },
+    );
 
     if (pericopeError || !data || data.length === 0) {
       return res.status(404).json({ error: "No pericope found" });
     }
 
-    const pericope = await getPericopeById(data[0].id);
+    const pericope = await profileTime(
+      "pericope.getPericopeById",
+      () => getPericopeById(data[0].id),
+      {
+        file: "bible/pericopeSearch.ts",
+        fn: "getPericopeById",
+        await: "getPericopeById",
+      },
+    );
     if (!pericope) {
       return res.status(404).json({ error: "Pericope not found" });
     }
@@ -138,6 +189,10 @@ router.get("/random", async (req, res) => {
 
 router.get("/verse/:verseId", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("pericope_for_verse");
+    profiler?.markHandlerStart();
+
     const verseId = Number(req.params.verseId);
     if (!Number.isFinite(verseId)) {
       return res.status(400).json({ error: "Invalid verse id" });
@@ -147,7 +202,15 @@ router.get("/verse/:verseId", async (req, res) => {
       typeof req.query.source === "string"
         ? req.query.source
         : ENV.PERICOPE_SOURCE || "SIL_AI";
-    const pericope = await getPericopeForVerse(verseId, source);
+    const pericope = await profileTime(
+      "pericope.getPericopeForVerse",
+      () => getPericopeForVerse(verseId, source),
+      {
+        file: "bible/pericopeSearch.ts",
+        fn: "getPericopeForVerse",
+        await: "getPericopeForVerse",
+      },
+    );
 
     if (!pericope) {
       return res
@@ -163,6 +226,10 @@ router.get("/verse/:verseId", async (req, res) => {
 
 router.get("/status", async (_req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("pericope_status");
+    profiler?.markHandlerStart();
+
     const defaultSource = ENV.PERICOPE_SOURCE || "SIL_AI";
     const [
       { count: pericopesTotal, error: pericopeError },
@@ -171,27 +238,38 @@ router.get("/status", async (_req, res) => {
       { count: mapTotal, error: mapError },
       { count: silAiCount, error: silAiError },
       { count: sblCount, error: sblError },
-    ] = await Promise.all([
-      supabase.from("pericopes").select("id", { count: "exact", head: true }),
-      supabase
-        .from("pericope_embeddings")
-        .select("pericope_id", { count: "exact", head: true })
-        .eq("embedding_type", "full_text"),
-      supabase
-        .from("pericope_connections")
-        .select("id", { count: "exact", head: true }),
-      supabase
-        .from("verse_pericope_map")
-        .select("id", { count: "exact", head: true }),
-      supabase
-        .from("pericopes")
-        .select("id", { count: "exact", head: true })
-        .eq("source", "SIL_AI"),
-      supabase
-        .from("pericopes")
-        .select("id", { count: "exact", head: true })
-        .eq("source", "SBL"),
-    ]);
+    ] = await profileTime(
+      "pericope.status.counts",
+      () =>
+        Promise.all([
+          supabase
+            .from("pericopes")
+            .select("id", { count: "exact", head: true }),
+          supabase
+            .from("pericope_embeddings")
+            .select("pericope_id", { count: "exact", head: true })
+            .eq("embedding_type", "full_text"),
+          supabase
+            .from("pericope_connections")
+            .select("id", { count: "exact", head: true }),
+          supabase
+            .from("verse_pericope_map")
+            .select("id", { count: "exact", head: true }),
+          supabase
+            .from("pericopes")
+            .select("id", { count: "exact", head: true })
+            .eq("source", "SIL_AI"),
+          supabase
+            .from("pericopes")
+            .select("id", { count: "exact", head: true })
+            .eq("source", "SBL"),
+        ]),
+      {
+        file: "routes/pericope.ts",
+        fn: "pericope_status_counts",
+        await: "supabase.counts",
+      },
+    );
 
     if (
       pericopeError ||
@@ -231,12 +309,24 @@ router.get("/status", async (_req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("pericope_get");
+    profiler?.markHandlerStart();
+
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Invalid pericope id" });
     }
 
-    const pericope = await getPericopeById(id);
+    const pericope = await profileTime(
+      "pericope.getPericopeById",
+      () => getPericopeById(id),
+      {
+        file: "bible/pericopeSearch.ts",
+        fn: "getPericopeById",
+        await: "getPericopeById",
+      },
+    );
     if (!pericope) {
       return res.status(404).json({ error: "Pericope not found" });
     }
@@ -249,12 +339,24 @@ router.get("/:id", async (req, res) => {
 
 router.post("/genealogy", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("pericope_genealogy");
+    profiler?.markHandlerStart();
+
     const { pericopeId, ringConfig } = req.body;
     if (!pericopeId) {
       return res.status(400).json({ error: "pericopeId required" });
     }
 
-    const bundle = await buildPericopeBundle(Number(pericopeId), ringConfig);
+    const bundle = await profileTime(
+      "pericope.buildPericopeBundle",
+      () => buildPericopeBundle(Number(pericopeId), ringConfig),
+      {
+        file: "bible/pericopeGraphWalker.ts",
+        fn: "buildPericopeBundle",
+        await: "buildPericopeBundle",
+      },
+    );
     if (!bundle) {
       return res.status(404).json({ error: "Pericope not found" });
     }

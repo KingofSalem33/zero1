@@ -19,10 +19,16 @@ Provide plain-sense exegesis rooted solely in the King James Version. This analy
 
 **CITATION STYLE**
 Treat Scripture as authoritative declaration, not merely supporting evidence:
-OK: "Scripture declares plainly in [John 3:16] that God's love establishes the foundation..."
-OK: "The Word confirms this truth throughout: [Romans 3:23] establishes universal condemnation..."
+OK: "The text states in [John 3:16] that God's love establishes the foundation..."
+OK: "This truth stands throughout the KJV: [Romans 3:23] establishes universal condemnation..."
 NO: "God loves us. See [John 3:16]." (too casual, citation as afterthought)
-NO: "This appears to indicate..." (hedging - Scripture either says it or doesn't)`;
+NO: "This appears to indicate..." (hedging - Scripture either says it or doesn't)
+
+**STYLE VARIATION (Apply to all outputs)**
+- Avoid formulaic lead-ins like "Scripture declares plainly," "The Word states," or "Plainly says"
+- Do not begin with meta-intros ("You asked...", "Let us open...", "This passage contains...")
+- Start with content immediately; keep phrasing fresh across responses
+- Keep authoritative tone without repetitive slogans`;
 
 const FORMAT_EXEGESIS_LONG = `**FORMATTING (Critical - follow exactly)**
 
@@ -45,6 +51,10 @@ Practical conclusion from God's character and revealed truth. End with invitatio
 \`\`\`
 
 **CRITICAL: Headers must be thematic and content-specific, NEVER use generic labels like "Primary Header", "First Section", "Introduction", etc.**
+
+**STYLE VARIATION**
+- Avoid repeated lead-ins; do not use "Scripture declares plainly" or "The Word states"
+- Start with content immediately; no meta-intros
 
 **CLOSING STRATEGY**
 End the final section by inviting the reader deeper into Scripture:
@@ -89,6 +99,7 @@ const FORMAT_GO_DEEPER_SHORT = `**FORMATTING (Concise Mode)**
 - If NEXT NODES are provided, choose the most intellectually honest and theologically compelling connection
 - If TOPIC SIGNALS are provided, follow the strongest signal
 - The tone should be professional, warm, and genuinely inviting with creative variety
+- Do not use meta-intros or repeated lead-ins like "Scripture declares plainly" or "The Word states"
 `;
 
 export function buildSystemPrompt(mode: PromptMode = "exegesis_long"): string {

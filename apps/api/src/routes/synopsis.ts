@@ -5,6 +5,7 @@ import { ENV } from "../env";
 import { runModel, type RunModelResult } from "../ai/runModel";
 import { SYNOPSIS_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
+import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -39,8 +40,15 @@ const synopsisRequestSchema = z.object({
 // POST /api/synopsis - Generate a concise synopsis of highlighted text
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
-    const { text, maxWords, book, chapter, verse, verses } =
-      synopsisRequestSchema.parse(req.body);
+    const profiler = getProfiler();
+    profiler?.setPipeline("synopsis");
+    profiler?.markHandlerStart();
+
+    const { text, maxWords, book, chapter, verse, verses } = await profileTime(
+      "synopsis.zod_parse",
+      () => synopsisRequestSchema.parse(req.body),
+      { file: "routes/synopsis.ts", fn: "synopsisRequestSchema.parse" },
+    );
 
     // Check if OpenAI client is available
     if (!ENV.OPENAI_API_KEY) {
@@ -54,30 +62,40 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     }
 
     // Generate synopsis using GPT-5-nano with scriptural context
-    const result = (await Promise.race([
-      runModel(
-        [
-          {
-            role: "system",
-            content: SYNOPSIS_V1.buildSystem({ maxWords }),
-          },
-          {
-            role: "user",
-            content: SYNOPSIS_V1.buildUser(text, maxWords),
-          },
-        ],
-        {
-          model: ENV.OPENAI_FAST_MODEL,
-          verbosity: "medium",
-        },
-      ),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Synopsis request timed out after 15s")),
-          15000,
-        ),
-      ),
-    ])) as RunModelResult;
+    const result = (await profileTime(
+      "synopsis.runModel",
+      () =>
+        Promise.race([
+          runModel(
+            [
+              {
+                role: "system",
+                content: SYNOPSIS_V1.buildSystem({ maxWords }),
+              },
+              {
+                role: "user",
+                content: SYNOPSIS_V1.buildUser(text, maxWords),
+              },
+            ],
+            {
+              model: ENV.OPENAI_FAST_MODEL,
+              verbosity: "medium",
+            },
+          ),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Synopsis request timed out after 15s")),
+              15000,
+            ),
+          ),
+        ]),
+      {
+        file: "ai/runModel.ts",
+        fn: "runModel",
+        await: "client.responses.create",
+        model: ENV.OPENAI_FAST_MODEL,
+      },
+    )) as RunModelResult;
 
     // Extract the synopsis from the response
     const synopsis = result.text || "Unable to generate synopsis.";

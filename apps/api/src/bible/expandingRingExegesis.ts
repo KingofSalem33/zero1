@@ -17,6 +17,7 @@ import { ENV } from "../env";
 import type { ParallelPassage, PericopeBundle } from "./types";
 import { areSameTestament } from "./testamentUtil";
 import { type PromptMode, buildSystemPrompt } from "../prompts/systemPrompts";
+import { profileSpan, profileTime } from "../profiling/requestProfiler";
 import {
   searchPericopesByQuery,
   getPericopeById,
@@ -155,19 +156,34 @@ export async function rankVersesBySimilarity(
     if (!client) {
       throw new Error("OpenAI client not configured");
     }
-    const response = await client.embeddings.create({
-      model: "text-embedding-3-small",
-      input: userQuery,
-      dimensions: 1536,
-    });
+    const response = await profileTime(
+      "rank_similarity.embedding_query",
+      () =>
+        client.embeddings.create({
+          model: "text-embedding-3-small",
+          input: userQuery,
+          dimensions: 1536,
+        }),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "rankVersesBySimilarity",
+        await: "client.embeddings.create",
+        model: "text-embedding-3-small",
+      },
+    );
     const queryEmbedding = response.data[0].embedding;
 
     // Step 2: Fetch embeddings for all verses in the bundle
     const verseIds = visualBundle.nodes.map((n) => n.id);
-    const { data: verses, error } = await supabase
-      .from("verses")
-      .select("id, embedding")
-      .in("id", verseIds);
+    const { data: verses, error } = await profileTime(
+      "rank_similarity.fetch_embeddings",
+      () => supabase.from("verses").select("id, embedding").in("id", verseIds),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "rankVersesBySimilarity",
+        await: "supabase.verses.select",
+      },
+    );
 
     if (error || !verses) {
       console.error("[Verse Ranking] Failed to fetch verse embeddings:", error);
@@ -194,6 +210,7 @@ export async function rankVersesBySimilarity(
 
     // Step 3: Compute similarity for each node
     let scoredCount = 0;
+    const computeStart = process.hrtime.bigint();
     for (const node of visualBundle.nodes) {
       const verseEmbedding = embeddingMap.get(node.id);
       if (verseEmbedding) {
@@ -203,6 +220,16 @@ export async function rankVersesBySimilarity(
         node.similarity = 0; // No embedding available
       }
     }
+    profileSpan(
+      "rank_similarity.compute",
+      computeStart,
+      process.hrtime.bigint(),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "rankVersesBySimilarity",
+        await: "cosineSimilarity",
+      },
+    );
 
     // Step 4: Sort nodes within each depth level by similarity (highest first)
     // This preserves the tree structure while prioritizing relevant verses
@@ -211,11 +238,17 @@ export async function rankVersesBySimilarity(
       (nodesByDepth[node.depth] ??= []).push(node);
     }
 
+    const sortStart = process.hrtime.bigint();
     for (const depth in nodesByDepth) {
       nodesByDepth[depth].sort(
         (a, b) => (b.similarity || 0) - (a.similarity || 0),
       );
     }
+    profileSpan("rank_similarity.sort", sortStart, process.hrtime.bigint(), {
+      file: "bible/expandingRingExegesis.ts",
+      fn: "rankVersesBySimilarity",
+      await: "sort_by_similarity",
+    });
 
     // Reconstruct nodes array with sorted nodes
     visualBundle.nodes = Object.values(nodesByDepth).flat();
@@ -264,10 +297,15 @@ export async function deduplicateVerses(
 
   // Fetch embeddings for all verses
   const verseIds = visualBundle.nodes.map((n) => n.id);
-  const { data: verses, error } = await supabase
-    .from("verses")
-    .select("id, embedding")
-    .in("id", verseIds);
+  const { data: verses, error } = await profileTime(
+    "dedupe.fetch_embeddings",
+    () => supabase.from("verses").select("id, embedding").in("id", verseIds),
+    {
+      file: "bible/expandingRingExegesis.ts",
+      fn: "deduplicateVerses",
+      await: "supabase.verses.select",
+    },
+  );
 
   if (error || !verses) {
     console.error("[Parallel Stacking] Failed to fetch embeddings:", error);
@@ -297,6 +335,7 @@ export async function deduplicateVerses(
   }
 
   // Compare all pairs and build parallel stacks
+  const compareStart = process.hrtime.bigint();
   for (let i = 0; i < visualBundle.nodes.length; i++) {
     if (stackedNodeIds.has(visualBundle.nodes[i].id)) continue;
 
@@ -374,6 +413,11 @@ export async function deduplicateVerses(
       node1.parallelPassages.sort((a, b) => b.similarity - a.similarity);
     }
   }
+  profileSpan("dedupe.compare_pairs", compareStart, process.hrtime.bigint(), {
+    file: "bible/expandingRingExegesis.ts",
+    fn: "deduplicateVerses",
+    await: "cosineSimilarity",
+  });
 
   // Filter out stacked nodes (but keep them in data structure for potential future use)
   const originalCount = visualBundle.nodes.length;
@@ -425,19 +469,27 @@ export async function resolveMultipleAnchors(
     const anchorIds: number[] = [];
 
     if (sourceRef) {
-      const sourceId = await getVerseId(
-        sourceRef.book,
-        sourceRef.chapter,
-        sourceRef.verse,
+      const sourceId = await profileTime(
+        "anchor.resolve.getVerseId",
+        () => getVerseId(sourceRef.book, sourceRef.chapter, sourceRef.verse),
+        {
+          file: "bible/graphWalker.ts",
+          fn: "getVerseId",
+          await: "getVerseId",
+        },
       );
       if (sourceId) anchorIds.push(sourceId);
     }
 
     if (targetRef) {
-      const targetId = await getVerseId(
-        targetRef.book,
-        targetRef.chapter,
-        targetRef.verse,
+      const targetId = await profileTime(
+        "anchor.resolve.getVerseId",
+        () => getVerseId(targetRef.book, targetRef.chapter, targetRef.verse),
+        {
+          file: "bible/graphWalker.ts",
+          fn: "getVerseId",
+          await: "getVerseId",
+        },
       );
       if (targetId) anchorIds.push(targetId);
     }
@@ -453,10 +505,15 @@ export async function resolveMultipleAnchors(
   // Step 1: Check for explicit reference (e.g., "John 3:16")
   const explicitRef = parseExplicitReference(userPrompt);
   if (explicitRef) {
-    const anchorId = await getVerseId(
-      explicitRef.book,
-      explicitRef.chapter,
-      explicitRef.verse,
+    const anchorId = await profileTime(
+      "anchor.resolve.getVerseId",
+      () =>
+        getVerseId(explicitRef.book, explicitRef.chapter, explicitRef.verse),
+      {
+        file: "bible/graphWalker.ts",
+        fn: "getVerseId",
+        await: "getVerseId",
+      },
     );
     if (anchorId) {
       console.log(
@@ -471,10 +528,19 @@ export async function resolveMultipleAnchors(
   if (conceptRef) {
     const parsedConcept = parseExplicitReference(conceptRef);
     if (parsedConcept) {
-      const anchorId = await getVerseId(
-        parsedConcept.book,
-        parsedConcept.chapter,
-        parsedConcept.verse,
+      const anchorId = await profileTime(
+        "anchor.resolve.getVerseId",
+        () =>
+          getVerseId(
+            parsedConcept.book,
+            parsedConcept.chapter,
+            parsedConcept.verse,
+          ),
+        {
+          file: "bible/graphWalker.ts",
+          fn: "getVerseId",
+          await: "getVerseId",
+        },
       );
       if (anchorId) {
         console.log(
@@ -491,7 +557,15 @@ export async function resolveMultipleAnchors(
   );
 
   try {
-    const anchorIds = await findMultipleAnchorVerses(userPrompt, maxAnchors);
+    const anchorIds = await profileTime(
+      "anchor.resolve.semantic_multi",
+      () => findMultipleAnchorVerses(userPrompt, maxAnchors),
+      {
+        file: "bible/semanticSearch.ts",
+        fn: "findMultipleAnchorVerses",
+        await: "findMultipleAnchorVerses",
+      },
+    );
 
     if (anchorIds.length > 0) {
       console.log(
@@ -508,7 +582,15 @@ export async function resolveMultipleAnchors(
   }
 
   // Step 4: Fallback - use single anchor resolution
-  const singleAnchor = await resolveAnchor(userPrompt);
+  const singleAnchor = await profileTime(
+    "anchor.resolve.fallback_single",
+    () => resolveAnchor(userPrompt),
+    {
+      file: "bible/expandingRingExegesis.ts",
+      fn: "resolveAnchor",
+      await: "resolveAnchor",
+    },
+  );
   return singleAnchor ? [singleAnchor] : [];
 }
 
@@ -522,10 +604,15 @@ export async function resolveAnchor(
   // Step 1: Check for explicit reference (e.g., "John 3:16")
   const explicitRef = parseExplicitReference(userPrompt);
   if (explicitRef) {
-    const anchorId = await getVerseId(
-      explicitRef.book,
-      explicitRef.chapter,
-      explicitRef.verse,
+    const anchorId = await profileTime(
+      "anchor.resolve.getVerseId",
+      () =>
+        getVerseId(explicitRef.book, explicitRef.chapter, explicitRef.verse),
+      {
+        file: "bible/graphWalker.ts",
+        fn: "getVerseId",
+        await: "getVerseId",
+      },
     );
     if (anchorId) {
       console.log(
@@ -540,10 +627,19 @@ export async function resolveAnchor(
   if (conceptRef) {
     const parsedConcept = parseExplicitReference(conceptRef);
     if (parsedConcept) {
-      const anchorId = await getVerseId(
-        parsedConcept.book,
-        parsedConcept.chapter,
-        parsedConcept.verse,
+      const anchorId = await profileTime(
+        "anchor.resolve.getVerseId",
+        () =>
+          getVerseId(
+            parsedConcept.book,
+            parsedConcept.chapter,
+            parsedConcept.verse,
+          ),
+        {
+          file: "bible/graphWalker.ts",
+          fn: "getVerseId",
+          await: "getVerseId",
+        },
       );
       if (anchorId) {
         console.log(
@@ -560,7 +656,15 @@ export async function resolveAnchor(
   );
 
   try {
-    const anchorId = await findAnchorVerse(userPrompt);
+    const anchorId = await profileTime(
+      "anchor.resolve.semantic_single",
+      () => findAnchorVerse(userPrompt),
+      {
+        file: "bible/semanticSearch.ts",
+        fn: "findAnchorVerse",
+        await: "findAnchorVerse",
+      },
+    );
 
     if (anchorId) {
       console.log(`[Expanding Ring] ✅ Found anchor via semantic search`);
@@ -585,7 +689,15 @@ export async function resolveAnchor(
 
   if (!keywords.length) return null;
 
-  const candidates = await searchVerses(keywords, 1);
+  const candidates = await profileTime(
+    "anchor.resolve.keyword_search",
+    () => searchVerses(keywords, 1),
+    {
+      file: "bible/bibleService.ts",
+      fn: "searchVerses",
+      await: "searchVerses",
+    },
+  );
   if (!candidates.length) return null;
 
   const best = candidates[0];
@@ -611,7 +723,15 @@ export async function resolveAnchor(
   console.log(
     `[Expanding Ring] Looking up in DB: book="${bookAbbrev}", chapter=${best.chapter}, verse=${best.verse}`,
   );
-  const anchorId = await getVerseId(bookAbbrev, best.chapter, best.verse);
+  const anchorId = await profileTime(
+    "anchor.resolve.getVerseId",
+    () => getVerseId(bookAbbrev, best.chapter, best.verse),
+    {
+      file: "bible/graphWalker.ts",
+      fn: "getVerseId",
+      await: "getVerseId",
+    },
+  );
 
   if (anchorId) {
     console.log(`[Expanding Ring] ✅ Using keyword search fallback`);
@@ -667,17 +787,34 @@ export async function resolvePericopeFirst(userPrompt: string): Promise<{
   }
 
   // Search pericope embeddings
-  const pericopes = await searchPericopesByQuery(userPrompt, {
-    limit: 1,
-    similarityThreshold: 0.55, // Slightly lower than verse threshold
-  });
+  const pericopes = await profileTime(
+    "pericope.resolve.search",
+    () =>
+      searchPericopesByQuery(userPrompt, {
+        limit: 1,
+        similarityThreshold: 0.55, // Slightly lower than verse threshold
+      }),
+    {
+      file: "bible/pericopeSearch.ts",
+      fn: "searchPericopesByQuery",
+      await: "searchPericopesByQuery",
+    },
+  );
 
   if (pericopes.length === 0) {
     return null;
   }
 
   // Get full pericope details
-  const pericope = await getPericopeById(pericopes[0].id);
+  const pericope = await profileTime(
+    "pericope.resolve.getById",
+    () => getPericopeById(pericopes[0].id),
+    {
+      file: "bible/pericopeSearch.ts",
+      fn: "getPericopeById",
+      await: "getPericopeById",
+    },
+  );
   if (!pericope) {
     return null;
   }
@@ -952,20 +1089,29 @@ export async function buildMultiAnchorTree(
       `[Multi-Anchor] Building tree ${i + 1}/${uniqueAnchorIds.length} from verse ${anchorId}...`,
     );
 
-    const tree = (await buildVisualBundle(
-      anchorId,
+    const tree = (await profileTime(
+      "multi_anchor.buildVisualBundle",
+      () =>
+        buildVisualBundle(
+          anchorId,
+          {
+            ring0Radius: depthPerAnchor,
+            ring1Limit: 5,
+            ring2Limit: 5,
+            ring3Limit: 5,
+          },
+          {
+            includeDEEPER: true,
+            includeROOTS: true,
+            includeECHOES: true,
+            includePROPHECY: true,
+            includeGENEALOGY: false,
+          },
+        ),
       {
-        ring0Radius: depthPerAnchor,
-        ring1Limit: 5,
-        ring2Limit: 5,
-        ring3Limit: 5,
-      },
-      {
-        includeDEEPER: true,
-        includeROOTS: true,
-        includeECHOES: true,
-        includePROPHECY: true,
-        includeGENEALOGY: false,
+        file: "bible/graphWalker.ts",
+        fn: "buildVisualBundle",
+        await: "buildVisualBundle",
       },
     )) as ReferenceVisualBundle;
 
@@ -1085,7 +1231,15 @@ export async function explainScriptureWithKernelStream(
     }
 
     const pericopeDetail = visualBundle.pericopeContext?.id
-      ? await getPericopeById(visualBundle.pericopeContext.id)
+      ? await profileTime(
+          "exegesis.prebuilt.getPericopeById",
+          () => getPericopeById(visualBundle.pericopeContext!.id),
+          {
+            file: "bible/pericopeSearch.ts",
+            fn: "getPericopeById",
+            await: "getPericopeById",
+          },
+        )
       : null;
     // Build user message from the pre-built bundle
     res.write("event: map_data\n");
@@ -1100,13 +1254,22 @@ export async function explainScriptureWithKernelStream(
     const systemPrompt = buildSystemPrompt(promptMode);
 
     // Stream the response directly
-    await runModelStream(
-      res,
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      { model: ENV.OPENAI_SMART_MODEL },
+    await profileTime(
+      "exegesis.prebuilt.runModelStream",
+      () =>
+        runModelStream(
+          res,
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          { model: ENV.OPENAI_SMART_MODEL },
+        ),
+      {
+        file: "ai/runModelStream.ts",
+        fn: "runModelStream",
+        await: "client.responses.create",
+      },
     );
 
     return {
@@ -1131,7 +1294,15 @@ export async function explainScriptureWithKernelStream(
   let resolutionType: "pericope_first" | "verse_first" = "verse_first";
 
   // Try pericope-first resolution for conceptual queries
-  const pericopeResolution = await resolvePericopeFirst(userPrompt);
+  const pericopeResolution = await profileTime(
+    "exegesis.resolvePericopeFirst",
+    () => resolvePericopeFirst(userPrompt),
+    {
+      file: "bible/expandingRingExegesis.ts",
+      fn: "resolvePericopeFirst",
+      await: "resolvePericopeFirst",
+    },
+  );
   if (pericopeResolution) {
     // Use pericope's verses as anchors
     anchorIds = pericopeResolution.allVerseIds.slice(
@@ -1140,7 +1311,15 @@ export async function explainScriptureWithKernelStream(
     );
 
     // Get pericope context
-    pericopeContext = await getPericopeById(pericopeResolution.pericopeId);
+    pericopeContext = await profileTime(
+      "exegesis.getPericopeById",
+      () => getPericopeById(pericopeResolution.pericopeId),
+      {
+        file: "bible/pericopeSearch.ts",
+        fn: "getPericopeById",
+        await: "getPericopeById",
+      },
+    );
     resolutionType = "pericope_first";
 
     console.log(
@@ -1151,13 +1330,29 @@ export async function explainScriptureWithKernelStream(
   // Fallback: If pericope resolution failed, use verse-first
   if (anchorIds.length === 0) {
     if (allowMultiAnchor) {
-      anchorIds = await resolveMultipleAnchors(userPrompt, 3);
+      anchorIds = await profileTime(
+        "exegesis.resolveMultipleAnchors",
+        () => resolveMultipleAnchors(userPrompt, 3),
+        {
+          file: "bible/expandingRingExegesis.ts",
+          fn: "resolveMultipleAnchors",
+          await: "resolveMultipleAnchors",
+        },
+      );
     }
   }
 
   // Final fallback to single anchor if multi-anchor fails or is disabled
   if (anchorIds.length === 0) {
-    const singleAnchor = await resolveAnchor(userPrompt);
+    const singleAnchor = await profileTime(
+      "exegesis.resolveAnchor",
+      () => resolveAnchor(userPrompt),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "resolveAnchor",
+        await: "resolveAnchor",
+      },
+    );
     if (singleAnchor) {
       anchorIds = [singleAnchor];
     }
@@ -1186,42 +1381,90 @@ export async function explainScriptureWithKernelStream(
     console.log(
       `[KERNEL Stream] Using multi-anchor synthesis with ${anchorIds.length} anchors`,
     );
-    visualBundle = await buildMultiAnchorTree(anchorIds, userPrompt);
+    visualBundle = await profileTime(
+      "exegesis.buildMultiAnchorTree",
+      () => buildMultiAnchorTree(anchorIds, userPrompt),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "buildMultiAnchorTree",
+        await: "buildMultiAnchorTree",
+      },
+    );
   } else {
     console.log(`[KERNEL Stream] Using single anchor: ${anchorId}`);
-    visualBundle = (await buildVisualBundle(
-      anchorId,
-      isFastMap
-        ? {
-            ring0Radius: 1,
-            ring1Limit: 7,
-            ring2Limit: 0,
-            ring3Limit: 0,
-          }
-        : {
-            ring0Radius: 3,
-            ring1Limit: 20,
-            ring2Limit: 30,
-            ring3Limit: 40,
+    visualBundle = (await profileTime(
+      "exegesis.buildVisualBundle",
+      () =>
+        buildVisualBundle(
+          anchorId,
+          isFastMap
+            ? {
+                ring0Radius: 1,
+                ring1Limit: 7,
+                ring2Limit: 0,
+                ring3Limit: 0,
+              }
+            : {
+                ring0Radius: 3,
+                ring1Limit: 20,
+                ring2Limit: 30,
+                ring3Limit: 40,
+                adaptive: {
+                  enabled: true,
+                  startLimit: 3,
+                  minLimit: 2,
+                  multiplier: 2,
+                  signalThreshold: 0.8,
+                },
+              },
+          {
+            includeDEEPER: true,
+            includeROOTS: true,
+            includeECHOES: true,
+            includePROPHECY: true,
+            includeGENEALOGY: false,
           },
+        ),
       {
-        includeDEEPER: true,
-        includeROOTS: true,
-        includeECHOES: true,
-        includePROPHECY: true,
-        includeGENEALOGY: false,
+        file: "bible/graphWalker.ts",
+        fn: "buildVisualBundle",
+        await: "buildVisualBundle",
       },
     )) as ReferenceVisualBundle;
   }
 
   // Rank verses by semantic similarity to user query
-  visualBundle = await rankVersesBySimilarity(visualBundle, userPrompt);
+  visualBundle = await profileTime(
+    "exegesis.rankVersesBySimilarity",
+    () => rankVersesBySimilarity(visualBundle, userPrompt),
+    {
+      file: "bible/expandingRingExegesis.ts",
+      fn: "rankVersesBySimilarity",
+      await: "rankVersesBySimilarity",
+    },
+  );
 
   // Remove duplicate/parallel passages
-  visualBundle = await deduplicateVerses(visualBundle);
+  visualBundle = await profileTime(
+    "exegesis.deduplicateVerses",
+    () => deduplicateVerses(visualBundle),
+    {
+      file: "bible/expandingRingExegesis.ts",
+      fn: "deduplicateVerses",
+      await: "deduplicateVerses",
+    },
+  );
 
   if (!pericopeContext && visualBundle.pericopeContext?.id) {
-    pericopeContext = await getPericopeById(visualBundle.pericopeContext.id);
+    pericopeContext = await profileTime(
+      "exegesis.getPericopeById",
+      () => getPericopeById(visualBundle.pericopeContext!.id),
+      {
+        file: "bible/pericopeSearch.ts",
+        fn: "getPericopeById",
+        await: "getPericopeById",
+      },
+    );
   }
 
   const treeStats = computeTreeStats(visualBundle);
@@ -1242,7 +1485,15 @@ export async function explainScriptureWithKernelStream(
   }
   if (pericopeContext) {
     try {
-      const pericopeBundle = await buildPericopeBundle(pericopeContext.id);
+      const pericopeBundle = await profileTime(
+        "exegesis.buildPericopeBundle",
+        () => buildPericopeBundle(pericopeContext.id),
+        {
+          file: "bible/pericopeGraphWalker.ts",
+          fn: "buildPericopeBundle",
+          await: "buildPericopeBundle",
+        },
+      );
       if (pericopeBundle) {
         visualBundle.pericopeBundle = pericopeBundle;
       }
@@ -1270,18 +1521,27 @@ export async function explainScriptureWithKernelStream(
     mapSession ?? undefined,
   );
 
-  await runModelStream(
-    res,
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
+  await profileTime(
+    "exegesis.runModelStream",
+    () =>
+      runModelStream(
+        res,
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        {
+          toolSpecs: [],
+          toolMap: {},
+          model: ENV.OPENAI_SMART_MODEL,
+          reasoningEffort: "low", // Explicit low reasoning for faster streaming
+          // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
+        },
+      ),
     {
-      toolSpecs: [],
-      toolMap: {},
-      model: ENV.OPENAI_SMART_MODEL,
-      reasoningEffort: "low", // Explicit low reasoning for faster streaming
-      // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
+      file: "ai/runModelStream.ts",
+      fn: "runModelStream",
+      await: "client.responses.create",
     },
   );
 

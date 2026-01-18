@@ -4,6 +4,7 @@ import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import { SEMANTIC_CONNECTION_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
+import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -14,6 +15,10 @@ const router = Router();
  */
 router.post("/synopsis", async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("semantic_connection_synopsis");
+    profiler?.markHandlerStart();
+
     const { verseIds, connectionType, similarity, isLLMDiscovered } = req.body;
 
     // Support legacy format (fromVerseId, toVerseId) for backwards compatibility
@@ -35,10 +40,19 @@ router.post("/synopsis", async (req, res) => {
     );
 
     // Fetch all verses from database
-    const { data: verses, error } = await supabase
-      .from("verses")
-      .select("id, book_name, chapter, verse, text")
-      .in("id", ids);
+    const { data: verses, error } = await profileTime(
+      "semantic_connection.fetch_verses",
+      () =>
+        supabase
+          .from("verses")
+          .select("id, book_name, chapter, verse, text")
+          .in("id", ids),
+      {
+        file: "routes/semantic-connection.ts",
+        fn: "fetch_verses",
+        await: "supabase.verses.select",
+      },
+    );
 
     if (error || !verses || verses.length < 2) {
       console.error("[Semantic Connection] Error fetching verses:", error);
@@ -175,20 +189,30 @@ Provide a CONCISE analysis in EXACTLY 34 words or less:
 
 Be direct and synthesizing. Maximum 34 words.`;
 
-    const result = await runModel(
-      [
-        {
-          role: "system",
-          content: SEMANTIC_CONNECTION_V1.systemPrompt,
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+    const result = await profileTime(
+      "semantic_connection.runModel",
+      () =>
+        runModel(
+          [
+            {
+              role: "system",
+              content: SEMANTIC_CONNECTION_V1.systemPrompt,
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          {
+            model: ENV.OPENAI_FAST_MODEL,
+            verbosity: "medium",
+          },
+        ),
       {
+        file: "ai/runModel.ts",
+        fn: "runModel",
+        await: "client.responses.create",
         model: ENV.OPENAI_FAST_MODEL,
-        verbosity: "medium",
       },
     );
 

@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import type { Request, Response } from "express";
+import { getProfiler, profileTime } from "./profiling/requestProfiler";
 
 export interface FileMetadata {
   id: string;
@@ -55,7 +56,15 @@ export async function handleFileUpload(
   res: Response,
 ): Promise<void> {
   try {
-    await ensureDataDir();
+    const profiler = getProfiler();
+    profiler?.setPipeline("files_upload");
+    profiler?.markHandlerStart();
+
+    await profileTime("files.ensureDataDir", () => ensureDataDir(), {
+      file: "files.ts",
+      fn: "ensureDataDir",
+      await: "ensureDataDir",
+    });
 
     const form = formidable({
       uploadDir: DATA_DIR,
@@ -63,7 +72,11 @@ export async function handleFileUpload(
       maxFileSize: 10 * 1024 * 1024, // 10MB limit
     });
 
-    const [, files] = await form.parse(req);
+    const [, files] = await profileTime(
+      "files.formParse",
+      () => form.parse(req),
+      { file: "files.ts", fn: "formidable.parse", await: "form.parse" },
+    );
 
     if (!files.file || !Array.isArray(files.file) || files.file.length === 0) {
       res.status(400).json({ error: "No file uploaded" });
@@ -78,10 +91,18 @@ export async function handleFileUpload(
     const newFilePath = path.join(DATA_DIR, newFileName);
 
     // Move uploaded file to final location
-    await fs.rename(uploadedFile.filepath, newFilePath);
+    await profileTime(
+      "files.rename",
+      () => fs.rename(uploadedFile.filepath, newFilePath),
+      { file: "files.ts", fn: "fs.rename", await: "fs.rename" },
+    );
 
     // Get file stats
-    const stats = await fs.stat(newFilePath);
+    const stats = await profileTime("files.stat", () => fs.stat(newFilePath), {
+      file: "files.ts",
+      fn: "fs.stat",
+      await: "fs.stat",
+    });
 
     // Create file metadata
     const fileMetadata: FileMetadata = {
@@ -94,9 +115,17 @@ export async function handleFileUpload(
     };
 
     // Update index
-    const index = await loadFileIndex();
+    const index = await profileTime(
+      "files.loadFileIndex",
+      () => loadFileIndex(),
+      { file: "files.ts", fn: "loadFileIndex", await: "loadFileIndex" },
+    );
     index[fileId] = fileMetadata;
-    await saveFileIndex(index);
+    await profileTime("files.saveFileIndex", () => saveFileIndex(index), {
+      file: "files.ts",
+      fn: "saveFileIndex",
+      await: "saveFileIndex",
+    });
 
     console.log(`File uploaded: ${fileName} (${fileId})`);
 

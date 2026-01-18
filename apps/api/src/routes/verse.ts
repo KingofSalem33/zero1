@@ -4,6 +4,7 @@ import { VerseRef } from "../bible/types";
 import { CachedBibleService } from "../bible/CachedBibleService";
 import { getCache } from "../infrastructure/cache/cacheInstance";
 import { getCrossReferences } from "../bible/crossReferences";
+import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
 
@@ -39,6 +40,10 @@ function parseReference(reference: string): VerseRef | null {
 // GET /api/verse/:reference - Get verse text by reference
 router.get("/:reference", readOnlyLimiter, async (req, res) => {
   try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("verse_get");
+    profiler?.markHandlerStart();
+
     const { reference } = req.params;
 
     // Decode URL encoding (spaces become %20)
@@ -58,7 +63,15 @@ router.get("/:reference", readOnlyLimiter, async (req, res) => {
     }
 
     // Fetch the verse
-    const verse = await cachedBibleService.getVerse(verseRef);
+    const verse = await profileTime(
+      "verse.getVerse",
+      () => cachedBibleService.getVerse(verseRef),
+      {
+        file: "bible/CachedBibleService.ts",
+        fn: "getVerse",
+        await: "cachedBibleService.getVerse",
+      },
+    );
 
     if (!verse) {
       return res.status(404).json({
@@ -95,6 +108,10 @@ router.get(
   readOnlyLimiter,
   async (req, res) => {
     try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("verse_cross_refs");
+      profiler?.markHandlerStart();
+
       const { reference } = req.params;
 
       // Decode URL encoding (spaces become %20)
@@ -114,7 +131,15 @@ router.get(
       }
 
       // Get cross-references from OpenBible.info dataset
-      const crossRefs = await getCrossReferences(verseRef);
+      const crossRefs = await profileTime(
+        "verse.getCrossReferences",
+        () => getCrossReferences(verseRef),
+        {
+          file: "bible/crossReferences.ts",
+          fn: "getCrossReferences",
+          await: "getCrossReferences",
+        },
+      );
 
       // Return the references
       return res.json({
