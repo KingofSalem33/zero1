@@ -1,14 +1,14 @@
 /**
- * Graph Walker: Budgeted BFS for Expanding Ring Architecture
+ * Graph Walker: Adaptive Expansion for Expanding Ring Architecture
  *
  * This module walks the Bible cross-reference graph using breadth-first search
  * with hard caps to prevent data explosion.
  *
  * Architecture:
  * - Ring 0: Anchor verse ± 3 verses (immediate context)
- * - Ring 1: Direct cross-references (max 20)
- * - Ring 2: References of references (max 30)
- * - Ring 3: Deep thematic links (max 40)
+ * - Ring 1: Start with a small set (default 3) and score for signal
+ * - Ring 2: Expand based on strong connections from Ring 1
+ * - Ring 3: Expand based on strong connections from Ring 2
  */
 
 import { supabase } from "../db";
@@ -64,9 +64,9 @@ export interface ContextBundle {
 
 export interface RingConfig {
   ring0Radius: number; // How many verses before/after anchor (default: 3)
-  ring1Limit: number; // Max direct refs (default: 20)
-  ring2Limit: number; // Max secondary refs (default: 30)
-  ring3Limit: number; // Max tertiary refs (default: 40)
+  ring1Limit: number; // Max direct refs (cap)
+  ring2Limit: number; // Max secondary refs (cap)
+  ring3Limit: number; // Max tertiary refs (cap)
   gravity?: Partial<GravityConfig>;
   adaptive?: {
     enabled?: boolean;
@@ -82,6 +82,13 @@ const DEFAULT_CONFIG: RingConfig = {
   ring1Limit: 20,
   ring2Limit: 30,
   ring3Limit: 40,
+  adaptive: {
+    enabled: true,
+    startLimit: 3,
+    minLimit: 2,
+    multiplier: 2,
+    signalThreshold: 0.8,
+  },
 };
 
 interface GravityConfig {
@@ -406,11 +413,14 @@ async function fetchPriorityLayer(
     },
   }));
 
-  const maxScore = sorted.length > 0 ? sorted[0][1].score : 0;
   const threshold = typeof signalThreshold === "number" ? signalThreshold : 0;
+  const edgeWeights = sorted.map(([, info]) =>
+    typeof info.bestEdge.weight === "number" ? info.bestEdge.weight : 0.6,
+  );
+  const maxWeight = edgeWeights.length > 0 ? Math.max(...edgeWeights) : 0;
   const strongCount =
-    typeof signalThreshold === "number" && maxScore > 0
-      ? sorted.filter(([, info]) => info.score >= maxScore * threshold).length
+    typeof signalThreshold === "number" && maxWeight > 0
+      ? edgeWeights.filter((weight) => weight >= maxWeight * threshold).length
       : 0;
 
   console.log(
@@ -423,7 +433,7 @@ async function fetchPriorityLayer(
     ...(typeof signalThreshold === "number"
       ? {
           stats: {
-            maxScore,
+            maxScore: maxWeight,
             strongCount,
             threshold,
           },

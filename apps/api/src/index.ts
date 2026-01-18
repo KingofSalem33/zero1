@@ -835,19 +835,7 @@ app.post(
           () =>
             buildVisualBundle(
               anchorIds[0],
-              {
-                ring0Radius: 3,
-                ring1Limit: 20,
-                ring2Limit: 30,
-                ring3Limit: 40,
-                adaptive: {
-                  enabled: true,
-                  startLimit: 3,
-                  minLimit: 2,
-                  multiplier: 2,
-                  signalThreshold: 0.8,
-                },
-              },
+              {},
               {
                 includeDEEPER: true,
                 includeROOTS: true,

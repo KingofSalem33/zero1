@@ -1068,14 +1068,8 @@ export async function buildMultiAnchorTree(
     `[Multi-Anchor] Building combined tree from ${uniqueAnchorIds.length} anchors`,
   );
 
-  // Adjust tree depth based on number of anchors to stay within node limits
-  // More anchors = shallower trees per anchor
-  const depthPerAnchor =
-    uniqueAnchorIds.length === 1 ? 6 : uniqueAnchorIds.length === 2 ? 4 : 3;
-  const nodesPerAnchor = Math.floor(100 / uniqueAnchorIds.length);
-
   console.log(
-    `[Multi-Anchor] Building trees with depth=${depthPerAnchor}, nodes=${nodesPerAnchor} per anchor`,
+    `[Multi-Anchor] Building trees with adaptive expansion across ${uniqueAnchorIds.length} anchors`,
   );
 
   // Build a tree from each anchor
@@ -1094,12 +1088,7 @@ export async function buildMultiAnchorTree(
       () =>
         buildVisualBundle(
           anchorId,
-          {
-            ring0Radius: depthPerAnchor,
-            ring1Limit: 5,
-            ring2Limit: 5,
-            ring3Limit: 5,
-          },
+          {},
           {
             includeDEEPER: true,
             includeROOTS: true,
@@ -1395,36 +1384,13 @@ export async function explainScriptureWithKernelStream(
     visualBundle = (await profileTime(
       "exegesis.buildVisualBundle",
       () =>
-        buildVisualBundle(
-          anchorId,
-          isFastMap
-            ? {
-                ring0Radius: 1,
-                ring1Limit: 7,
-                ring2Limit: 0,
-                ring3Limit: 0,
-              }
-            : {
-                ring0Radius: 3,
-                ring1Limit: 20,
-                ring2Limit: 30,
-                ring3Limit: 40,
-                adaptive: {
-                  enabled: true,
-                  startLimit: 3,
-                  minLimit: 2,
-                  multiplier: 2,
-                  signalThreshold: 0.8,
-                },
-              },
-          {
-            includeDEEPER: true,
-            includeROOTS: true,
-            includeECHOES: true,
-            includePROPHECY: true,
-            includeGENEALOGY: false,
-          },
-        ),
+        buildVisualBundle(anchorId, isFastMap ? { ring3Limit: 0 } : {}, {
+          includeDEEPER: true,
+          includeROOTS: true,
+          includeECHOES: true,
+          includePROPHECY: true,
+          includeGENEALOGY: false,
+        }),
       {
         file: "bible/graphWalker.ts",
         fn: "buildVisualBundle",

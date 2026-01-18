@@ -17,6 +17,34 @@ type PericopeConnection = {
   shared_themes: string[] | null;
 };
 
+type AdaptiveConfig = {
+  enabled?: boolean;
+  startLimit?: number;
+  minLimit?: number;
+  multiplier?: number;
+  signalThreshold?: number;
+};
+
+type PericopeRingConfig = {
+  ring1Limit?: number;
+  ring2Limit?: number;
+  adaptive?: AdaptiveConfig;
+};
+
+const DEFAULT_RING_CONFIG: Required<
+  Pick<PericopeRingConfig, "ring1Limit" | "ring2Limit">
+> & { adaptive: Required<AdaptiveConfig> } = {
+  ring1Limit: 12,
+  ring2Limit: 18,
+  adaptive: {
+    enabled: true,
+    startLimit: 3,
+    minLimit: 2,
+    multiplier: 2,
+    signalThreshold: 0.8,
+  },
+};
+
 const EDGE_TYPE_MAP: Record<string, VisualEdge["type"]> = {
   NARRATIVE_PARALLEL: "TYPOLOGY",
   THEMATIC_ECHO: "PATTERN",
@@ -61,10 +89,27 @@ const getPericopeConnections = async (
 
 export async function buildPericopeBundle(
   pericopeId: number,
-  ringConfig: { ring1Limit?: number; ring2Limit?: number } = {},
+  ringConfig: PericopeRingConfig = {},
 ): Promise<VisualContextBundle | null> {
-  const ring1Limit = ringConfig.ring1Limit ?? 12;
-  const ring2Limit = ringConfig.ring2Limit ?? 18;
+  const cfg: PericopeRingConfig = {
+    ...DEFAULT_RING_CONFIG,
+    ...ringConfig,
+    adaptive: {
+      ...DEFAULT_RING_CONFIG.adaptive,
+      ...(ringConfig.adaptive ?? {}),
+    },
+  };
+  const clampLimit = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, value));
+
+  let ring1Limit = cfg.ring1Limit ?? DEFAULT_RING_CONFIG.ring1Limit;
+  let ring2Limit = cfg.ring2Limit ?? DEFAULT_RING_CONFIG.ring2Limit;
+
+  if (cfg.adaptive?.enabled) {
+    const adaptiveStart = cfg.adaptive?.startLimit ?? 3;
+    const adaptiveMin = cfg.adaptive?.minLimit ?? 2;
+    ring1Limit = clampLimit(adaptiveStart, adaptiveMin, ring1Limit);
+  }
 
   const anchor = await getPericopeById(pericopeId);
   if (!anchor) return null;
@@ -103,31 +148,60 @@ export async function buildPericopeBundle(
     });
   }
 
-  const ring2Connections: PericopeConnection[] = [];
-  for (const ring1 of ring1Targets) {
-    const nextConnections = await getPericopeConnections(
-      ring1.id,
-      Math.ceil(ring2Limit / Math.max(ring1Targets.length, 1)),
+  if (cfg.adaptive?.enabled) {
+    const threshold = cfg.adaptive?.signalThreshold ?? 0.8;
+    const maxScore = ring1Targets.reduce(
+      (max, target) => Math.max(max, target.connection.similarity_score ?? 0),
+      0,
     );
-    ring2Connections.push(...nextConnections);
+    const strongCount =
+      maxScore > 0
+        ? ring1Targets.filter(
+            (target) =>
+              target.connection.similarity_score >= maxScore * threshold,
+          ).length
+        : 0;
+
+    if (strongCount === 0) {
+      ring2Limit = 0;
+    } else {
+      const adaptiveMin = cfg.adaptive?.minLimit ?? 2;
+      const adaptiveMultiplier = cfg.adaptive?.multiplier ?? 2;
+      ring2Limit = clampLimit(
+        strongCount * adaptiveMultiplier,
+        adaptiveMin,
+        ring2Limit,
+      );
+    }
   }
 
-  for (const connection of ring2Connections.slice(0, ring2Limit)) {
-    if (visited.has(connection.target_pericope_id)) continue;
-    const pericope = await getPericopeById(connection.target_pericope_id);
-    if (!pericope) continue;
-    nodes.push(buildPericopeNode(pericope, 2, connection.source_pericope_id));
-    edges.push({
-      from: connection.source_pericope_id,
-      to: connection.target_pericope_id,
-      weight: connection.similarity_score,
-      type: EDGE_TYPE_MAP[connection.connection_type] || "DEEPER",
-      metadata: {
-        connection_type: connection.connection_type,
-        shared_themes: connection.shared_themes || [],
-      },
-    });
-    visited.add(connection.target_pericope_id);
+  if (ring2Limit > 0) {
+    const ring2Connections: PericopeConnection[] = [];
+    for (const ring1 of ring1Targets) {
+      const nextConnections = await getPericopeConnections(
+        ring1.id,
+        Math.ceil(ring2Limit / Math.max(ring1Targets.length, 1)),
+      );
+      ring2Connections.push(...nextConnections);
+    }
+
+    for (const connection of ring2Connections.slice(0, ring2Limit)) {
+      if (visited.has(connection.target_pericope_id)) continue;
+      const pericope = await getPericopeById(connection.target_pericope_id);
+      if (!pericope) continue;
+      nodes.push(buildPericopeNode(pericope, 2, connection.source_pericope_id));
+      edges.push({
+        from: connection.source_pericope_id,
+        to: connection.target_pericope_id,
+        weight: connection.similarity_score,
+        type: EDGE_TYPE_MAP[connection.connection_type] || "DEEPER",
+        metadata: {
+          connection_type: connection.connection_type,
+          shared_themes: connection.shared_themes || [],
+        },
+      });
+      visited.add(connection.target_pericope_id);
+    }
   }
 
   return {
