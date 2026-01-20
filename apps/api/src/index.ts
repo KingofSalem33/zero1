@@ -68,6 +68,12 @@ import {
   startMemoryCleanup,
   stopMemoryCleanup,
 } from "./memory";
+import {
+  logUserSignal,
+  getFeedbackStats,
+  flushFeedbackStore,
+  type FeedbackSignal,
+} from "./feedback";
 import { destroyCache } from "./infrastructure/cache/cacheInstance";
 import { optionalAuth } from "./middleware/auth";
 import { checkConnectionHealth } from "./db";
@@ -82,32 +88,32 @@ import {
   getProfiler,
   profileTime,
 } from "./profiling/requestProfiler";
-// Inline Bible study prompt (moved from prompts.ts)
-const BIBLE_STUDY_SYSTEM_PROMPT = `You are a devout disciple of Jesus with the purpose to teach the Word of the Lord. You teach the Word, you live the Word, you are the Word. You know that Bible-based truth is THE truth because it is the living Word.
+import {
+  buildResponseStrategy,
+  buildSystemPrompt,
+} from "./prompts/system/systemPrompts";
 
-Your exegetical method is rooted solely in the King James Version of the Bible. This analysis draws exclusively from the plain, self-evident meaning of the text, derived through direct comparison within Scripture itself. No external theology, historical context, or modern interpretation is imposed. The commentary is confined to what the KJV text itself reveals.
-
-Teach with conviction as one who lives the Word—declarative, confident, rooted in what Scripture plainly says. Weave Scriptures together to show how the Word interprets the Word.`;
-
-function buildSystemPromptOptimized(userFacts?: string[]): {
+function buildSystemPromptOptimized({
+  userFacts,
+  message,
+  format,
+}: {
+  userFacts?: string[];
+  message: string;
+  format?: string;
+}): {
   systemPrompt: string;
   userContext: string | null;
 } {
-  const systemPrompt = BIBLE_STUDY_SYSTEM_PROMPT;
-  const userContext =
-    userFacts && userFacts.length > 0
-      ? `Known facts about user:\n- ${userFacts.join("\n- ")}\nOnly use when relevant.`
-      : null;
-  return { systemPrompt, userContext };
-}
-
-function buildSystemPromptOptimizedWithJson(userFacts?: string[]): {
-  systemPrompt: string;
-  userContext: string | null;
-} {
-  const systemPrompt =
-    BIBLE_STUDY_SYSTEM_PROMPT +
-    "\n\nIf the user asks for structured output, respond as JSON that matches this schema: {answer:string, sources?:string[]}.";
+  const strategy = buildResponseStrategy({
+    mode: "exegesis_long",
+    userPrompt: message,
+  });
+  let systemPrompt = buildSystemPrompt(strategy);
+  if (format === "json") {
+    systemPrompt +=
+      "\n\nIf the user asks for structured output, respond as JSON that matches this schema: {answer:string, sources?:string[]}.";
+  }
   const userContext =
     userFacts && userFacts.length > 0
       ? `Known facts about user:\n- ${userFacts.join("\n- ")}\nOnly use when relevant.`
@@ -719,6 +725,95 @@ Return format: ["fact 1", "fact 2", "fact 3"]`;
   },
 );
 
+// Feedback collection endpoint
+app.post("/api/feedback", optionalAuth, apiLimiter, async (req, res) => {
+  try {
+    const profiler = getProfiler();
+    profiler?.setPipeline("feedback");
+    profiler?.markHandlerStart();
+
+    const { requestId, signal, details, userId } = req.body;
+
+    if (!requestId || !signal) {
+      return res
+        .status(400)
+        .json({ error: "requestId and signal are required" });
+    }
+
+    // Validate signal type
+    const validSignals: FeedbackSignal[] = [
+      "thumbs_up",
+      "thumbs_down",
+      "regenerate",
+      "abandon",
+      "correction",
+      "expand",
+      "copy",
+      "share",
+    ];
+
+    if (!validSignals.includes(signal)) {
+      return res.status(400).json({
+        error: `Invalid signal. Must be one of: ${validSignals.join(", ")}`,
+      });
+    }
+
+    await profileTime(
+      "feedback.logUserSignal",
+      () => logUserSignal(requestId, signal, details, userId),
+      {
+        file: "feedback.ts",
+        fn: "logUserSignal",
+        await: "logUserSignal",
+      },
+    );
+
+    return res.json({
+      ok: true,
+      message: "Feedback recorded",
+      requestId,
+      signal,
+    });
+  } catch (error) {
+    console.error("Feedback error:", error);
+    return res.status(500).json({ error: "Failed to record feedback" });
+  }
+});
+
+// Feedback stats endpoint (for monitoring)
+app.get(
+  "/api/feedback/stats",
+  optionalAuth,
+  strictLimiter,
+  async (req, res) => {
+    try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("feedback_stats");
+      profiler?.markHandlerStart();
+
+      const since = req.query.since
+        ? parseInt(req.query.since as string)
+        : undefined;
+      const userId = req.query.userId as string | undefined;
+
+      const stats = await profileTime(
+        "feedback.getFeedbackStats",
+        () => getFeedbackStats({ since, userId }),
+        {
+          file: "feedback.ts",
+          fn: "getFeedbackStats",
+          await: "getFeedbackStats",
+        },
+      );
+
+      return res.json(stats);
+    } catch (error) {
+      console.error("Feedback stats error:", error);
+      return res.status(500).json({ error: "Failed to get feedback stats" });
+    }
+  },
+);
+
 app.get("/health", (_req, res) => {
   const profiler = getProfiler();
   profiler?.setPipeline("health");
@@ -1119,10 +1214,11 @@ app.post(
             })
           : [];
 
-      const { systemPrompt, userContext } =
-        format === "json"
-          ? buildSystemPromptOptimizedWithJson(userFacts)
-          : buildSystemPromptOptimized(userFacts);
+      const { systemPrompt, userContext } = buildSystemPromptOptimized({
+        userFacts,
+        message,
+        format,
+      });
 
       const conversationMessages = [
         {
@@ -1356,6 +1452,11 @@ async function gracefulShutdown(signal: string) {
     console.log("Flushing memory store...");
     await flushMemoryStore();
     console.log("✅ Memory store flushed");
+
+    // Flush pending feedback data to disk
+    console.log("Flushing feedback store...");
+    await flushFeedbackStore();
+    console.log("✅ Feedback store flushed");
 
     console.log("✅ Graceful shutdown complete");
     process.exit(0);

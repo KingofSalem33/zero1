@@ -82,7 +82,56 @@ export function selectCoreVerses(
     centrality.set(n.id, connectionCount);
   });
 
-  // 4. Fill remaining with highest centrality
+  // 4. Prefer pericope representatives (one per pericope where possible)
+  const pericopeScopeIds = new Set<number>(
+    bundle.pericopeBundle?.nodes?.map((node) => node.id) || [],
+  );
+  const pericopeGroups = new Map<number, ThreadNode[]>();
+  nodes.forEach((node) => {
+    if (selected.has(node.id)) return;
+    const pericopeId = node.pericopeId;
+    if (!pericopeId) return;
+    if (pericopeScopeIds.size > 0 && !pericopeScopeIds.has(pericopeId)) {
+      return;
+    }
+    const group = pericopeGroups.get(pericopeId) || [];
+    group.push(node);
+    pericopeGroups.set(pericopeId, group);
+  });
+
+  const pericopeRepresentatives: ThreadNode[] = [];
+  pericopeGroups.forEach((group) => {
+    const top = group.sort((a, b) => {
+      const aCentrality = centrality.get(a.id) || 0;
+      const bCentrality = centrality.get(b.id) || 0;
+      if (bCentrality !== aCentrality) return bCentrality - aCentrality;
+      return (b.similarity || 0) - (a.similarity || 0);
+    })[0];
+    if (top) pericopeRepresentatives.push(top);
+  });
+
+  pericopeRepresentatives
+    .sort((a, b) => {
+      const aCentrality = centrality.get(a.id) || 0;
+      const bCentrality = centrality.get(b.id) || 0;
+      if (bCentrality !== aCentrality) return bCentrality - aCentrality;
+      return (b.similarity || 0) - (a.similarity || 0);
+    })
+    .forEach((node) => {
+      if (selected.size >= limit) return;
+      selected.add(node.id);
+    });
+
+  if (pericopeRepresentatives.length > 0) {
+    console.log(
+      `[Connection Discovery] Added ${Math.min(
+        pericopeRepresentatives.length,
+        limit,
+      )} pericope representatives`,
+    );
+  }
+
+  // 5. Fill remaining with highest centrality
   const remaining = nodes
     .filter((n) => !selected.has(n.id))
     .sort((a, b) => {
@@ -97,7 +146,7 @@ export function selectCoreVerses(
     `[Connection Discovery] Added ${remaining.length} high-centrality nodes`,
   );
 
-  // 5. Ensure at least 1 OT verse if any exist (for cross-testament discovery)
+  // 6. Ensure at least 1 OT verse if any exist (for cross-testament discovery)
   const isOT = (bookName: string) => {
     const otBooks = [
       "Genesis",

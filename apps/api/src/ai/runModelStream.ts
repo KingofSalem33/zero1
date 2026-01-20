@@ -5,6 +5,17 @@ import pino from "pino";
 import { ENV } from "../env";
 import type { Response } from "express";
 import { profileSpan, profileTime } from "../profiling/requestProfiler";
+import {
+  validateExegesisOutput,
+  type ValidationResult,
+  type ValidationOptions,
+} from "./outputValidation";
+import { enforceGuardrails, type GuardrailResult } from "./guardrails";
+import {
+  generateRequestId,
+  logResponseMetadata,
+  createMetadataBuilder,
+} from "../feedback";
 
 const logger = pino({ name: "runModelStream" });
 
@@ -213,6 +224,14 @@ export interface RunModelStreamOptions {
   promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
   promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
   keepAlive?: boolean; // If true, don't send done event or close response (caller will handle)
+  // Validation options
+  validation?: ValidationOptions;
+  enableValidation?: boolean; // Default: true
+  enableGuardrails?: boolean; // Default: true
+  // Metadata tracking
+  requestId?: string; // For feedback correlation
+  userId?: string;
+  taskType?: string; // For model routing analytics
 }
 
 /**
@@ -240,7 +259,19 @@ export async function runModelStream(
     promptCacheRetention, // Optional: "24h" for extended cache retention
     promptCacheKey, // Optional: Custom key for cache routing
     keepAlive = false, // If true, caller will handle done event and closing response
+    validation,
+    enableValidation = true,
+    enableGuardrails = true,
+    requestId = generateRequestId(),
+    userId,
+    taskType,
   } = options;
+
+  // Create metadata builder for tracking
+  const metadataBuilder = createMetadataBuilder(requestId);
+  metadataBuilder.setModel(model);
+  if (taskType) metadataBuilder.setTaskType(taskType);
+  if (userId) metadataBuilder.setUserId(userId);
 
   // Set reasoning effort based on model capabilities
   // Nano doesn't support reasoning mode - only mini/pro/opus do
@@ -320,6 +351,80 @@ export async function runModelStream(
     cleanup();
     logger.info("Client disconnected, cleaned up resources");
   });
+
+  // Helper to finalize stream with validation and metadata
+  const finalizeStream = async (
+    finalText: string,
+    citations: string[],
+  ): Promise<void> => {
+    // Run validation if enabled
+    let validationResult: ValidationResult | null = null;
+    if (enableValidation && finalText.length > 0) {
+      validationResult = validateExegesisOutput(finalText, validation);
+      if (!validationResult.valid || validationResult.issues.length > 0) {
+        logger.warn(
+          {
+            valid: validationResult.valid,
+            issueCount: validationResult.issues.length,
+            metrics: validationResult.metrics,
+          },
+          "Output validation issues detected",
+        );
+      }
+    }
+
+    // Run guardrails if enabled
+    let guardrailResult: GuardrailResult | null = null;
+    if (enableGuardrails && finalText.length > 0) {
+      guardrailResult = enforceGuardrails(finalText);
+      if (!guardrailResult.passed || guardrailResult.violations.length > 0) {
+        logger.warn(
+          {
+            passed: guardrailResult.passed,
+            violationCount: guardrailResult.violations.length,
+          },
+          "Guardrail violations detected",
+        );
+      }
+    }
+
+    // Update metadata with content metrics
+    if (validationResult) {
+      metadataBuilder.setContentMetrics({
+        citations: validationResult.metrics.citationCount,
+        words: validationResult.metrics.wordCount,
+        hasH2: validationResult.metrics.hasH2Header,
+      });
+      metadataBuilder.setQualitySignals({
+        validation: validationResult.valid,
+        guardrails: guardrailResult?.passed ?? true,
+        warnings: validationResult.issues.length,
+      });
+    }
+
+    // Log metadata for analytics
+    try {
+      await logResponseMetadata(metadataBuilder.build());
+    } catch (err) {
+      logger.error({ err }, "Failed to log response metadata");
+    }
+
+    // Send done event with request ID for feedback correlation
+    if (!keepAlive) {
+      sendEvent("done", {
+        requestId,
+        citations: [...new Set(citations)],
+        validation: validationResult
+          ? {
+              valid: validationResult.valid,
+              metrics: validationResult.metrics,
+              issueCount: validationResult.issues.length,
+            }
+          : undefined,
+      });
+      res.end();
+    }
+  };
 
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
@@ -520,30 +625,21 @@ export async function runModelStream(
         if (streamStartNs) {
           profileSpan(
             "llm.stream_total",
-
             streamStartNs,
-
             process.hrtime.bigint(),
-
             {
               file: "ai/runModelStream.ts",
-
               fn: "runModelStream",
-
               await: "stream_complete",
-
               model,
             },
           );
         }
-        cleanup(); // ✅ Use cleanup function
+        cleanup();
 
-        // Only send done event and close response if keepAlive is false
-        if (!keepAlive) {
-          sendEvent("done", { citations: [...new Set(allCitations)] });
-          res.end();
-        }
-        return accumulatedResponse; // Return accumulated response across all iterations
+        // Finalize with validation and metadata
+        await finalizeStream(accumulatedResponse, allCitations);
+        return accumulatedResponse;
       }
 
       // Convert output items to tool call format for processing
@@ -571,29 +667,20 @@ export async function runModelStream(
         if (streamStartNs) {
           profileSpan(
             "llm.stream_total",
-
             streamStartNs,
-
             process.hrtime.bigint(),
-
             {
               file: "ai/runModelStream.ts",
-
               fn: "runModelStream",
-
               await: "stream_complete",
-
               model,
             },
           );
         }
-        cleanup(); // ✅ Use cleanup function
+        cleanup();
 
-        // Only send done event and close response if keepAlive is false
-        if (!keepAlive) {
-          sendEvent("done", { citations: [...new Set(allCitations)] });
-          res.end();
-        }
+        // Finalize with validation and metadata
+        await finalizeStream(accumulatedResponse, allCitations);
         return accumulatedResponse;
       }
 
@@ -744,27 +831,17 @@ export async function runModelStream(
       `[runModelStream] Max iterations reached. Returning ${accumulatedResponse.length} total chars.`,
     );
     if (streamStartNs) {
-      profileSpan(
-        "llm.stream_total",
-
-        streamStartNs,
-
-        process.hrtime.bigint(),
-
-        {
-          file: "ai/runModelStream.ts",
-
-          fn: "runModelStream",
-
-          await: "stream_complete",
-
-          model,
-        },
-      );
+      profileSpan("llm.stream_total", streamStartNs, process.hrtime.bigint(), {
+        file: "ai/runModelStream.ts",
+        fn: "runModelStream",
+        await: "stream_complete",
+        model,
+      });
     }
-    cleanup(); // ✅ Use cleanup function
-    sendEvent("done", { citations: [...new Set(allCitations)] });
-    res.end();
+    cleanup();
+
+    // Finalize with validation and metadata
+    await finalizeStream(accumulatedResponse, allCitations);
     return accumulatedResponse;
   } catch (error) {
     logger.error(
@@ -772,26 +849,24 @@ export async function runModelStream(
       "Streaming failed",
     );
     if (streamStartNs) {
-      profileSpan(
-        "llm.stream_total",
-
-        streamStartNs,
-
-        process.hrtime.bigint(),
-
-        {
-          file: "ai/runModelStream.ts",
-
-          fn: "runModelStream",
-
-          await: "stream_complete",
-
-          model,
-        },
-      );
+      profileSpan("llm.stream_total", streamStartNs, process.hrtime.bigint(), {
+        file: "ai/runModelStream.ts",
+        fn: "runModelStream",
+        await: "stream_complete",
+        model,
+      });
     }
-    cleanup(); // ✅ Use cleanup function
+    cleanup();
+
+    // Log metadata even on error
+    try {
+      await logResponseMetadata(metadataBuilder.build());
+    } catch (err) {
+      logger.error({ err }, "Failed to log response metadata on error");
+    }
+
     sendEvent("error", {
+      requestId,
       message:
         error instanceof Error ? error.message : "Unknown streaming error",
     });

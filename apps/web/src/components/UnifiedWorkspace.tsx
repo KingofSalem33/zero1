@@ -692,23 +692,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Track processed prompt to prevent StrictMode double-invocation
   const processedPromptRef = useRef<GoDeeperPayload | null>(null);
 
-  const extractSuggestedReference = useCallback(
-    (text: string): string | null => {
-      const questionIndex = text.lastIndexOf("?");
-      if (questionIndex === -1) return null;
-      const tail = text.slice(
-        Math.max(0, questionIndex - 240),
-        questionIndex + 1,
-      );
-      const matches = tail.match(
-        /\x5B(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?\x5D/g,
-      );
-      if (!matches || matches.length === 0) return null;
-      return matches[matches.length - 1].replace(/^\x5B|\x5D$/g, "");
-    },
-    [],
-  );
-
   const isAffirmation = useCallback((text: string): boolean => {
     const normalized = text.trim().toLowerCase();
     if (!normalized) return false;
@@ -757,6 +740,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     },
     [formatNodeReference, normalizeReference],
   );
+
+  const buildPericopeScopeSet = useCallback((bundle: VisualContextBundle) => {
+    const ids = bundle.pericopeBundle?.nodes?.map((node) => node.id) || [];
+    if (ids.length > 0) return new Set(ids);
+    if (bundle.pericopeContext?.id) return new Set([bundle.pericopeContext.id]);
+    return new Set<number>();
+  }, []);
 
   const extractReferences = useCallback((text: string): string[] => {
     const matches = text.match(REFERENCE_REGEX);
@@ -910,19 +900,36 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       nextConnection: MapConnection | null;
       nextCluster: MapSession["cluster"] | undefined;
     } => {
+      const pericopeScope = buildPericopeScopeSet(bundle);
+      const nodeLookup = new Map(bundle.nodes.map((node) => [node.id, node]));
+      const isEdgeInScope = (fromId: number, toId: number) => {
+        if (pericopeScope.size === 0) return true;
+        const fromNode = nodeLookup.get(fromId);
+        const toNode = nodeLookup.get(toId);
+        if (!fromNode || !toNode) return false;
+        if (!fromNode.pericopeId || !toNode.pericopeId) return false;
+        return (
+          pericopeScope.has(fromNode.pericopeId) &&
+          pericopeScope.has(toNode.pericopeId)
+        );
+      };
+
       if (cluster) {
         const edges = buildClusterEdges(bundle, cluster);
-        const nextInCluster = edges
-          .filter(
-            (edge) =>
-              !visited.has(
-                buildEdgeKey(edge.connectionType, edge.fromId, edge.toId),
-              ),
-          )
-          .sort((a, b) => {
-            if (b.weight !== a.weight) return b.weight - a.weight;
-            return a.toId - b.toId;
-          })[0];
+        const filtered = edges.filter(
+          (edge) =>
+            !visited.has(
+              buildEdgeKey(edge.connectionType, edge.fromId, edge.toId),
+            ),
+        );
+        const scopedEdges = filtered.filter((edge) =>
+          isEdgeInScope(edge.fromId, edge.toId),
+        );
+        const candidateEdges = scopedEdges.length > 0 ? scopedEdges : filtered;
+        const nextInCluster = candidateEdges.sort((a, b) => {
+          if (b.weight !== a.weight) return b.weight - a.weight;
+          return a.toId - b.toId;
+        })[0];
         if (nextInCluster) {
           return {
             nextConnection: {
@@ -936,30 +943,69 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       }
 
       const clusters = buildAllClusters(bundle)
-        .map((entry) => ({
-          ...entry,
-          edgeKeys: entry.verseIds.map((id) =>
+        .map((entry) => {
+          const edgeKeys = entry.verseIds.map((id) =>
             buildEdgeKey(entry.connectionType, entry.baseId, id),
-          ),
-        }))
-        .filter((entry) => entry.edgeKeys.some((key) => !visited.has(key)));
+          );
+          const remainingIds = entry.verseIds.filter(
+            (id) =>
+              !visited.has(
+                buildEdgeKey(entry.connectionType, entry.baseId, id),
+              ),
+          );
+          const inScopeIds = remainingIds.filter((id) =>
+            isEdgeInScope(entry.baseId, id),
+          );
+          const effectiveRemainingIds =
+            inScopeIds.length > 0 ? inScopeIds : remainingIds;
+          return {
+            ...entry,
+            edgeKeys,
+            inScopeCount: inScopeIds.length,
+            remainingIds: effectiveRemainingIds,
+            remainingCount: effectiveRemainingIds.length,
+          };
+        })
+        .filter((entry) => entry.remainingCount > 0);
 
       if (clusters.length === 0) {
         return { nextConnection: null, nextCluster: cluster };
       }
 
-      const sameBaseClusters = cluster
-        ? clusters.filter(
-            (candidate) =>
-              candidate.baseId === cluster.baseId &&
-              candidate.connectionType !== cluster.connectionType,
-          )
-        : [];
+      const remainingByType = clusters.reduce(
+        (acc, entry) => {
+          acc[entry.connectionType] =
+            (acc[entry.connectionType] || 0) + entry.remainingCount;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
+
+      const targetType = Object.entries(remainingByType).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })[0]?.[0];
+
+      const sameBaseTargetClusters =
+        cluster && targetType
+          ? clusters.filter(
+              (entry) =>
+                entry.baseId === cluster.baseId &&
+                entry.connectionType === targetType,
+            )
+          : [];
 
       const candidateClusters =
-        sameBaseClusters.length > 0 ? sameBaseClusters : clusters;
+        sameBaseTargetClusters.length > 0
+          ? sameBaseTargetClusters
+          : targetType
+            ? clusters.filter((entry) => entry.connectionType === targetType)
+            : clusters;
 
       candidateClusters.sort((a, b) => {
+        if (b.remainingCount !== a.remainingCount) {
+          return b.remainingCount - a.remainingCount;
+        }
         if (b.totalWeight !== a.totalWeight) {
           return b.totalWeight - a.totalWeight;
         }
@@ -971,18 +1017,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       });
 
       const selectedCluster = candidateClusters[0];
-      const nextId = selectedCluster.verseIds
-        .filter(
-          (id) =>
-            !visited.has(
-              buildEdgeKey(
-                selectedCluster.connectionType,
-                selectedCluster.baseId,
-                id,
-              ),
-            ),
-        )
-        .sort((a, b) => a - b)[0];
+      const nextId = selectedCluster.remainingIds.sort((a, b) => a - b)[0];
 
       if (!nextId) {
         return { nextConnection: null, nextCluster: cluster };
@@ -1001,7 +1036,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         },
       };
     },
-    [buildAllClusters, buildClusterEdges, buildEdgeKey],
+    [buildAllClusters, buildClusterEdges, buildEdgeKey, buildPericopeScopeSet],
   );
 
   const buildMapSessionPayload = useCallback(
@@ -1111,23 +1146,44 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     ],
   );
 
-  const buildConnectionPrompt = useCallback(
-    (bundle: VisualContextBundle, connection: MapConnection): PendingPrompt => {
-      const fromNode = bundle.nodes.find(
-        (node) => node.id === connection.fromId,
-      );
-      const toNode = bundle.nodes.find((node) => node.id === connection.toId);
-      const fromRef = fromNode ? formatNodeReference(fromNode) : "Unknown";
-      const toRef = toNode ? formatNodeReference(toNode) : "Unknown";
-      const promptText = `Discuss the connection between ${fromRef} and ${toRef}.`;
-      return {
-        displayText: promptText,
-        prompt: promptText,
-        mode: "go_deeper_short",
-        visualBundle: bundle,
-      };
+  /**
+   * Detect if a message is a contextual follow-up that doesn't need re-anchoring.
+   * Returns true if the question references existing context without introducing new verses.
+   */
+  const isContextualFollowUp = useCallback(
+    (message: string, hasBundle: boolean): boolean => {
+      if (!hasBundle) return false;
+
+      const normalized = message.trim().toLowerCase();
+      const wordCount = normalized.split(/\s+/).length;
+
+      // If there's an explicit verse reference, it's not a simple follow-up
+      const hasVerseRef = /\b\d?\s?[a-z]+\s+\d+:\d+/i.test(message);
+      if (hasVerseRef) return false;
+
+      // Pronoun-heavy questions reference prior context
+      const pronounPattern =
+        /\b(it|that|this|these|those|the same|what you said|you mentioned|the passage|the verse|the text)\b/i;
+      const hasPronoun = pronounPattern.test(normalized);
+
+      // Follow-up indicator phrases
+      const followUpPattern =
+        /^(what|why|how|can you|could you|tell me|explain|more about|go deeper|elaborate|clarify|meaning|significance|does this|does that|what does)/i;
+      const isFollowUpPhrase = followUpPattern.test(normalized);
+
+      // Short question with pronoun or follow-up phrase = contextual follow-up
+      if (wordCount <= 15 && (hasPronoun || isFollowUpPhrase)) {
+        return true;
+      }
+
+      // Very short questions without verse refs are likely follow-ups
+      if (wordCount <= 6) {
+        return true;
+      }
+
+      return false;
     },
-    [formatNodeReference],
+    [],
   );
 
   const startFullMapFetch = useCallback(
@@ -1173,16 +1229,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
         setMapSession((prevSession) => {
           if (!prevSession) return prevSession;
-          const { session, queuedConnection } = buildMapSessionPayload({
+          const { session } = buildMapSessionPayload({
             bundle,
             existingSession: prevSession,
             useQueuedConnection: false,
           });
-          if (queuedConnection) {
-            setNextSuggestedPrompt(
-              buildConnectionPrompt(bundle, queuedConnection),
-            );
-          }
           return session;
         });
       } catch (error) {
@@ -1192,7 +1243,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         fullMapRequestRef.current = null;
       }
     },
-    [buildConnectionPrompt, buildMapSessionPayload, setMessages],
+    [buildMapSessionPayload, setMessages],
   );
 
   // Handle pending prompt from Bible reader (auto-start stream)
@@ -1236,12 +1287,18 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   ),
               )
             : [];
+        const isFollowUp = isContextualFollowUp(
+          normalizedPrompt.displayText,
+          !!bundleForMap,
+        );
         const shouldReanchor =
           !bundleForMap ||
-          (!fullMapPending && (!hasExplicitRef || offMapReferences.length > 0));
+          (!fullMapPending &&
+            !isFollowUp &&
+            (!hasExplicitRef || offMapReferences.length > 0));
         let mapSessionPayload: MapSession | undefined;
         if (bundleForMap && (normalizedPrompt.mapSession || mapSession)) {
-          const { session, queuedConnection } = buildMapSessionPayload({
+          const { session } = buildMapSessionPayload({
             bundle: bundleForMap,
             seedSession: normalizedPrompt.mapSession || null,
             existingSession: mapSession,
@@ -1250,16 +1307,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           });
           mapSessionPayload = session;
           setMapSession(session);
-          if (queuedConnection) {
-            setNextSuggestedPrompt(
-              buildConnectionPrompt(bundleForMap, queuedConnection),
-            );
-          } else {
-            setNextSuggestedPrompt(null);
-          }
         } else if (shouldReanchor) {
           setMapSession(null);
-          setNextSuggestedPrompt(null);
           setVisualBundle(null);
           setMapPendingFullMessageId(null);
         }
@@ -1314,11 +1363,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     visualBundle,
     mapSession,
     buildMapSessionPayload,
-    buildConnectionPrompt,
     extractReferences,
     buildReferenceLookup,
     normalizeReference,
     fullMapPending,
+    startFullMapFetch,
   ]);
 
   // Reset processed prompt when prompt is consumed
@@ -1432,22 +1481,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         fullMapRequestRef.current.messageId = newMessage.id;
         setMapPendingFullMessageId(newMessage.id);
       }
-      if (visualBundle && mapSession?.nextConnection) {
-        setNextSuggestedPrompt(
-          buildConnectionPrompt(visualBundle, mapSession.nextConnection),
-        );
-      } else {
-        const suggestedRef = extractSuggestedReference(newMessage.content);
-        if (lastPromptModeRef.current === "go_deeper_short" && suggestedRef) {
-          setNextSuggestedPrompt({
-            displayText: suggestedRef,
-            prompt: suggestedRef,
-            mode: "go_deeper_short",
-          });
-        } else {
-          setNextSuggestedPrompt(null);
-        }
-      }
+      setNextSuggestedPrompt(null);
 
       setMessages((prev) => {
         console.log(
@@ -1480,8 +1514,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     visualBundle,
     mapSession,
     fullMapPending,
-    buildConnectionPrompt,
-    extractSuggestedReference,
   ]);
 
   const handleSendMessage = async (
@@ -1505,12 +1537,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setMapPrepCount(0);
     setMapReadyMessageId(null);
     setPendingVisualBundle(null);
-    const userMessage = promptInput;
     const shouldUseSuggested =
       !hasOverride && nextSuggestedPrompt && isAffirmation(inputText);
     const apiMessage = shouldUseSuggested
       ? nextSuggestedPrompt.prompt
-      : userMessage;
+      : promptInput;
+    const userMessage = apiMessage;
     const displayMessage = inputText;
 
     // Add user message to chat
@@ -1544,10 +1576,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               !buildReferenceLookup(bundleForMap!).has(normalizeReference(ref)),
           )
         : [];
+    const isFollowUp = isContextualFollowUp(userMessage, hasActiveBundle);
     const shouldReanchor =
       !hasActiveBundle ||
       (!fullMapPending &&
         !shouldUseSuggested &&
+        !isFollowUp &&
         (!hasExplicitRef || offMapReferences.length > 0));
     const mapPromptMode =
       shouldReanchor || hasActiveBundle || fullMapPending
@@ -1561,23 +1595,17 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
     lastPromptModeRef.current = promptMode ?? null;
 
+    const useQueuedConnection = shouldUseSuggested && !hasExplicitRef;
     let mapSessionPayload: MapSession | undefined;
     if (bundleForMap && !shouldReanchor) {
-      const { session, queuedConnection } = buildMapSessionPayload({
+      const { session } = buildMapSessionPayload({
         bundle: bundleForMap,
         existingSession: mapSession,
         inputText: userMessage,
-        useQueuedConnection: shouldUseSuggested,
+        useQueuedConnection,
       });
       mapSessionPayload = session;
       setMapSession(session);
-      if (queuedConnection) {
-        setNextSuggestedPrompt(
-          buildConnectionPrompt(bundleForMap, queuedConnection),
-        );
-      } else {
-        setNextSuggestedPrompt(null);
-      }
     } else if (shouldReanchor) {
       setMapSession(null);
       setNextSuggestedPrompt(null);
@@ -1866,8 +1894,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               !buildReferenceLookup(bundleForMap!).has(normalizeReference(ref)),
           )
         : [];
+    const isFollowUp = isContextualFollowUp(reference, hasActiveBundle);
     const shouldReanchor =
-      !hasActiveBundle || (!fullMapPending && offMapReferences.length > 0);
+      !hasActiveBundle ||
+      (!fullMapPending && !isFollowUp && offMapReferences.length > 0);
     const promptMode =
       shouldReanchor || hasActiveBundle || fullMapPending
         ? "go_deeper_short"
@@ -1875,7 +1905,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     let mapSessionPayload: MapSession | undefined;
     if (bundleForMap && !shouldReanchor) {
-      const { session, queuedConnection } = buildMapSessionPayload({
+      const { session } = buildMapSessionPayload({
         bundle: bundleForMap,
         existingSession: mapSession,
         inputText: reference,
@@ -1883,13 +1913,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       });
       mapSessionPayload = session;
       setMapSession(session);
-      if (queuedConnection) {
-        setNextSuggestedPrompt(
-          buildConnectionPrompt(bundleForMap, queuedConnection),
-        );
-      } else {
-        setNextSuggestedPrompt(null);
-      }
+      setNextSuggestedPrompt(null);
     } else if (shouldReanchor) {
       setMapSession(null);
       setNextSuggestedPrompt(null);

@@ -56,14 +56,14 @@ STRICT RULES:
 
 Example (translating John 1:12-13):
 ROOTS:
-- Will — θέλημα (Strong's G2307)
+- Will - thelema (Strong's G2307)
 what one wishes or wills
 
 A determination that proceeds from desire into intent, often carrying authority or resolve.
 In this context, human wishing or deciding cannot generate this life.
 Its source lies elsewhere.
 
-- Born — γεννάω (Strong's G1080)
+- Born - gennao (Strong's G1080)
 to be born, to be begotten
 
 To bring into existence from nothing, not to reshape what already is.

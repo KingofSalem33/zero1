@@ -16,8 +16,14 @@ import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 import type { ParallelPassage, PericopeBundle } from "./types";
 import { areSameTestament } from "./testamentUtil";
-import { type PromptMode, buildSystemPrompt } from "../prompts/systemPrompts";
+import {
+  type PromptMode,
+  buildResponseStrategy,
+  buildSystemPrompt,
+} from "../prompts/system/systemPrompts";
 import { profileSpan, profileTime } from "../profiling/requestProfiler";
+import { checkUserInput } from "../ai/guardrails";
+import { generateRequestId } from "../feedback";
 import {
   searchPericopesByQuery,
   getPericopeById,
@@ -1051,6 +1057,35 @@ Context: ${pericopeDetail.summary || pericopeDetail.full_text.slice(0, 420) + ".
     lines.push(
       "You must use ONLY verses listed in the tree below. Do not cite anything else.",
     );
+    if (mapSession.currentConnection) {
+      lines.push(
+        "Focus only on the CURRENT CONNECTION verses. Do not introduce other verses for interpretation.",
+      );
+      lines.push(
+        "If one of the CURRENT CONNECTION verses interprets the other, follow that wording only.",
+      );
+      lines.push(
+        "Do not propose any next verse or thread. Stay within the CURRENT TOPIC only.",
+      );
+    }
+    if (mapSession.cluster && mapSession.cluster.verseIds.length > 0) {
+      const topicIds = [
+        mapSession.cluster.baseId,
+        ...mapSession.cluster.verseIds.filter(
+          (id) => id !== mapSession.cluster!.baseId,
+        ),
+      ];
+      const topicRefs = topicIds.map((id) => formatRefById(id));
+      lines.push(
+        `CURRENT TOPIC (${mapSession.cluster.connectionType}): ${topicRefs
+          .map((ref, idx) => `#${topicIds[idx]} [${ref}]`)
+          .join(", ")}`,
+      );
+      lines.push(
+        "Explain the CURRENT TOPIC by weaving the most relevant verses into a coherent exegesis. Use as many verses as needed, not all.",
+      );
+      lines.push("Be concise and precise; every sentence must earn its place.");
+    }
     if (mapSession.offMapReferences && mapSession.offMapReferences.length > 0) {
       lines.push(
         `The user referenced ${mapSession.offMapReferences
@@ -1069,15 +1104,7 @@ Context: ${pericopeDetail.summary || pericopeDetail.full_text.slice(0, 420) + ".
     }
     if (mapSession.exhausted) {
       lines.push(
-        "STATUS: All connections in this map have been explored. Say this plainly and ask if they want another topic.",
-      );
-    } else if (mapSession.nextConnection) {
-      lines.push(
-        `NEXT TARGET: [${formatRefById(
-          mapSession.nextConnection.fromId,
-        )}] <> [${formatRefById(
-          mapSession.nextConnection.toId,
-        )}] (Type: ${mapSession.nextConnection.connectionType}). Use this exact target in the invitation.`,
+        "STATUS: All connections in this map have been explored. Say this plainly and end with closure (no question).",
       );
     }
     layers.push(lines.join("\n"));
@@ -1365,9 +1392,30 @@ export async function explainScriptureWithKernelStream(
       pericopeDetail,
       mapSession ?? undefined,
     );
-    const systemPrompt = buildSystemPrompt(promptMode);
+    const anchorRef = anchor
+      ? `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`
+      : undefined;
+    const strategy = buildResponseStrategy({
+      mode: promptMode,
+      userPrompt,
+      mapSession,
+      anchorRef,
+      pericopeTitle:
+        pericopeDetail?.title_generated || pericopeDetail?.title || undefined,
+    });
+    const systemPrompt = buildSystemPrompt(strategy);
 
-    // Stream the response directly
+    // Check user input for guardrail violations
+    const inputCheck = checkUserInput(userPrompt);
+    if (!inputCheck.passed) {
+      console.warn(
+        "[Exegesis] User input guardrail violation:",
+        inputCheck.violations,
+      );
+    }
+
+    // Stream the response directly with validation and guardrails enabled
+    const requestId = generateRequestId();
     await profileTime(
       "exegesis.prebuilt.runModelStream",
       () =>
@@ -1377,7 +1425,13 @@ export async function explainScriptureWithKernelStream(
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage },
           ],
-          { model: ENV.OPENAI_SMART_MODEL },
+          {
+            model: ENV.OPENAI_SMART_MODEL,
+            requestId,
+            taskType: "deep_exegesis",
+            enableValidation: true,
+            enableGuardrails: true,
+          },
         ),
       {
         file: "ai/runModelStream.ts",
@@ -1639,7 +1693,18 @@ export async function explainScriptureWithKernelStream(
   // === SINGLE-PASS STREAMING: Read tree, deliver teaching immediately ===
   console.log("[Fast Stream] Starting single-pass teaching generation...");
 
-  const systemPrompt = buildSystemPrompt(promptMode);
+  const anchorRef = anchor
+    ? `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`
+    : undefined;
+  const strategy = buildResponseStrategy({
+    mode: promptMode,
+    userPrompt,
+    mapSession,
+    anchorRef,
+    pericopeTitle:
+      pericopeContext?.title_generated || pericopeContext?.title || undefined,
+  });
+  const systemPrompt = buildSystemPrompt(strategy);
   // Use layered prompt builder (pericope context already fetched in Phase 1)
   const userMessage = buildLayeredUserMessage(
     userPrompt,
@@ -1648,6 +1713,17 @@ export async function explainScriptureWithKernelStream(
     mapSession ?? undefined,
   );
 
+  // Check user input for guardrail violations
+  const inputCheck = checkUserInput(userPrompt);
+  if (!inputCheck.passed) {
+    console.warn(
+      "[Exegesis] User input guardrail violation:",
+      inputCheck.violations,
+    );
+  }
+
+  // Stream with validation and guardrails enabled
+  const requestId = generateRequestId();
   await profileTime(
     "exegesis.runModelStream",
     () =>
@@ -1662,7 +1738,10 @@ export async function explainScriptureWithKernelStream(
           toolMap: {},
           model: ENV.OPENAI_SMART_MODEL,
           reasoningEffort: "low", // Explicit low reasoning for faster streaming
-          // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
+          requestId,
+          taskType: "deep_exegesis",
+          enableValidation: true,
+          enableGuardrails: true,
         },
       ),
     {

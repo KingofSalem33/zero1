@@ -99,7 +99,7 @@ export function SemanticConnectionModal({
   position,
   onClose,
   onGoDeeper,
-  explanation: _explanation, // Unused - we always fetch fresh synopsis
+  explanation,
   isLLMDiscovered,
   connectedVerseIds,
   connectedVersesPreview,
@@ -403,13 +403,18 @@ export function SemanticConnectionModal({
     if (!clusterVerseIds.includes(toVerse.id)) {
       clusterVerseIds.push(toVerse.id);
     }
+    const topicVerses = verses.map((verse) => ({
+      reference: verse.reference,
+      text: verse.text,
+    }));
     const goDeeperPrompt = buildGoDeeperPrompt({
       fromVerse,
       toVerse,
       connectionLabel,
       synopsis,
-      nextCandidates,
+      topicVerses,
       topicHints,
+      connectionExplanation: explanation,
     });
     const displayText = buildGoDeeperDisplayText({
       connectionLabel,
@@ -471,13 +476,6 @@ export function SemanticConnectionModal({
 
   const connectionColor = CONNECTION_COLORS[connectionType];
   const connectionLabel = CONNECTION_LABELS[connectionType];
-  const nextCandidates = useMemo(
-    () =>
-      verses
-        .filter((verse) => verse.id !== fromVerse.id && verse.id !== toVerse.id)
-        .slice(0, 3),
-    [verses, fromVerse.id, toVerse.id],
-  );
   const topicHints = useMemo(() => {
     if (!Array.isArray(connectionTopics) || connectionTopics.length === 0) {
       return [];

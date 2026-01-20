@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import pino from "pino";
 import { ENV } from "../env";
 import { profileTime } from "../profiling/requestProfiler";
+import { type TaskType, getModelConfig, recordModelUsage } from "./modelRouter";
 
 const logger = pino({ name: "runModel" });
 
@@ -145,6 +146,8 @@ export interface RunModelOptions {
   // These parameters are for advanced optimization
   promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
   promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
+  // Model routing - use task type for automatic model selection
+  taskType?: TaskType;
 }
 
 export interface RunModelResult {
@@ -169,7 +172,6 @@ export async function runModel(
     toolSpecs = [],
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
-    model = ENV.OPENAI_MODEL_NAME,
     reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
     onToolCall,
@@ -178,7 +180,32 @@ export async function runModel(
     responseFormat,
     promptCacheRetention, // Optional: "24h" for extended cache retention
     promptCacheKey, // Optional: Custom key for cache routing
+    taskType,
   } = options;
+
+  // Resolve model from task type or use explicit model or default
+  const resolvedConfig = taskType ? getModelConfig(taskType) : null;
+  const model = options.model ?? resolvedConfig?.model ?? ENV.OPENAI_MODEL_NAME;
+  const startTime = Date.now();
+
+  // Helper to record usage and return result
+  const recordAndReturn = (result: RunModelResult): RunModelResult => {
+    if (taskType && result.usage) {
+      recordModelUsage({
+        task: taskType,
+        model,
+        tokenUsage: {
+          prompt: result.usage.prompt_tokens || 0,
+          completion: result.usage.completion_tokens || 0,
+          total: result.usage.total_tokens || 0,
+          cached: result.usage.prompt_tokens_details?.cached_tokens,
+        },
+        latencyMs: Date.now() - startTime,
+        timestamp: startTime,
+      });
+    }
+    return result;
+  };
 
   // Set reasoning effort based on model capabilities
   // Nano doesn't support reasoning mode - only mini/pro/opus do
@@ -346,13 +373,13 @@ export async function runModel(
           );
         }
 
-        return {
+        return recordAndReturn({
           text: textContent,
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
           usage: lastUsageData,
-        };
+        });
       }
 
       // Process tool calls
@@ -544,13 +571,13 @@ export async function runModel(
             .map((c: any) => c.text)
             .join("") || "An error occurred during processing";
 
-        return {
+        return recordAndReturn({
           text: textContent,
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
           usage: lastUsageData,
-        };
+        });
       }
     }
   }
@@ -572,10 +599,10 @@ export async function runModel(
       .map((c: any) => c.text)
       .join("") || "Maximum iterations reached without completion";
 
-  return {
+  return recordAndReturn({
     text: textContent,
     citations: allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
     tools_used: toolActivity.length > 0 ? toolActivity : undefined,
     usage: lastUsageData,
-  };
+  });
 }

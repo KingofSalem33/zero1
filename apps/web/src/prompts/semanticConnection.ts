@@ -8,8 +8,9 @@ export type GoDeeperPromptInput = {
   toVerse: VerseExcerpt;
   connectionLabel: string;
   synopsis: string;
-  nextCandidates?: VerseExcerpt[];
+  topicVerses?: VerseExcerpt[];
   topicHints?: string[];
+  connectionExplanation?: string;
 };
 
 export const buildGoDeeperPrompt = ({
@@ -17,10 +18,11 @@ export const buildGoDeeperPrompt = ({
   toVerse,
   connectionLabel,
   synopsis,
-  nextCandidates = [],
+  topicVerses = [],
   topicHints = [],
+  connectionExplanation,
 }: GoDeeperPromptInput): string => {
-  return `TASK: Reveal why this connection matters and create irresistible momentum toward the next step.
+  return `TASK: Provide an exegetical explanation of the current topic connection.
 
 === THE DATA ===
 [SOURCE ANCHOR]
@@ -32,7 +34,8 @@ ${toVerse.reference}: "${toVerse.text}"
 [METADATA]
 - Type: ${connectionLabel}
 - Previous Synopsis: "${synopsis}"
-${nextCandidates.length > 0 ? "\n[NEXT NODES]\n" : ""}${nextCandidates
+${connectionExplanation ? `\n[CONNECTION LOGIC]\n${connectionExplanation}` : ""}
+${topicVerses.length > 0 ? "\n[TOPIC VERSES]\n" : ""}${topicVerses
     .map(
       (verse) =>
         `- [${verse.reference}] "${verse.text.slice(0, 220)}${
@@ -46,25 +49,24 @@ ${nextCandidates.length > 0 ? "\n[NEXT NODES]\n" : ""}${nextCandidates
     .join("\n")}
 
 === INSTRUCTION ===
-Using the KJV text above and the synopsis as foundation, explain the theological weight of this connection—why it matters to the life of faith. Do not repeat the synopsis. Dig deeper. Show what's at stake.
+Using ONLY the KJV text above, write in compiler mode.
+Movement must come from sequence, contrast, repetition of exact words, or canon movement. Do not add explanation.
 
-Then provide a simple, clean follow-up invitation:
-1. If NEXT NODES are provided, scan them and choose the most intellectually honest and theologically compelling connection
-2. If TOPIC SIGNALS are provided, use the strongest signal to guide your choice
-3. Write ONE sentence stating where this thread continues in Scripture - name the specific connection (word, theme, or concept) and the next passage using [Book Ch:v] format
-4. Then invite them to continue with a creative, varied question. NEVER use the same phrasing repeatedly. Mix it up naturally:
-   - "Shall we see how it unfolds there?"
-   - "Ready to trace it further?"
-   - "Want to go there?"
-   - "Should we follow that thread?"
-   - "Care to explore that next?"
+Allowed witness structures (choose one):
+A) Convergence: Verse A clause; Verse B clause; Verse C clause; final clause.
+B) Call -> Answer: Scripture question clause; answer clause; repeated answer clause; final clause.
+C) Beginning -> End: Genesis clause; Gospel clause; Epistle clause; final clause.
 
-Example closings (vary these!):
-- "Scripture pulls this thread to its climax in [Hebrews 10:23]. Shall we see how it unfolds there?"
-- "This same pattern appears in [Romans 8:31]. Ready to trace it further?"
-- "The full weight of this truth lands in [John 15:13]. Want to go there?"
-
-Keep it professional, warm, and inviting with creative variety. No dramatic language, no pressure—just a genuine invitation to continue the journey.`;
+Rules:
+1) Every sentence MUST include a short quoted clause (<= 8 words) from the provided verses.
+2) No sentence may contain interpretation without a quoted clause.
+3) Do not repeat a verse unless you use a different clause from it.
+4) Use as many verses as needed, not all. Do not repeat the synopsis.
+5) Do not add any forward carry, invitation, or question.
+6) End with a final clause and reference (no summary sentence).
+7) Openings may be a direct clause, a Scripture question clause, or "The Scripture declares..."
+8) Use minimal connectors only (and, but, for, yet, again). Avoid explanatory connectors (thus, therefore, by this).
+Write in your Scripture-governed voice, restrained and declarative.`;
 };
 
 export const buildGoDeeperDisplayText = ({

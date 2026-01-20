@@ -1106,13 +1106,22 @@ const applyPericopeValidation = async (
     }
   });
 
+  const updatedNodes = nodes.map((node) => {
+    const pericopeId = pericopeIdByVerse.get(node.id);
+    if (!pericopeId) return node;
+    return {
+      ...node,
+      pericopeId,
+    };
+  });
+
   const pericopeIds = Array.from(
     new Set(Array.from(pericopeIdByVerse.values())),
   );
 
   if (pericopeIds.length === 0) {
     console.warn("[Pericope Validation] No pericope IDs found for edges");
-    return { edges, nodes };
+    return { edges, nodes: updatedNodes };
   }
 
   const { data: embeddingRows, error: embeddingError } = await supabase
@@ -1126,7 +1135,7 @@ const applyPericopeValidation = async (
       "[Pericope Validation] Failed to load pericope embeddings:",
       embeddingError?.message,
     );
-    return { edges, nodes };
+    return { edges, nodes: updatedNodes };
   }
 
   const embeddingMap = new Map<number, number[]>();
@@ -1214,7 +1223,9 @@ const applyPericopeValidation = async (
     connectedIds.add(edge.to);
   });
 
-  const filteredNodes = nodes.filter((node) => connectedIds.has(node.id));
+  const filteredNodes = updatedNodes.filter((node) =>
+    connectedIds.has(node.id),
+  );
 
   console.log(
     `[Pericope Validation] Kept ${validatedEdges.length}/${edges.length} edges (dropped ${dropped})`,

@@ -20,12 +20,12 @@ export function buildSynopsisSystemPrompt(
 ): string {
   return `${BIBLE_STUDY_IDENTITY}
 
-You are providing brief scriptural insights for highlighted text. Your responses should:
-- Be concise (maximum ${options.maxWords} words)
-- Draw from KJV Scripture when relevant
-- Explain the significance or key meaning
-- Use plain, accessible language
-- Focus on what's important or noteworthy from a biblical perspective`;
+You are providing brief scriptural insights for highlighted text. Your responses must:
+- Be concise (maximum ${options.maxWords} words).
+- Use KJV diction; avoid modern academic language.
+- Speak only what the text itself says; no speculation or added doctrine.
+- If the text is Scripture, quote a short clause and cite the reference if present.
+- No questions, no invitations, no emotional appeals.`;
 }
 
 /**
@@ -35,7 +35,7 @@ export function buildSynopsisUserPrompt(
   text: string,
   maxWords: number,
 ): string {
-  return `Provide a brief scriptural insight (maximum ${maxWords} words) explaining the significance of this text from a KJV biblical perspective:
+  return `Provide a brief scriptural insight (maximum ${maxWords} words) grounded only in the text itself (KJV tone, no speculation):
 
 """
 ${text}

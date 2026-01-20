@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PROMPT_MODES } from "../prompts/systemPrompts";
+import { PROMPT_MODES } from "../prompts/system/systemPrompts";
 
 export const webSearchSchema = z.object({
   q: z.string().describe("Search query"),
