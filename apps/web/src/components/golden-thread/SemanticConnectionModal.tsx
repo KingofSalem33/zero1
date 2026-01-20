@@ -57,6 +57,20 @@ interface SemanticConnectionModalProps {
   }>;
   onSelectTopic?: (styleType: ConnectionType) => void;
   visualBundle?: import("../../types/goldenThread").VisualContextBundle; // Pre-built map data
+  userId?: string;
+  presetSynopsis?: string;
+  libraryEntry?: {
+    id: string;
+    note?: string;
+    tags?: string[];
+  };
+  onUpdateLibraryEntry?: (
+    id: string,
+    note: string,
+    tags: string[],
+  ) => Promise<void> | void;
+  goDeeperOverride?: GoDeeperPayload;
+  maxVisibleVerses?: number;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -106,6 +120,12 @@ export function SemanticConnectionModal({
   connectionTopics,
   onSelectTopic,
   visualBundle,
+  userId = "anonymous",
+  presetSynopsis,
+  libraryEntry,
+  onUpdateLibraryEntry,
+  goDeeperOverride,
+  maxVisibleVerses = 6,
 }: SemanticConnectionModalProps) {
   const [synopsis, setSynopsis] = useState<string>("");
   const [verses, setVerses] = useState<
@@ -113,6 +133,16 @@ export function SemanticConnectionModal({
   >([]);
   const [loading, setLoading] = useState(true); // Always load synopsis for comprehensive analysis
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [note, setNote] = useState(libraryEntry?.note || "");
+  const [tagsInput, setTagsInput] = useState(
+    libraryEntry?.tags?.join(", ") || "",
+  );
+  const [metaSaving, setMetaSaving] = useState(false);
+  const [metaSaved, setMetaSaved] = useState(false);
+  const [showAllVerses, setShowAllVerses] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const verseTooltipRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<ReturnType<
@@ -161,8 +191,38 @@ export function SemanticConnectionModal({
   }, [verses]);
 
   useEffect(() => {
+    setShowAllVerses(false);
+  }, [verses.length, maxVisibleVerses]);
+
+  useEffect(() => {
     synopsisRef.current = synopsis;
   }, [synopsis]);
+
+  useEffect(() => {
+    if (libraryEntry) {
+      setNote(libraryEntry.note || "");
+      setTagsInput(libraryEntry.tags?.join(", ") || "");
+      setSaved(true);
+      setMetaSaved(false);
+    } else {
+      setSaved(false);
+    }
+    setShowAllVerses(false);
+  }, [libraryEntry]);
+
+  useEffect(() => {
+    if (libraryEntry) {
+      setMetaSaved(false);
+    }
+  }, [note, tagsInput, libraryEntry]);
+
+  useEffect(() => {
+    if (presetSynopsis && presetSynopsis.trim().length > 0) {
+      setSynopsis(presetSynopsis);
+      setError(null);
+      setLoading(false);
+    }
+  }, [presetSynopsis]);
 
   const handleClose = useCallback(() => {
     setSelectedVerseTooltip(null);
@@ -207,6 +267,10 @@ export function SemanticConnectionModal({
 
     const fetchSynopsis = async () => {
       try {
+        if (presetSynopsis && presetSynopsis.trim().length > 0) {
+          setLoading(false);
+          return;
+        }
         // Use all connected verse IDs if available, otherwise just the two endpoints
         const verseIds =
           connectedVerseIds && connectedVerseIds.length > 2
@@ -364,6 +428,7 @@ export function SemanticConnectionModal({
     JSON.stringify(connectedVerseIds || []),
     previewVerses,
     JSON.stringify(connectionTopics || []),
+    presetSynopsis,
   ]);
 
   // Close on click outside
@@ -392,10 +457,21 @@ export function SemanticConnectionModal({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [handleClose]);
 
-  const handleGoDeeper = () => {
-    const connectionLabel = CONNECTION_LABELS[connectionType];
+  const connectionLabel = CONNECTION_LABELS[connectionType];
+  const topicHints = useMemo(() => {
+    if (!Array.isArray(connectionTopics) || connectionTopics.length === 0) {
+      return [];
+    }
+    return connectionTopics
+      .filter((topic) => typeof topic.label === "string" && topic.label.trim())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map((topic) => `${topic.label} (${topic.count})`);
+  }, [connectionTopics]);
+
+  const buildGoDeeperPayload = useCallback(() => {
     const clusterVerseIds = Array.isArray(connectedVerseIds)
-      ? connectedVerseIds
+      ? [...connectedVerseIds]
       : [];
     if (!clusterVerseIds.includes(fromVerse.id)) {
       clusterVerseIds.unshift(fromVerse.id);
@@ -422,11 +498,11 @@ export function SemanticConnectionModal({
       toReference: toVerse.reference,
     });
 
-    onGoDeeper({
+    return {
       displayText,
       prompt: goDeeperPrompt,
-      mode: "go_deeper_short",
-      visualBundle, // Pass pre-built map data to skip rebuilding
+      mode: "go_deeper_short" as const,
+      visualBundle,
       mapSession: {
         cluster: {
           baseId: fromVerse.id,
@@ -445,8 +521,143 @@ export function SemanticConnectionModal({
           buildEdgeKey(connectionType, fromVerse.id, toVerse.id),
         ],
       },
-    });
+    };
+  }, [
+    connectedVerseIds,
+    fromVerse,
+    toVerse,
+    verses,
+    connectionLabel,
+    synopsis,
+    topicHints,
+    explanation,
+    visualBundle,
+    connectionType,
+  ]);
+
+  const handleGoDeeper = () => {
+    onGoDeeper(goDeeperOverride ?? buildGoDeeperPayload());
     handleClose();
+  };
+
+  const parseTags = (value: string) =>
+    value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+
+  const handleSaveConnection = async () => {
+    if (saving || saved) return;
+    if (!visualBundle) {
+      setSaveError("Map data is not available for saving.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setSaveError(null);
+
+      const bundleResponse = await fetch(`${API_URL}/api/library/bundles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          bundle: visualBundle,
+        }),
+      });
+
+      if (!bundleResponse.ok) {
+        throw new Error("Failed to save map snapshot");
+      }
+
+      const bundleData = await bundleResponse.json();
+      const bundleId = bundleData.bundleId as string | undefined;
+      if (!bundleId) {
+        throw new Error("Missing bundle ID");
+      }
+
+      const goDeeperPayload = buildGoDeeperPayload();
+      const clusterVerseIds =
+        goDeeperPayload.mapSession?.cluster?.verseIds ?? [];
+      const verseSeed = verses.length > 0 ? verses : previewVerses;
+      const verseById = new Map(verseSeed.map((verse) => [verse.id, verse]));
+      const orderedVerseSeed =
+        clusterVerseIds.length > 0
+          ? clusterVerseIds
+              .map((id) => verseById.get(id))
+              .filter(
+                (
+                  verse,
+                ): verse is { id: number; reference: string; text: string } =>
+                  verse !== undefined,
+              )
+          : Array.from(verseById.values());
+      const connectionResponse = await fetch(
+        `${API_URL}/api/library/connections`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            bundleId,
+            fromVerse,
+            toVerse,
+            connectionType,
+            similarity,
+            synopsis,
+            explanation,
+            connectedVerseIds:
+              clusterVerseIds.length > 0 ? clusterVerseIds : undefined,
+            connectedVerses:
+              orderedVerseSeed.length > 0 ? orderedVerseSeed : undefined,
+            goDeeperPrompt: goDeeperPayload.prompt,
+            mapSession: goDeeperPayload.mapSession,
+          }),
+        },
+      );
+
+      if (!connectionResponse.ok) {
+        throw new Error("Failed to save connection");
+      }
+
+      setSaved(true);
+    } catch (err) {
+      console.error("[SemanticConnectionModal] Save failed:", err);
+      setSaveError("Could not save this connection");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateLibraryMeta = async () => {
+    if (!libraryEntry || metaSaving) return;
+    const nextTags = parseTags(tagsInput);
+    try {
+      setMetaSaving(true);
+      setMetaSaved(false);
+      if (onUpdateLibraryEntry) {
+        await onUpdateLibraryEntry(libraryEntry.id, note, nextTags);
+      } else {
+        const response = await fetch(
+          `${API_URL}/api/library/connections/${libraryEntry.id}?userId=${encodeURIComponent(
+            userId,
+          )}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ note, tags: nextTags }),
+          },
+        );
+        if (!response.ok) {
+          throw new Error("Failed to update notes");
+        }
+      }
+      setMetaSaved(true);
+    } catch (err) {
+      console.error("[SemanticConnectionModal] Note update failed:", err);
+    } finally {
+      setMetaSaving(false);
+    }
   };
 
   const handleVerseChipClick = (
@@ -475,17 +686,12 @@ export function SemanticConnectionModal({
   };
 
   const connectionColor = CONNECTION_COLORS[connectionType];
-  const connectionLabel = CONNECTION_LABELS[connectionType];
-  const topicHints = useMemo(() => {
-    if (!Array.isArray(connectionTopics) || connectionTopics.length === 0) {
-      return [];
-    }
-    return connectionTopics
-      .filter((topic) => typeof topic.label === "string" && topic.label.trim())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3)
-      .map((topic) => `${topic.label} (${topic.count})`);
-  }, [connectionTopics]);
+  const visibleVerses = showAllVerses
+    ? verses
+    : verses.slice(0, Math.max(0, maxVisibleVerses));
+  const hiddenVerseCount = showAllVerses
+    ? 0
+    : Math.max(0, verses.length - visibleVerses.length);
 
   const modalContent = (
     <div
@@ -540,21 +746,32 @@ export function SemanticConnectionModal({
           {/* Compact Verse Reference Chips */}
           <div className="flex flex-wrap gap-2 mb-3">
             {verses.length > 0 ? (
-              verses.map((verse, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={(event) => handleVerseChipClick(verse, event)}
-                  className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-110"
-                  style={{
-                    backgroundColor: `${connectionColor}20`,
-                    color: connectionColor,
-                  }}
-                  aria-label={`View ${verse.reference}`}
-                >
-                  {verse.reference}
-                </button>
-              ))
+              <>
+                {visibleVerses.map((verse, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(event) => handleVerseChipClick(verse, event)}
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-110"
+                    style={{
+                      backgroundColor: `${connectionColor}20`,
+                      color: connectionColor,
+                    }}
+                    aria-label={`View ${verse.reference}`}
+                  >
+                    {verse.reference}
+                  </button>
+                ))}
+                {hiddenVerseCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllVerses(true)}
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/5 text-neutral-400 hover:text-neutral-200 transition-colors"
+                  >
+                    +{hiddenVerseCount} more
+                  </button>
+                )}
+              </>
             ) : hasCluster ? (
               <div className="text-xs text-neutral-400">
                 Loading {connectedVerseIds?.length ?? 0} verses...
@@ -587,6 +804,17 @@ export function SemanticConnectionModal({
               </>
             )}
           </div>
+          {verses.length > maxVisibleVerses && showAllVerses && (
+            <div className="mb-3">
+              <button
+                type="button"
+                onClick={() => setShowAllVerses((prev) => !prev)}
+                className="text-[10px] text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Show fewer verses
+              </button>
+            </div>
+          )}
 
           {/* Synopsis */}
           <div className="mb-3">
@@ -651,7 +879,61 @@ export function SemanticConnectionModal({
                 />
               </svg>
             </button>
+            {!libraryEntry && (
+              <button
+                onClick={handleSaveConnection}
+                disabled={saving || saved || !visualBundle || loading}
+                className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: saved
+                    ? "rgba(255,255,255,0.12)"
+                    : "rgba(255,255,255,0.06)",
+                  color: saved ? "#E5E7EB" : "#D1D5DB",
+                }}
+              >
+                {saved ? "Saved" : saving ? "Saving..." : "Save"}
+              </button>
+            )}
           </div>
+          {saveError && (
+            <div className="mt-2 text-xs text-red-400">{saveError}</div>
+          )}
+
+          {libraryEntry && (
+            <div className="mt-4 border-t border-white/10 pt-3">
+              <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+                Notes & Tags
+              </div>
+              <div className="mt-2 space-y-2">
+                <textarea
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Add a note about why this matters..."
+                  className="w-full rounded-md bg-white/5 border border-white/10 text-xs text-white/80 placeholder:text-neutral-500 p-2 resize-none focus:outline-none focus:border-white/20"
+                  rows={2}
+                />
+                <input
+                  value={tagsInput}
+                  onChange={(event) => setTagsInput(event.target.value)}
+                  placeholder="Tags (comma-separated)"
+                  className="w-full rounded-md bg-white/5 border border-white/10 text-xs text-white/80 placeholder:text-neutral-500 px-2 py-1.5 focus:outline-none focus:border-white/20"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleUpdateLibraryMeta}
+                    disabled={metaSaving}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 bg-white/5 hover:bg-white/10 text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {metaSaving
+                      ? "Saving..."
+                      : metaSaved
+                        ? "Saved"
+                        : "Save Notes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {connectionTopics && connectionTopics.length > 1 && (
             <div className="mt-4 border-t border-white/10 pt-3">

@@ -172,7 +172,10 @@ interface NarrativeMapProps {
   highlightedRefs: string[]; // ["John 3:16", "Romans 5:8"]
   onTrace?: (prompt: string) => void;
   onGoDeeper?: (prompt: GoDeeperPayload) => void;
+  userId?: string;
 }
+
+const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
 const makeReferenceKey = (node: ThreadNode) => {
   const book = (node.book_name || node.book_abbrev || "")
@@ -277,6 +280,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   highlightedRefs,
   onTrace,
   onGoDeeper,
+  userId = "anonymous",
 }) => {
   const bundle = useMemo(() => collapseDuplicateBundle(rawBundle), [rawBundle]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -303,8 +307,73 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   >([]);
   const [discoveryHighlightIndex, setDiscoveryHighlightIndex] = useState(0);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
+  const [mapSaving, setMapSaving] = useState(false);
+  const [mapSaved, setMapSaved] = useState(false);
+  const [mapSaveError, setMapSaveError] = useState<string | null>(null);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const autoCenteredRef = useRef(false);
+
+  useEffect(() => {
+    setMapSaved(false);
+    setMapSaveError(null);
+  }, [bundle?.rootId, bundle?.nodes?.length, bundle?.edges?.length]);
+
+  const resolveAnchorRef = useCallback(() => {
+    if (!bundle) return undefined;
+    const rootId = bundle.rootId;
+    const anchor = bundle.nodes.find((node) => node.id === rootId);
+    if (!anchor) return undefined;
+    return `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
+  }, [bundle]);
+
+  const handleSaveMap = useCallback(async () => {
+    if (!bundle || mapSaving || mapSaved) return;
+    try {
+      setMapSaving(true);
+      setMapSaveError(null);
+
+      const bundleResponse = await fetch(`${API_URL}/api/library/bundles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          bundle,
+        }),
+      });
+
+      if (!bundleResponse.ok) {
+        throw new Error("Failed to save map snapshot");
+      }
+
+      const bundleData = await bundleResponse.json();
+      const bundleId = bundleData.bundleId as string | undefined;
+      if (!bundleId) {
+        throw new Error("Missing bundle ID");
+      }
+
+      const title = resolveAnchorRef();
+      const mapResponse = await fetch(`${API_URL}/api/library/maps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          bundleId,
+          title,
+        }),
+      });
+
+      if (!mapResponse.ok) {
+        throw new Error("Failed to save map");
+      }
+
+      setMapSaved(true);
+    } catch (error) {
+      console.error("[NarrativeMap] Save map failed:", error);
+      setMapSaveError("Could not save map");
+    } finally {
+      setMapSaving(false);
+    }
+  }, [bundle, mapSaving, mapSaved, resolveAnchorRef, userId]);
   const autoDiscoveryRunRef = useRef(false);
 
   // Semantic connection modal state
@@ -2493,6 +2562,20 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         }
         showHint={bundle ? true : false}
       />
+      {bundle && (
+        <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
+          <button
+            onClick={handleSaveMap}
+            disabled={mapSaving || mapSaved}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {mapSaved ? "Map Saved" : mapSaving ? "Saving..." : "Save Map"}
+          </button>
+          {mapSaveError && (
+            <span className="text-[10px] text-red-400">{mapSaveError}</span>
+          )}
+        </div>
+      )}
 
       {/* Tooltip */}
       {tooltipState.visible && hoveredBranch && (
@@ -2796,6 +2879,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           connectionTopics={clickedConnection.connectionTopics}
           onSelectTopic={handleSelectConnectionTopic}
           visualBundle={bundle || undefined}
+          userId={userId}
+          maxVisibleVerses={6}
         />
       )}
 

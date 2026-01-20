@@ -10,7 +10,7 @@ import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
 // Lazy load heavy components for code splitting
 const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
 const BibleReader = lazy(() => import("./components/BibleReader"));
-const HighlightsLibrary = lazy(() => import("./components/HighlightsLibrary"));
+const LibraryView = lazy(() => import("./components/LibraryView"));
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -33,7 +33,7 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [currentMessages, setCurrentMessages] = useState<any[]>([]);
-  const [viewMode, setViewMode] = useState<"reader" | "chat" | "highlights">(
+  const [viewMode, setViewMode] = useState<"reader" | "chat" | "library">(
     "reader",
   );
   const [bibleStudyMode, setBibleStudyMode] = useState(false);
@@ -179,9 +179,9 @@ function App() {
   };
 
   // Open Highlights
-  const handleOpenHighlights = () => {
+  const handleOpenLibrary = () => {
     setBibleStudyMode(false);
-    setViewMode("highlights");
+    setViewMode("library");
   };
 
   const handleResetBibleStudy = () => {
@@ -378,7 +378,7 @@ function App() {
             showBible={viewMode === "reader"}
             onToggleBible={handleToggleBible}
             onEnterBibleStudy={handleEnterBibleStudy}
-            onOpenHighlights={handleOpenHighlights}
+            onOpenLibrary={handleOpenLibrary}
             isCollapsed={sidebarCollapsed}
             onToggleCollapse={setSidebarCollapsed}
           />
@@ -401,8 +401,13 @@ function App() {
                   onNavigateToChat={handleNavigateToChat}
                   onTrace={handleTrace}
                 />
-              ) : viewMode === "highlights" ? (
-                <HighlightsLibrary onNavigateToVerse={handleNavigateToVerse} />
+              ) : viewMode === "library" ? (
+                <LibraryView
+                  userId="anonymous"
+                  onGoDeeper={handleGoDeeper}
+                  onOpenMap={handleShowVisualization}
+                  onNavigateToVerse={handleNavigateToVerse}
+                />
               ) : (
                 <UnifiedWorkspace
                   project={project}
@@ -469,6 +474,7 @@ function App() {
                   highlightedRefs={[]}
                   onTrace={handleTrace}
                   onGoDeeper={handleGoDeeper}
+                  userId="anonymous"
                 />
               </div>
             </div>

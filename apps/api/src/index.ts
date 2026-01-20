@@ -45,6 +45,7 @@ import {
 import { buildPericopeScopeForVerse } from "./bible/pericopeGraphWalker";
 import { buildVisualBundle } from "./bible/graphWalker";
 import bookmarksRouter from "./routes/bookmarks";
+import libraryRouter from "./routes/library";
 import verseRouter from "./routes/verse";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream"; // Used in /api/chat for streaming when Accept: text/event-stream
@@ -204,6 +205,7 @@ app.use("/api/root-translation", optionalAuth, rootTranslationRouter);
 
 // Mount bookmark routes
 app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
+app.use("/api/library", optionalAuth, libraryRouter);
 
 // Mount verse routes (fetch individual verses by reference)
 app.use("/api/verse", optionalAuth, verseRouter);

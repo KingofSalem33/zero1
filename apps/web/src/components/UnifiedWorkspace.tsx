@@ -1851,6 +1851,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               highlightedRefs={activeHighlightedRefs}
               onTrace={handleGoDeeper}
               onGoDeeper={onGoDeeper}
+              userId="anonymous"
             />
           </div>
         </div>
@@ -3079,7 +3080,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         <BookmarkPanel
           userId="anonymous"
           onClose={() => setShowBookmarkPanel(false)}
-          onSelectBookmark={handleGoDeeper}
+          onGoDeeper={onGoDeeper}
+          onOpenMap={onShowVisualization}
         />
       )}
     </div>

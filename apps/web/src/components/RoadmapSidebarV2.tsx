@@ -21,7 +21,7 @@ interface RoadmapSidebarV2Props {
   showBible?: boolean;
   onToggleBible?: () => void;
   onEnterBibleStudy?: () => void;
-  onOpenHighlights?: () => void;
+  onOpenLibrary?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
 }
@@ -34,7 +34,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   showBible = false,
   onToggleBible,
   onEnterBibleStudy,
-  onOpenHighlights,
+  onOpenLibrary,
   isCollapsed = false,
   onToggleCollapse,
 }) => {
@@ -145,9 +145,9 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             <span className="text-sm font-medium">Bible Study</span>
           </button>
 
-          {/* Highlights Button */}
+          {/* Library Button */}
           <button
-            onClick={onOpenHighlights}
+            onClick={onOpenLibrary}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
           >
             <svg
@@ -160,10 +160,10 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
               />
             </svg>
-            <span className="text-sm font-medium">Highlights</span>
+            <span className="text-sm font-medium">Library</span>
           </button>
         </div>
 
@@ -315,11 +315,11 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 </svg>
               </button>
 
-              {/* Highlights */}
+              {/* Library */}
               <button
-                onClick={onOpenHighlights}
+                onClick={onOpenLibrary}
                 className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
-                title="Highlights"
+                title="Library"
               >
                 <svg
                   className="w-5 h-5"
@@ -331,7 +331,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
                   />
                 </svg>
               </button>
