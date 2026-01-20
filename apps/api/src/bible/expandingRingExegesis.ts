@@ -14,7 +14,11 @@ import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
 import { supabase } from "../db";
 import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
-import type { ParallelPassage, PericopeBundle } from "./types";
+import type {
+  ParallelPassage,
+  PericopeBundle,
+  VisualContextBundle,
+} from "./types";
 import { areSameTestament } from "./testamentUtil";
 import {
   type PromptMode,
@@ -30,6 +34,11 @@ import {
   type PericopeDetail,
 } from "./pericopeSearch";
 import { buildPericopeScopeForVerse } from "./pericopeGraphWalker";
+import {
+  discoverConnections,
+  selectCoreVerses,
+  type DiscoveredConnection,
+} from "./connectionDiscovery";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -41,6 +50,106 @@ const EMPTY_VERSE: Verse = {
   chapter: 0,
   verse: 0,
   text: "",
+};
+
+const DISCOVERY_TYPES = new Set<DiscoveredConnection["type"]>([
+  "TYPOLOGY",
+  "FULFILLMENT",
+  "CONTRAST",
+  "PROGRESSION",
+  "PATTERN",
+]);
+const DISCOVERY_PERSIST_MIN = 0.9;
+
+const buildEdgeKey = (type: string, fromId: number, toId: number) => {
+  const a = Math.min(fromId, toId);
+  const b = Math.max(fromId, toId);
+  return `${type}:${a}-${b}`;
+};
+
+const mergeDiscoveredEdges = (
+  bundle: ReferenceVisualBundle,
+  connections: DiscoveredConnection[],
+  source: "llm_cached" | "llm_discovered",
+) => {
+  if (!connections.length) return bundle;
+  const existing = new Set(
+    bundle.edges.map((edge) =>
+      buildEdgeKey(edge.type || "DEEPER", edge.from, edge.to),
+    ),
+  );
+  const nextEdges = [...bundle.edges];
+  connections.forEach((conn) => {
+    const key = buildEdgeKey(conn.type, conn.from, conn.to);
+    if (existing.has(key)) return;
+    existing.add(key);
+    nextEdges.push({
+      from: conn.from,
+      to: conn.to,
+      type: conn.type,
+      weight: conn.confidence,
+      metadata: {
+        explanation: conn.explanation,
+        confidence: conn.confidence,
+        source,
+      },
+    });
+  });
+  return { ...bundle, edges: nextEdges };
+};
+
+const fetchPersistedConnections = async (
+  verseIds: number[],
+): Promise<DiscoveredConnection[]> => {
+  if (verseIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("llm_connections")
+    .select(
+      "from_verse_id, to_verse_id, connection_type, explanation, confidence",
+    )
+    .in("from_verse_id", verseIds)
+    .in("to_verse_id", verseIds);
+
+  if (error || !data) {
+    console.warn("[Connection Discovery] Failed to load cached connections");
+    return [];
+  }
+
+  return data
+    .filter((row) => DISCOVERY_TYPES.has(row.connection_type))
+    .map((row) => ({
+      from: row.from_verse_id,
+      to: row.to_verse_id,
+      type: row.connection_type as DiscoveredConnection["type"],
+      explanation: row.explanation,
+      confidence: row.confidence,
+    }));
+};
+
+const persistDiscoveredConnections = async (
+  connections: DiscoveredConnection[],
+) => {
+  const toPersist = connections.filter(
+    (conn) =>
+      DISCOVERY_TYPES.has(conn.type) &&
+      conn.confidence >= DISCOVERY_PERSIST_MIN,
+  );
+  if (toPersist.length === 0) return;
+
+  const rows = toPersist.map((conn) => ({
+    from_verse_id: conn.from,
+    to_verse_id: conn.to,
+    connection_type: conn.type,
+    explanation: conn.explanation,
+    confidence: conn.confidence,
+  }));
+
+  const { error } = await supabase.from("llm_connections").upsert(rows, {
+    onConflict: "from_verse_id,to_verse_id,connection_type",
+  });
+  if (error) {
+    console.warn("[Connection Discovery] Failed to persist connections");
+  }
 };
 
 export interface ReferenceTreeNode {
@@ -56,11 +165,17 @@ export interface ReferenceTreeNode {
   isStackedWith?: number; // If this node is hidden due to being a parallel, points to the representative node ID
   referenceKey?: string; // Canonical normalized reference (e.g., "john 1:1")
   parentId?: number; // ID of parent node in tree
+  isSpine?: boolean;
+  centrality?: number;
+  pericopeId?: number;
 }
 
 export interface ReferenceTreeEdge {
   from: number;
   to: number;
+  weight?: number;
+  type?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ReferenceVisualBundle {
@@ -68,6 +183,10 @@ export interface ReferenceVisualBundle {
   edges: ReferenceTreeEdge[];
   rootId?: number; // Anchor verse ID for circular layout
   lens?: string; // Lens type (e.g., "NONE", "MESSIANIC")
+  pericopeValidation?: {
+    droppedEdges: number;
+    minSimilarity: number;
+  };
   // Pericope metadata if resolution was pericope-first
   pericopeContext?: {
     id: number;
@@ -95,6 +214,11 @@ type MapSession = {
     connectionType: string;
   };
   currentConnection?: {
+    fromId: number;
+    toId: number;
+    connectionType: string;
+  };
+  previousConnection?: {
     fromId: number;
     toId: number;
     connectionType: string;
@@ -963,11 +1087,32 @@ No cross-reference data was found for this anchor.`;
     verses.length
       ? `${label}\n${verses
           .map((v) => {
+            const similarityTier =
+              v.similarity !== undefined
+                ? v.similarity >= 0.75
+                  ? "HIGH"
+                  : v.similarity >= 0.55
+                    ? "MID"
+                    : "LOW"
+                : "";
             const similarity =
               v.similarity !== undefined
-                ? ` [${(v.similarity * 100).toFixed(0)}% relevant]`
+                ? ` [${similarityTier} ${(v.similarity * 100).toFixed(0)}%]`
                 : "";
-            return `ID:${v.id} [${v.book_name} ${v.chapter}:${v.verse}]${similarity} "${v.text}"`;
+            const parallels =
+              v.parallelPassages && v.parallelPassages.length > 0
+                ? v.parallelPassages
+                    .slice(0, 2)
+                    .map(
+                      (p) =>
+                        `${p.book_name} ${p.chapter}:${p.verse} (${Math.round(
+                          p.similarity * 100,
+                        )}%)`,
+                    )
+                    .join("; ")
+                : "";
+            const parallelNote = parallels ? ` (Parallels: ${parallels})` : "";
+            return `ID:${v.id} [${v.book_name} ${v.chapter}:${v.verse}]${similarity} "${v.text}"${parallelNote}`;
           })
           .join("\n")}\n\n`
       : "";
@@ -1006,6 +1151,14 @@ Use depth only as a hint of closeness, not as a script.
 
 Total verses in tree: ${visualBundle.nodes.length}
 Total reference connections: ${visualBundle.edges.length}
+${
+  visualBundle.pericopeValidation &&
+  visualBundle.pericopeValidation.droppedEdges > 0
+    ? `Filtered cross-pericope connections: ${visualBundle.pericopeValidation.droppedEdges} (similarity < ${visualBundle.pericopeValidation.minSimilarity.toFixed(
+        2,
+      )})`
+    : ""
+}
 
 ${genealogyData}
 
@@ -1033,6 +1186,14 @@ export function buildLayeredUserMessage(
     const node = visualBundle.nodes.find((n) => n.id === id);
     if (!node) return `Verse ${id}`;
     return `${node.book_name} ${node.chapter}:${node.verse}`;
+  };
+  const findEdgeWeight = (fromId: number, toId: number) => {
+    const edge = visualBundle.edges.find(
+      (e) =>
+        (e.from === fromId && e.to === toId) ||
+        (e.from === toId && e.to === fromId),
+    );
+    return typeof edge?.weight === "number" ? edge.weight : null;
   };
 
   // LAYER 1: NARRATIVE CONTEXT (if available)
@@ -1102,6 +1263,21 @@ Context: ${pericopeDetail.summary || pericopeDetail.full_text.slice(0, 420) + ".
         )}] <> [${formatRefById(
           mapSession.currentConnection.toId,
         )}] (Type: ${mapSession.currentConnection.connectionType})`,
+      );
+      const edgeWeight = findEdgeWeight(
+        mapSession.currentConnection.fromId,
+        mapSession.currentConnection.toId,
+      );
+      if (edgeWeight !== null) {
+        lines.push(`EDGE WEIGHT: ${edgeWeight.toFixed(2)}`);
+      }
+    }
+    if (mapSession.previousConnection && mapSession.currentConnection) {
+      const previousFrom = formatRefById(mapSession.previousConnection.fromId);
+      const previousTo = formatRefById(mapSession.previousConnection.toId);
+      const currentAnchor = formatRefById(mapSession.currentConnection.fromId);
+      lines.push(
+        `CONTINUATION CONTEXT: Previous edge [${previousFrom}] <> [${previousTo}]. Continue from [${currentAnchor}] into the CURRENT CONNECTION; do not re-explain the previous edge.`,
       );
     }
     if (mapSession.exhausted) {
@@ -1686,6 +1862,56 @@ export async function explainScriptureWithKernelStream(
         error instanceof Error ? error.message : error,
       );
     }
+  }
+
+  if (!isFastMap) {
+    visualBundle = await profileTime(
+      "exegesis.discoverConnections",
+      async () => {
+        const bundleForDiscovery =
+          visualBundle as unknown as VisualContextBundle;
+        const coreVerses = selectCoreVerses(bundleForDiscovery, 12);
+        if (coreVerses.length === 0) return visualBundle;
+
+        const coreIds = coreVerses.map((v) => v.id);
+        const cached = await fetchPersistedConnections(coreIds);
+        if (cached.length > 0) {
+          console.log(
+            `[Connection Discovery] Using ${cached.length} cached connection(s)`,
+          );
+          return mergeDiscoveredEdges(visualBundle, cached, "llm_cached");
+        }
+
+        if (!ENV.OPENAI_API_KEY) {
+          return visualBundle;
+        }
+
+        const discovered = await discoverConnections(
+          coreVerses.map((v) => ({
+            id: v.id,
+            reference: `${v.book_name} ${v.chapter}:${v.verse}`,
+            text: v.text,
+            book: v.book_name,
+          })),
+        );
+
+        if (discovered.length > 0) {
+          await persistDiscoveredConnections(discovered);
+          return mergeDiscoveredEdges(
+            visualBundle,
+            discovered,
+            "llm_discovered",
+          );
+        }
+
+        return visualBundle;
+      },
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "discoverConnections",
+        await: "discoverConnections",
+      },
+    );
   }
 
   // Send map data first

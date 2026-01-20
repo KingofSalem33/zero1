@@ -1069,6 +1069,10 @@ const applyPericopeValidation = async (
 ): Promise<{
   edges: import("./types").VisualEdge[];
   nodes: import("./types").ThreadNode[];
+  pericopeValidation?: {
+    droppedEdges: number;
+    minSimilarity: number;
+  };
 }> => {
   if (edges.length === 0) {
     return { edges, nodes };
@@ -1234,6 +1238,10 @@ const applyPericopeValidation = async (
   return {
     edges: validatedEdges,
     nodes: filteredNodes,
+    pericopeValidation: {
+      droppedEdges: dropped,
+      minSimilarity: PERICOPE_VALIDATION.minSimilarity,
+    },
   };
 };
 
@@ -1504,6 +1512,7 @@ export async function buildVisualBundle(
   );
   let finalEdges = pericopeValidated.edges;
   let finalNodes = pericopeValidated.nodes;
+  const pericopeValidation = pericopeValidated.pericopeValidation;
 
   const collapsed = collapseDuplicateReferences(
     finalNodes,
@@ -1567,6 +1576,7 @@ export async function buildVisualBundle(
     edges: finalEdges,
     rootId: bundle.anchor.id,
     lens: "NONE",
+    pericopeValidation,
     // Include pericope context if anchor is part of one
     pericopeContext: firstPericope
       ? {

@@ -1059,6 +1059,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       let cluster = seedSession?.cluster || existingSession?.cluster;
       let currentConnection =
         seedSession?.currentConnection || existingSession?.currentConnection;
+      let previousConnection =
+        seedSession?.previousConnection || existingSession?.previousConnection;
 
       const references = inputText ? extractReferences(inputText) : [];
       const lookup = buildReferenceLookup(bundle);
@@ -1072,7 +1074,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       if (!seedSession) {
         if (useQueuedConnection && existingSession?.nextConnection) {
           currentConnection = existingSession.nextConnection;
+          previousConnection = existingSession.currentConnection;
         } else if (referencedIds.length > 0) {
+          previousConnection = undefined;
           const baseId =
             referencedIds.length > 1
               ? referencedIds[0]
@@ -1122,6 +1126,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       const session: MapSession = {
         cluster: nextCluster || cluster,
         currentConnection,
+        previousConnection,
         nextConnection,
         visitedEdgeKeys: Array.from(visited),
         offMapReferences: offMapReferences.length
@@ -2634,7 +2639,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                               />
                                             </svg>
                                             {isMapPendingFull
-                                              ? "Generating map"
+                                              ? "Loading full map"
                                               : "View Map"}
                                           </button>
                                           <span
@@ -2645,7 +2650,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                             }`}
                                           >
                                             {isMapPendingFull
-                                              ? "Generating map"
+                                              ? "Richer connections loading"
                                               : "Map ready"}{" "}
                                             - {mapVerseCount} verse
                                             {mapVerseCount === 1 ? "" : "s"}

@@ -76,6 +76,13 @@ export const chatRequestSchema = z.object({
           connectionType: z.string(),
         })
         .optional(),
+      previousConnection: z
+        .object({
+          fromId: z.number(),
+          toId: z.number(),
+          connectionType: z.string(),
+        })
+        .optional(),
       nextConnection: z
         .object({
           fromId: z.number(),

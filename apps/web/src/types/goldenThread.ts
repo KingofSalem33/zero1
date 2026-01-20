@@ -80,6 +80,10 @@ export interface VisualContextBundle {
   edges: VisualEdge[]; // Parent-child relationships with types
   rootId: number; // Anchor verse ID
   lens: string; // "NONE" | "MESSIANIC" | "NARRATIVE" | "THEOLOGY"
+  pericopeValidation?: {
+    droppedEdges: number;
+    minSimilarity: number;
+  };
   pericopeContext?: {
     id: number;
     title: string;

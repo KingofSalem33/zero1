@@ -17,6 +17,7 @@ export type MapCluster = {
 export type MapSession = {
   cluster?: MapCluster;
   currentConnection?: MapConnection;
+  previousConnection?: MapConnection;
   nextConnection?: MapConnection | null;
   visitedEdgeKeys?: string[];
   offMapReferences?: string[];
