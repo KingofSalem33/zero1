@@ -105,7 +105,7 @@ export function selectCoreVerses(
       const aCentrality = centrality.get(a.id) || 0;
       const bCentrality = centrality.get(b.id) || 0;
       if (bCentrality !== aCentrality) return bCentrality - aCentrality;
-      return (b.similarity || 0) - (a.similarity || 0);
+      return (b.centrality || 0) - (a.centrality || 0);
     })[0];
     if (top) pericopeRepresentatives.push(top);
   });
@@ -115,7 +115,7 @@ export function selectCoreVerses(
       const aCentrality = centrality.get(a.id) || 0;
       const bCentrality = centrality.get(b.id) || 0;
       if (bCentrality !== aCentrality) return bCentrality - aCentrality;
-      return (b.similarity || 0) - (a.similarity || 0);
+      return (b.centrality || 0) - (a.centrality || 0);
     })
     .forEach((node) => {
       if (selected.size >= limit) return;

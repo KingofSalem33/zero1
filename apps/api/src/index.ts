@@ -999,13 +999,10 @@ app.post(
 
       if (!visualBundle.pericopeBundle && visualBundle.pericopeContext?.id) {
         try {
+          // Note: pericopeContext is a subset type, so we pass null to trigger a fresh fetch
           const pericopeScope = await profileTime(
             "trace.buildPericopeScopeFallback",
-            () =>
-              buildPericopeScopeForVerse(
-                anchorIds[0],
-                visualBundle.pericopeContext!,
-              ),
+            () => buildPericopeScopeForVerse(anchorIds[0], null),
             {
               file: "bible/pericopeGraphWalker.ts",
               fn: "buildPericopeScopeForVerse",

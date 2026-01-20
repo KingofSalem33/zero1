@@ -763,7 +763,7 @@ export async function runModelStream(
           }
           const result = await profileTime(
             `tool.${toolName}`,
-            () => toolFn(args),
+            async () => toolFn(args) as unknown,
             {
               file: "ai/tools",
               fn: toolName,

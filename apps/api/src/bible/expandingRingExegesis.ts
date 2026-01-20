@@ -54,6 +54,8 @@ export interface ReferenceTreeNode {
   similarity?: number; // Semantic similarity to user query (0-1)
   parallelPassages?: ParallelPassage[]; // Parallel accounts (synoptic parallels, etc.)
   isStackedWith?: number; // If this node is hidden due to being a parallel, points to the representative node ID
+  referenceKey?: string; // Canonical normalized reference (e.g., "john 1:1")
+  parentId?: number; // ID of parent node in tree
 }
 
 export interface ReferenceTreeEdge {

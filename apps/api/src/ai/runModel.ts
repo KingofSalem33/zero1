@@ -401,7 +401,8 @@ export async function runModel(
           continue;
         }
 
-        if (!providedToolMap[toolName]) {
+        const toolFn = providedToolMap[toolName];
+        if (!toolFn) {
           logger.error({ toolName }, "Unknown tool requested");
           conversationMessages.push({
             type: "function_call_output",
@@ -470,7 +471,7 @@ export async function runModel(
           // Execute tool function with validation
           const result = await profileTime(
             `tool.${toolName}`,
-            () => providedToolMap[toolName](args),
+            async () => toolFn(args) as unknown,
             {
               file: "ai/tools",
               fn: toolName,
