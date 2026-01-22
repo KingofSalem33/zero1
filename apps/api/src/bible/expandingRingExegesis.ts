@@ -12,7 +12,6 @@ import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
 import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
 import { supabase } from "../db";
-import { makeOpenAI } from "../ai";
 import { ENV } from "../env";
 import type {
   ParallelPassage,
@@ -20,6 +19,7 @@ import type {
   VisualContextBundle,
 } from "./types";
 import { areSameTestament } from "./testamentUtil";
+import { cosineSimilarity, rankByQueryRelevance } from "./graphEngine";
 import {
   type PromptMode,
   buildResponseStrategy,
@@ -340,27 +340,6 @@ const collapseDuplicateReferencesInBundle = (
 };
 
 /**
- * Compute cosine similarity between two vectors
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  if (normA === 0 || normB === 0) return 0;
-
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/**
  * Rank verses in the reference tree by semantic similarity to user query.
  * Adds similarity scores to each node and sorts within depth levels.
  *
@@ -383,83 +362,11 @@ export async function rankVersesBySimilarity(
   );
 
   try {
-    // Step 1: Generate embedding for user query
-    const client = makeOpenAI();
-    if (!client) {
-      throw new Error("OpenAI client not configured");
-    }
-    const response = await profileTime(
-      "rank_similarity.embedding_query",
-      () =>
-        client.embeddings.create({
-          model: "text-embedding-3-small",
-          input: userQuery,
-          dimensions: 1536,
-        }),
+    const { scoredCount } = await rankByQueryRelevance(
+      visualBundle.nodes,
+      userQuery,
       {
-        file: "bible/expandingRingExegesis.ts",
-        fn: "rankVersesBySimilarity",
-        await: "client.embeddings.create",
-        model: "text-embedding-3-small",
-      },
-    );
-    const queryEmbedding = response.data[0].embedding;
-
-    // Step 2: Fetch embeddings for all verses in the bundle
-    const verseIds = visualBundle.nodes.map((n) => n.id);
-    const { data: verses, error } = await profileTime(
-      "rank_similarity.fetch_embeddings",
-      () => supabase.from("verses").select("id, embedding").in("id", verseIds),
-      {
-        file: "bible/expandingRingExegesis.ts",
-        fn: "rankVersesBySimilarity",
-        await: "supabase.verses.select",
-      },
-    );
-
-    if (error || !verses) {
-      console.error("[Verse Ranking] Failed to fetch verse embeddings:", error);
-      return visualBundle;
-    }
-
-    // Create a map of verse ID to embedding
-    const embeddingMap = new Map<number, number[]>();
-    for (const verse of verses) {
-      if (verse.embedding) {
-        try {
-          const embedding =
-            typeof verse.embedding === "string"
-              ? JSON.parse(verse.embedding)
-              : verse.embedding;
-          embeddingMap.set(verse.id, embedding);
-        } catch {
-          console.error(
-            `[Verse Ranking] Failed to parse embedding for verse ${verse.id}`,
-          );
-        }
-      }
-    }
-
-    // Step 3: Compute similarity for each node
-    let scoredCount = 0;
-    const computeStart = process.hrtime.bigint();
-    for (const node of visualBundle.nodes) {
-      const verseEmbedding = embeddingMap.get(node.id);
-      if (verseEmbedding) {
-        node.similarity = cosineSimilarity(queryEmbedding, verseEmbedding);
-        scoredCount++;
-      } else {
-        node.similarity = 0; // No embedding available
-      }
-    }
-    profileSpan(
-      "rank_similarity.compute",
-      computeStart,
-      process.hrtime.bigint(),
-      {
-        file: "bible/expandingRingExegesis.ts",
-        fn: "rankVersesBySimilarity",
-        await: "cosineSimilarity",
+        profileLabel: "rank_similarity",
       },
     );
 

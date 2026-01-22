@@ -22,6 +22,11 @@ import { fetchAllEdges } from "./edgeFetchers";
 import { getPericopeForVerse } from "./pericopeSearch";
 import { BOOK_NAMES } from "./bookNames";
 import {
+  DEFAULT_GRAVITY,
+  fetchRing1Connections,
+  type GravityConfig,
+} from "./graphEngine";
+import {
   buildMirrorPairs,
   buildMirrorLookup,
   fetchCentralityScores,
@@ -95,34 +100,6 @@ const DEFAULT_CONFIG: RingConfig = {
     multiplier: 2,
     signalThreshold: 0.8,
   },
-};
-
-interface GravityConfig {
-  edgeWeight: number;
-  centralityWeight: number;
-  chiasmCenterBonus: number;
-  mirrorBonus: number;
-  structuralEdgeWeight: number;
-}
-
-const DEFAULT_GRAVITY: GravityConfig = {
-  edgeWeight: 1,
-  centralityWeight: 0.35,
-  chiasmCenterBonus: 0.4,
-  mirrorBonus: 0.25,
-  structuralEdgeWeight: 0.96,
-};
-
-const DEFAULT_CROSS_PERICOPE_THRESHOLD = 0.9;
-
-type LayerResult = {
-  ids: number[];
-  edges: import("./types").VisualEdge[];
-  stats?: {
-    maxScore: number;
-    strongCount: number;
-    threshold: number;
-  };
 };
 
 const normalizeConceptReference = (reference: string): string =>
@@ -286,228 +263,6 @@ const buildNarrativeEdges = (
   return narrativeEdges;
 };
 
-const buildStructuralEdges = (
-  sourceIds: number[],
-  structure: ChiasmStructure | null,
-  gravity: GravityConfig,
-): import("./types").VisualEdge[] => {
-  if (!structure || structure.verseIds.length === 0) {
-    return [];
-  }
-
-  const sourceSet = new Set(sourceIds);
-  const structureSet = new Set(structure.verseIds);
-  const mirrorLookup = buildMirrorLookup(structure);
-  const edges: import("./types").VisualEdge[] = [];
-
-  sourceSet.forEach((sourceId) => {
-    if (!structureSet.has(sourceId)) return;
-
-    const mirror = mirrorLookup.get(sourceId);
-    if (mirror && mirror.id !== sourceId) {
-      edges.push({
-        from: sourceId,
-        to: mirror.id,
-        weight: gravity.structuralEdgeWeight,
-        type: "PATTERN",
-        metadata: {
-          source: "structure",
-          structureId: structure.id,
-          mirror: true,
-          label: mirror.label,
-          mirrorLabel: mirror.mirrorLabel,
-        },
-      });
-    }
-
-    if (structure.centerId && structure.centerId !== sourceId) {
-      edges.push({
-        from: sourceId,
-        to: structure.centerId,
-        weight: Math.min(0.98, gravity.structuralEdgeWeight - 0.04),
-        type: "PATTERN",
-        metadata: {
-          source: "structure",
-          structureId: structure.id,
-          center: true,
-        },
-      });
-    }
-  });
-
-  return edges;
-};
-
-async function fetchPriorityLayer(
-  sourceIds: number[],
-  limit: number,
-  excludeSet: Set<number>,
-  gravity: GravityConfig,
-  structure: ChiasmStructure | null,
-  signalThreshold?: number,
-  scope?: {
-    allowedVerseIds?: Set<number>;
-    crossThreshold?: number;
-  },
-): Promise<LayerResult> {
-  if (sourceIds.length === 0) {
-    return { ids: [], edges: [] };
-  }
-
-  console.log(
-    `[Graph Walker]   Fetching weighted neighbors from ${sourceIds.length} source vertices...`,
-  );
-
-  const baseEdges = await fetchAllEdges(sourceIds, {
-    includeDEEPER: true,
-    includeROOTS: true,
-    includeECHOES: true,
-    includePROPHECY: true,
-    includeGENEALOGY: true,
-    includeDISCOVERED: true,
-    useSemanticThreads: true,
-  });
-  const structuralEdges = buildStructuralEdges(sourceIds, structure, gravity);
-  const allEdges = [...baseEdges, ...structuralEdges];
-
-  const sourceSet = new Set(sourceIds);
-  const candidateIds = new Set<number>();
-  const allowedVerseIds =
-    scope?.allowedVerseIds && scope.allowedVerseIds.size > 0
-      ? scope.allowedVerseIds
-      : null;
-  const crossThreshold =
-    typeof scope?.crossThreshold === "number"
-      ? scope.crossThreshold
-      : DEFAULT_CROSS_PERICOPE_THRESHOLD;
-
-  allEdges.forEach((edge) => {
-    const fromIsSource = sourceSet.has(edge.from);
-    const toIsSource = sourceSet.has(edge.to);
-    if (!fromIsSource && !toIsSource) return;
-
-    const targetId = fromIsSource ? edge.to : edge.from;
-    if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
-
-    const edgeWeight = typeof edge.weight === "number" ? edge.weight : 0.6;
-    if (
-      allowedVerseIds &&
-      !allowedVerseIds.has(targetId) &&
-      edgeWeight < crossThreshold
-    ) {
-      return;
-    }
-
-    candidateIds.add(targetId);
-  });
-
-  const centralityMap = await fetchCentralityScores([...candidateIds]);
-  const mirrorLookup = structure ? buildMirrorLookup(structure) : new Map();
-
-  const candidates = new Map<
-    number,
-    {
-      score: number;
-      bestEdge: import("./types").VisualEdge;
-      bestSource: number;
-    }
-  >();
-
-  allEdges.forEach((edge) => {
-    const fromIsSource = sourceSet.has(edge.from);
-    const toIsSource = sourceSet.has(edge.to);
-    if (!fromIsSource && !toIsSource) return;
-
-    const sourceId = fromIsSource ? edge.from : edge.to;
-    const targetId = fromIsSource ? edge.to : edge.from;
-    if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
-
-    const edgeWeight = typeof edge.weight === "number" ? edge.weight : 0.6;
-    if (
-      allowedVerseIds &&
-      !allowedVerseIds.has(targetId) &&
-      edgeWeight < crossThreshold
-    ) {
-      return;
-    }
-    const centrality = centralityMap.get(targetId) ?? 0.1;
-
-    let score =
-      edgeWeight * gravity.edgeWeight + centrality * gravity.centralityWeight;
-
-    if (structure) {
-      if (structure.centerId && targetId === structure.centerId) {
-        score += gravity.chiasmCenterBonus;
-      }
-      const mirror = mirrorLookup.get(sourceId);
-      if (mirror?.id === targetId) {
-        score += gravity.mirrorBonus;
-      }
-    }
-
-    const existing = candidates.get(targetId);
-    if (!existing) {
-      candidates.set(targetId, {
-        score,
-        bestEdge: edge,
-        bestSource: sourceId,
-      });
-      return;
-    }
-
-    existing.score += edgeWeight * gravity.edgeWeight;
-    if (edgeWeight > (existing.bestEdge.weight ?? 0)) {
-      existing.bestEdge = edge;
-      existing.bestSource = sourceId;
-    }
-  });
-
-  const sorted = Array.from(candidates.entries())
-    .sort((a, b) => b[1].score - a[1].score)
-    .slice(0, limit);
-
-  const ids = sorted.map(([id]) => id);
-  const edges = sorted.map(([id, info]) => ({
-    from: info.bestSource,
-    to: id,
-    weight: info.bestEdge.weight ?? 0.6,
-    type: info.bestEdge.type,
-    metadata: {
-      ...info.bestEdge.metadata,
-      selectionScore: info.score,
-      selectionType: "gravity",
-    },
-  }));
-
-  const threshold = typeof signalThreshold === "number" ? signalThreshold : 0;
-  const edgeWeights = sorted.map(([, info]) =>
-    typeof info.bestEdge.weight === "number" ? info.bestEdge.weight : 0.6,
-  );
-  const maxWeight = edgeWeights.length > 0 ? Math.max(...edgeWeights) : 0;
-  const strongCount =
-    typeof signalThreshold === "number" && maxWeight > 0
-      ? edgeWeights.filter((weight) => weight >= maxWeight * threshold).length
-      : 0;
-
-  console.log(
-    `[Graph Walker]   Weighted scoring: ${candidates.size} candidates, returning top ${ids.length}`,
-  );
-
-  return {
-    ids,
-    edges,
-    ...(typeof signalThreshold === "number"
-      ? {
-          stats: {
-            maxScore: maxWeight,
-            strongCount,
-            threshold,
-          },
-        }
-      : {}),
-  };
-}
-
 /**
  * Build context bundle using budgeted BFS graph traversal
  */
@@ -618,7 +373,7 @@ export async function buildContextBundle(
 
   console.log(`[Graph Walker] Fetching Ring 1 (max ${ring1Limit})...`);
 
-  const ring1Layer = await fetchPriorityLayer(
+  const ring1Layer = await fetchRing1Connections(
     ring0Ids,
     ring1Limit,
     new Set(ring0Ids),
@@ -658,7 +413,7 @@ export async function buildContextBundle(
   const excludeSet = new Set([...ring0Ids, ...ring1Ids]);
   const ring2Layer =
     ring2Limit > 0
-      ? await fetchPriorityLayer(
+      ? await fetchRing1Connections(
           ring1Ids,
           ring2Limit,
           excludeSet,
@@ -698,7 +453,7 @@ export async function buildContextBundle(
   ring2Ids.forEach((id) => excludeSet.add(id));
   const ring3Layer =
     ring3Limit > 0
-      ? await fetchPriorityLayer(
+      ? await fetchRing1Connections(
           ring2Ids,
           ring3Limit,
           excludeSet,

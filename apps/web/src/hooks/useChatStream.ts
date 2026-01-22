@@ -3,6 +3,8 @@ import { useState, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import type { VisualContextBundle } from "../types/goldenThread";
 
+const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+
 export interface ToolCallEvent {
   tool: string;
   args: unknown;
@@ -24,6 +26,9 @@ export interface ContentEvent {
 
 export interface DoneEvent {
   citations: string[];
+  suggestTrace?: boolean;
+  connectionCount?: number;
+  anchorId?: number;
 }
 
 export interface ErrorEvent {
@@ -38,6 +43,9 @@ export interface StreamingMessage {
   content: string;
   isComplete: boolean;
   citations?: string[];
+  suggestTrace?: boolean;
+  connectionCount?: number;
+  anchorId?: number;
   activeTools: string[]; // Tools currently executing
   completedTools: string[]; // Tools that finished successfully
   erroredTools: string[]; // Tools that errored
@@ -61,6 +69,7 @@ export function useChatStream(
       visualBundle?: unknown,
       mapSession?: unknown,
       mapMode?: "fast" | "full",
+      endpoint?: string,
     ) => {
       // Cancel any existing stream
       if (abortControllerRef.current) {
@@ -82,7 +91,8 @@ export function useChatStream(
       abortControllerRef.current = abortController;
 
       try {
-        const response = await fetch("http://localhost:3001/api/chat/stream", {
+        const targetUrl = endpoint || `${API_URL}/api/chat/stream`;
+        const response = await fetch(targetUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -240,6 +250,9 @@ export function useChatStream(
                           ...currentState,
                           isComplete: true,
                           citations: doneEvent.citations,
+                          suggestTrace: doneEvent.suggestTrace,
+                          connectionCount: doneEvent.connectionCount,
+                          anchorId: doneEvent.anchorId,
                         };
                       }
 

@@ -237,6 +237,7 @@ const InteractiveText = ({
               <button
                 key={i}
                 className="text-[#D4AF37] font-bold hover:text-[#F0D77F] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-all duration-200 mx-0.5 cursor-pointer inline-flex items-center gap-0.5"
+                data-verse-link="true"
                 onClick={(e) => {
                   onVerseClick?.(reference, e);
                 }}
@@ -519,23 +520,33 @@ export function TextHighlightTooltip({
         setRootLanguage(language);
 
         // Parse the structured response with Strong's numbers
+        const normalizeRootText = (text: string) =>
+          text
+            .replace(/Strong\u2019s/g, "Strong's")
+            .replace(/\u00e2\u20ac\u201d/g, "-")
+            .replace(/[\u2013\u2014]/g, "-");
+
         const parseRootTranslation = (text: string) => {
-          const rootsMatch = text.match(/ROOTS:\s*([\s\S]*?)\n\nPLAIN:/);
-          const plainMatch = text.match(/PLAIN:\s*([\s\S]*?)$/);
+          const normalized = normalizeRootText(text);
+          const rootsMatch = normalized.match(/ROOTS:\s*([\s\S]*?)\n\s*PLAIN:/);
+          const plainMatch = normalized.match(/PLAIN:\s*([\s\S]*?)$/);
 
           const rootsText = rootsMatch?.[1] || "";
-          const plain = plainMatch?.[1]?.trim() || text; // Fallback to full text
+          const plain = plainMatch?.[1]?.trim() || normalized; // Fallback to full text
 
           // Split by word entries (lines starting with "- ")
           const wordBlocks = rootsText
-            .split(/\n- /)
+            .split(/\r?\n- /)
+            .map((block, index) =>
+              index === 0 ? block.replace(/^\s*-\s*/, "") : block,
+            )
             .filter((block) => block.trim());
 
           const insights = wordBlocks
             .map((block) => {
-              // Match: "Word — original (Strong's GXXXX)\ndefinition\n\ninsight"
+              // Match: "Word - original (Strong's GXXXX)\ndefinition\n\ninsight"
               const headerMatch = block.match(
-                /^(.+?)\s*[—-]\s*(.+?)\s*\(Strong's\s+([^)]+)\)/m,
+                /^(.+?)\s*-\s*(.+?)\s*\(Strong's\s+([^)]+)\)/m,
               );
               if (!headerMatch) return null;
 
@@ -614,7 +625,7 @@ export function TextHighlightTooltip({
     const handleMouseUp = async (e: MouseEvent) => {
       // Don't interfere with verse citation clicks
       const target = e.target as HTMLElement;
-      if (target && target.closest('button[class*="text-[#B5942F]"]')) {
+      if (target && target.closest('button[data-verse-link="true"]')) {
         console.log("[TextHighlight] Ignoring verse citation click");
         return;
       }
@@ -1170,7 +1181,7 @@ export function TextHighlightTooltip({
                               {rootInsights[currentRootCardIndex].original && (
                                 <>
                                   <span className="text-neutral-400 mx-1">
-                                    —
+                                    &mdash;
                                   </span>
                                   <span className="text-neutral-400 italic">
                                     {
@@ -1293,8 +1304,8 @@ export function TextHighlightTooltip({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[13px] leading-relaxed text-neutral-200 font-normal">
-                    {rootTranslation}
+                  <p className="text-[13px] leading-relaxed text-neutral-200 font-normal break-words">
+                    {plainMeaning || rootTranslation}
                   </p>
                 )}
               </div>

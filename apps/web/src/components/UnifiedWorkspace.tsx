@@ -86,6 +86,9 @@ interface ChatMessage {
   rawContent?: string;
   timestamp: Date;
   visualBundle?: VisualContextBundle; // Reference genealogy tree for this message
+  suggestTrace?: boolean;
+  tracePrompt?: string;
+  connectionCount?: number;
 }
 
 interface ToolActivity {
@@ -138,7 +141,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   inspiring,
   onRefreshProject,
   onAskAIRef,
-  onOpenNewWorkspace,
+  onOpenNewWorkspace: _onOpenNewWorkspace,
   messages: externalMessages,
   onMessagesChange,
   pendingPrompt,
@@ -185,6 +188,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   >(null);
   const [additionalContext, setAdditionalContext] = useState("");
   const [showBookmarkPanel, setShowBookmarkPanel] = useState(false);
+  const [traceModeEnabled, setTraceModeEnabled] = useState(false);
 
   // Completion modal state
   // Removed micro-step state variables - no longer using cards UI
@@ -194,6 +198,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const composerRef = useRef<HTMLDivElement>(null);
   const messagesFetchedRef = useRef(false);
   const lastPromptModeRef = useRef<PromptMode | null>(null);
+  const lastUserPromptRef = useRef<string | null>(null);
   const [nextSuggestedPrompt, setNextSuggestedPrompt] =
     useState<PendingPrompt | null>(null);
 
@@ -221,6 +226,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
     fetchThread();
   }, [project?.id]);
+
+  useEffect(() => {
+    if (!bibleStudyMode) {
+      setTraceModeEnabled(false);
+    }
+  }, [bibleStudyMode]);
 
   // Fetch messages from thread
   const fetchThreadMessages = useCallback(async () => {
@@ -564,6 +575,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Disable auto-scroll; user controls scroll position manually
 
   const getContextualPlaceholder = (): string => {
+    if (bibleStudyMode && traceModeEnabled) {
+      return "Trace mode: map a passage or question...";
+    }
     if (bibleStudyMode) return "What's on your heart?";
     return "What's on your mind?";
   };
@@ -1268,8 +1282,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       // Auto-start stream with the prompt from Bible footer
       const startPendingPrompt = async () => {
         setIsProcessing(true);
-        setMapPrepActive(true);
-        setMapPrepCount(0);
+        setMapPrepActive(!bibleStudyMode || traceModeEnabled);
+        setMapPrepCount(bibleStudyMode && !traceModeEnabled ? null : 0);
         setMapReadyMessageId(null);
         setPendingVisualBundle(null);
         const inferredPromptMode = normalizedPrompt.mode ?? "go_deeper_short";
@@ -1335,9 +1349,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           content: msg.rawContent ?? msg.content,
         }));
 
-        if (shouldReanchor) {
+        if (shouldReanchor && (!bibleStudyMode || traceModeEnabled)) {
           void startFullMapFetch(referenceSource);
         }
+
+        lastUserPromptRef.current = referenceSource;
 
         // Start streaming AI response
         await startStream(
@@ -1348,6 +1364,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           bundleForMap || undefined,
           mapSessionPayload,
           shouldReanchor ? "fast" : undefined,
+          bibleStudyMode && !traceModeEnabled
+            ? `${API_URL}/api/bible-study`
+            : undefined,
         );
         setIsProcessing(false);
 
@@ -1373,6 +1392,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     normalizeReference,
     fullMapPending,
     startFullMapFetch,
+    bibleStudyMode,
+    traceModeEnabled,
   ]);
 
   // Reset processed prompt when prompt is consumed
@@ -1481,6 +1502,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         content: streamingMessage.content,
         timestamp: new Date(),
         visualBundle: pendingVisualBundle || visualBundle || undefined,
+        suggestTrace: streamingMessage.suggestTrace,
+        connectionCount: streamingMessage.connectionCount,
+        tracePrompt: lastUserPromptRef.current ?? undefined,
       };
       if (fullMapPending && fullMapRequestRef.current) {
         fullMapRequestRef.current.messageId = newMessage.id;
@@ -1538,8 +1562,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     if (!inputText || !promptInput || isProcessing || isStreaming) return;
 
     setIsProcessing(true);
-    setMapPrepActive(true);
-    setMapPrepCount(0);
+    setMapPrepActive(!bibleStudyMode || traceModeEnabled);
+    setMapPrepCount(bibleStudyMode && !traceModeEnabled ? null : 0);
     setMapReadyMessageId(null);
     setPendingVisualBundle(null);
     const shouldUseSuggested =
@@ -1622,6 +1646,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     const mapMode = shouldReanchor ? "fast" : undefined;
 
     // Start streaming AI response with updated message history
+    lastUserPromptRef.current = promptInput;
     const streamPromise = startStream(
       apiMessage,
       "user",
@@ -1630,8 +1655,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       streamBundle,
       mapSessionPayload,
       mapMode,
+      bibleStudyMode && !traceModeEnabled
+        ? `${API_URL}/api/bible-study`
+        : undefined,
     );
-    if (shouldReanchor) {
+    if (shouldReanchor && (!bibleStudyMode || traceModeEnabled)) {
       void startFullMapFetch(userMessage);
     }
     await streamPromise;
@@ -1927,13 +1955,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       setMapPendingFullMessageId(null);
     }
 
-    setMapPrepActive(true);
-    setMapPrepCount(0);
+    setMapPrepActive(!bibleStudyMode || traceModeEnabled);
+    setMapPrepCount(bibleStudyMode && !traceModeEnabled ? null : 0);
     setMapReadyMessageId(null);
     setPendingVisualBundle(null);
     lastPromptModeRef.current = promptMode ?? null;
 
     // Start streaming AI response
+    lastUserPromptRef.current = reference;
     const streamPromise = startStream(
       reference,
       "user",
@@ -1942,8 +1971,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       shouldReanchor ? undefined : bundleForMap || undefined,
       mapSessionPayload,
       shouldReanchor ? "fast" : undefined,
+      bibleStudyMode && !traceModeEnabled
+        ? `${API_URL}/api/bible-study`
+        : undefined,
     );
-    if (shouldReanchor) {
+    if (shouldReanchor && (!bibleStudyMode || traceModeEnabled)) {
       void startFullMapFetch(reference);
     }
     await streamPromise;
@@ -2609,6 +2641,44 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                           />
                                         </svg>
                                       </button>
+                                      {!message.visualBundle &&
+                                        message.suggestTrace &&
+                                        message.tracePrompt &&
+                                        onTrace && (
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              onClick={() =>
+                                                onTrace(message.tracePrompt!)
+                                              }
+                                              className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+                                            >
+                                              <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                                                />
+                                              </svg>
+                                              View Map
+                                            </button>
+                                            {typeof message.connectionCount ===
+                                              "number" && (
+                                              <span className="text-[11px] text-neutral-500">
+                                                {message.connectionCount}{" "}
+                                                connection
+                                                {message.connectionCount === 1
+                                                  ? ""
+                                                  : "s"}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
                                       {message.visualBundle && (
                                         <div className="flex items-center gap-2">
                                           <button
@@ -2838,15 +2908,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
             {/* Options Menu */}
             {showUploadButton && (
-              <div className="absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-600 rounded-xl shadow-xl overflow-hidden z-10 min-w-[220px]">
-                <div className="py-1">
-                  {/* Add Workspace Option */}
+              <div className="absolute bottom-full left-0 mb-2 z-10 min-w-[220px] rounded-2xl border border-neutral-700/60 bg-neutral-900/95 shadow-2xl backdrop-blur-sm">
+                <div className="p-2">
                   <button
                     onClick={() => {
-                      onOpenNewWorkspace?.();
+                      setTraceModeEnabled((prev) => !prev);
                       setShowUploadButton(false);
                     }}
-                    className="w-full px-4 py-2 text-left text-sm text-neutral-200 hover:bg-gray-700/50 transition-colors flex items-center gap-3"
+                    className="w-full rounded-xl px-3 py-2 text-left text-sm text-neutral-200 transition-colors hover:bg-neutral-800/80 flex items-center gap-3"
+                    aria-pressed={traceModeEnabled}
                   >
                     <svg
                       className="w-4 h-4"
@@ -2858,34 +2928,16 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M12 4v16m8-8H4"
+                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
                       />
                     </svg>
-                    <span>Add Workspace</span>
+                    <span>Trace mode</span>
+                    {traceModeEnabled && (
+                      <span className="ml-auto rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                        On
+                      </span>
+                    )}
                   </button>
-
-                  {/* Placeholder for future options */}
-                  <div className="border-t border-gray-700 mt-1 pt-1">
-                    <button
-                      disabled
-                      className="w-full px-4 py-2 text-left text-sm text-gray-500 hover:bg-gray-700/50 transition-colors flex items-center gap-3 opacity-50 cursor-not-allowed"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                        />
-                      </svg>
-                      <span>More options coming soon...</span>
-                    </button>
-                  </div>
                 </div>
               </div>
             )}

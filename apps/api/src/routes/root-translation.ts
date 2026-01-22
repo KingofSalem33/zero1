@@ -455,9 +455,17 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       translation = translation.slice(rootsIndex).trim();
     }
     translation = translation
+      .replace(/Strong\u2019s/g, "Strong's")
       .replace(/ROOTS:\s*/g, "ROOTS:\n")
       .replace(/\s+PLAIN:\s*/g, "\n\nPLAIN:\n")
-      .replace(/\s+-\s+(?=[A-Za-z][^\n]*\(Strong's [HG]\d+\))/g, "\n\n- ")
+      .replace(
+        /-\s*([^\n]+)\n(?:\s*\n)*-\s*([^\n]*\(Strong's [HG]\d+[^)]*\))/g,
+        "- $1 - $2",
+      )
+      .replace(
+        /(^|[^A-Za-z])\s+-\s+(?=[A-Za-z][^\n]*\(Strong's [HG]\d+\))/g,
+        "$1\n\n- ",
+      )
       .replace(/\n(?!- )-\s*/g, "\n- ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();

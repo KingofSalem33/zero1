@@ -47,6 +47,7 @@ import { buildVisualBundle } from "./bible/graphWalker";
 import bookmarksRouter from "./routes/bookmarks";
 import libraryRouter from "./routes/library";
 import verseRouter from "./routes/verse";
+import bibleStudyRouter from "./routes/bible-study";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream"; // Used in /api/chat for streaming when Accept: text/event-stream
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
@@ -209,6 +210,9 @@ app.use("/api/library", optionalAuth, libraryRouter);
 
 // Mount verse routes (fetch individual verses by reference)
 app.use("/api/verse", optionalAuth, verseRouter);
+
+// Mount bible study routes (fast text-only mode)
+app.use("/api/bible-study", optionalAuth, aiLimiter, bibleStudyRouter);
 
 // Mount semantic connection routes (AI synopsis of verse connections)
 app.use("/api/semantic-connection", optionalAuth, semanticConnectionRouter);

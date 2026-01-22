@@ -30,6 +30,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
         insight: string;
       }>
     >([]);
+    const [rootTranslation, setRootTranslation] = useState("");
     const [plainMeaning, setPlainMeaning] = useState("");
     const [rootLanguage, setRootLanguage] = useState<string>("");
     const [currentRootCardIndex, setCurrentRootCardIndex] = useState(0);
@@ -84,6 +85,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
     // Generate root translation
     const generateRootTranslation = async (text: string) => {
       setIsLoadingRoot(true);
+      setRootTranslation("");
       isStreamingRef.current = true;
 
       try {
@@ -114,6 +116,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
         });
 
         if (!response.ok) {
+          setRootTranslation("Root translation unavailable right now.");
           setIsLoadingRoot(false);
           isStreamingRef.current = false;
           abortControllerRef.current = null;
@@ -126,23 +129,34 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
         const language = data.language || "";
 
         setRootLanguage(language);
+        setRootTranslation(fullTranslation);
 
         // Parse the structured response
+        const normalizeRootText = (text: string) =>
+          text
+            .replace(/Strong\u2019s/g, "Strong's")
+            .replace(/\u00e2\u20ac\u201d/g, "-")
+            .replace(/[\u2013\u2014]/g, "-");
+
         const parseRootTranslation = (text: string) => {
-          const rootsMatch = text.match(/ROOTS:\s*([\s\S]*?)\n\nPLAIN:/);
-          const plainMatch = text.match(/PLAIN:\s*([\s\S]*?)$/);
+          const normalized = normalizeRootText(text);
+          const rootsMatch = normalized.match(/ROOTS:\s*([\s\S]*?)\n\s*PLAIN:/);
+          const plainMatch = normalized.match(/PLAIN:\s*([\s\S]*?)$/);
 
           const rootsText = rootsMatch?.[1] || "";
-          const plain = plainMatch?.[1]?.trim() || text;
+          const plain = plainMatch?.[1]?.trim() || normalized;
 
           const wordBlocks = rootsText
-            .split(/\n- /)
+            .split(/\r?\n- /)
+            .map((block, index) =>
+              index === 0 ? block.replace(/^\s*-\s*/, "") : block,
+            )
             .filter((block) => block.trim());
 
           const insights = wordBlocks
             .map((block) => {
               const headerMatch = block.match(
-                /^(.+?)\s*[—-]\s*(.+?)\s*\(Strong's\s+([^)]+)\)/m,
+                /^(.+?)\s*-\s*(.+?)\s*\(Strong's\s+([^)]+)\)/m,
               );
               if (!headerMatch) return null;
 
@@ -202,6 +216,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
             "[VerseTooltip] Error generating root translation:",
             error,
           );
+          setRootTranslation("Root translation unavailable right now.");
         }
         setIsLoadingRoot(false);
         isStreamingRef.current = false;
@@ -462,7 +477,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                                   .original && (
                                   <>
                                     <span className="text-neutral-400 mx-1">
-                                      —
+                                      &mdash;
                                     </span>
                                     <span className="text-neutral-400 italic">
                                       {
@@ -530,7 +545,13 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                         )}
                       </div>
                     </div>
-                  ) : null}
+                  ) : (
+                    <p className="text-[13px] text-neutral-200 leading-relaxed italic break-words">
+                      {plainMeaning ||
+                        rootTranslation ||
+                        "Root translation unavailable."}
+                    </p>
+                  )}
                 </div>
               </>
             )}
