@@ -60,7 +60,8 @@ router.post("/", async (req, res) => {
             : "";
 
     if (!message.trim()) {
-      return res.status(400).json({ error: "message is required" });
+      res.status(400).json({ error: "message is required" });
+      return;
     }
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -150,6 +151,7 @@ router.post("/", async (req, res) => {
     res.write(`event: error\n`);
     res.write(`data: ${JSON.stringify({ message })}\n\n`);
     res.end();
+    return;
   }
 });
 

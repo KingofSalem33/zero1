@@ -288,6 +288,7 @@ router.post("/connections", readOnlyLimiter, async (req, res) => {
     const newConnection: ConnectionRecord = {
       id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       ...payload,
+      mapSession: payload.mapSession ?? null,
       createdAt: now,
       updatedAt: now,
       note: "",
