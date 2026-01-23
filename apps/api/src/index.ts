@@ -946,8 +946,41 @@ app.post(
             buildVisualBundle(
               anchorIds[0],
               pericopeScope?.pericopeIds
-                ? { scope: { pericopeIds: pericopeScope.pericopeIds } }
-                : {},
+                ? {
+                    scope: { pericopeIds: pericopeScope.pericopeIds },
+                    selection: {
+                      mode: "hybrid",
+                      query: text,
+                      versePoolSize: 100,
+                      pericopePoolSize: 30,
+                      pericopeMaxVerses: 300,
+                      strongPercentile: 0.85,
+                    },
+                    adaptive: {
+                      enabled: true,
+                      startLimit: 12,
+                      minLimit: 2,
+                      multiplier: 2,
+                      signalThreshold: 0.8,
+                    },
+                  }
+                : {
+                    selection: {
+                      mode: "hybrid",
+                      query: text,
+                      versePoolSize: 100,
+                      pericopePoolSize: 30,
+                      pericopeMaxVerses: 300,
+                      strongPercentile: 0.85,
+                    },
+                    adaptive: {
+                      enabled: true,
+                      startLimit: 12,
+                      minLimit: 2,
+                      multiplier: 2,
+                      signalThreshold: 0.8,
+                    },
+                  },
               {
                 includeDEEPER: true,
                 includeROOTS: true,

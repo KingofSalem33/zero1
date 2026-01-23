@@ -23,8 +23,11 @@ import { getPericopeForVerse } from "./pericopeSearch";
 import { BOOK_NAMES } from "./bookNames";
 import {
   DEFAULT_GRAVITY,
+  fetchHybridLayer,
   fetchRing1Connections,
+  getQueryEmbedding,
   type GravityConfig,
+  type HybridSelectionConfig,
 } from "./graphEngine";
 import {
   buildMirrorPairs,
@@ -74,6 +77,7 @@ export interface RingConfig {
   ring2Limit: number; // Max secondary refs (cap)
   ring3Limit: number; // Max tertiary refs (cap)
   gravity?: Partial<GravityConfig>;
+  selection?: HybridSelectionConfig;
   adaptive?: {
     enabled?: boolean;
     startLimit?: number;
@@ -272,6 +276,7 @@ export async function buildContextBundle(
 ): Promise<ContextBundle> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const adaptive = cfg.adaptive;
+  const selection = cfg.selection;
   const clampLimit = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
   const scopeConfig = cfg.scope;
@@ -341,12 +346,36 @@ export async function buildContextBundle(
 
   const gravity = { ...DEFAULT_GRAVITY, ...(cfg.gravity ?? {}) };
   const structure = await fetchChiasmStructureForVerse(anchorId);
+  const isHybridRequested =
+    selection?.mode === "hybrid" && typeof selection.query === "string";
+  const maxDepth =
+    typeof selection?.maxDepth === "number" ? selection.maxDepth : undefined;
+  const maxNodes =
+    typeof selection?.maxNodes === "number" ? selection.maxNodes : undefined;
+  let queryEmbedding: number[] | null = null;
 
   if (structure) {
     console.log(
       `[Graph Walker] Structural lens: ${structure.type ?? "chiasm"} ${structure.id} (${structure.verseIds.length} verses)`,
     );
   }
+
+  if (isHybridRequested) {
+    const queryText = selection?.query?.trim();
+    if (queryText) {
+      queryEmbedding = await getQueryEmbedding(
+        queryText,
+        "graph_walker.hybrid",
+      );
+    }
+    if (!queryEmbedding) {
+      console.warn(
+        "[Graph Walker] Hybrid selection requested but query embedding unavailable. Falling back to gravity scoring.",
+      );
+    }
+  }
+
+  const useHybrid = isHybridRequested && !!queryEmbedding;
 
   // ========================================
   // RING 1: Direct Cross-References
@@ -366,27 +395,53 @@ export async function buildContextBundle(
   let ring1Limit = cfg.ring1Limit;
   let ring2Limit = cfg.ring2Limit;
   let ring3Limit = cfg.ring3Limit;
+  let totalNodes = 1;
 
   if (adaptiveEnabled) {
     ring1Limit = clampLimit(adaptiveStart, adaptiveMin, cfg.ring1Limit);
   }
 
+  if (typeof maxDepth === "number" && maxDepth < 1) {
+    ring1Limit = 0;
+    ring2Limit = 0;
+    ring3Limit = 0;
+  }
+
+  if (typeof maxNodes === "number") {
+    const remaining = Math.max(maxNodes - totalNodes, 0);
+    ring1Limit = Math.min(ring1Limit, remaining);
+    if (remaining <= 0) {
+      ring2Limit = 0;
+      ring3Limit = 0;
+    }
+  }
+
   console.log(`[Graph Walker] Fetching Ring 1 (max ${ring1Limit})...`);
 
-  const ring1Layer = await fetchRing1Connections(
-    ring0Ids,
-    ring1Limit,
-    new Set(ring0Ids),
-    gravity,
-    structure,
-    adaptiveEnabled ? adaptiveThreshold : undefined,
-    scope,
-  );
+  const ring1Layer = useHybrid
+    ? await fetchHybridLayer(
+        ring0Ids,
+        ring1Limit,
+        new Set(ring0Ids),
+        queryEmbedding!,
+        selection!,
+        scope,
+      )
+    : await fetchRing1Connections(
+        ring0Ids,
+        ring1Limit,
+        new Set(ring0Ids),
+        gravity,
+        structure,
+        adaptiveEnabled ? adaptiveThreshold : undefined,
+        scope,
+      );
   const ring1Ids = ring1Layer.ids;
   let ring1 = await hydrateVerses(ring1Ids);
   let ring1Edges = ring1Layer.edges;
 
   console.log(`[Graph Walker] Ring 1: ${ring1.length} verses`);
+  totalNodes += ring1Ids.length;
 
   // ========================================
   // RING 2: References of References
@@ -403,9 +458,24 @@ export async function buildContextBundle(
         cfg.ring2Limit,
       );
     }
+    const adaptiveLabel = ring1Layer.stats?.threshold ?? adaptiveThreshold;
     console.log(
-      `[Graph Walker] Adaptive Ring 2 limit set to ${ring2Limit} (strong: ${strongCount}, threshold: ${adaptiveThreshold})`,
+      `[Graph Walker] Adaptive Ring 2 limit set to ${ring2Limit} (strong: ${strongCount}, threshold: ${adaptiveLabel})`,
     );
+  }
+
+  if (typeof maxDepth === "number" && maxDepth < 2) {
+    ring2Limit = 0;
+    ring3Limit = 0;
+  }
+
+  if (typeof maxNodes === "number") {
+    const remaining = Math.max(maxNodes - totalNodes, 0);
+    ring2Limit = Math.min(ring2Limit, remaining);
+    if (remaining <= 0) {
+      ring2Limit = 0;
+      ring3Limit = 0;
+    }
   }
 
   console.log(`[Graph Walker] Fetching Ring 2 (max ${ring2Limit})...`);
@@ -413,21 +483,31 @@ export async function buildContextBundle(
   const excludeSet = new Set([...ring0Ids, ...ring1Ids]);
   const ring2Layer =
     ring2Limit > 0
-      ? await fetchRing1Connections(
-          ring1Ids,
-          ring2Limit,
-          excludeSet,
-          gravity,
-          structure,
-          adaptiveEnabled ? adaptiveThreshold : undefined,
-          scope,
-        )
+      ? useHybrid
+        ? await fetchHybridLayer(
+            ring1Ids,
+            ring2Limit,
+            excludeSet,
+            queryEmbedding!,
+            selection!,
+            scope,
+          )
+        : await fetchRing1Connections(
+            ring1Ids,
+            ring2Limit,
+            excludeSet,
+            gravity,
+            structure,
+            adaptiveEnabled ? adaptiveThreshold : undefined,
+            scope,
+          )
       : { ids: [], edges: [] };
   const ring2Ids = ring2Layer.ids;
   const ring2 = await hydrateVerses(ring2Ids);
   const ring2Edges = ring2Layer.edges;
 
   console.log(`[Graph Walker] Ring 2: ${ring2.length} verses`);
+  totalNodes += ring2Ids.length;
 
   // ========================================
   // RING 3: Deep Thematic Links
@@ -443,9 +523,22 @@ export async function buildContextBundle(
         cfg.ring3Limit,
       );
     }
+    const adaptiveLabel = ring2Layer.stats?.threshold ?? adaptiveThreshold;
     console.log(
-      `[Graph Walker] Adaptive Ring 3 limit set to ${ring3Limit} (strong: ${strongCount}, threshold: ${adaptiveThreshold})`,
+      `[Graph Walker] Adaptive Ring 3 limit set to ${ring3Limit} (strong: ${strongCount}, threshold: ${adaptiveLabel})`,
     );
+  }
+
+  if (typeof maxDepth === "number" && maxDepth < 3) {
+    ring3Limit = 0;
+  }
+
+  if (typeof maxNodes === "number") {
+    const remaining = Math.max(maxNodes - totalNodes, 0);
+    ring3Limit = Math.min(ring3Limit, remaining);
+    if (remaining <= 0) {
+      ring3Limit = 0;
+    }
   }
 
   console.log(`[Graph Walker] Fetching Ring 3 (max ${ring3Limit})...`);
@@ -453,15 +546,24 @@ export async function buildContextBundle(
   ring2Ids.forEach((id) => excludeSet.add(id));
   const ring3Layer =
     ring3Limit > 0
-      ? await fetchRing1Connections(
-          ring2Ids,
-          ring3Limit,
-          excludeSet,
-          gravity,
-          structure,
-          adaptiveEnabled ? adaptiveThreshold : undefined,
-          scope,
-        )
+      ? useHybrid
+        ? await fetchHybridLayer(
+            ring2Ids,
+            ring3Limit,
+            excludeSet,
+            queryEmbedding!,
+            selection!,
+            scope,
+          )
+        : await fetchRing1Connections(
+            ring2Ids,
+            ring3Limit,
+            excludeSet,
+            gravity,
+            structure,
+            adaptiveEnabled ? adaptiveThreshold : undefined,
+            scope,
+          )
       : { ids: [], edges: [] };
   const ring3Ids = ring3Layer.ids;
   const ring3 = await hydrateVerses(ring3Ids);

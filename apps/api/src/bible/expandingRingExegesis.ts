@@ -1261,9 +1261,26 @@ function buildAnchorFromTree(
  */
 export async function buildMultiAnchorTree(
   anchorIds: number[],
-  _userPrompt: string, // Kept for API compatibility
+  userPrompt: string,
 ): Promise<ReferenceVisualBundle> {
   const startTime = Date.now();
+  const maxNodesTotal = 120;
+  let remainingBudget = maxNodesTotal;
+  const selectionDefaults = {
+    mode: "hybrid" as const,
+    query: userPrompt,
+    versePoolSize: 100,
+    pericopePoolSize: 30,
+    pericopeMaxVerses: 300,
+    strongPercentile: 0.85,
+  };
+  const adaptiveDefaults = {
+    enabled: true,
+    startLimit: 12,
+    minLimit: 2,
+    multiplier: 2,
+    signalThreshold: 0.8,
+  };
 
   // Deduplicate anchor IDs to prevent multiple trees from the same verse
   console.log(`[Multi-Anchor DEBUG] Original anchors:`, anchorIds);
@@ -1276,12 +1293,53 @@ export async function buildMultiAnchorTree(
     );
   }
 
+  // Deduplicate anchors by reference key (e.g., same verse across translations/IDs)
+  const { data: anchorRows, error: anchorError } = await supabase
+    .from("verses")
+    .select("id, book_name, book_abbrev, chapter, verse")
+    .in("id", uniqueAnchorIds);
+  if (anchorError) {
+    console.warn(
+      "[Multi-Anchor] Failed to load anchor references for dedupe:",
+      anchorError.message,
+    );
+  }
+  const anchorInfoById = new Map<number, ReferenceTreeNode>();
+  (anchorRows || []).forEach((row) => {
+    anchorInfoById.set(row.id, row as ReferenceTreeNode);
+  });
+
+  const seenReferenceKeys = new Set<string>();
+  const dedupedAnchorIds: number[] = [];
+  uniqueAnchorIds.forEach((id) => {
+    const info = anchorInfoById.get(id);
+    if (!info) {
+      dedupedAnchorIds.push(id);
+      return;
+    }
+    const key = normalizeReferenceKey(info);
+    if (seenReferenceKeys.has(key)) {
+      console.log(
+        `[Multi-Anchor] ⚠️ Removed duplicate anchor reference: ${key} (id=${id})`,
+      );
+      return;
+    }
+    seenReferenceKeys.add(key);
+    dedupedAnchorIds.push(id);
+  });
+
+  if (dedupedAnchorIds.length < uniqueAnchorIds.length) {
+    console.log(
+      `[Multi-Anchor] ⚠️ Removed ${uniqueAnchorIds.length - dedupedAnchorIds.length} duplicate anchor reference(s)`,
+    );
+  }
+
   console.log(
-    `[Multi-Anchor] Building combined tree from ${uniqueAnchorIds.length} anchors`,
+    `[Multi-Anchor] Building combined tree from ${dedupedAnchorIds.length} anchors`,
   );
 
   console.log(
-    `[Multi-Anchor] Building trees with adaptive expansion across ${uniqueAnchorIds.length} anchors`,
+    `[Multi-Anchor] Building trees with adaptive expansion across ${dedupedAnchorIds.length} anchors`,
   );
 
   // Build a tree from each anchor
@@ -1289,10 +1347,15 @@ export async function buildMultiAnchorTree(
 
   let primaryPericopeContext: ReferenceVisualBundle["pericopeContext"];
 
-  for (let i = 0; i < uniqueAnchorIds.length; i++) {
-    const anchorId = uniqueAnchorIds[i];
+  for (let i = 0; i < dedupedAnchorIds.length; i++) {
+    const anchorId = dedupedAnchorIds[i];
+    const anchorsRemaining = dedupedAnchorIds.length - i;
+    const perAnchorBudget =
+      anchorsRemaining > 0
+        ? Math.max(Math.floor(remainingBudget / anchorsRemaining), 1)
+        : remainingBudget;
     console.log(
-      `[Multi-Anchor] Building tree ${i + 1}/${uniqueAnchorIds.length} from verse ${anchorId}...`,
+      `[Multi-Anchor] Building tree ${i + 1}/${dedupedAnchorIds.length} from verse ${anchorId}...`,
     );
 
     const pericopeScope = await profileTime(
@@ -1311,8 +1374,23 @@ export async function buildMultiAnchorTree(
         buildVisualBundle(
           anchorId,
           pericopeScope?.pericopeIds
-            ? { scope: { pericopeIds: pericopeScope.pericopeIds } }
-            : {},
+            ? {
+                scope: { pericopeIds: pericopeScope.pericopeIds },
+                selection: {
+                  ...selectionDefaults,
+                  maxNodes: perAnchorBudget,
+                  maxDepth: 2,
+                },
+                adaptive: adaptiveDefaults,
+              }
+            : {
+                selection: {
+                  ...selectionDefaults,
+                  maxNodes: perAnchorBudget,
+                  maxDepth: 2,
+                },
+                adaptive: adaptiveDefaults,
+              },
           {
             includeDEEPER: true,
             includeROOTS: true,
@@ -1327,6 +1405,7 @@ export async function buildMultiAnchorTree(
         await: "buildVisualBundle",
       },
     )) as ReferenceVisualBundle;
+    remainingBudget = Math.max(remainingBudget - tree.nodes.length, 0);
 
     if (i === 0 && pericopeScope?.pericopeContext) {
       primaryPericopeContext = {
@@ -1385,7 +1464,7 @@ export async function buildMultiAnchorTree(
   }
 
   console.log(
-    `[Multi-Anchor DEBUG] Final node count: ${allNodes.length}, Root ID will be: ${uniqueAnchorIds[0]}`,
+    `[Multi-Anchor DEBUG] Final node count: ${allNodes.length}, Root ID will be: ${dedupedAnchorIds[0]}`,
   );
 
   const elapsed = Date.now() - startTime;
@@ -1398,7 +1477,7 @@ export async function buildMultiAnchorTree(
   return {
     nodes: allNodes,
     edges: allEdges,
-    rootId: uniqueAnchorIds[0], // First anchor is the root for circular layout
+    rootId: dedupedAnchorIds[0], // First anchor is the root for circular layout
     lens: "NONE",
     pericopeContext: primaryPericopeContext,
   };
@@ -1675,7 +1754,25 @@ export async function explainScriptureWithKernelStream(
         buildVisualBundle(
           anchorId,
           {
-            ...(isFastMap ? { ring3Limit: 0 } : {}),
+            ...(isFastMap
+              ? { ring3Limit: 0 }
+              : {
+                  selection: {
+                    mode: "hybrid",
+                    query: userPrompt,
+                    versePoolSize: 100,
+                    pericopePoolSize: 30,
+                    pericopeMaxVerses: 300,
+                    strongPercentile: 0.85,
+                  },
+                  adaptive: {
+                    enabled: true,
+                    startLimit: 12,
+                    minLimit: 2,
+                    multiplier: 2,
+                    signalThreshold: 0.8,
+                  },
+                }),
             ...(pericopeScopeIds
               ? { scope: { pericopeIds: pericopeScopeIds } }
               : {}),
