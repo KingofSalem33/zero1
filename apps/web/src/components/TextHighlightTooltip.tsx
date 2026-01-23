@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 
 /* global Element, AbortController, Range */
 
@@ -36,6 +42,67 @@ const HIGHLIGHT_COLORS = [
   { name: "Pink", value: "#FCE7F3", textColor: "#9F1239" },
   { name: "Purple", value: "#EDE9FE", textColor: "#5B21B6" },
 ];
+
+const LOST_CONTEXT_MAX_WORDS = 34;
+const LOST_CONTEXT_MAX_SENTENCES = 2;
+
+const splitIntoSentences = (text: string) =>
+  text
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+
+const chunkLostContext = (
+  text: string,
+  maxWords: number,
+  maxSentences: number,
+) => {
+  if (!text.trim()) return [];
+  const sentences = splitIntoSentences(text);
+
+  if (sentences.length === 1) {
+    const words = sentences[0].split(/\s+/).filter(Boolean);
+    if (words.length <= maxWords) return [sentences[0]];
+    const chunks: string[] = [];
+    for (let i = 0; i < words.length; i += maxWords) {
+      chunks.push(
+        words
+          .slice(i, i + maxWords)
+          .join(" ")
+          .trim(),
+      );
+    }
+    return chunks;
+  }
+
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let wordCount = 0;
+
+  for (const sentence of sentences) {
+    const sentenceWords = sentence.split(/\s+/).filter(Boolean);
+    const nextCount = wordCount + sentenceWords.length;
+    const exceeds =
+      current.length >= maxSentences ||
+      (nextCount > maxWords && current.length);
+
+    if (exceeds) {
+      chunks.push(current.join(" ").trim());
+      current = [];
+      wordCount = 0;
+    }
+
+    current.push(sentence);
+    wordCount += sentenceWords.length;
+  }
+
+  if (current.length) {
+    chunks.push(current.join(" ").trim());
+  }
+
+  return chunks;
+};
 
 // --- VERSE TOOLTIP ---
 // Shows verse text in a tooltip when clicking a Scripture citation
@@ -276,16 +343,15 @@ export function TextHighlightTooltip({
   const [rootTranslation, setRootTranslation] = useState("");
   const [rootLanguage, setRootLanguage] = useState<string>("");
   const [isLoadingRoot, setIsLoadingRoot] = useState(false);
-  const [rootInsights, setRootInsights] = useState<
+  const [rootWords, setRootWords] = useState<
     Array<{
-      word: string;
+      english: string;
       original: string;
-      strongsNumber: string;
-      definition: string;
-      insight: string;
+      strongs: string | null;
     }>
   >([]);
-  const [plainMeaning, setPlainMeaning] = useState("");
+  const [lostContext, setLostContext] = useState("");
+  const [lostContextPage, setLostContextPage] = useState(0);
   const [detectedVerseContext, setDetectedVerseContext] = useState<
     | {
         book: string;
@@ -294,8 +360,8 @@ export function TextHighlightTooltip({
       }
     | undefined
   >(undefined);
-  const [currentRootCardIndex, setCurrentRootCardIndex] = useState(0);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const lostContextTouchStartRef = useRef<number | null>(null);
 
   const selectionRangeRef = useRef<Range | null>(null);
 
@@ -307,6 +373,24 @@ export function TextHighlightTooltip({
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const isStreamingRef = useRef(false);
+
+  const lostContextChunks = useMemo(
+    () =>
+      chunkLostContext(
+        lostContext,
+        LOST_CONTEXT_MAX_WORDS,
+        LOST_CONTEXT_MAX_SENTENCES,
+      ),
+    [lostContext],
+  );
+  const lostContextTotal = lostContextChunks.length;
+  const lostContextCurrent = lostContextChunks[lostContextPage] || lostContext;
+  const canPrevLostContext = lostContextPage > 0;
+  const canNextLostContext = lostContextPage < lostContextTotal - 1;
+
+  useEffect(() => {
+    setLostContextPage(0);
+  }, [lostContext]);
 
   const getVerseContainerForRange = (range: Range): HTMLElement | null => {
     let element =
@@ -364,10 +448,10 @@ export function TextHighlightTooltip({
       setRootTranslation("");
       setRootLanguage("");
       setIsLoadingRoot(false);
-      setRootInsights([]);
-      setPlainMeaning("");
+      setRootWords([]);
+      setLostContext("");
+      setLostContextPage(0);
       setDetectedVerseContext(undefined);
-      setCurrentRootCardIndex(0);
     }, 150);
   }, []);
 
@@ -473,6 +557,8 @@ export function TextHighlightTooltip({
         setIsLoadingRoot(true);
         setRootTranslation("");
         setRootLanguage("");
+        setRootWords([]);
+        setLostContext("");
 
         // Create new abort controller for this request
         abortControllerRef.current = new AbortController();
@@ -513,82 +599,17 @@ export function TextHighlightTooltip({
         }
 
         const data = await response.json();
-        const fullTranslation =
-          data.translation || "Unable to generate translation.";
         const language = data.language || "";
+        const words = Array.isArray(data.words) ? data.words : [];
+        const analysis =
+          data.lostContext ||
+          data.translation ||
+          "Unable to generate translation.";
 
         setRootLanguage(language);
 
-        // Parse the structured response with Strong's numbers
-        const normalizeRootText = (text: string) =>
-          text
-            .replace(/Strong\u2019s/g, "Strong's")
-            .replace(/\u00e2\u20ac\u201d/g, "-")
-            .replace(/[\u2013\u2014]/g, "-");
-
-        const parseRootTranslation = (text: string) => {
-          const normalized = normalizeRootText(text);
-          const rootsMatch = normalized.match(/ROOTS:\s*([\s\S]*?)\n\s*PLAIN:/);
-          const plainMatch = normalized.match(/PLAIN:\s*([\s\S]*?)$/);
-
-          const rootsText = rootsMatch?.[1] || "";
-          const plain = plainMatch?.[1]?.trim() || normalized; // Fallback to full text
-
-          // Split by word entries (lines starting with "- ")
-          const wordBlocks = rootsText
-            .split(/\r?\n- /)
-            .map((block, index) =>
-              index === 0 ? block.replace(/^\s*-\s*/, "") : block,
-            )
-            .filter((block) => block.trim());
-
-          const insights = wordBlocks
-            .map((block) => {
-              // Match: "Word - original (Strong's GXXXX)\ndefinition\n\ninsight"
-              const headerMatch = block.match(
-                /^(.+?)\s*-\s*(.+?)\s*\(Strong's\s+([^)]+)\)/m,
-              );
-              if (!headerMatch) return null;
-
-              const word = headerMatch[1].trim();
-              const original = headerMatch[2].trim();
-              const strongsNumber = headerMatch[3].trim();
-
-              // Get everything after the header
-              const restOfBlock = block.substring(block.indexOf("\n") + 1);
-
-              // First line is the definition, rest is insight
-              const lines = restOfBlock.split("\n").filter((l) => l.trim());
-              const definition = lines[0]?.trim() || "";
-
-              // Everything after the definition (skip empty lines)
-              const insightLines = lines.slice(1).filter((l) => l.trim());
-              const insight = insightLines.join(" ").trim();
-
-              return {
-                word,
-                original,
-                strongsNumber,
-                definition,
-                insight,
-              };
-            })
-            .filter(Boolean) as Array<{
-            word: string;
-            original: string;
-            strongsNumber: string;
-            definition: string;
-            insight: string;
-          }>;
-
-          return { insights, plain };
-        };
-
-        const parsed = parseRootTranslation(fullTranslation);
-
-        console.log("[ROOT] Full translation:", fullTranslation);
-        console.log("[ROOT] Parsed insights:", parsed.insights);
-        console.log("[ROOT] Parsed plain:", parsed.plain);
+        console.log("[ROOT] Word mapping count:", words.length);
+        console.log("[ROOT] Lost context:", analysis);
 
         // Check if we were cancelled before starting to stream
         if (!isStreamingRef.current) {
@@ -603,9 +624,9 @@ export function TextHighlightTooltip({
         }
 
         // Show all content immediately - no streaming animation
-        setRootInsights(parsed.insights);
-        setPlainMeaning(parsed.plain);
-        setRootTranslation(fullTranslation); // Keep for fallback
+        setRootWords(words);
+        setLostContext(analysis);
+        setRootTranslation(analysis); // Keep for fallback
         isStreamingRef.current = false;
         abortControllerRef.current = null;
       } catch (error: unknown) {
@@ -898,9 +919,9 @@ export function TextHighlightTooltip({
   const handleRootTranslation = async () => {
     if (selectedText) {
       // Reset state and show loading BEFORE switching views
-      setRootInsights([]);
-      setPlainMeaning("");
-      setCurrentRootCardIndex(0);
+      setRootWords([]);
+      setLostContext("");
+      setLostContextPage(0);
       setIsLoadingRoot(true);
       // Switch to root view only after loading state is set
       setViewMode("root");
@@ -918,9 +939,9 @@ export function TextHighlightTooltip({
     setRootTranslation("");
     setRootLanguage("");
     setIsLoadingRoot(false);
-    setRootInsights([]);
-    setPlainMeaning("");
-    setCurrentRootCardIndex(0);
+    setRootWords([]);
+    setLostContext("");
+    setLostContextPage(0);
   };
 
   const handleVerseClick = (reference: string, event: React.MouseEvent) => {
@@ -1150,162 +1171,141 @@ export function TextHighlightTooltip({
                       ...
                     </span>
                   </div>
-                ) : rootInsights.length > 0 ? (
+                ) : rootWords.length > 0 || lostContext ? (
                   <div className="space-y-3">
-                    {/* Direct Translation - Now at the top */}
-                    <div className="pb-3 border-b border-white/5">
-                      <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                        Direct Translation
-                      </h4>
-                      <p className="text-[13px] text-neutral-200 leading-relaxed italic break-words">
-                        {plainMeaning}
-                      </p>
-                    </div>
+                    {rootWords.length > 0 && (
+                      <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-[13px] text-neutral-200 leading-relaxed">
+                        {rootWords.map((word, index) => (
+                          <span
+                            key={`${word.english}-${word.strongs || index}`}
+                            className="whitespace-nowrap"
+                          >
+                            {word.english}
+                            {word.original ? ` (${word.original})` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                    {/* Root Word Carousel */}
-                    <div className="space-y-2">
-                      <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
-                        Root Words
-                      </h4>
+                    {lostContext && (
+                      <div className="pt-2 border-t border-white/5">
+                        <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+                          Lost in translation
+                        </h4>
+                        <div
+                          className="space-y-2 text-[12px] leading-relaxed text-neutral-200"
+                          onTouchStart={(event) => {
+                            lostContextTouchStartRef.current =
+                              event.touches[0]?.clientX ?? null;
+                          }}
+                          onTouchEnd={(event) => {
+                            const startX = lostContextTouchStartRef.current;
+                            if (startX === null) return;
+                            const endX = event.changedTouches[0]?.clientX;
+                            if (endX === undefined) return;
+                            const delta = startX - endX;
+                            if (Math.abs(delta) < 40) return;
+                            if (delta > 0 && canNextLostContext) {
+                              setLostContextPage((page) =>
+                                Math.min(page + 1, lostContextTotal - 1),
+                              );
+                            } else if (delta < 0 && canPrevLostContext) {
+                              setLostContextPage((page) =>
+                                Math.max(page - 1, 0),
+                              );
+                            }
+                          }}
+                        >
+                          <p>{lostContextCurrent}</p>
+                        </div>
+                        {lostContextTotal > 1 && (
+                          <div className="flex items-center justify-between pt-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLostContextPage((page) =>
+                                  Math.max(page - 1, 0),
+                                )
+                              }
+                              disabled={!canPrevLostContext}
+                              className={`p-1 transition-colors ${
+                                canPrevLostContext
+                                  ? "text-neutral-400 hover:text-neutral-200"
+                                  : "text-neutral-700 cursor-not-allowed"
+                              }`}
+                              aria-label="Previous"
+                            >
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15 19l-7-7 7-7"
+                                />
+                              </svg>
+                            </button>
 
-                      {/* Current card content */}
-                      {rootInsights[currentRootCardIndex] && (
-                        <div>
-                          {/* Card content */}
-                          <div className="space-y-2 py-2">
-                            {/* Word header with Strong's number */}
-                            <div className="text-[13px]">
-                              <span className="font-semibold text-[#D4AF37]">
-                                {rootInsights[currentRootCardIndex].word}
-                              </span>
-                              {rootInsights[currentRootCardIndex].original && (
-                                <>
-                                  <span className="text-neutral-400 mx-1">
-                                    &mdash;
-                                  </span>
-                                  <span className="text-neutral-400 italic">
-                                    {
-                                      rootInsights[currentRootCardIndex]
-                                        .original
-                                    }
-                                  </span>
-                                </>
-                              )}
-                              {rootInsights[currentRootCardIndex]
-                                .strongsNumber && (
-                                <span className="text-neutral-500 text-[11px] ml-2">
-                                  (Strong's{" "}
-                                  {
-                                    rootInsights[currentRootCardIndex]
-                                      .strongsNumber
+                            <span className="text-[10px] text-neutral-500">
+                              {lostContextPage + 1}/{lostContextTotal}
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              {canNextLostContext && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLostContextPage((page) =>
+                                      Math.min(page + 1, lostContextTotal - 1),
+                                    )
                                   }
+                                  className="text-[11px] text-[#D4AF37] hover:text-[#F0D77F] transition-colors"
+                                >
+                                  Read more
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLostContextPage((page) =>
+                                    Math.min(page + 1, lostContextTotal - 1),
                                   )
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Definition and insight */}
-                            <div className="space-y-2 text-[12px] leading-relaxed">
-                              {rootInsights[currentRootCardIndex]
-                                .definition && (
-                                <p className="text-neutral-300 italic break-words">
-                                  {
-                                    rootInsights[currentRootCardIndex]
-                                      .definition
-                                  }
-                                </p>
-                              )}
-                              {rootInsights[currentRootCardIndex].insight && (
-                                <p className="text-neutral-200 break-words">
-                                  {rootInsights[currentRootCardIndex].insight}
-                                </p>
-                              )}
+                                }
+                                disabled={!canNextLostContext}
+                                className={`p-1 transition-colors ${
+                                  canNextLostContext
+                                    ? "text-neutral-400 hover:text-neutral-200"
+                                    : "text-neutral-700 cursor-not-allowed"
+                                }`}
+                                aria-label="Next"
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                              </button>
                             </div>
                           </div>
-                        </div>
-                      )}
-
-                      {/* Navigation: Arrows + Dots */}
-                      <div className="flex items-center justify-center gap-3 pt-2">
-                        {/* Left arrow */}
-                        <button
-                          onClick={() =>
-                            setCurrentRootCardIndex(currentRootCardIndex - 1)
-                          }
-                          disabled={currentRootCardIndex === 0}
-                          className={`p-1 transition-colors ${
-                            currentRootCardIndex === 0
-                              ? "text-neutral-700 cursor-not-allowed"
-                              : "text-neutral-400 hover:text-neutral-200"
-                          }`}
-                          aria-label="Previous root word"
-                        >
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15 19l-7-7 7-7"
-                            />
-                          </svg>
-                        </button>
-
-                        {/* Dot progression indicator */}
-                        <div className="flex gap-1.5">
-                          {rootInsights.map((_, index) => (
-                            <button
-                              key={index}
-                              onClick={() => setCurrentRootCardIndex(index)}
-                              className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                                index === currentRootCardIndex
-                                  ? "bg-[#D4AF37]"
-                                  : "bg-neutral-600 hover:bg-neutral-500"
-                              }`}
-                              aria-label={`Go to root word ${index + 1}`}
-                            />
-                          ))}
-                        </div>
-
-                        {/* Right arrow */}
-                        <button
-                          onClick={() =>
-                            setCurrentRootCardIndex(currentRootCardIndex + 1)
-                          }
-                          disabled={
-                            currentRootCardIndex === rootInsights.length - 1
-                          }
-                          className={`p-1 transition-colors ${
-                            currentRootCardIndex === rootInsights.length - 1
-                              ? "text-neutral-700 cursor-not-allowed"
-                              : "text-neutral-400 hover:text-neutral-200"
-                          }`}
-                          aria-label="Next root word"
-                        >
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
-                        </button>
+                        )}
                       </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-[13px] leading-relaxed text-neutral-200 font-normal break-words">
-                    {plainMeaning || rootTranslation}
+                    {rootTranslation}
                   </p>
                 )}
               </div>

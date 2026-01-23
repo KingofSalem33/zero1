@@ -3,7 +3,7 @@ import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
 import { runModel, type RunModelResult } from "../ai/runModel";
-import { ROOT_TRANSLATION_V1 } from "../prompts";
+import { ROOT_TRANSLATION_V2 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import fs from "fs/promises";
 import path from "path";
@@ -34,6 +34,11 @@ interface StrongsLexiconEntry {
   root_word: string;
   occurrences: string;
   outline_usage: string;
+}
+
+interface StrongsWord {
+  text: string;
+  strongs?: string; // e.g., "H7225" or "G1722"
 }
 
 // Mapping from full book names to abbreviations
@@ -163,6 +168,20 @@ function extractStrongsNumbers(text: string): string[] {
   }
 
   return Array.from(numbers);
+}
+
+function extractStrongsWords(verseText: string): StrongsWord[] {
+  const words: StrongsWord[] = [];
+  const regex = /(\S+?)(?:\[([HG]\d+)\])?(?:\s|$)/g;
+
+  let match;
+  while ((match = regex.exec(verseText)) !== null) {
+    const text = match[1];
+    const strongs = match[2];
+    words.push({ text, strongs });
+  }
+
+  return words;
 }
 
 function detectLanguage(
@@ -346,7 +365,8 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     if (!verseWithStrongs) {
       // Fallback: just return a generic translation message
       return res.json({
-        translation:
+        words: [],
+        lostContext:
           "Root translation is available for Bible text from the Bible Reader. Please select text directly from the Bible to see the original Hebrew or Greek meanings.",
         language: "unknown",
         strongsUsed: [],
@@ -359,7 +379,8 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 
     if (strongsNumbers.length === 0) {
       return res.json({
-        translation: "No Strong's numbers found for this text.",
+        words: [],
+        lostContext: "No Strong's numbers found for this text.",
         language: "unknown",
         strongsUsed: [],
       });
@@ -376,7 +397,8 @@ router.post("/", readOnlyLimiter, async (req, res) => {
 
     if (definitions.length === 0) {
       return res.json({
-        translation: "Strong's definitions not available for this text.",
+        words: [],
+        lostContext: "Strong's definitions not available for this text.",
         language: language,
         strongsUsed: strongsNumbers,
       });
@@ -393,7 +415,20 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       })
       .join("\n\n");
 
-    // Generate translation using GPT-5-mini with Strong's Concordance grounding
+    const wordsSourceText = verseTexts.length
+      ? verseTexts.map((v) => v.text).join(" ")
+      : verseWithStrongs;
+    const wordEntries = extractStrongsWords(wordsSourceText);
+    const wordMappings = wordEntries.map((word) => {
+      const entry = word.strongs ? lexicon[word.strongs] : undefined;
+      return {
+        english: word.text,
+        original: entry?.Hb_word || entry?.Gk_word || "",
+        strongs: word.strongs || null,
+      };
+    });
+
+    // Generate lost-context analysis using GPT-5-mini with Strong's Concordance grounding
     const result = (await profileTime(
       "root_translation.runModel",
       () =>
@@ -402,11 +437,11 @@ router.post("/", readOnlyLimiter, async (req, res) => {
             [
               {
                 role: "system",
-                content: ROOT_TRANSLATION_V1.buildSystem(),
+                content: ROOT_TRANSLATION_V2.buildSystem(),
               },
               {
                 role: "user",
-                content: ROOT_TRANSLATION_V1.buildUser({
+                content: ROOT_TRANSLATION_V2.buildUser({
                   selectedText,
                   verseWithStrongs,
                   groundingData,
@@ -416,7 +451,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
             {
               model: ENV.OPENAI_FAST_MODEL,
               verbosity: "medium",
-              promptCacheKey: "root-translation-v1",
+              promptCacheKey: "root-translation-v2",
             },
           ),
           new Promise((_, reject) =>
@@ -442,43 +477,26 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       result,
       "/api/root-translation",
       ENV.OPENAI_FAST_MODEL,
-      "root-translation-v1",
+      "root-translation-v2",
     );
     if (tokenUsage) {
       logTokenUsage(tokenUsage);
     }
 
-    // Extract the translation from the response
-    let translation = result.text || "Unable to generate root translation.";
-    const rootsIndex = translation.indexOf("ROOTS:");
-    if (rootsIndex > 0) {
-      translation = translation.slice(rootsIndex).trim();
-    }
-    translation = translation
-      .replace(/Strong\u2019s/g, "Strong's")
-      .replace(/ROOTS:\s*/g, "ROOTS:\n")
-      .replace(/\s+PLAIN:\s*/g, "\n\nPLAIN:\n")
-      .replace(
-        /-\s*([^\n]+)\n(?:\s*\n)*-\s*([^\n]*\(Strong's [HG]\d+[^)]*\))/g,
-        "- $1 - $2",
-      )
-      .replace(
-        /(^|[^A-Za-z])\s+-\s+(?=[A-Za-z][^\n]*\(Strong's [HG]\d+\))/g,
-        "$1\n\n- ",
-      )
-      .replace(/\n(?!- )-\s*/g, "\n- ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+    const lostContext =
+      result.text?.replace(/Strong\u2019s/g, "Strong's").trim() ||
+      "Unable to generate root translation.";
 
-    console.log("[ROOT] Formatted translation:", translation);
+    console.log("[ROOT] Lost in translation analysis:", lostContext);
 
     // Return the translation
     return res.json({
-      translation,
+      words: wordMappings,
+      lostContext,
       language: language,
       strongsUsed: strongsNumbers,
       versesIncluded: verseTexts.length || 1,
-      totalWords: translation.split(/\s+/).length,
+      totalWords: lostContext.split(/\s+/).length,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
