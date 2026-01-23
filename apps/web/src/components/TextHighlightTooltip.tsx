@@ -348,10 +348,14 @@ export function TextHighlightTooltip({
       english: string;
       original: string;
       strongs: string | null;
+      definition: string;
     }>
   >([]);
   const [lostContext, setLostContext] = useState("");
   const [lostContextPage, setLostContextPage] = useState(0);
+  const [selectedRootWordIndex, setSelectedRootWordIndex] = useState<
+    number | null
+  >(null);
   const [detectedVerseContext, setDetectedVerseContext] = useState<
     | {
         book: string;
@@ -451,6 +455,7 @@ export function TextHighlightTooltip({
       setRootWords([]);
       setLostContext("");
       setLostContextPage(0);
+      setSelectedRootWordIndex(null);
       setDetectedVerseContext(undefined);
     }, 150);
   }, []);
@@ -922,6 +927,7 @@ export function TextHighlightTooltip({
       setRootWords([]);
       setLostContext("");
       setLostContextPage(0);
+      setSelectedRootWordIndex(null);
       setIsLoadingRoot(true);
       // Switch to root view only after loading state is set
       setViewMode("root");
@@ -942,6 +948,7 @@ export function TextHighlightTooltip({
     setRootWords([]);
     setLostContext("");
     setLostContextPage(0);
+    setSelectedRootWordIndex(null);
   };
 
   const handleVerseClick = (reference: string, event: React.MouseEvent) => {
@@ -1174,16 +1181,66 @@ export function TextHighlightTooltip({
                 ) : rootWords.length > 0 || lostContext ? (
                   <div className="space-y-3">
                     {rootWords.length > 0 && (
-                      <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-[13px] text-neutral-200 leading-relaxed">
-                        {rootWords.map((word, index) => (
-                          <span
-                            key={`${word.english}-${word.strongs || index}`}
-                            className="whitespace-nowrap"
-                          >
-                            {word.english}
-                            {word.original ? ` (${word.original})` : ""}
-                          </span>
-                        ))}
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-[13px] text-neutral-200 leading-relaxed">
+                          {rootWords.map((word, index) => {
+                            const isSelected = selectedRootWordIndex === index;
+                            const isClickable = Boolean(word.strongs);
+                            const label = word.english;
+                            const originalLabel = word.original
+                              ? `(${word.original})`
+                              : "";
+
+                            return (
+                              <span
+                                key={`${word.english}-${word.strongs || index}`}
+                                className="whitespace-nowrap"
+                              >
+                                <span className="text-neutral-200">
+                                  {label}
+                                </span>{" "}
+                                {isClickable ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedRootWordIndex(index)
+                                    }
+                                    className={`inline-flex items-center gap-1 font-semibold transition-colors ${
+                                      isSelected
+                                        ? "text-[#F0D77F]"
+                                        : "text-[#D4AF37] hover:text-[#F0D77F]"
+                                    }`}
+                                    title={`Strong's ${word.strongs}`}
+                                  >
+                                    <span>{originalLabel}</span>
+                                  </button>
+                                ) : (
+                                  originalLabel && (
+                                    <span className="text-neutral-400">
+                                      {originalLabel}
+                                    </span>
+                                  )
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
+
+                        {selectedRootWordIndex !== null &&
+                          rootWords[selectedRootWordIndex] && (
+                            <div className="rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] leading-relaxed text-neutral-200">
+                              <div className="flex items-center gap-2 text-[11px] text-neutral-400 uppercase tracking-wide">
+                                <span>Strong's</span>
+                                <span>
+                                  {rootWords[selectedRootWordIndex].strongs}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-neutral-200">
+                                {rootWords[selectedRootWordIndex].definition ||
+                                  "Definition unavailable."}
+                              </p>
+                            </div>
+                          )}
                       </div>
                     )}
 

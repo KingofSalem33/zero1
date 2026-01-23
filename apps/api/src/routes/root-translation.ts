@@ -425,6 +425,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         english: word.text,
         original: entry?.Hb_word || entry?.Gk_word || "",
         strongs: word.strongs || null,
+        definition: entry?.strongs_def || "",
       };
     });
 
