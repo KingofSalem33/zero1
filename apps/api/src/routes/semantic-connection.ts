@@ -2,7 +2,7 @@ import { Router } from "express";
 import { supabase } from "../db";
 import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
-import { SEMANTIC_CONNECTION_V1 } from "../prompts";
+import { SEMANTIC_CONNECTION_V2 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
@@ -196,7 +196,7 @@ Be direct and synthesizing. Maximum 34 words.`;
           [
             {
               role: "system",
-              content: SEMANTIC_CONNECTION_V1.systemPrompt,
+              content: SEMANTIC_CONNECTION_V2.buildSystem(),
             },
             {
               role: "user",
