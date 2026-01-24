@@ -17,6 +17,7 @@ import type {
   ParallelPassage,
   PericopeBundle,
   VisualContextBundle,
+  VisualEdge,
 } from "./types";
 import { areSameTestament } from "./testamentUtil";
 import { cosineSimilarity, rankByQueryRelevance } from "./graphEngine";
@@ -60,6 +61,113 @@ const DISCOVERY_TYPES = new Set<DiscoveredConnection["type"]>([
   "PATTERN",
 ]);
 const DISCOVERY_PERSIST_MIN = 0.9;
+
+type IntentProfile =
+  | "narrative"
+  | "doctrinal"
+  | "prophetic"
+  | "ethical"
+  | "identity"
+  | "general";
+
+const inferIntentProfile = (prompt: string): IntentProfile => {
+  const text = prompt.toLowerCase();
+  const scores: Record<IntentProfile, number> = {
+    narrative: 0,
+    doctrinal: 0,
+    prophetic: 0,
+    ethical: 0,
+    identity: 0,
+    general: 0,
+  };
+
+  const bump = (profile: IntentProfile, patterns: RegExp[]) => {
+    patterns.forEach((pattern) => {
+      if (pattern.test(text)) scores[profile] += 1;
+    });
+  };
+
+  bump("narrative", [
+    /\bstory\b/,
+    /\bnarrative\b/,
+    /\bscene\b/,
+    /\bjourney\b/,
+    /\bmiracle\b/,
+    /\bparable\b/,
+    /\bchronicle\b/,
+  ]);
+  bump("doctrinal", [
+    /\bdoctrine\b/,
+    /\btheology\b/,
+    /\bteaching\b/,
+    /\bbelieve\b/,
+    /\bfaith\b/,
+    /\bgospel\b/,
+    /\bcovenant\b/,
+    /\bjustification\b/,
+    /\bsalvation\b/,
+  ]);
+  bump("prophetic", [
+    /\bprophecy\b/,
+    /\bfulfill\b/,
+    /\bfulfillment\b/,
+    /\bmessiah\b/,
+    /\bchrist\b/,
+    /\bpromise\b/,
+    /\btype\b/,
+    /\bantitype\b/,
+  ]);
+  bump("ethical", [
+    /\bethic\b/,
+    /\bmoral\b/,
+    /\bcommand\b/,
+    /\bobey\b/,
+    /\brighteous\b/,
+    /\bholy\b/,
+    /\bsin\b/,
+    /\blaw\b/,
+  ]);
+  bump("identity", [
+    /\bidentity\b/,
+    /\bimage of god\b/,
+    /\bpeople of god\b/,
+    /\bchurch\b/,
+    /\bkingdom\b/,
+    /\bson of\b/,
+    /\bchildren of\b/,
+  ]);
+
+  let best: IntentProfile = "general";
+  let bestScore = 0;
+  (Object.keys(scores) as IntentProfile[]).forEach((profile) => {
+    if (profile === "general") return;
+    if (scores[profile] > bestScore) {
+      bestScore = scores[profile];
+      best = profile;
+    }
+  });
+
+  return bestScore > 0 ? best : "general";
+};
+
+const buildEdgeTypeBonuses = (
+  profile: IntentProfile,
+): Partial<Record<VisualEdge["type"], number>> => {
+  switch (profile) {
+    case "narrative":
+      return { NARRATIVE: 0.08, DEEPER: 0.04 };
+    case "doctrinal":
+      return { ROOTS: 0.07, PATTERN: 0.06, PROGRESSION: 0.05, DEEPER: 0.04 };
+    case "prophetic":
+      return { PROPHECY: 0.1, FULFILLMENT: 0.1, TYPOLOGY: 0.08 };
+    case "ethical":
+      return { PROGRESSION: 0.06, CONTRAST: 0.05 };
+    case "identity":
+      return { ROOTS: 0.08, PATTERN: 0.06 };
+    default:
+      return {};
+  }
+};
 
 const buildEdgeKey = (type: string, fromId: number, toId: number) => {
   const a = Math.min(fromId, toId);
@@ -1223,6 +1331,47 @@ function computeTreeStats(visualBundle: ReferenceVisualBundle): TreeStats {
   };
 }
 
+const DISCOVERY_GATE_DEFAULTS = {
+  minNodes: 24,
+  minDepth2Plus: 6,
+  minEdgeTypes: 3,
+  minNonDeeperEdges: 4,
+};
+
+function shouldRunDiscovery(
+  visualBundle: ReferenceVisualBundle,
+  treeStats: TreeStats,
+): { run: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const edgeTypes = new Set(
+    visualBundle.edges.map((edge) => edge.type || "DEEPER"),
+  );
+  const depth2Plus =
+    (treeStats.depthDistribution[2] ?? 0) +
+    (treeStats.depthDistribution[3] ?? 0);
+  const nonDeeperEdges = visualBundle.edges.filter(
+    (edge) => edge.type !== "DEEPER",
+  ).length;
+
+  if (visualBundle.nodes.length < DISCOVERY_GATE_DEFAULTS.minNodes) {
+    reasons.push("small_graph");
+  }
+  if (
+    treeStats.maxDepth < 2 ||
+    depth2Plus < DISCOVERY_GATE_DEFAULTS.minDepth2Plus
+  ) {
+    reasons.push("shallow_depth");
+  }
+  if (edgeTypes.size < DISCOVERY_GATE_DEFAULTS.minEdgeTypes) {
+    reasons.push("low_edge_diversity");
+  }
+  if (nonDeeperEdges < DISCOVERY_GATE_DEFAULTS.minNonDeeperEdges) {
+    reasons.push("low_structural_edges");
+  }
+
+  return { run: reasons.length > 0, reasons };
+}
+
 /**
  * Build a Verse from a tree node, falling back to an empty verse if needed.
  */
@@ -1266,6 +1415,8 @@ export async function buildMultiAnchorTree(
   const startTime = Date.now();
   const maxNodesTotal = 120;
   let remainingBudget = maxNodesTotal;
+  const intentProfile = inferIntentProfile(userPrompt);
+  const edgeTypeBonuses = buildEdgeTypeBonuses(intentProfile);
   const selectionDefaults = {
     mode: "hybrid" as const,
     query: userPrompt,
@@ -1273,6 +1424,14 @@ export async function buildMultiAnchorTree(
     pericopePoolSize: 30,
     pericopeMaxVerses: 300,
     strongPercentile: 0.85,
+    minStrongSim: 0.12,
+    edgeWeightBonus: 0.12,
+    coherenceBonus: 0.06,
+    diversityMaxPerBook: 2,
+    edgeTypeBonuses,
+    fallbackLimit: 0,
+    queryWeight: 0.35,
+    anchorWeight: 1.0,
   };
   const adaptiveDefaults = {
     enabled: true,
@@ -1709,6 +1868,8 @@ export async function explainScriptureWithKernelStream(
   }
 
   const anchorId = anchorIds[0]; // Primary anchor for compatibility
+  const intentProfile = inferIntentProfile(userPrompt);
+  const edgeTypeBonuses = buildEdgeTypeBonuses(intentProfile);
 
   if (!allowMultiAnchor || anchorIds.length === 1) {
     const pericopeScope = await profileTime(
@@ -1764,6 +1925,14 @@ export async function explainScriptureWithKernelStream(
                     pericopePoolSize: 30,
                     pericopeMaxVerses: 300,
                     strongPercentile: 0.85,
+                    minStrongSim: 0.12,
+                    edgeWeightBonus: 0.12,
+                    coherenceBonus: 0.06,
+                    diversityMaxPerBook: 2,
+                    edgeTypeBonuses,
+                    fallbackLimit: 0,
+                    queryWeight: 0.35,
+                    anchorWeight: 1.0,
                   },
                   adaptive: {
                     enabled: true,
@@ -1874,8 +2043,15 @@ export async function explainScriptureWithKernelStream(
       async () => {
         const bundleForDiscovery =
           visualBundle as unknown as VisualContextBundle;
-        const coreVerses = selectCoreVerses(bundleForDiscovery, 12);
+        const coreVerses = selectCoreVerses(bundleForDiscovery);
         if (coreVerses.length === 0) return visualBundle;
+
+        const discoveryGate = shouldRunDiscovery(visualBundle, treeStats);
+        if (!discoveryGate.run) {
+          console.log(
+            `[Connection Discovery] Proceeding despite low-yield gate (${discoveryGate.reasons.join(", ")})`,
+          );
+        }
 
         const coreIds = coreVerses.map((v) => v.id);
         const cached = await fetchPersistedConnections(coreIds);

@@ -39,177 +39,65 @@ interface Verse {
 
 /**
  * Select core verses for LLM analysis
- * Priority: anchor + spine + centrality, cap at limit
+ * Strategy: include high-centrality (multi-connection) nodes + all their neighbors.
  */
 export function selectCoreVerses(
   bundle: VisualContextBundle,
-  limit: number = 12,
+  limit?: number,
 ): ThreadNode[] {
   const { nodes, edges } = bundle;
 
-  // If total nodes <= limit, analyze all
-  if (nodes.length <= limit) {
-    console.log(
-      `[Connection Discovery] Analyzing all ${nodes.length} verses (under limit)`,
+  if (!nodes.length || !edges.length) {
+    return nodes.slice(0, limit ?? nodes.length);
+  }
+
+  const degreeMap = new Map<number, number>();
+  nodes.forEach((node) => degreeMap.set(node.id, 0));
+  edges.forEach((edge) => {
+    degreeMap.set(edge.from, (degreeMap.get(edge.from) ?? 0) + 1);
+    degreeMap.set(edge.to, (degreeMap.get(edge.to) ?? 0) + 1);
+  });
+
+  const degrees = Array.from(degreeMap.values()).sort((a, b) => a - b);
+  const percentile = (values: number[], pct: number) => {
+    if (values.length === 0) return 0;
+    const idx = Math.min(
+      values.length - 1,
+      Math.max(0, Math.floor(pct * (values.length - 1))),
     );
-    return nodes;
-  }
-
-  console.log(
-    `[Connection Discovery] Selecting top ${limit} from ${nodes.length} verses`,
-  );
-
-  const selected = new Set<number>();
-
-  // 1. Always include anchor (depth 0)
-  const anchor = nodes.find((n) => n.depth === 0);
-  if (anchor) {
-    selected.add(anchor.id);
-    console.log(`[Connection Discovery] Added anchor: ${anchor.id}`);
-  }
-
-  // 2. Include all spine nodes
-  const spineNodes = nodes.filter((n) => n.isSpine && !selected.has(n.id));
-  spineNodes.forEach((n) => selected.add(n.id));
-  console.log(`[Connection Discovery] Added ${spineNodes.length} spine nodes`);
-
-  // 3. Calculate centrality (connection count) for remaining nodes
-  const centrality = new Map<number, number>();
-  nodes.forEach((n) => {
-    const connectionCount = edges.filter(
-      (e) => e.from === n.id || e.to === n.id,
-    ).length;
-    centrality.set(n.id, connectionCount);
-  });
-
-  // 4. Prefer pericope representatives (one per pericope where possible)
-  const pericopeScopeIds = new Set<number>(
-    bundle.pericopeBundle?.nodes?.map((node) => node.id) || [],
-  );
-  const pericopeGroups = new Map<number, ThreadNode[]>();
-  nodes.forEach((node) => {
-    if (selected.has(node.id)) return;
-    const pericopeId = node.pericopeId;
-    if (!pericopeId) return;
-    if (pericopeScopeIds.size > 0 && !pericopeScopeIds.has(pericopeId)) {
-      return;
-    }
-    const group = pericopeGroups.get(pericopeId) || [];
-    group.push(node);
-    pericopeGroups.set(pericopeId, group);
-  });
-
-  const pericopeRepresentatives: ThreadNode[] = [];
-  pericopeGroups.forEach((group) => {
-    const top = group.sort((a, b) => {
-      const aCentrality = centrality.get(a.id) || 0;
-      const bCentrality = centrality.get(b.id) || 0;
-      if (bCentrality !== aCentrality) return bCentrality - aCentrality;
-      return (b.centrality || 0) - (a.centrality || 0);
-    })[0];
-    if (top) pericopeRepresentatives.push(top);
-  });
-
-  pericopeRepresentatives
-    .sort((a, b) => {
-      const aCentrality = centrality.get(a.id) || 0;
-      const bCentrality = centrality.get(b.id) || 0;
-      if (bCentrality !== aCentrality) return bCentrality - aCentrality;
-      return (b.centrality || 0) - (a.centrality || 0);
-    })
-    .forEach((node) => {
-      if (selected.size >= limit) return;
-      selected.add(node.id);
-    });
-
-  if (pericopeRepresentatives.length > 0) {
-    console.log(
-      `[Connection Discovery] Added ${Math.min(
-        pericopeRepresentatives.length,
-        limit,
-      )} pericope representatives`,
-    );
-  }
-
-  // 5. Fill remaining with highest centrality
-  const remaining = nodes
-    .filter((n) => !selected.has(n.id))
-    .sort((a, b) => {
-      const aCentrality = centrality.get(a.id) || 0;
-      const bCentrality = centrality.get(b.id) || 0;
-      return bCentrality - aCentrality;
-    })
-    .slice(0, limit - selected.size);
-
-  remaining.forEach((n) => selected.add(n.id));
-  console.log(
-    `[Connection Discovery] Added ${remaining.length} high-centrality nodes`,
-  );
-
-  // 6. Ensure at least 1 OT verse if any exist (for cross-testament discovery)
-  const isOT = (bookName: string) => {
-    const otBooks = [
-      "Genesis",
-      "Exodus",
-      "Leviticus",
-      "Numbers",
-      "Deuteronomy",
-      "Joshua",
-      "Judges",
-      "Ruth",
-      "1 Samuel",
-      "2 Samuel",
-      "1 Kings",
-      "2 Kings",
-      "1 Chronicles",
-      "2 Chronicles",
-      "Ezra",
-      "Nehemiah",
-      "Esther",
-      "Job",
-      "Psalms",
-      "Proverbs",
-      "Ecclesiastes",
-      "Song of Solomon",
-      "Isaiah",
-      "Jeremiah",
-      "Lamentations",
-      "Ezekiel",
-      "Daniel",
-      "Hosea",
-      "Joel",
-      "Amos",
-      "Obadiah",
-      "Jonah",
-      "Micah",
-      "Nahum",
-      "Habakkuk",
-      "Zephaniah",
-      "Haggai",
-      "Zechariah",
-      "Malachi",
-    ];
-    return otBooks.includes(bookName);
+    return values[idx];
   };
 
-  const selectedNodes = nodes.filter((n) => selected.has(n.id));
-  const hasOT = selectedNodes.some((n) => isOT(n.book_name));
+  const minDegree = 4;
+  const threshold = Math.max(minDegree, percentile(degrees, 0.8));
+  const multiConnectionIds = new Set(
+    Array.from(degreeMap.entries())
+      .filter(([, degree]) => degree >= threshold)
+      .map(([id]) => id),
+  );
 
-  if (!hasOT && selected.size < limit) {
-    const otVerse = nodes.find((n) => !selected.has(n.id) && isOT(n.book_name));
-    if (otVerse) {
-      selected.add(otVerse.id);
-      console.log(
-        `[Connection Discovery] Added OT verse for cross-testament: ${otVerse.id}`,
-      );
-    }
+  if (multiConnectionIds.size === 0) {
+    const anchor = nodes.find((n) => n.depth === 0);
+    return anchor ? [anchor] : nodes.slice(0, limit ?? nodes.length);
   }
 
-  const result = nodes.filter((n) => selected.has(n.id));
+  const selected = new Set<number>(multiConnectionIds);
+  edges.forEach((edge) => {
+    if (multiConnectionIds.has(edge.from) || multiConnectionIds.has(edge.to)) {
+      selected.add(edge.from);
+      selected.add(edge.to);
+    }
+  });
+
+  const result = nodes.filter((node) => selected.has(node.id));
+  const limited =
+    typeof limit === "number" && limit > 0 ? result.slice(0, limit) : result;
+
   console.log(
-    `[Connection Discovery] Final selection: ${result.length} verses`,
+    `[Connection Discovery] Multi-connection nodes=${multiConnectionIds.size}, expanded selection=${result.length}`,
   );
-  return result;
+
+  return limited;
 }
 
 /**

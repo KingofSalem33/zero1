@@ -357,6 +357,7 @@ export function SemanticConnectionModal({
             signal: controller.signal,
             body: JSON.stringify({
               verseIds: normalizedVerseIds, // Pass all connected verse IDs
+              verses: previewVerses,
               connectionType,
               similarity,
               isLLMDiscovered,

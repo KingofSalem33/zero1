@@ -50,6 +50,30 @@ const PERICOPE_VALIDATION_EXCLUDE = new Set<EdgeType>([
   "NARRATIVE",
 ]);
 
+const CROSS_PERICOPE_RELAXED_MIN = 0.2;
+const CROSS_PERICOPE_OVERRIDE_WEIGHT = 0.9;
+const CROSS_PERICOPE_ALLOWLIST = new Set<EdgeType>([
+  "ECHOES",
+  "PROPHECY",
+  "FULFILLMENT",
+  "TYPOLOGY",
+  "PATTERN",
+  "CONTRAST",
+  "PROGRESSION",
+]);
+
+const UNDIRECTED_EDGE_TYPES = new Set<EdgeType>(["CONTRAST", "PATTERN"]);
+
+const EDGE_SOURCE_WEIGHTS: Record<string, number> = {
+  canonical: 1.1,
+  llm: 0.95,
+  semantic_thread: 0.9,
+  pericope_connection: 1.05,
+  structure: 1.05,
+};
+
+const MIN_ADDITIONAL_EDGE_WEIGHT = 0.25;
+
 export interface Verse {
   id: number;
   book_abbrev: string;
@@ -336,13 +360,17 @@ export async function buildContextBundle(
     throw new Error(`Anchor verse ID ${anchorId} not found`);
   }
 
-  console.log(`[Graph Walker] Ring 0: ${ring0.length} verses`);
+  const ring0Scoped = ring0.filter(
+    (verse) => verse.book_abbrev === anchor.book_abbrev,
+  );
+
+  console.log(`[Graph Walker] Ring 0: ${ring0Scoped.length} verses`);
   console.log(
     `[Graph Walker] Anchor: ${anchor.book_name} ${anchor.chapter}:${anchor.verse}`,
   );
 
   // Extract IDs for next layer
-  const ring0Ids = ring0.map((v) => v.id);
+  const ring0Ids = ring0Scoped.map((v) => v.id);
 
   const gravity = { ...DEFAULT_GRAVITY, ...(cfg.gravity ?? {}) };
   const structure = await fetchChiasmStructureForVerse(anchorId);
@@ -353,6 +381,7 @@ export async function buildContextBundle(
   const maxNodes =
     typeof selection?.maxNodes === "number" ? selection.maxNodes : undefined;
   let queryEmbedding: number[] | null = null;
+  let anchorEmbedding: number[] | null = null;
 
   if (structure) {
     console.log(
@@ -376,6 +405,22 @@ export async function buildContextBundle(
   }
 
   const useHybrid = isHybridRequested && !!queryEmbedding;
+  if (useHybrid) {
+    anchorEmbedding = await fetchVerseEmbedding(anchorId);
+  }
+  const selectionWithAnchor = selection
+    ? {
+        ...selection,
+        anchorEmbedding: anchorEmbedding ?? selection.anchorEmbedding,
+      }
+    : selection;
+  const selectionForRing1 =
+    selectionWithAnchor && ring0Ids.length > 0
+      ? {
+          ...selectionWithAnchor,
+          coherenceSourceIds: ring0Ids,
+        }
+      : selectionWithAnchor;
 
   // ========================================
   // RING 1: Direct Cross-References
@@ -424,7 +469,7 @@ export async function buildContextBundle(
         ring1Limit,
         new Set(ring0Ids),
         queryEmbedding!,
-        selection!,
+        selectionForRing1!,
         scope,
       )
     : await fetchRing1Connections(
@@ -448,19 +493,20 @@ export async function buildContextBundle(
   // ========================================
   if (adaptiveEnabled) {
     const strongCount = ring1Layer.stats?.strongCount ?? 0;
-    if (strongCount === 0) {
+    const signalMass = ring1Layer.stats?.strongSignalMass ?? strongCount;
+    if (signalMass <= 0) {
       ring2Limit = 0;
       ring3Limit = 0;
     } else {
       ring2Limit = clampLimit(
-        strongCount * adaptiveMultiplier,
+        Math.round(signalMass * adaptiveMultiplier),
         adaptiveMin,
         cfg.ring2Limit,
       );
     }
     const adaptiveLabel = ring1Layer.stats?.threshold ?? adaptiveThreshold;
     console.log(
-      `[Graph Walker] Adaptive Ring 2 limit set to ${ring2Limit} (strong: ${strongCount}, threshold: ${adaptiveLabel})`,
+      `[Graph Walker] Adaptive Ring 2 limit set to ${ring2Limit} (strong: ${strongCount}, signal: ${signalMass.toFixed(2)}, threshold: ${adaptiveLabel})`,
     );
   }
 
@@ -489,7 +535,7 @@ export async function buildContextBundle(
             ring2Limit,
             excludeSet,
             queryEmbedding!,
-            selection!,
+            selectionWithAnchor!,
             scope,
           )
         : await fetchRing1Connections(
@@ -514,18 +560,19 @@ export async function buildContextBundle(
   // ========================================
   if (adaptiveEnabled && ring3Limit > 0) {
     const strongCount = ring2Layer.stats?.strongCount ?? 0;
-    if (strongCount === 0) {
+    const signalMass = ring2Layer.stats?.strongSignalMass ?? strongCount;
+    if (signalMass <= 0) {
       ring3Limit = 0;
     } else {
       ring3Limit = clampLimit(
-        strongCount * adaptiveMultiplier,
+        Math.round(signalMass * adaptiveMultiplier),
         adaptiveMin,
         cfg.ring3Limit,
       );
     }
     const adaptiveLabel = ring2Layer.stats?.threshold ?? adaptiveThreshold;
     console.log(
-      `[Graph Walker] Adaptive Ring 3 limit set to ${ring3Limit} (strong: ${strongCount}, threshold: ${adaptiveLabel})`,
+      `[Graph Walker] Adaptive Ring 3 limit set to ${ring3Limit} (strong: ${strongCount}, signal: ${signalMass.toFixed(2)}, threshold: ${adaptiveLabel})`,
     );
   }
 
@@ -552,7 +599,7 @@ export async function buildContextBundle(
             ring3Limit,
             excludeSet,
             queryEmbedding!,
-            selection!,
+            selectionWithAnchor!,
             scope,
           )
         : await fetchRing1Connections(
@@ -613,7 +660,7 @@ export async function buildContextBundle(
 
   return {
     anchor,
-    ring0,
+    ring0: ring0Scoped,
     ring1,
     ring2,
     ring3,
@@ -776,23 +823,43 @@ const buildStructuralMirrorEdges = (
     }));
 };
 
+const scoreEdgeForDedupe = (edge: import("./types").VisualEdge): number => {
+  const weight = typeof edge.weight === "number" ? edge.weight : 0.6;
+  const source =
+    typeof edge.metadata?.source === "string"
+      ? edge.metadata.source
+      : "unknown";
+  const confidence =
+    typeof edge.metadata?.confidence === "number"
+      ? edge.metadata.confidence
+      : 1;
+  const sourceWeight = EDGE_SOURCE_WEIGHTS[source] ?? 1;
+  return weight * sourceWeight * confidence;
+};
+
 const dedupeEdges = (
   edges: import("./types").VisualEdge[],
 ): import("./types").VisualEdge[] => {
-  const seen = new Set<string>();
-  const deduped: import("./types").VisualEdge[] = [];
+  const bestByKey = new Map<string, import("./types").VisualEdge>();
 
   edges.forEach((edge) => {
-    const key =
-      edge.from < edge.to
+    const directed = !UNDIRECTED_EDGE_TYPES.has(edge.type);
+    const key = directed
+      ? `${edge.from}|${edge.to}|${edge.type}`
+      : edge.from < edge.to
         ? `${edge.from}|${edge.to}|${edge.type}`
         : `${edge.to}|${edge.from}|${edge.type}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    deduped.push(edge);
+    const existing = bestByKey.get(key);
+    if (!existing) {
+      bestByKey.set(key, edge);
+      return;
+    }
+    if (scoreEdgeForDedupe(edge) > scoreEdgeForDedupe(existing)) {
+      bestByKey.set(key, edge);
+    }
   });
 
-  return deduped;
+  return Array.from(bestByKey.values());
 };
 
 const buildReferenceKey = (node: import("./types").ThreadNode): string => {
@@ -917,6 +984,75 @@ const parseEmbedding = (embedding: unknown): number[] | null => {
   } catch {
     return null;
   }
+};
+
+const fetchVerseEmbedding = async (
+  verseId: number,
+): Promise<number[] | null> => {
+  const { data, error } = await supabase
+    .from("verses")
+    .select("embedding")
+    .eq("id", verseId)
+    .single();
+
+  if (error || !data) {
+    console.warn("[Graph Walker] Failed to fetch anchor embedding:", error);
+    return null;
+  }
+
+  return parseEmbedding(data.embedding);
+};
+
+const tuneAdditionalEdges = (
+  edges: import("./types").VisualEdge[],
+  nodeMap: Map<number, import("./types").ThreadNode>,
+): import("./types").VisualEdge[] => {
+  if (edges.length === 0) return edges;
+  const depthById = new Map<number, number>();
+  nodeMap.forEach((node, id) => depthById.set(id, node.depth));
+
+  const tuned: import("./types").VisualEdge[] = [];
+  edges.forEach((edge) => {
+    const fromDepth = depthById.get(edge.from);
+    const toDepth = depthById.get(edge.to);
+    if (fromDepth === undefined || toDepth === undefined) {
+      return;
+    }
+
+    const minDepth = Math.min(fromDepth, toDepth);
+    const maxDepth = Math.max(fromDepth, toDepth);
+    const weight = typeof edge.weight === "number" ? edge.weight : 0.6;
+    const source =
+      typeof edge.metadata?.source === "string"
+        ? edge.metadata.source
+        : "unknown";
+    const sourceWeight = EDGE_SOURCE_WEIGHTS[source] ?? 1;
+    const confidence =
+      typeof edge.metadata?.confidence === "number"
+        ? edge.metadata.confidence
+        : 1;
+    const depthWeight = 1 - Math.min(minDepth, 3) * 0.1;
+    let adjustedWeight = weight * sourceWeight * confidence * depthWeight;
+    if (maxDepth >= 3 && minDepth >= 2) {
+      adjustedWeight *= 0.9;
+    }
+    if (adjustedWeight < MIN_ADDITIONAL_EDGE_WEIGHT) {
+      return;
+    }
+
+    tuned.push({
+      ...edge,
+      weight: adjustedWeight,
+      metadata: {
+        ...edge.metadata,
+        anchorDepthPenalty: depthWeight,
+        sourceWeight,
+        confidence,
+      },
+    });
+  });
+
+  return tuned;
 };
 
 const applyPericopeValidation = async (
@@ -1058,7 +1194,46 @@ const applyPericopeValidation = async (
         : cosineSimilarity(fromEmbedding, toEmbedding);
 
     if (pericopeSimilarity < PERICOPE_VALIDATION.minSimilarity) {
-      dropped += 1;
+      const isCrossPericope = fromPericope !== toPericope;
+      const llmConfidence =
+        typeof edge.metadata?.confidence === "number"
+          ? edge.metadata.confidence
+          : 0;
+      const isHighTrust =
+        isCrossPericope &&
+        (CROSS_PERICOPE_ALLOWLIST.has(edge.type) ||
+          edge.metadata?.source === "canonical" ||
+          (edge.metadata?.source === "llm" && llmConfidence >= 0.9));
+
+      if (!isHighTrust) {
+        dropped += 1;
+        continue;
+      }
+
+      if (
+        pericopeSimilarity < CROSS_PERICOPE_RELAXED_MIN &&
+        baseWeight < CROSS_PERICOPE_OVERRIDE_WEIGHT
+      ) {
+        dropped += 1;
+        continue;
+      }
+
+      const relaxedWeight =
+        PERICOPE_VALIDATION.verseWeight * baseWeight +
+        PERICOPE_VALIDATION.pericopeWeight *
+          Math.max(pericopeSimilarity, CROSS_PERICOPE_RELAXED_MIN);
+
+      validatedEdges.push({
+        ...edge,
+        weight: relaxedWeight,
+        metadata: {
+          ...edge.metadata,
+          pericopeSimilarity,
+          pericopeValidated: true,
+          pericopeSource: source,
+          pericopeReason: "cross_override",
+        },
+      });
       continue;
     }
 
@@ -1353,13 +1528,14 @@ export async function buildVisualBundle(
     includePROPHECY: edgeOptions.includePROPHECY,
     includeGENEALOGY: edgeOptions.includeGENEALOGY,
   });
+  const tunedAdditionalEdges = tuneAdditionalEdges(additionalEdges, nodeMap);
 
   // Merge all edges
   const allEdges = dedupeEdges([
     ...edges,
     ...narrativeEdges,
     ...structuralMirrorEdges,
-    ...additionalEdges,
+    ...tunedAdditionalEdges,
   ]);
 
   const pericopeValidated = await applyPericopeValidation(

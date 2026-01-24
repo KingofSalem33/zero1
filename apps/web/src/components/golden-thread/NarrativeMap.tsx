@@ -32,9 +32,9 @@ import type { GoDeeperPayload } from "../../types/chat";
 // Refined Color System with Intentional Color Psychology
 const EDGE_STYLES = {
   GREY: {
-    color: "#6B7280", // Neutral grey
-    glowColor: "#9CA3AF",
-    width: 1,
+    color: "#F8FAFF", // Electric white
+    glowColor: "#B8F1FF",
+    width: 1.2,
     label: "Reference",
     description: "Cross-references",
   },
@@ -103,6 +103,25 @@ const EDGE_STYLES = {
     description: "Same literary or structural pattern",
   },
 } as const;
+
+const NEUTRAL_EDGE_OPACITY = 0.38;
+const EDGE_DASH_ARRAY = "6 10";
+const EDGE_FLOW_ANIMATION = "edge-flow 5.6s linear infinite";
+const EDGE_FLOW_ANIMATION_ACTIVE = "edge-flow 3.4s linear infinite";
+const edgePulseDelay = (id: string) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return `${hash % 1600}ms`;
+};
+
+const edgeFlowDelay = (id: string, depth?: number) => {
+  if (typeof depth === "number") {
+    return `${depth * 220}ms`;
+  }
+  return edgePulseDelay(id);
+};
 
 type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
 
@@ -285,6 +304,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const bundle = useMemo(() => collapseDuplicateBundle(rawBundle), [rawBundle]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const llmEdgesRef = useRef<Edge[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
   const [discovering, setDiscovering] = useState(false);
   const [analyzedVerseIds, setAnalyzedVerseIds] = useState<Set<number>>(
@@ -460,15 +480,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setAnalyzedVerseIds(new Set());
     setDiscoveryHighlights([]);
     setDiscoveryHighlightIndex(0);
+    llmEdgesRef.current = [];
   }, [bundle]);
 
   const connectionCounts = useMemo(() => {
     const counts = new Map<number, number>();
     edges.forEach((edge) => {
       const edgeData = edge.data as EdgeData & { visualStyleType?: string };
-      const visualStyleType =
-        edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
-      if (visualStyleType === "GREY") return;
+      const styleType =
+        edgeData?.styleType || edgeData?.visualStyleType || "GREY";
+      if (styleType === "GREY") return;
       const sourceId = Number(edge.source);
       const targetId = Number(edge.target);
       if (Number.isFinite(sourceId)) {
@@ -1086,6 +1107,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           onShowParallels: (verseId: number) => handleShowParallels(verseId),
           depth: verse.depth,
           semanticConnectionType,
+          enableSemanticGlow: false,
           isDimmed: false,
           branchHighlight: undefined,
           discoveryPulseKey: undefined,
@@ -1171,10 +1193,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     expandedIds: Set<number>,
     _onExpand: (nodeId: number) => void,
   ) => {
-    // === FEATURE FLAG: Force-Directed Layout ===
-    // Set to true to use new neural network layout, false for legacy radial layout
-    const USE_FORCE_LAYOUT = true;
-
     // For dagre edge routing, we still create the graph (legacy - only used if USE_FORCE_LAYOUT = false)
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
@@ -1189,6 +1207,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     const visibleNodes = getVisibleNodes(bundle, expandedIds);
 
     const edgeTypeLookup = buildEdgeTypeLookup(bundle);
+    const depthById = new Map<number, number>();
+    visibleNodes.forEach((node) => {
+      depthById.set(node.id, node.depth);
+    });
 
     // Create nodes (only visible ones)
     const reactFlowNodes: Node[] = visibleNodes.map((verse) =>
@@ -1231,9 +1253,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         // 🌟 GOLDEN THREAD: Use semantic color for all edges (anchor rays stay thicker/animated)
         const finalStyleType = styleType || "PURPLE";
-        const visualStyleType = finalStyleType;
+        const visualStyleType = "GREY";
 
-        const edgeStyle = EDGE_STYLES[visualStyleType];
+        const semanticStyle = EDGE_STYLES[finalStyleType];
+        const visualStyle = EDGE_STYLES[visualStyleType];
 
         const edgeMetadata = edge.metadata || {};
         const isLLMDiscovered = edgeMetadata.source === "llm";
@@ -1245,7 +1268,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const widthMultiplier = 0.7 + similarity * 0.6; // Maps 0→0.7, 1→1.3
 
         // 🌟 GOLDEN THREAD: Anchor rays are thicker (aggressive contrast)
-        const baseWidth = isAnchorRay ? 2.5 : edgeStyle.width * widthMultiplier;
+        const baseWidth = isAnchorRay
+          ? 2.5
+          : semanticStyle.width * widthMultiplier;
         const finalWidth = isAnchorRay ? baseWidth : baseWidth;
 
         const edgePayload: Edge = {
@@ -1253,8 +1278,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           source: fromId,
           target: toId,
           type: "smoothstep",
-          // 🌟 GOLDEN THREAD: Animate anchor rays (outward flow)
-          animated: isAnchorRay,
+          animated: false,
           data: {
             styleType: finalStyleType, // 🌟 Preserve original type for hover reveal
             visualStyleType, // Current visual style
@@ -1270,30 +1294,34 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             selectionScore: edgeMetadata.selectionScore,
           },
           style: {
-            stroke: `url(#edge-gradient-${visualStyleType})`, // 🌟 Use semantic gradient
+            stroke: `url(#edge-gradient-${visualStyleType})`, // Default neutral glow
             strokeWidth: finalWidth, // 🌟 Thicker for anchor rays
             strokeLinecap: "round",
+            strokeDasharray: EDGE_DASH_ARRAY,
+            strokeDashoffset: 0,
             opacity: 0, // Start invisible for entrance animation
-            // 🌟 GOLDEN THREAD: Stronger glow for anchor rays
+            animation: EDGE_FLOW_ANIMATION,
+            animationDelay: edgeFlowDelay(
+              `e${fromId}-${toId}`,
+              depthById.get(edge.from),
+            ),
             filter: isAnchorRay
-              ? `drop-shadow(0 0 3px ${edgeStyle.glowColor}35)` // Stronger glow for anchor rays
-              : visualStyleType !== "GREY"
-                ? `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)` // 40 = 25% opacity in hex
-                : "none",
+              ? `drop-shadow(0 0 6px ${visualStyle.glowColor}70)`
+              : `drop-shadow(0 0 4px ${visualStyle.glowColor}55)`,
             transition:
               "opacity 150ms ease-in-out, stroke-width 150ms ease-in-out, filter 150ms ease-in-out",
-            cursor: visualStyleType !== "GREY" ? "pointer" : "default",
+            cursor: finalStyleType !== "GREY" ? "pointer" : "default",
           },
           // 🌟 GOLDEN THREAD: Use visualStyleType for interaction width
           interactionWidth: isAnchorRay
             ? 25
-            : visualStyleType !== "GREY"
+            : finalStyleType !== "GREY"
               ? 20
               : 10, // Grey secondary edges have smallest interaction area
         };
 
         layoutEdges.push(edgePayload);
-        if (visualStyleType !== "GREY") {
+        if (finalStyleType !== "GREY") {
           reactFlowEdges.push(edgePayload);
         }
 
@@ -1333,7 +1361,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               stroke: `url(#edge-gradient-GREY)`, // Use directional gradient
               strokeWidth: edgeStyle.width,
               strokeLinecap: "round",
+              strokeDasharray: EDGE_DASH_ARRAY,
+              strokeDashoffset: 0,
               opacity: 0, // Start invisible for entrance animation
+              animation: EDGE_FLOW_ANIMATION,
+              animationDelay: edgeFlowDelay(
+                `e${fromId}-${toId}-synthetic`,
+                depthById.get(node.parentId),
+              ),
               // Subtle glow for synthetic edges
               filter: `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`, // 40 = 25% opacity
               transition: "all 150ms ease-in-out",
@@ -1346,6 +1381,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         }
       }
     });
+
+    // === FEATURE FLAG: Force-Directed Layout ===
+    // Set to true to use new neural network layout, false for legacy radial layout
+    const USE_FORCE_LAYOUT = true;
 
     // === LAYOUT CALCULATION ===
     if (USE_FORCE_LAYOUT) {
@@ -1615,7 +1654,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           getLayoutedElements(bundle, layoutExpandedNodes, handleExpandNode);
         const transitionedNodes = layoutedNodes.map(applyNodeTransition);
         setNodes(transitionedNodes);
-        setEdges(layoutedEdges);
+
+        const visibleIds = new Set(layoutedNodes.map((node) => node.id));
+        const extraEdges = llmEdgesRef.current.filter(
+          (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
+        );
+        const mergedEdges =
+          extraEdges.length === 0
+            ? layoutedEdges
+            : [
+                ...layoutedEdges,
+                ...extraEdges.filter(
+                  (edge) => !layoutedEdges.some((e) => e.id === edge.id),
+                ),
+              ];
+        setEdges(mergedEdges);
 
         // Reset edge animation state and trigger after node entrance
         const maxNodeDepth = Math.max(
@@ -1828,9 +1881,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           const styleType =
             TYPE_TO_STYLE_MAP[conn.type] || TYPE_TO_STYLE_MAP.DEEPER;
           const edgeStyle = EDGE_STYLES[styleType];
+          const visualStyleType = "GREY";
+          const visualStyle = EDGE_STYLES[visualStyleType];
 
-          const finalOpacity = 0.6;
-          const finalFilter = `drop-shadow(0 0 3px ${edgeStyle.glowColor}35)`;
+          const finalOpacity = NEUTRAL_EDGE_OPACITY;
+          const finalFilter = `drop-shadow(0 0 4px ${visualStyle.glowColor}55)`;
 
           const edgeId = `llm-${conn.type}-${conn.from}-${conn.to}`;
 
@@ -1849,6 +1904,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             type: "smoothstep",
             data: {
               styleType,
+              visualStyleType,
               edgeType: conn.type,
               explanation: conn.explanation,
               confidence: conn.confidence,
@@ -1858,11 +1914,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               weight: conn.confidence,
             },
             style: {
-              stroke: `url(#edge-gradient-${styleType})`, // Use directional gradient
+              stroke: `url(#edge-gradient-${visualStyleType})`,
               strokeWidth: edgeStyle.width,
               strokeLinecap: "round",
+              strokeDasharray: EDGE_DASH_ARRAY,
+              strokeDashoffset: 0,
               opacity: 0,
-              filter: `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`, // Start subtle
+              animation: EDGE_FLOW_ANIMATION,
+              animationDelay: edgeFlowDelay(edgeId),
+              filter: `drop-shadow(0 0 3px ${visualStyle.glowColor}35)`, // Start subtle
               transition: "opacity 450ms ease, filter 450ms ease",
             },
             animated: false,
@@ -1883,6 +1943,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             console.log("[LLM Discovery] All edges already exist, skipping");
             return prev;
           }
+
+          const existingLlmIds = new Set(llmEdgesRef.current.map((e) => e.id));
+          uniqueNewEdges.forEach((edge) => {
+            if (!existingLlmIds.has(edge.id)) {
+              llmEdgesRef.current.push(edge);
+              existingLlmIds.add(edge.id);
+            }
+          });
 
           console.log(
             `[LLM Discovery] Adding ${uniqueNewEdges.length} unique edges (${newEdges.length - uniqueNewEdges.length} duplicates filtered)`,
@@ -2039,7 +2107,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
         const isSynthetic = edgeData?.isSynthetic;
         const finalOpacity =
-          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.2 : 0.45;
+          visualStyleType === "GREY"
+            ? NEUTRAL_EDGE_OPACITY
+            : isSynthetic
+              ? 0.2
+              : 0.45;
 
         return {
           ...edge,
@@ -2080,21 +2152,31 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           const baseWidth = edgeData?.baseWidth || edgeStyle.width;
           const isSynthetic = edgeData?.isSynthetic;
           const defaultOpacity =
-            visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.2 : 0.45;
+            visualStyleType === "GREY"
+              ? NEUTRAL_EDGE_OPACITY
+              : isSynthetic
+                ? 0.2
+                : 0.45;
 
           // Restore subtle glow for colored edges
           const baseFilter =
-            visualStyleType !== "GREY"
-              ? `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`
-              : "none";
+            visualStyleType === "GREY"
+              ? `drop-shadow(0 0 4px ${edgeStyle.glowColor}55)`
+              : `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`;
 
           return {
             ...edge,
+            data: {
+              ...(edge.data as EdgeData),
+              visualStyleType: "GREY",
+            },
             style: {
               ...edge.style,
+              stroke: "url(#edge-gradient-GREY)",
               opacity: defaultOpacity,
               filter: baseFilter,
               strokeWidth: baseWidth,
+              animation: EDGE_FLOW_ANIMATION,
             },
           };
         }),
@@ -2134,25 +2216,32 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           visualStyleType?: string;
           isAnchorRay?: boolean;
         };
-        // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
-        const visualStyleType =
-          edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+        const semanticStyleType = edgeData?.styleType || "GREY";
+        const visualStyleType = isInBranch ? activeBranch.styleType : "GREY";
         const edgeStyle = EDGE_STYLES[visualStyleType];
-        const isColoredEdge = visualStyleType !== "GREY"; // Only colored branches get glow
 
-        // Use stored baseWidth if available, otherwise fall back to style width
-        const baseWidth = edgeData?.baseWidth || edgeStyle.width;
+        // Use stored baseWidth if available, otherwise fall back to semantic width
+        const baseWidth =
+          edgeData?.baseWidth || EDGE_STYLES[semanticStyleType].width;
 
         return {
           ...edge,
+          data: {
+            ...(edge.data as EdgeData),
+            visualStyleType,
+          },
           style: {
             ...edge.style,
             opacity: isInBranch ? 1 : 0.2,
-            filter:
-              isInBranch && isColoredEdge
-                ? `drop-shadow(0 0 5px ${edgeStyle.glowColor})`
-                : "none",
+            stroke: `url(#edge-gradient-${visualStyleType})`,
+            filter: isInBranch
+              ? `drop-shadow(0 0 6px ${edgeStyle.glowColor})`
+              : `drop-shadow(0 0 3px ${EDGE_STYLES.GREY.glowColor}35)`,
             strokeWidth: isInBranch ? baseWidth + 1 : baseWidth,
+            animation: isInBranch
+              ? EDGE_FLOW_ANIMATION_ACTIVE
+              : EDGE_FLOW_ANIMATION,
+            animationDelay: isInBranch ? "0ms" : edge.style?.animationDelay,
           },
         };
       }),
@@ -2310,7 +2399,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
         const isSynthetic = edgeData?.isSynthetic;
         const defaultOpacity =
-          visualStyleType === "GREY" ? 0.3 : isSynthetic ? 0.2 : 0.45;
+          visualStyleType === "GREY"
+            ? NEUTRAL_EDGE_OPACITY
+            : isSynthetic
+              ? 0.2
+              : 0.45;
 
         return {
           ...edge,
@@ -2391,8 +2484,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       const edgeData = edge.data as EdgeData & { visualStyleType?: string };
-      // dYOY GOLDEN THREAD: Use visualStyleType to ignore grey secondary edges
-      const visualStyleType = edgeData?.visualStyleType || edgeData?.styleType;
       // For connection details popup, use original semantic type
       const styleType = edgeData?.styleType as
         | ConnectionStyleType
@@ -2400,7 +2491,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         | undefined;
 
       // Only handle colored branches (not GREY)
-      if (visualStyleType === "GREY" || !visualStyleType) return;
       if (!bundle || !styleType || styleType === "GREY") return;
 
       // Get the from and to verse data
@@ -2545,6 +2635,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
   return (
     <div className="h-full w-full relative">
+      <style>{`
+        @keyframes edge-flow {
+          0% {
+            stroke-dashoffset: 0;
+          }
+          100% {
+            stroke-dashoffset: -32;
+          }
+        }
+      `}</style>
       <DiscoveryOverlay
         phase={bundle ? discoveryProgress.phase : "selecting"}
         progress={bundle ? discoveryProgress.progress : 0}
@@ -2657,8 +2757,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#9CA3AF" stopOpacity="1" />
-              <stop offset="100%" stopColor="#6B7280" stopOpacity="1" />
+              <stop offset="0%" stopColor="#F8FAFF" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#D7F3FF" stopOpacity="0.95" />
             </linearGradient>
             {/* Gold gradient */}
             <linearGradient

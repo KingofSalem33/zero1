@@ -10,7 +10,8 @@ interface VerseNodeData {
   onExpand: () => void;
   onShowParallels?: (verseId: number) => void; // Show parallel passages modal
   depth?: number; // Depth from anchor for size scaling
-  semanticConnectionType?: string; // 🌟 GOLDEN THREAD: Type of connection for this node (GOLD/PURPLE/CYAN/GREY)
+  enableSemanticGlow?: boolean;
+  semanticConnectionType?: string; // Connection type for this node (GOLD/PURPLE/CYAN/GREY)
   isDimmed?: boolean;
   branchHighlight?: { color: string; glowColor: string };
   discoveryPulseKey?: number;
@@ -30,7 +31,8 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     isAnchor,
     onShowParallels,
     depth,
-    semanticConnectionType, // 🌟 GOLDEN THREAD: Semantic connection for this node
+    semanticConnectionType, // Semantic connection for this node
+    enableSemanticGlow,
     isDimmed,
     branchHighlight,
     discoveryPulseKey,
@@ -166,14 +168,15 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
       border: "#3B82F6",
     },
     GREY: {
-      glow: "0 0 4px #9CA3AF",
-      border: "#6B7280",
+      glow: "0 0 5px #B8F1FF",
+      border: "#D7F3FF",
     },
   };
 
-  const glowStyle = semanticConnectionType
-    ? semanticGlowStyles[semanticConnectionType]
-    : null;
+  const glowStyle =
+    enableSemanticGlow && semanticConnectionType
+      ? semanticGlowStyles[semanticConnectionType]
+      : null;
   let width: number, height: number, padding: string;
   const bookLabel = verse.book_name || verse.book_abbrev.toUpperCase();
   const primaryLabel =

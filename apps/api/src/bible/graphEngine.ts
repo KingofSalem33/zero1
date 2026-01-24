@@ -79,17 +79,29 @@ type LayerResult = {
     maxScore: number;
     strongCount: number;
     threshold: number;
+    strongSignalMass?: number;
+    avgStrongScore?: number;
   };
 };
 
 export type HybridSelectionConfig = {
   mode: "gravity" | "hybrid";
   query?: string;
+  queryWeight?: number;
+  anchorEmbedding?: number[];
+  anchorWeight?: number;
   versePoolSize?: number;
   pericopePoolSize?: number;
   pericopeMaxVerses?: number;
   strongPercentile?: number;
   centralityBonus?: number;
+  minStrongSim?: number;
+  edgeWeightBonus?: number;
+  coherenceSourceIds?: number[];
+  coherenceBonus?: number;
+  diversityMaxPerBook?: number;
+  edgeTypeBonuses?: Partial<Record<VisualEdge["type"], number>>;
+  fallbackLimit?: number;
   maxNodes?: number;
   maxDepth?: number;
 };
@@ -319,6 +331,37 @@ const buildVerseEmbeddingMap = async (
   return embeddingMap;
 };
 
+const fetchVerseBooks = async (
+  ids: number[],
+  profileLabel: string,
+): Promise<Map<number, string>> => {
+  if (ids.length === 0) return new Map();
+
+  const { data, error } = await profileTime(
+    `${profileLabel}.fetch_books`,
+    () => supabase.from("verses").select("id, book_abbrev").in("id", ids),
+    {
+      file: "bible/graphEngine.ts",
+      fn: "fetchVerseBooks",
+      await: "supabase.verses.select",
+    },
+  );
+
+  if (error || !data) {
+    console.warn("[Graph Engine] Failed to fetch verse books:", error);
+    return new Map();
+  }
+
+  const bookMap = new Map<number, string>();
+  (data as { id: number; book_abbrev: string }[]).forEach((row) => {
+    if (row.book_abbrev) {
+      bookMap.set(row.id, row.book_abbrev.toLowerCase());
+    }
+  });
+
+  return bookMap;
+};
+
 const scoreVerseIdsByEmbedding = async (
   ids: number[],
   queryEmbedding: number[],
@@ -336,6 +379,23 @@ const scoreVerseIdsByEmbedding = async (
     similarityMap.set(id, cosineSimilarity(queryEmbedding, verseEmbedding));
   });
 
+  return similarityMap;
+};
+
+const scoreByEmbeddingMap = (
+  ids: number[],
+  embeddingMap: Map<number, number[]>,
+  embedding: number[],
+): Map<number, number> => {
+  const similarityMap = new Map<number, number>();
+  ids.forEach((id) => {
+    const verseEmbedding = embeddingMap.get(id);
+    if (!verseEmbedding) {
+      similarityMap.set(id, 0);
+      return;
+    }
+    similarityMap.set(id, cosineSimilarity(embedding, verseEmbedding));
+  });
   return similarityMap;
 };
 
@@ -644,10 +704,16 @@ export async function fetchRing1Connections(
     typeof info.bestEdge.weight === "number" ? info.bestEdge.weight : 0.6,
   );
   const maxWeight = edgeWeights.length > 0 ? Math.max(...edgeWeights) : 0;
-  const strongCount =
+  const strongWeights =
     typeof signalThreshold === "number" && maxWeight > 0
-      ? edgeWeights.filter((weight) => weight >= maxWeight * threshold).length
-      : 0;
+      ? edgeWeights.filter((weight) => weight >= maxWeight * threshold)
+      : [];
+  const strongCount = strongWeights.length;
+  const strongSignalMass = strongWeights.reduce(
+    (sum, weight) => sum + weight,
+    0,
+  );
+  const avgStrongScore = strongCount > 0 ? strongSignalMass / strongCount : 0;
 
   console.log(
     `[Graph Walker]   Weighted scoring: ${candidates.size} candidates, returning top ${ids.length}`,
@@ -662,6 +728,8 @@ export async function fetchRing1Connections(
             maxScore: maxWeight,
             strongCount,
             threshold,
+            strongSignalMass,
+            avgStrongScore,
           },
         }
       : {}),
@@ -689,6 +757,16 @@ export async function fetchHybridLayer(
   const pericopeMaxVerses = selection.pericopeMaxVerses ?? 300;
   const strongPercentile = selection.strongPercentile ?? 0.85;
   const centralityBonus = selection.centralityBonus ?? 0;
+  const minStrongSim = selection.minStrongSim ?? 0;
+  const edgeWeightBonus = selection.edgeWeightBonus ?? 0;
+  const coherenceBonus = selection.coherenceBonus ?? 0;
+  const coherenceSourceIds = selection.coherenceSourceIds ?? [];
+  const diversityMaxPerBook = selection.diversityMaxPerBook ?? 0;
+  const edgeTypeBonuses = selection.edgeTypeBonuses ?? {};
+  const fallbackLimit = selection.fallbackLimit ?? 0;
+  const anchorEmbedding = selection.anchorEmbedding;
+  const anchorWeight = selection.anchorWeight ?? 0.9;
+  const queryWeight = selection.queryWeight ?? 0.35;
 
   const sourceSet = new Set(sourceIds);
   const allowedVerseIds =
@@ -701,7 +779,21 @@ export async function fetchHybridLayer(
       : DEFAULT_CROSS_PERICOPE_THRESHOLD;
 
   const baseEdges = await fetchAllEdges(sourceIds, edgeOptions);
-  const candidateEdgeMap = new Map<number, VisualEdge>();
+  const coherenceSourceSet =
+    coherenceSourceIds.length > 0 ? new Set(coherenceSourceIds) : null;
+  const coherenceCounts = new Map<number, number>();
+  if (coherenceSourceSet) {
+    baseEdges.forEach((edge) => {
+      const fromIn = coherenceSourceSet.has(edge.from);
+      const toIn = coherenceSourceSet.has(edge.to);
+      if (fromIn === toIn) return;
+      const targetId = fromIn ? edge.to : edge.from;
+      coherenceCounts.set(targetId, (coherenceCounts.get(targetId) ?? 0) + 1);
+    });
+  }
+
+  type CandidateEdge = VisualEdge & { sourceId: number };
+  const candidateEdgeMap = new Map<number, CandidateEdge>();
   const edgeCandidateIds = new Set<number>();
 
   baseEdges.forEach((edge) => {
@@ -709,6 +801,7 @@ export async function fetchHybridLayer(
     const toIsSource = sourceSet.has(edge.to);
     if (!fromIsSource && !toIsSource) return;
 
+    const sourceId = fromIsSource ? edge.from : edge.to;
     const targetId = fromIsSource ? edge.to : edge.from;
     if (excludeSet.has(targetId) || sourceSet.has(targetId)) return;
 
@@ -726,7 +819,10 @@ export async function fetchHybridLayer(
     if (!existing || edgeWeight > (existing.weight ?? 0)) {
       candidateEdgeMap.set(targetId, {
         ...edge,
+        from: sourceId,
+        to: targetId,
         weight: edgeWeight,
+        sourceId,
       });
     }
   });
@@ -845,6 +941,7 @@ export async function fetchHybridLayer(
         to: entry.verseId,
         weight: edgeWeight,
         type: edgeType,
+        sourceId: parentVerseId,
         metadata: {
           source: "pericope_connection",
           connection_type: connection?.connection_type,
@@ -872,46 +969,126 @@ export async function fetchHybridLayer(
     return {
       ids: [],
       edges: [],
-      stats: { maxScore: 0, strongCount: 0, threshold: 0 },
+      stats: {
+        maxScore: 0,
+        strongCount: 0,
+        threshold: 0,
+        strongSignalMass: 0,
+        avgStrongScore: 0,
+      },
     };
   }
 
-  const similarityMap = await scoreVerseIdsByEmbedding(
+  const embeddingMap = await buildVerseEmbeddingMap(
     candidateList,
-    queryEmbedding,
     "hybrid_ring.candidate_scores",
   );
+  const similarityMap = scoreByEmbeddingMap(
+    candidateList,
+    embeddingMap,
+    queryEmbedding,
+  );
+  const anchorSimMap = anchorEmbedding
+    ? scoreByEmbeddingMap(candidateList, embeddingMap, anchorEmbedding)
+    : new Map<number, number>();
 
   const centralityMap =
     centralityBonus > 0
       ? await fetchCentralityScores(candidateList)
       : new Map<number, number>();
+  const maxCoherence =
+    coherenceCounts.size > 0 ? Math.max(...coherenceCounts.values()) : 0;
 
   const scoredCandidates = candidateList
     .map((id) => {
       const similarity = similarityMap.get(id) ?? 0;
+      const anchorSimilarity = anchorSimMap.get(id) ?? 0;
       const centrality = centralityMap.get(id) ?? 0.1;
-      const priority = similarity + centrality * centralityBonus;
-      return { id, similarity, priority };
+      const edge = candidateEdgeMap.get(id);
+      const edgeWeight = typeof edge?.weight === "number" ? edge.weight : 0;
+      const edgeTypeBonus = edge?.type ? (edgeTypeBonuses[edge.type] ?? 0) : 0;
+      const coherenceScore =
+        coherenceBonus > 0 && maxCoherence > 0
+          ? ((coherenceCounts.get(id) ?? 0) / maxCoherence) * coherenceBonus
+          : 0;
+      const priority =
+        similarity * queryWeight +
+        anchorSimilarity * anchorWeight +
+        centrality * centralityBonus +
+        edgeWeight * edgeWeightBonus +
+        edgeTypeBonus +
+        coherenceScore;
+      return { id, similarity, anchorSimilarity, priority };
     })
     .sort((a, b) => b.priority - a.priority);
 
-  const candidateScores = scoredCandidates.map(
-    (candidate) => candidate.similarity,
+  const primaryScores = scoredCandidates.map((candidate) =>
+    anchorEmbedding ? candidate.anchorSimilarity : candidate.similarity,
   );
-  const threshold = percentile(candidateScores, strongPercentile);
-  const strongCandidates = scoredCandidates.filter(
-    (candidate) => candidate.similarity >= threshold,
+  const percentileThreshold = percentile(primaryScores, strongPercentile);
+  const threshold = Math.max(percentileThreshold, minStrongSim);
+  const strongCandidates = scoredCandidates.filter((candidate) =>
+    anchorEmbedding
+      ? candidate.anchorSimilarity >= threshold
+      : candidate.similarity >= threshold,
   );
   const strongCount = strongCandidates.length;
-  const selectCount = Math.min(limit, strongCount);
-  const selectedCandidates = strongCandidates.slice(0, selectCount);
+  const strongSignalMass = strongCandidates.reduce((sum, candidate) => {
+    const score = anchorEmbedding
+      ? candidate.anchorSimilarity
+      : candidate.similarity;
+    return sum + score;
+  }, 0);
+  const avgStrongScore = strongCount > 0 ? strongSignalMass / strongCount : 0;
+  const targetCount = Math.min(limit, strongCount);
+
+  let selectedCandidates: Array<{
+    id: number;
+    similarity: number;
+    anchorSimilarity: number;
+    priority: number;
+  }> = [];
+
+  if (strongCount === 0 && fallbackLimit > 0) {
+    const fallbackCount = Math.min(
+      limit,
+      fallbackLimit,
+      scoredCandidates.length,
+    );
+    selectedCandidates = scoredCandidates.slice(0, fallbackCount);
+  } else if (diversityMaxPerBook > 0 && targetCount > 0) {
+    const bookMap = await fetchVerseBooks(
+      strongCandidates.map((candidate) => candidate.id),
+      "hybrid_ring.diversity",
+    );
+    const bookCounts = new Map<string, number>();
+    for (const candidate of strongCandidates) {
+      if (selectedCandidates.length >= targetCount) break;
+      const book = bookMap.get(candidate.id) ?? "unknown";
+      const current = bookCounts.get(book) ?? 0;
+      if (current >= diversityMaxPerBook) continue;
+      bookCounts.set(book, current + 1);
+      selectedCandidates.push(candidate);
+    }
+
+    if (selectedCandidates.length < targetCount) {
+      for (const candidate of strongCandidates) {
+        if (selectedCandidates.length >= targetCount) break;
+        if (selectedCandidates.find((entry) => entry.id === candidate.id)) {
+          continue;
+        }
+        selectedCandidates.push(candidate);
+      }
+    }
+  } else {
+    selectedCandidates = strongCandidates.slice(0, targetCount);
+  }
 
   const ids = selectedCandidates.map((candidate) => candidate.id);
   const edges = selectedCandidates.map((candidate) => {
     const bestEdge = candidateEdgeMap.get(candidate.id);
     return {
-      from: bestEdge?.from ?? sourceIds[0],
+      from: bestEdge?.sourceId ?? bestEdge?.from ?? sourceIds[0],
       to: candidate.id,
       weight: bestEdge?.weight ?? 0.6,
       type: bestEdge?.type ?? "DEEPER",
@@ -920,20 +1097,20 @@ export async function fetchHybridLayer(
         selectionScore: candidate.priority,
         selectionType: "hybrid",
         similarity: candidate.similarity,
+        anchorSimilarity: candidate.anchorSimilarity,
       },
     };
   });
 
-  const maxScore =
-    candidateScores.length > 0 ? Math.max(...candidateScores) : 0;
+  const maxScore = primaryScores.length > 0 ? Math.max(...primaryScores) : 0;
 
   console.log(
     `[Hybrid Selection] pool verses=${edgePoolIds.length}, pericopes=${pericopeCandidates.length}, candidates=${candidateList.length}, selected=${ids.length}, p${Math.round(
       strongPercentile * 100,
-    )}=${threshold.toFixed(3)}, strong=${strongCount}`,
+    )}=${threshold.toFixed(3)}, strong=${strongCount}, signal=${strongSignalMass.toFixed(2)}`,
   );
 
-  if (strongCount === 0) {
+  if (strongCount === 0 && selectedCandidates.length === 0) {
     return {
       ids: [],
       edges: [],
@@ -941,6 +1118,8 @@ export async function fetchHybridLayer(
         maxScore,
         strongCount,
         threshold,
+        strongSignalMass,
+        avgStrongScore,
       },
     };
   }
@@ -952,6 +1131,8 @@ export async function fetchHybridLayer(
       maxScore,
       strongCount,
       threshold,
+      strongSignalMass,
+      avgStrongScore,
     },
   };
 }

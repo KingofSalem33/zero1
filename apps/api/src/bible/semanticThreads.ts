@@ -357,13 +357,10 @@ export async function findGoldThreads(
         if (v1.isOT !== v2.isOT) continue;
 
         const similarity = cosineSimilarity(v1.embedding, v2.embedding);
-        if (similarity >= 0.95) {
-          continue;
-        }
-
         const pairKey = `${Math.min(v1.id, v2.id)}-${Math.max(v1.id, v2.id)}`;
         if (!seenPairs.has(pairKey)) {
-          pairs.push({ from: v1.id, to: v2.id, similarity });
+          const capped = Math.min(similarity, 0.999);
+          pairs.push({ from: v1.id, to: v2.id, similarity: capped });
           seenPairs.add(pairKey);
         }
       }
@@ -387,6 +384,8 @@ export async function findGoldThreads(
       metadata: {
         similarity: pair.similarity,
         thread: "lexical",
+        source: "semantic_thread",
+        confidence: pair.similarity,
       },
     }));
 
@@ -443,16 +442,12 @@ export async function findPurpleThreads(
           otVerse.embedding,
           ntVerse.embedding,
         );
-        if (similarity >= 0.92) {
-          continue;
-        }
-
         const pairKey = `${otVerse.id}-${ntVerse.id}`;
         if (!seenPairs.has(pairKey)) {
           pairs.push({
             from: otVerse.id,
             to: ntVerse.id,
-            similarity,
+            similarity: Math.min(similarity, 0.999),
           });
           seenPairs.add(pairKey);
         }
@@ -477,6 +472,8 @@ export async function findPurpleThreads(
       metadata: {
         similarity: pair.similarity,
         thread: "theological",
+        source: "semantic_thread",
+        confidence: pair.similarity,
       },
     }));
 
@@ -544,16 +541,12 @@ export async function findCyanThreads(
           ntVerse.embedding,
         );
 
-        if (similarity >= 0.88) {
-          continue;
-        }
-
         const pairKey = `${otVerse.id}-${ntVerse.id}`;
         if (!seenPairs.has(pairKey)) {
           pairs.push({
             from: otVerse.id,
             to: ntVerse.id,
-            similarity,
+            similarity: Math.min(similarity, 0.999),
           });
           seenPairs.add(pairKey);
         }
@@ -578,6 +571,8 @@ export async function findCyanThreads(
       metadata: {
         similarity: pair.similarity,
         thread: "prophetic",
+        source: "semantic_thread",
+        confidence: pair.similarity,
       },
     }));
 

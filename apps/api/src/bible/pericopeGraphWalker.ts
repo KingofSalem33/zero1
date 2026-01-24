@@ -192,21 +192,25 @@ export async function buildPericopeBundle(
       (max, target) => Math.max(max, target.connection.similarity_score ?? 0),
       0,
     );
-    const strongCount =
+    const strongTargets =
       maxScore > 0
         ? ring1Targets.filter(
             (target) =>
               target.connection.similarity_score >= maxScore * threshold,
-          ).length
-        : 0;
+          )
+        : [];
+    const strongSignalMass = strongTargets.reduce(
+      (sum, target) => sum + (target.connection.similarity_score ?? 0),
+      0,
+    );
 
-    if (strongCount === 0) {
+    if (strongSignalMass <= 0) {
       ring2Limit = 0;
     } else {
       const adaptiveMin = cfg.adaptive?.minLimit ?? 2;
       const adaptiveMultiplier = cfg.adaptive?.multiplier ?? 2;
       ring2Limit = clampLimit(
-        strongCount * adaptiveMultiplier,
+        Math.round(strongSignalMass * adaptiveMultiplier),
         adaptiveMin,
         ring2Limit,
       );

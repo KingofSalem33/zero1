@@ -6,6 +6,14 @@ import { SEMANTIC_CONNECTION_V2 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
+type VerseType = {
+  id: number;
+  book_name: string;
+  chapter: number;
+  verse: number;
+  text: string;
+};
+
 const router = Router();
 
 /**
@@ -20,6 +28,66 @@ router.post("/synopsis", async (req, res) => {
     profiler?.markHandlerStart();
 
     const { verseIds, connectionType, similarity, isLLMDiscovered } = req.body;
+    const parseReference = (reference: string) => {
+      const match = reference.match(/^([123]?\s*[A-Za-z\s]+)\s+(\d+):(\d+)$/);
+      if (!match) return null;
+      const book = match[1].trim();
+      const chapter = Number.parseInt(match[2], 10);
+      const verse = Number.parseInt(match[3], 10);
+      if (!book || Number.isNaN(chapter) || Number.isNaN(verse)) return null;
+      return { book_name: book, chapter, verse };
+    };
+
+    const suppliedVerses = Array.isArray(req.body.verses)
+      ? req.body.verses
+          .filter(
+            (verse: unknown) =>
+              verse && typeof verse === "object" && !Array.isArray(verse),
+          )
+          .map(
+            (verse: {
+              id?: number;
+              reference?: string;
+              text?: string;
+              book_name?: string;
+              chapter?: number;
+              verse?: number;
+            }) => {
+              const reference =
+                typeof verse.reference === "string" ? verse.reference : "";
+              const parsed = reference ? parseReference(reference) : null;
+              return {
+                id: Number(verse.id),
+                book_name:
+                  typeof verse.book_name === "string"
+                    ? verse.book_name
+                    : (parsed?.book_name ?? ""),
+                chapter: Number.isFinite(verse.chapter)
+                  ? Number(verse.chapter)
+                  : (parsed?.chapter ?? 0),
+                verse: Number.isFinite(verse.verse)
+                  ? Number(verse.verse)
+                  : (parsed?.verse ?? 0),
+                text: typeof verse.text === "string" ? verse.text : "",
+              };
+            },
+          )
+          .filter(
+            (verse: {
+              id: number;
+              book_name: string;
+              chapter: number;
+              verse: number;
+              text: string;
+            }) =>
+              Number.isFinite(verse.id) &&
+              verse.id > 0 &&
+              verse.book_name.length > 0 &&
+              verse.chapter > 0 &&
+              verse.verse > 0 &&
+              verse.text.length > 0,
+          )
+      : [];
 
     // Support legacy format (fromVerseId, toVerseId) for backwards compatibility
     const rawIds = Array.isArray(verseIds)
@@ -39,54 +107,58 @@ router.post("/synopsis", async (req, res) => {
       `[Semantic Connection] Generating synopsis for ${ids.length} verses (${connectionType}, ${similarity})`,
     );
 
-    // Fetch all verses from database
-    const { data: verses, error } = await profileTime(
-      "semantic_connection.fetch_verses",
-      () =>
-        supabase
-          .from("verses")
-          .select("id, book_name, chapter, verse, text")
-          .in("id", ids),
-      {
-        file: "routes/semantic-connection.ts",
-        fn: "fetch_verses",
-        await: "supabase.verses.select",
-      },
-    );
-
-    if (error || !verses || verses.length < 2) {
-      console.error("[Semantic Connection] Error fetching verses:", error);
-      return res.status(404).json({ error: "Verses not found" });
-    }
-
-    type VerseType = {
-      id: number;
-      book_name: string;
-      chapter: number;
-      verse: number;
-      text: string;
-    };
-    const verseById = new Map(
-      verses.map((verse: VerseType) => [verse.id, verse]),
-    );
-    const missingIds = Array.from(
-      new Set(ids.filter((id: number) => !verseById.has(id))),
-    );
-
-    if (missingIds.length > 0) {
-      console.error(
-        `[Semantic Connection] Missing verses for IDs: ${missingIds.join(", ")}`,
+    let sortedVerses: VerseType[] = [];
+    if (suppliedVerses.length >= 2) {
+      const verseById = new Map(
+        suppliedVerses.map((verse: VerseType) => [verse.id, verse]),
       );
-      return res.status(404).json({
-        error: "Verses not found",
-        missingVerseIds: missingIds,
-      });
-    }
+      const ordered = ids
+        .map((id: number) => verseById.get(id))
+        .filter((v): v is VerseType => v !== undefined);
+      sortedVerses = ordered.length >= 2 ? ordered : suppliedVerses;
+    } else {
+      // Fetch all verses from database
+      const { data: verses, error } = await profileTime(
+        "semantic_connection.fetch_verses",
+        () =>
+          supabase
+            .from("verses")
+            .select("id, book_name, chapter, verse, text")
+            .in("id", ids),
+        {
+          file: "routes/semantic-connection.ts",
+          fn: "fetch_verses",
+          await: "supabase.verses.select",
+        },
+      );
 
-    // Sort verses by their position in the verseIds array to maintain order
-    const sortedVerses = ids
-      .map((id: number) => verseById.get(id))
-      .filter((v: VerseType | undefined): v is VerseType => v !== undefined);
+      if (error || !verses || verses.length < 2) {
+        console.error("[Semantic Connection] Error fetching verses:", error);
+        return res.status(404).json({ error: "Verses not found" });
+      }
+
+      const verseById = new Map(
+        verses.map((verse: VerseType) => [verse.id, verse]),
+      );
+      const missingIds = Array.from(
+        new Set(ids.filter((id: number) => !verseById.has(id))),
+      );
+
+      if (missingIds.length > 0) {
+        console.error(
+          `[Semantic Connection] Missing verses for IDs: ${missingIds.join(", ")}`,
+        );
+        return res.status(404).json({
+          error: "Verses not found",
+          missingVerseIds: missingIds,
+        });
+      }
+
+      // Sort verses by their position in the verseIds array to maintain order
+      sortedVerses = ids
+        .map((id: number) => verseById.get(id))
+        .filter((v: VerseType | undefined): v is VerseType => v !== undefined);
+    }
 
     // Determine connection description
     const connectionDescriptions = {
