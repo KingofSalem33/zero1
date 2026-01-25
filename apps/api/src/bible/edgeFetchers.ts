@@ -22,7 +22,7 @@ const EDGE_POLICY: {
   caps: Record<EdgeType, number>;
 } = {
   weights: {
-    DEEPER: 0.65,
+    DEEPER: 0.88,
     ROOTS: 0.94,
     ECHOES: 0.98,
     PROPHECY: 0.96,
