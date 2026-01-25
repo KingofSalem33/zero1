@@ -1,6 +1,5 @@
-/* eslint-disable no-console */
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
 
 const FILE_TO_ABBREV = {
   Gen: "gn",
