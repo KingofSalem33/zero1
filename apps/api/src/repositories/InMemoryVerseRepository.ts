@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import * as fsSync from "fs";
 import path from "path";
 import { IVerseRepository } from "./IVerseRepository";
 import { Verse, VerseRef, Book } from "../bible/types";
@@ -10,10 +11,28 @@ export class InMemoryVerseRepository implements IVerseRepository {
   private readonly kjvPath: string;
 
   constructor(dataPath?: string) {
-    // When running from dist/, __dirname points to dist/repositories
-    // We need to go up to dist/, then to apps/api/, then to data/
-    this.kjvPath =
-      dataPath || path.join(__dirname, "..", "..", "data", "kjv.json");
+    if (dataPath) {
+      this.kjvPath = dataPath;
+      return;
+    }
+
+    const candidates = [
+      path.resolve(process.cwd(), "apps", "api", "data", "kjv.json"),
+      path.resolve(process.cwd(), "data", "kjv.json"),
+      path.join(__dirname, "..", "..", "data", "kjv.json"), // dist/
+      path.join(__dirname, "..", "..", "..", "data", "kjv.json"), // src/
+    ];
+
+    const resolved =
+      candidates.find((candidate) => {
+        try {
+          return fsSync.existsSync(candidate);
+        } catch {
+          return false;
+        }
+      }) || candidates[candidates.length - 1];
+
+    this.kjvPath = resolved;
   }
 
   async initialize(): Promise<void> {

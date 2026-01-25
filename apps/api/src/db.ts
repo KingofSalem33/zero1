@@ -4,8 +4,10 @@ import pino from "pino";
 
 const logger = pino({ name: "db" });
 
+const supabaseKey = ENV.SUPABASE_SERVICE_KEY || ENV.SUPABASE_ANON_KEY;
+
 // Create Supabase client
-export const supabase = createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+export const supabase = createClient(ENV.SUPABASE_URL, supabaseKey, {
   auth: {
     persistSession: false, // Server-side doesn't need session persistence
   },

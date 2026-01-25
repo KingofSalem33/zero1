@@ -66,6 +66,7 @@ const UNDIRECTED_EDGE_TYPES = new Set<EdgeType>(["CONTRAST", "PATTERN"]);
 
 const EDGE_SOURCE_WEIGHTS: Record<string, number> = {
   canonical: 1.1,
+  cross_reference: 1.05,
   llm: 0.95,
   semantic_thread: 0.9,
   pericope_connection: 1.05,

@@ -10,6 +10,7 @@
  */
 
 import { supabase } from "../db";
+import { ENV } from "../env";
 import { VisualEdge, type EdgeType } from "./types";
 import {
   findGoldThreads,
@@ -49,7 +50,54 @@ const EDGE_POLICY: {
   },
 };
 
+// Tuned to OpenBible vote distribution (p95 = 16).
+const DEEPER_VOTE_CAP = 0.27; // 0.65 + 0.27 = 0.92 max
+const DEEPER_VOTE_SCALE = DEEPER_VOTE_CAP / Math.log1p(15);
+
 const LLM_CONFIDENCE_MIN = 0.9;
+
+const percentile = (values: number[], p: number): number => {
+  if (values.length === 0) return 0;
+  const idx = (values.length - 1) * p;
+  const lower = Math.floor(idx);
+  const upper = Math.ceil(idx);
+  if (lower === upper) return values[lower];
+  const weight = idx - lower;
+  return values[lower] + (values[upper] - values[lower]) * weight;
+};
+
+const logDeeperVoteStats = (rows: Array<{ votes?: number | null }>) => {
+  if (!ENV.DEEPER_VOTE_DEBUG) return;
+  if (!rows.length) {
+    console.log("[Edge Fetchers] DEEPER votes: no rows");
+    return;
+  }
+
+  const rawVotes = rows.map((row) =>
+    typeof row.votes === "number" ? row.votes : 1,
+  );
+  const negCount = rawVotes.filter((value) => value < 1).length;
+  const clampedVotes = rawVotes.map((value) => Math.max(1, value));
+  const sortedVotes = [...clampedVotes].sort((a, b) => a - b);
+  const weights = clampedVotes.map((votes) =>
+    Math.min(DEEPER_VOTE_CAP, Math.log1p(votes - 1) * DEEPER_VOTE_SCALE),
+  );
+  const sortedWeights = [...weights].sort((a, b) => a - b);
+
+  console.log(
+    `[Edge Fetchers] DEEPER votes: n=${rows.length}, neg=${negCount}, ` +
+      `p50=${percentile(sortedVotes, 0.5).toFixed(0)}, ` +
+      `p90=${percentile(sortedVotes, 0.9).toFixed(0)}, ` +
+      `p95=${percentile(sortedVotes, 0.95).toFixed(0)}, ` +
+      `max=${sortedVotes[sortedVotes.length - 1]}`,
+  );
+  console.log(
+    `[Edge Fetchers] DEEPER boost: min=${sortedWeights[0].toFixed(3)}, ` +
+      `p50=${percentile(sortedWeights, 0.5).toFixed(3)}, ` +
+      `p90=${percentile(sortedWeights, 0.9).toFixed(3)}, ` +
+      `max=${sortedWeights[sortedWeights.length - 1].toFixed(3)}`,
+  );
+};
 
 const applyEdgeWeight = (edge: VisualEdge): VisualEdge => {
   const baseWeight = EDGE_POLICY.weights[edge.type] ?? edge.weight;
@@ -119,8 +167,9 @@ export async function fetchDeeperEdges(
 
   const { data, error } = await supabase
     .from("cross_references")
-    .select("from_verse_id, to_verse_id")
+    .select("from_verse_id, to_verse_id, votes")
     .in("from_verse_id", sourceIds)
+    .order("votes", { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -128,15 +177,27 @@ export async function fetchDeeperEdges(
     return [];
   }
 
-  return (data || []).map((row) => ({
-    from: row.from_verse_id,
-    to: row.to_verse_id,
-    weight: EDGE_POLICY.weights.DEEPER,
-    type: "DEEPER" as const,
-    metadata: {
-      source: "cross_reference",
-    },
-  }));
+  logDeeperVoteStats(data || []);
+
+  return (data || []).map((row) => {
+    const rawVotes = typeof row.votes === "number" ? row.votes : 1;
+    const votes = Math.max(1, rawVotes);
+    const voteBoost = Math.min(
+      DEEPER_VOTE_CAP,
+      Math.log1p(votes - 1) * DEEPER_VOTE_SCALE,
+    );
+
+    return {
+      from: row.from_verse_id,
+      to: row.to_verse_id,
+      weight: EDGE_POLICY.weights.DEEPER + voteBoost,
+      type: "DEEPER" as const,
+      metadata: {
+        source: "cross_reference",
+        votes,
+      },
+    };
+  });
 }
 
 /**

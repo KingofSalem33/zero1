@@ -1,9 +1,18 @@
 import dotenv from "dotenv";
 import path from "path";
 
-// Load .env from the api package root regardless of where the server is started
-const envPath = path.resolve(__dirname, "..", ".env");
-dotenv.config({ path: envPath });
+// Load .env from api root; fall back to apps/ and repo root if needed
+const envPaths = [
+  path.resolve(__dirname, "..", ".env"),
+  path.resolve(__dirname, "..", "..", ".env"),
+  path.resolve(__dirname, "..", "..", "..", ".env"),
+];
+for (const envPath of envPaths) {
+  dotenv.config({ path: envPath });
+  if (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) {
+    break;
+  }
+}
 
 // Initialize Sentry AFTER loading env vars
 import * as Sentry from "@sentry/node";
@@ -955,6 +964,7 @@ app.post(
                       pericopePoolSize: 30,
                       pericopeMaxVerses: 300,
                       strongPercentile: 0.85,
+                      edgeWeightBonus: 0.12,
                     },
                     adaptive: {
                       enabled: true,
@@ -972,6 +982,7 @@ app.post(
                       pericopePoolSize: 30,
                       pericopeMaxVerses: 300,
                       strongPercentile: 0.85,
+                      edgeWeightBonus: 0.12,
                     },
                     adaptive: {
                       enabled: true,

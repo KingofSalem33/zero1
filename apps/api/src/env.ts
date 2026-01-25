@@ -10,10 +10,20 @@ export const ENV = {
     process.env.OPENAI_SMART_MODEL ||
     process.env.OPENAI_MODEL_NAME ||
     "gpt-4.1-mini",
-  SUPABASE_URL: process.env.SUPABASE_URL || "",
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
-  SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY || "",
+  SUPABASE_URL:
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "",
+  SUPABASE_ANON_KEY:
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    "",
+  SUPABASE_SERVICE_KEY:
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.VITE_SUPABASE_SERVICE_KEY ||
+    "",
   PERICOPE_SOURCE: process.env.PERICOPE_SOURCE || "SIL_AI",
+  DEEPER_VOTE_DEBUG:
+    process.env.DEEPER_VOTE_DEBUG === "1" ||
+    process.env.DEEPER_VOTE_DEBUG === "true",
 };
 
 if (!ENV.OPENAI_API_KEY) {
@@ -24,6 +34,6 @@ if (!ENV.OPENAI_API_KEY) {
 
 if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {
   console.warn(
-    "[WARN] Missing Supabase credentials. Database operations will fail.",
+    "[WARN] Missing Supabase credentials. Set SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_ANON_KEY (or VITE_SUPABASE_ANON_KEY).",
   );
 }
