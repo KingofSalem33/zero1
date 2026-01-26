@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 
 interface HighlightsLibraryProps {
-  onNavigateToVerse?: () => void;
+  onNavigateToVerse?: (reference?: string) => void;
 }
 
 const HighlightsLibrary: React.FC<HighlightsLibraryProps> = ({

@@ -6,6 +6,7 @@ import { BibleHighlightsProvider } from "./contexts/BibleHighlightsContext";
 import type { VisualContextBundle } from "./types/goldenThread";
 import type { GoDeeperPayload } from "./types/chat";
 import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
+import { addVerseNavigationListener } from "./utils/verseNavigation";
 
 // Lazy load heavy components for code splitting
 const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
@@ -37,6 +38,9 @@ function App() {
     "reader",
   );
   const [bibleStudyMode, setBibleStudyMode] = useState(false);
+  const [pendingVerseReference, setPendingVerseReference] = useState<
+    string | null
+  >(null);
   const [pendingChatPrompt, setPendingChatPrompt] =
     useState<GoDeeperPayload | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -190,11 +194,21 @@ function App() {
   };
 
   // Navigate from Highlights to Bible verse
-  const handleNavigateToVerse = () => {
+  const handleNavigateToVerse = (reference?: string) => {
     setViewMode("reader");
-    // TODO: Add logic to navigate to specific verse in BibleReader
-    // For now, BibleReader will open at current position
+    setBibleStudyMode(false);
+    if (reference) {
+      setPendingVerseReference(reference);
+    }
   };
+
+  useEffect(() => {
+    return addVerseNavigationListener((reference) => {
+      setViewMode("reader");
+      setBibleStudyMode(false);
+      setPendingVerseReference(reference);
+    });
+  }, []);
 
   // Save chats to localStorage whenever they change
   useEffect(() => {
@@ -400,6 +414,10 @@ function App() {
                 <BibleReader
                   onNavigateToChat={handleNavigateToChat}
                   onTrace={handleTrace}
+                  pendingVerseReference={pendingVerseReference}
+                  onVerseNavigationComplete={() =>
+                    setPendingVerseReference(null)
+                  }
                 />
               ) : viewMode === "library" ? (
                 <LibraryView

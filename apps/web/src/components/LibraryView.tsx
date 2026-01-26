@@ -51,10 +51,14 @@ interface LibraryViewProps {
   userId?: string;
   onGoDeeper?: (payload: GoDeeperPayload) => void;
   onOpenMap?: (bundle: VisualContextBundle) => void;
-  onNavigateToVerse?: () => void;
+  onNavigateToVerse?: (reference?: string) => void;
 }
 
 type LibraryTab = "connections" | "maps" | "highlights";
+type SemanticConnectionType = Parameters<
+  typeof SemanticConnectionModal
+>[0]["connectionType"];
+type SemanticMapSession = GoDeeperPayload["mapSession"];
 
 const CONNECTION_COLORS: Record<string, string> = {
   GOLD: "#D97706",
@@ -250,7 +254,7 @@ export function LibraryView({
       prompt: connection.goDeeperPrompt,
       mode: "go_deeper_short",
       visualBundle: connection.bundle,
-      mapSession: connection.mapSession as any,
+      mapSession: connection.mapSession as SemanticMapSession,
     });
   };
 
@@ -700,7 +704,9 @@ export function LibraryView({
         <SemanticConnectionModal
           fromVerse={activeConnection.fromVerse}
           toVerse={activeConnection.toVerse}
-          connectionType={activeConnection.connectionType as any}
+          connectionType={
+            activeConnection.connectionType as SemanticConnectionType
+          }
           similarity={activeConnection.similarity}
           position={modalPosition}
           onClose={() => setActiveConnection(null)}
@@ -726,7 +732,7 @@ export function LibraryView({
                   prompt: activeConnection.goDeeperPrompt,
                   mode: "go_deeper_short",
                   visualBundle: activeConnection.bundle,
-                  mapSession: activeConnection.mapSession as any,
+                  mapSession: activeConnection.mapSession as SemanticMapSession,
                 }
               : undefined
           }

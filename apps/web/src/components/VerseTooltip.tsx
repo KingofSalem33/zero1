@@ -1,5 +1,6 @@
 /* global AbortController */
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { dispatchVerseNavigation } from "../utils/verseNavigation";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -377,6 +378,29 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
 
                     {/* Action buttons */}
                     <div className="mt-3 flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          dispatchVerseNavigation(reference);
+                          onClose();
+                        }}
+                        className="group px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
+                        title="Open in Bible reader"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                          />
+                        </svg>
+                        <span>View</span>
+                      </button>
                       {onTrace && (
                         <button
                           onClick={() => {
@@ -435,25 +459,50 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                 {/* Root Translation View */}
                 <div className="space-y-3">
                   {/* Back button */}
-                  <button
-                    onClick={handleBackToSynopsis}
-                    className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
-                  >
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={handleBackToSynopsis}
+                      className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 19l-7-7 7-7"
-                      />
-                    </svg>
-                    <span>Back to verse</span>
-                  </button>
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 19l-7-7 7-7"
+                        />
+                      </svg>
+                      <span>Back to verse</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        dispatchVerseNavigation(reference);
+                        onClose();
+                      }}
+                      className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
+                      title="Open in Bible reader"
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                        />
+                      </svg>
+                      <span>View</span>
+                    </button>
+                  </div>
 
                   {isLoadingRoot ? (
                     <div className="flex items-center gap-2 py-1.5">

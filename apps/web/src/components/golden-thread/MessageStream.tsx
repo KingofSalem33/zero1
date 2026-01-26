@@ -1,5 +1,6 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import { dispatchVerseNavigation } from "../../utils/verseNavigation";
 
 // --- 1. MAIN TITLE (H2) ---
 // The exegesis title - large, authoritative, serif
@@ -238,9 +239,18 @@ const VerseTooltip = ({
                 {verseText}
               </p>
 
-              {/* Trace button */}
-              {onTrace && (
-                <div className="mt-3 flex justify-end">
+              <div className="mt-3 flex items-center gap-2 justify-end">
+                <button
+                  onClick={() => {
+                    dispatchVerseNavigation(reference);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-300 text-sm font-medium rounded transition-colors"
+                  title="Open in Bible reader"
+                >
+                  View
+                </button>
+                {onTrace && (
                   <button
                     onClick={() => {
                       onTrace(reference);
@@ -251,8 +261,8 @@ const VerseTooltip = ({
                   >
                     Trace
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </div>

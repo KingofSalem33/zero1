@@ -94,11 +94,15 @@ const BIBLE_BOOKS = [
 interface BibleReaderProps {
   onNavigateToChat?: (prompt: string) => void;
   onTrace?: (text: string) => void;
+  pendingVerseReference?: string | null;
+  onVerseNavigationComplete?: () => void;
 }
 
 const BibleReader: React.FC<BibleReaderProps> = ({
   onNavigateToChat,
   onTrace,
+  pendingVerseReference,
+  onVerseNavigationComplete,
 }) => {
   // Restore last Bible position from localStorage
   const [selectedBook, setSelectedBook] = useState<string>(() => {
@@ -123,6 +127,11 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     position: { top: number; left: number };
   } | null>(null);
   const verseTooltipRef = useRef<HTMLDivElement>(null);
+  const pendingNavigationRef = useRef<{
+    book: string;
+    chapter: number;
+    verse: number;
+  } | null>(null);
 
   const { addHighlight, getHighlightForVerse } = useBibleHighlightsContext();
   const contentTopRef = useRef<HTMLDivElement>(null);
@@ -171,6 +180,97 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     }
   }, [selectedBook, selectedChapter]);
 
+  const currentChapter = bookData?.chapters.find(
+    (ch) => ch.chapter === String(selectedChapter),
+  );
+
+  const resolveBookName = (rawBook: string) => {
+    const normalized = rawBook.trim().replace(/\s+/g, " ");
+    const key = normalized.toLowerCase();
+    const aliasMap: Record<string, string> = {
+      psalm: "Psalms",
+      psalms: "Psalms",
+      "song of songs": "Song of Solomon",
+      "song of solomon": "Song of Solomon",
+      canticles: "Song of Solomon",
+      revelations: "Revelation",
+    };
+    if (aliasMap[key]) return aliasMap[key];
+    const direct = BIBLE_BOOKS.find((book) => book.toLowerCase() === key);
+    if (direct) return direct;
+    const romanKey = key
+      .replace(/^i\s+/, "1 ")
+      .replace(/^ii\s+/, "2 ")
+      .replace(/^iii\s+/, "3 ");
+    return BIBLE_BOOKS.find((book) => book.toLowerCase() === romanKey) || null;
+  };
+
+  const parseReference = (reference: string) => {
+    const cleaned = reference.trim().replace(/\s+/g, " ");
+    const match = cleaned.match(/^(.+?)\s+(\d+):(\d+)(?:-\d+)?$/);
+    if (!match) return null;
+    const bookRaw = match[1];
+    const chapter = Number.parseInt(match[2], 10);
+    const verse = Number.parseInt(match[3], 10);
+    if (!Number.isFinite(chapter) || !Number.isFinite(verse)) return null;
+    const book = resolveBookName(bookRaw);
+    if (!book) return null;
+    return { book, chapter, verse };
+  };
+
+  useEffect(() => {
+    if (!pendingVerseReference) return;
+    const parsed = parseReference(pendingVerseReference);
+    if (!parsed) {
+      onVerseNavigationComplete?.();
+      return;
+    }
+    pendingNavigationRef.current = parsed;
+    setSelectedBook(parsed.book);
+    setSelectedChapter(parsed.chapter);
+  }, [pendingVerseReference, onVerseNavigationComplete]);
+
+  useEffect(() => {
+    const target = pendingNavigationRef.current;
+    if (!target) return;
+    if (selectedBook !== target.book || selectedChapter !== target.chapter) {
+      return;
+    }
+    if (!currentChapter) {
+      if (bookData) {
+        pendingNavigationRef.current = null;
+        onVerseNavigationComplete?.();
+      }
+      return;
+    }
+
+    const scrollToTarget = () => {
+      const verseElement = document.querySelector(
+        `[data-verse="${target.verse}"]`,
+      ) as HTMLElement | null;
+      if (verseElement) {
+        verseElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      pendingNavigationRef.current = null;
+      onVerseNavigationComplete?.();
+    };
+
+    if (typeof window === "undefined") {
+      scrollToTarget();
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(scrollToTarget);
+    });
+  }, [
+    bookData,
+    currentChapter,
+    onVerseNavigationComplete,
+    selectedBook,
+    selectedChapter,
+  ]);
+
   // Scroll to selected book when dropdown opens
   useEffect(() => {
     if (showBookSelector && selectedBookButtonRef.current) {
@@ -206,10 +306,6 @@ const BibleReader: React.FC<BibleReaderProps> = ({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showBookSelector]);
-
-  const currentChapter = bookData?.chapters.find(
-    (ch) => ch.chapter === String(selectedChapter),
-  );
 
   const handlePreviousChapter = () => {
     if (selectedChapter > 1) {
