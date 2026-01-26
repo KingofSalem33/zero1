@@ -81,7 +81,7 @@ const CONNECTION_LABELS = {
   CYAN: "Prophecy Fulfilled",
   GENEALOGY: "Lineage",
   TYPOLOGY: "Similar Story",
-  FULFILLMENT: "Prophecy Fulfilled",
+  FULFILLMENT: "Likely Fulfillment",
   CONTRAST: "Opposite Ideas",
   PROGRESSION: "Progression",
   PATTERN: "Pattern",
@@ -380,8 +380,15 @@ export function SemanticConnectionModal({
               verse !== undefined,
           );
 
+        // Log missing verses for debugging, but don't fail - use what we have
         if (orderedVerses.length !== normalizedVerseIds.length) {
-          throw new Error("Incomplete verse list returned from API");
+          const missingIds = normalizedVerseIds.filter(
+            (id) => !returnedVerses.some((v) => v.id === id),
+          );
+          console.warn(
+            `[SemanticConnectionModal] API returned ${orderedVerses.length}/${normalizedVerseIds.length} verses. Missing IDs:`,
+            missingIds,
+          );
         }
 
         if (

@@ -79,7 +79,7 @@ const CONNECTION_LABELS: Record<string, string> = {
   CYAN: "Prophecy Fulfilled",
   GENEALOGY: "Lineage",
   TYPOLOGY: "Similar Story",
-  FULFILLMENT: "Prophecy Fulfilled",
+  FULFILLMENT: "Likely Fulfillment",
   CONTRAST: "Opposite Ideas",
   PROGRESSION: "Progression",
   PATTERN: "Pattern",

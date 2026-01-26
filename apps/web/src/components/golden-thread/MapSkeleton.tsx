@@ -57,7 +57,10 @@ export const MapSkeleton: React.FC = () => {
                 strokeWidth={0.4}
                 strokeLinecap="round"
                 style={{
-                  animation: `fadeInOut 2.2s ease-in-out infinite`,
+                  animationName: "fadeInOut",
+                  animationDuration: "2.2s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
                   animationDelay: `${(i % 12) * 120}ms`,
                 }}
               />
@@ -72,7 +75,10 @@ export const MapSkeleton: React.FC = () => {
               r={2.3}
               fill="#d1d5db"
               style={{
-                animation: `pulse 1.6s ease-in-out infinite`,
+                animationName: "pulse",
+                animationDuration: "1.6s",
+                animationTimingFunction: "ease-in-out",
+                animationIterationCount: "infinite",
                 animationDelay: `${(i % 10) * 140}ms`,
               }}
             />

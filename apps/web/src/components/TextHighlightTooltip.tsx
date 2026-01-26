@@ -245,7 +245,7 @@ const VerseTooltip = ({
                       onClose();
                     }}
                     className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#F0D77F] text-black text-sm font-medium rounded transition-colors"
-                    title="Explore with AI"
+                    title="Explore deeper"
                   >
                     Trace
                   </button>

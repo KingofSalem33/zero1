@@ -35,8 +35,8 @@ const EDGE_STYLES = {
     color: "#F8FAFF", // Electric white
     glowColor: "#B8F1FF",
     width: 1.2,
-    label: "Reference",
-    description: "Cross-references",
+    label: "Cross-Reference",
+    description: "Direct cross-references between passages",
   },
   GOLD: {
     color: "#D97706", // Richer, warmer gold - same roots, shared DNA
@@ -57,7 +57,7 @@ const EDGE_STYLES = {
     glowColor: "#22D3EE",
     width: 2,
     label: "Prophecy Fulfilled",
-    description: "Old Testament prophecy -> New Testament event",
+    description: "OT promise fulfilled in the NT",
   },
   GENEALOGY: {
     color: "#10B981",
@@ -72,14 +72,14 @@ const EDGE_STYLES = {
     glowColor: "#F59E0B", // Divine gold glow
     width: 2,
     label: "Similar Story",
-    description: "Events or people mirror each other",
+    description: "Typology — events or people that mirror each other",
   },
   FULFILLMENT: {
     color: "#14B8A6", // Teal
     glowColor: "#5EEAD4",
     width: 2,
-    label: "Prophecy Fulfilled",
-    description: "Prophecy fulfilled here (inferred)",
+    label: "Likely Fulfillment",
+    description: "A strong fulfillment pattern, though not explicit",
   },
   CONTRAST: {
     color: "#DC2626", // Softer but still bold red - spiritual opposition
@@ -106,8 +106,6 @@ const EDGE_STYLES = {
 
 const NEUTRAL_EDGE_OPACITY = 0.38;
 const EDGE_DASH_ARRAY = "6 10";
-const EDGE_FLOW_ANIMATION = "edge-flow 5.6s linear infinite";
-const EDGE_FLOW_ANIMATION_ACTIVE = "edge-flow 3.4s linear infinite";
 const edgePulseDelay = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
@@ -1300,7 +1298,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             strokeDasharray: EDGE_DASH_ARRAY,
             strokeDashoffset: 0,
             opacity: 0, // Start invisible for entrance animation
-            animation: EDGE_FLOW_ANIMATION,
+            animationName: "edge-flow",
+            animationDuration: "5.6s",
+            animationTimingFunction: "linear",
+            animationIterationCount: "infinite",
             animationDelay: edgeFlowDelay(
               `e${fromId}-${toId}`,
               depthById.get(edge.from),
@@ -1364,7 +1365,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               strokeDasharray: EDGE_DASH_ARRAY,
               strokeDashoffset: 0,
               opacity: 0, // Start invisible for entrance animation
-              animation: EDGE_FLOW_ANIMATION,
+              animationName: "edge-flow",
+              animationDuration: "5.6s",
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
               animationDelay: edgeFlowDelay(
                 `e${fromId}-${toId}-synthetic`,
                 depthById.get(node.parentId),
@@ -1920,7 +1924,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               strokeDasharray: EDGE_DASH_ARRAY,
               strokeDashoffset: 0,
               opacity: 0,
-              animation: EDGE_FLOW_ANIMATION,
+              animationName: "edge-flow",
+              animationDuration: "5.6s",
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
               animationDelay: edgeFlowDelay(edgeId),
               filter: `drop-shadow(0 0 3px ${visualStyle.glowColor}35)`, // Start subtle
               transition: "opacity 450ms ease, filter 450ms ease",
@@ -2176,7 +2183,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               opacity: defaultOpacity,
               filter: baseFilter,
               strokeWidth: baseWidth,
-              animation: EDGE_FLOW_ANIMATION,
+              animationName: "edge-flow",
+              animationDuration: "5.6s",
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
             },
           };
         }),
@@ -2238,9 +2248,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               ? `drop-shadow(0 0 6px ${edgeStyle.glowColor})`
               : `drop-shadow(0 0 3px ${EDGE_STYLES.GREY.glowColor}35)`,
             strokeWidth: isInBranch ? baseWidth + 1 : baseWidth,
-            animation: isInBranch
-              ? EDGE_FLOW_ANIMATION_ACTIVE
-              : EDGE_FLOW_ANIMATION,
+            animationName: "edge-flow",
+            animationDuration: isInBranch ? "3.4s" : "5.6s",
+            animationTimingFunction: "linear",
+            animationIterationCount: "infinite",
             animationDelay: isInBranch ? "0ms" : edge.style?.animationDelay,
           },
         };

@@ -43,8 +43,8 @@ const LENS_COLORS = {
 const LENS_LABELS = {
   PROPHECY: "Prophecy",
   TYPOLOGY: "Similar Story",
-  THREAD: "Themes",
-  PATTERN: "Structure",
+  THREAD: "Threads",
+  PATTERN: "Pattern",
   ROOTS: "Word Study",
   GOLDEN: "Golden Thread",
   WORLD: "Context",
@@ -54,23 +54,23 @@ const LENS_LABELS = {
 const LENS_TOOLTIPS = {
   PROPHECY: {
     title: "Prophecy",
-    items: ["Prophecy Fulfilled (canonical)", "Prophecy Fulfilled (inferred)"],
+    items: ["Prophecy Fulfilled", "Likely Fulfillment"],
   },
   TYPOLOGY: {
     title: "Similar Story",
-    items: ["Similar Story connections"],
+    items: ["Typology — events or people that mirror each other"],
   },
   THREAD: {
-    title: "Themes",
+    title: "Threads",
     items: ["Same Teaching links", "Progression of ideas"],
   },
   PATTERN: {
-    title: "Structure",
-    items: ["Pattern connections"],
+    title: "Pattern",
+    items: ["Recurring structures and literary forms"],
   },
   ROOTS: {
     title: "Word Study",
-    items: ["Same Words links"],
+    items: ["Shared Hebrew/Greek words or key phrases"],
   },
   WORLD: {
     title: "Context",
