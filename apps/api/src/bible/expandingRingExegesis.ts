@@ -4,13 +4,20 @@
  */
 
 import { runModelStream } from "../ai/runModelStream";
+import { runModel } from "../ai/runModel";
 import type { Response } from "express";
 import { getVerseId, buildVisualBundle, type Verse } from "./graphWalker";
 import { searchVerses } from "./bibleService";
-import { parseExplicitReference } from "./referenceParser";
+import {
+  parseExplicitReference,
+  type ParsedReference,
+} from "./referenceParser";
 import { matchConcept } from "./conceptMapping";
 import { BOOK_NAMES } from "./bookNames";
-import { findAnchorVerse, findMultipleAnchorVerses } from "./semanticSearch";
+import {
+  findMultipleAnchorVerses,
+  searchVersesByQuery,
+} from "./semanticSearch";
 import { supabase } from "../db";
 import { ENV } from "../env";
 import type {
@@ -40,6 +47,7 @@ import {
   selectCoreVerses,
   type DiscoveredConnection,
 } from "./connectionDiscovery";
+import { ensureVersesHaveText } from "./verseText";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -841,9 +849,288 @@ export async function resolveMultipleAnchors(
   return singleAnchor ? [singleAnchor] : [];
 }
 
+const ANCHOR_REF_MAX = 5;
+const ANCHOR_RANGE_CAP = 6;
+const SEMANTIC_STRICT_MIN = 0.9;
+const ANCHOR_REF_SYSTEM = `You are a Bible reference resolver for KJV-only study.
+Return a JSON object with a single field "references" (array of 0-5 strings).
+Each string must be a specific reference like "Genesis 22:1-18" or "John 3:16".
+Prefer the primary narrative passage for story requests. No commentary.`;
+
+const ANCHOR_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    references: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: ANCHOR_REF_MAX,
+    },
+  },
+  required: ["references"],
+  additionalProperties: false,
+} as const;
+
+type LlmAnchorResponse = { references: string[] };
+
+const STOPWORDS = new Set([
+  "the",
+  "and",
+  "but",
+  "for",
+  "nor",
+  "yet",
+  "so",
+  "a",
+  "an",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "by",
+  "from",
+  "with",
+  "as",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "this",
+  "that",
+  "these",
+  "those",
+  "it",
+  "its",
+  "he",
+  "she",
+  "they",
+  "them",
+  "his",
+  "her",
+  "their",
+  "you",
+  "your",
+  "i",
+  "we",
+  "our",
+  "my",
+  "me",
+  "us",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "when",
+  "where",
+  "why",
+  "how",
+  "tell",
+  "show",
+  "explain",
+  "about",
+  "does",
+  "did",
+  "do",
+  "said",
+  "say",
+  "says",
+  "ask",
+  "asked",
+]);
+
+const normalizeTokens = (text: string): Set<string> => {
+  const cleaned = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !STOPWORDS.has(token));
+  return new Set(cleaned);
+};
+
+const scoreOverlap = (prompt: string, verseText: string): number => {
+  const promptTokens = normalizeTokens(prompt);
+  if (promptTokens.size === 0) return 0;
+  const verseTokens = normalizeTokens(verseText);
+  if (verseTokens.size === 0) return 0;
+  let overlap = 0;
+  promptTokens.forEach((token) => {
+    if (verseTokens.has(token)) overlap += 1;
+  });
+  return overlap / promptTokens.size;
+};
+
+const sanitizeReferences = (value: unknown): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .slice(0, ANCHOR_REF_MAX);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,;]+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .slice(0, ANCHOR_REF_MAX);
+  }
+  return [];
+};
+
+const extractReferencesFromText = (text: string): string[] => {
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned) as LlmAnchorResponse | string[];
+    if (Array.isArray(parsed)) {
+      return sanitizeReferences(parsed);
+    }
+    if (parsed && typeof parsed === "object" && "references" in parsed) {
+      return sanitizeReferences((parsed as LlmAnchorResponse).references);
+    }
+  } catch {
+    // Fall through to heuristic parsing
+  }
+  return sanitizeReferences(cleaned);
+};
+
+const suggestAnchorReferences = async (prompt: string): Promise<string[]> => {
+  if (!ENV.OPENAI_API_KEY) return [];
+  const response = await runModel(
+    [
+      { role: "system", content: ANCHOR_REF_SYSTEM },
+      { role: "user", content: prompt },
+    ],
+    {
+      taskType: "classification",
+      responseFormat: {
+        type: "json_schema",
+        json_schema: {
+          name: "bible_reference_candidates",
+          strict: true,
+          schema: ANCHOR_REF_SCHEMA,
+        },
+      },
+      verbosity: "medium",
+    },
+  );
+  return extractReferencesFromText(response.text || "");
+};
+
+const resolveAnchorFromReferences = async (
+  prompt: string,
+  references: string[],
+): Promise<number | null> => {
+  const parsedReferences: ParsedReference[] = [];
+  for (const reference of references) {
+    const parsed = parseExplicitReference(reference);
+    if (parsed) parsedReferences.push(parsed);
+  }
+
+  if (parsedReferences.length === 0) return null;
+
+  const candidates: Array<{
+    id: number;
+    ref: ParsedReference;
+    order: number;
+  }> = [];
+
+  for (const [index, ref] of parsedReferences.entries()) {
+    const startVerse = ref.verse;
+    const endVerse =
+      typeof ref.endVerse === "number" && ref.endVerse >= ref.verse
+        ? ref.endVerse
+        : ref.verse;
+    const cappedEnd = Math.min(endVerse, startVerse + ANCHOR_RANGE_CAP - 1);
+
+    for (let verseNum = startVerse; verseNum <= cappedEnd; verseNum += 1) {
+      const anchorId = await profileTime(
+        "anchor.resolve.llm.getVerseId",
+        () => getVerseId(ref.book, ref.chapter, verseNum),
+        {
+          file: "bible/graphWalker.ts",
+          fn: "getVerseId",
+          await: "getVerseId",
+        },
+      );
+      if (anchorId) {
+        const offset = verseNum - startVerse;
+        candidates.push({
+          id: anchorId,
+          ref: { ...ref, verse: verseNum },
+          order: index * ANCHOR_RANGE_CAP + offset,
+        });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  const { data, error } = await supabase
+    .from("verses")
+    .select("id, book_name, book_abbrev, chapter, verse, text")
+    .in(
+      "id",
+      candidates.map((candidate) => candidate.id),
+    );
+
+  const verses = await ensureVersesHaveText(
+    ((data || []) as Verse[]).filter((row) =>
+      candidates.find((candidate) => candidate.id === row.id),
+    ),
+    "anchor.resolve.llm",
+  );
+
+  if (error) {
+    console.warn("[Expanding Ring] LLM anchor fetch failed:", error);
+  }
+
+  const verseById = new Map<number, Verse>();
+  verses.forEach((verse) => verseById.set(verse.id, verse));
+
+  const scored = candidates
+    .map((candidate) => {
+      const verse = verseById.get(candidate.id);
+      const overlapScore =
+        verse && verse.text ? scoreOverlap(prompt, verse.text) : 0;
+      return { ...candidate, score: overlapScore };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.order - b.order;
+    });
+
+  const best = scored[0];
+  if (!best) return null;
+
+  return best.id ?? null;
+};
+
+const resolveAnchorWithLLM = async (prompt: string): Promise<number | null> => {
+  try {
+    const references = await profileTime(
+      "anchor.resolve.llm.suggest",
+      () => suggestAnchorReferences(prompt),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "suggestAnchorReferences",
+        await: "runModel",
+      },
+    );
+    if (!references.length) return null;
+    return resolveAnchorFromReferences(prompt, references);
+  } catch (error) {
+    console.warn("[Expanding Ring] LLM anchor fallback failed:", error);
+    return null;
+  }
+};
+
 /**
  * Resolve the anchor verse from the user prompt.
- * Order: explicit reference → concept mapping → semantic search → keyword search fallback.
+ * Order: explicit reference → concept mapping → semantic search → LLM fallback → keyword search fallback.
  */
 export async function resolveAnchor(
   userPrompt: string,
@@ -903,28 +1190,41 @@ export async function resolveAnchor(
   );
 
   try {
-    const anchorId = await profileTime(
-      "anchor.resolve.semantic_single",
-      () => findAnchorVerse(userPrompt),
+    const results = await profileTime(
+      "anchor.resolve.semantic_candidates",
+      () => searchVersesByQuery(userPrompt, 3, 0.6),
       {
         file: "bible/semanticSearch.ts",
-        fn: "findAnchorVerse",
-        await: "findAnchorVerse",
+        fn: "searchVersesByQuery",
+        await: "searchVersesByQuery",
       },
     );
 
-    if (anchorId) {
-      console.log(`[Expanding Ring] ✅ Found anchor via semantic search`);
-      return anchorId;
+    if (results.length > 0) {
+      const best = results[0];
+      if (best.similarity >= SEMANTIC_STRICT_MIN) {
+        console.log(
+          `[Expanding Ring] ✅ Found anchor via semantic search (${(best.similarity * 100).toFixed(1)}% confidence)`,
+        );
+        return best.id;
+      }
+      console.warn(
+        `[Expanding Ring] ⚠️  Semantic match below threshold (${(best.similarity * 100).toFixed(1)}% < ${(SEMANTIC_STRICT_MIN * 100).toFixed(1)}%), trying LLM fallback`,
+      );
+    } else {
+      console.warn(
+        `[Expanding Ring] ⚠️  Semantic search found no results, trying LLM fallback`,
+      );
     }
-
-    // If semantic search fails, fall back to keyword search
-    console.warn(
-      `[Expanding Ring] ⚠️  Semantic search found no results, falling back to keyword search`,
-    );
   } catch (error) {
     console.error("[Expanding Ring] Semantic search failed:", error);
-    console.log("[Expanding Ring] Falling back to keyword search");
+    console.log("[Expanding Ring] Falling back to LLM/keyword");
+  }
+
+  const llmAnchorId = await resolveAnchorWithLLM(userPrompt);
+  if (llmAnchorId) {
+    console.log(`[Expanding Ring] ✅ Using LLM reference fallback`);
+    return llmAnchorId;
   }
 
   // Step 4: Fallback - Use keyword search
