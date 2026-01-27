@@ -12,6 +12,7 @@ import {
   buildGoDeeperDisplayText,
   buildGoDeeperPrompt,
 } from "../../prompts/semanticConnection";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 type ConnectionType =
   | "GOLD"
@@ -156,6 +157,14 @@ export function SemanticConnectionModal({
     reference: string;
     position: { top: number; left: number };
   } | null>(null);
+
+  // Focus trap for accessibility
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(true, {
+    onEscape: () => {
+      setSelectedVerseTooltip(null);
+      onClose();
+    },
+  });
   const hasCluster =
     Array.isArray(connectedVerseIds) && connectedVerseIds.length > 2;
   const previewVerses = useMemo(() => {
@@ -455,15 +464,7 @@ export function SemanticConnectionModal({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [handleClose]);
 
-  // Close on Escape
-  useEffect(() => {
-    const handleEscape = (event: Event) => {
-      if ("key" in event && event.key === "Escape") handleClose();
-    };
-
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [handleClose]);
+  // Note: Escape key handling is now provided by useFocusTrap hook
 
   const connectionLabel = CONNECTION_LABELS[connectionType];
   const topicHints = useMemo(() => {
@@ -701,14 +702,30 @@ export function SemanticConnectionModal({
     ? 0
     : Math.max(0, verses.length - visibleVerses.length);
 
+  // Merge refs for modal (focus trap + local ref for positioning)
+  const setModalRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      // Set local ref
+      (modalRef as React.MutableRefObject<HTMLDivElement | null>).current =
+        node;
+      // Set focus trap ref
+      (focusTrapRef as React.MutableRefObject<HTMLDivElement | null>).current =
+        node;
+    },
+    [focusTrapRef],
+  );
+
   const modalContent = (
     <div
-      ref={modalRef}
+      ref={setModalRefs}
       className="fixed z-[80] transition-all duration-150 ease-out"
       style={{
         left: `${adjustedPosition.x}px`,
         top: `${adjustedPosition.y}px`,
       }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="semantic-connection-title"
     >
       <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm max-h-[80vh]">
         {/* Close button */}
@@ -741,6 +758,7 @@ export function SemanticConnectionModal({
               style={{ backgroundColor: connectionColor }}
             />
             <h3
+              id="semantic-connection-title"
               className="font-semibold text-xs uppercase tracking-wide"
               style={{ color: connectionColor }}
             >

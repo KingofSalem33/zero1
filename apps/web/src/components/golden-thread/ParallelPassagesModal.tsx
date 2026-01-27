@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import type { ParallelPassage, ThreadNode } from "../../types/goldenThread";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface ParallelPassagesModalProps {
   primaryVerse: ThreadNode;
@@ -47,6 +48,22 @@ export function ParallelPassagesModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
+  // Focus trap for accessibility (handles ESC key)
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(true, {
+    onEscape: onClose,
+  });
+
+  // Merge refs
+  const setModalRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      (modalRef as React.MutableRefObject<HTMLDivElement | null>).current =
+        node;
+      (focusTrapRef as React.MutableRefObject<HTMLDivElement | null>).current =
+        node;
+    },
+    [focusTrapRef],
+  );
+
   // Adjust position to keep modal within viewport
   useEffect(() => {
     if (!modalRef.current) return;
@@ -72,17 +89,6 @@ export function ParallelPassagesModal({
 
     setAdjustedPosition({ x: newX, y: newY });
   }, [position]);
-
-  // Close on Escape key
-  useEffect(() => {
-    const handleEscape = (e: Event) => {
-      if ((e as { key?: string }).key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -131,7 +137,7 @@ export function ParallelPassagesModal({
 
       {/* Modal */}
       <div
-        ref={modalRef}
+        ref={setModalRefs}
         className="fixed z-50 w-[280px] sm:w-[320px] max-w-[90vw] rounded-lg border border-white/10 bg-neutral-900/95 shadow-xl backdrop-blur"
         style={{
           left: `${adjustedPosition.x}px`,
@@ -139,6 +145,9 @@ export function ParallelPassagesModal({
           maxHeight: "calc(100vh - 140px)",
           overflowY: "auto",
         }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Parallel passages for ${primaryVerse.book_name} ${primaryVerse.chapter}:${primaryVerse.verse}`}
       >
         {/* Header */}
         <div className="sticky top-0 border-b border-white/10 px-3 py-2 flex items-center justify-between bg-neutral-900/95">

@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { ThreadNode } from "../../types/goldenThread";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 export type ConnectionPickerGroup = {
   styleType: string;
@@ -40,6 +41,22 @@ export function ConnectionPickerModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
+  // Focus trap for accessibility (handles ESC key)
+  const focusTrapRef = useFocusTrap<HTMLDivElement>(true, {
+    onEscape: onClose,
+  });
+
+  // Merge refs
+  const setModalRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      (modalRef as React.MutableRefObject<HTMLDivElement | null>).current =
+        node;
+      (focusTrapRef as React.MutableRefObject<HTMLDivElement | null>).current =
+        node;
+    },
+    [focusTrapRef],
+  );
+
   useEffect(() => {
     if (!modalRef.current) return;
 
@@ -53,16 +70,6 @@ export function ConnectionPickerModal({
 
     setAdjustedPosition({ x, y });
   }, [position, currentBranch, otherGroups]);
-
-  useEffect(() => {
-    const handleEscape = (event: Event) => {
-      if ("key" in event && event.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -100,12 +107,15 @@ export function ConnectionPickerModal({
 
   const modalContent = (
     <div
-      ref={modalRef}
+      ref={setModalRefs}
       className="fixed z-[80] transition-all duration-150 ease-out"
       style={{
         left: `${adjustedPosition.x}px`,
         top: `${adjustedPosition.y}px`,
       }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Connections for ${verseLabel}`}
     >
       <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden w-[360px] max-w-sm">
         <button

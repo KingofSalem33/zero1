@@ -8,6 +8,7 @@ import type { VisualContextBundle } from "./types/goldenThread";
 import type { GoDeeperPayload } from "./types/chat";
 import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
 import { addVerseNavigationListener } from "./utils/verseNavigation";
+import { useFocusTrap } from "./hooks/useFocusTrap";
 
 // Lazy load heavy components for code splitting
 const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
@@ -51,6 +52,11 @@ function App() {
   const [visualBundle, setVisualBundle] = useState<VisualContextBundle | null>(
     null,
   );
+
+  // Focus trap for visualization modal
+  const visualizationRef = useFocusTrap<HTMLDivElement>(showVisualization, {
+    onEscape: () => setShowVisualization(false),
+  });
 
   // Load chat history from localStorage after mount (async, non-blocking)
   useEffect(() => {
@@ -457,11 +463,20 @@ function App() {
           {/* Trace Visualization Panel - Global overlay */}
           {showVisualization && (
             <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-              <div className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
+              <div
+                ref={visualizationRef}
+                className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="visualization-title"
+              >
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
                   <div className="flex items-center gap-3">
-                    <h3 className="text-sm font-semibold text-neutral-200">
+                    <h3
+                      id="visualization-title"
+                      className="text-sm font-semibold text-neutral-200"
+                    >
                       Theological Thread Explorer (
                       {visualBundle?.nodes?.length || 0} verses)
                     </h3>
