@@ -3,6 +3,12 @@ import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { SemanticConnectionModal } from "./golden-thread/SemanticConnectionModal";
+import {
+  LibraryGridSkeleton,
+  HighlightCardSkeleton,
+  MapListItemSkeleton,
+} from "./Skeleton";
+import { useLibraryScrollMemory } from "../hooks/useScrollMemory";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -142,6 +148,9 @@ export function LibraryView({
   const [error, setError] = useState<string | null>(null);
   const [activeConnection, setActiveConnection] =
     useState<LibraryConnection | null>(null);
+
+  // Scroll position memory - remembers scroll position per tab
+  const { scrollRef: libraryScrollRef } = useLibraryScrollMemory(activeTab);
 
   useEffect(() => {
     void loadLibrary();
@@ -338,7 +347,10 @@ export function LibraryView({
   };
 
   return (
-    <div className="min-h-screen bg-black p-6 md:p-8">
+    <div
+      ref={libraryScrollRef}
+      className="h-screen overflow-y-auto bg-black p-6 md:p-8"
+    >
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-3">
@@ -385,22 +397,21 @@ export function LibraryView({
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-              <div
-                className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"
-                style={{ animationDelay: "150ms" }}
-              />
-              <div
-                className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"
-                style={{ animationDelay: "300ms" }}
-              />
-              <span className="text-sm text-neutral-400 ml-2">
-                Loading library...
-              </span>
+          activeTab === "connections" ? (
+            <LibraryGridSkeleton count={6} />
+          ) : activeTab === "maps" ? (
+            <div className="space-y-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <MapListItemSkeleton key={i} />
+              ))}
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <HighlightCardSkeleton key={i} />
+              ))}
+            </div>
+          )
         ) : error ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <svg

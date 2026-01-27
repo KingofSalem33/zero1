@@ -4,7 +4,9 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
+import { useToast } from "../components/Toast";
 
 export interface BibleHighlight {
   id: string;
@@ -46,8 +48,11 @@ export function BibleHighlightsProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { toast } = useToast();
   // Initialize empty, load async to not block hydration
   const [highlights, setHighlights] = useState<BibleHighlight[]>([]);
+  // Ref to track removed highlights for undo
+  const lastRemovedRef = useRef<BibleHighlight | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage after mount (async, non-blocking)
@@ -81,13 +86,7 @@ export function BibleHighlightsProvider({
   // Save to localStorage whenever highlights change (but only after initial load)
   useEffect(() => {
     if (!isLoaded) return; // Don't save during initial load
-
     localStorage.setItem(STORAGE_KEY, JSON.stringify(highlights));
-
-    console.log(
-      "[BibleHighlightsContext] Saved highlights to localStorage:",
-      highlights.length,
-    );
   }, [highlights, isLoaded]);
 
   // Add a new highlight
@@ -118,19 +117,40 @@ export function BibleHighlightsProvider({
         return [...filtered, newHighlight];
       });
 
-      console.log("[BibleHighlightsContext] Added highlight:", newHighlight);
+      // Subtle confirmation
+      toast("Verse highlighted", { type: "success", duration: 1500 });
 
       return newHighlight;
     },
-    [],
+    [toast],
   );
 
   // Remove a highlight
-  const removeHighlight = useCallback((id: string) => {
-    setHighlights((prev) => prev.filter((h) => h.id !== id));
+  const removeHighlight = useCallback(
+    (id: string) => {
+      // Find the highlight before removing for undo
+      setHighlights((prev) => {
+        const toRemove = prev.find((h) => h.id === id);
+        if (toRemove) {
+          lastRemovedRef.current = toRemove;
+        }
+        return prev.filter((h) => h.id !== id);
+      });
 
-    console.log("[BibleHighlightsContext] Removed highlight:", id);
-  }, []);
+      // Show toast with undo option
+      toast("Highlight removed", {
+        type: "default",
+        duration: 3000,
+        onUndo: () => {
+          if (lastRemovedRef.current) {
+            setHighlights((prev) => [...prev, lastRemovedRef.current!]);
+            lastRemovedRef.current = null;
+          }
+        },
+      });
+    },
+    [toast],
+  );
 
   // Get highlight for a specific verse
   const getHighlightForVerse = useCallback(
@@ -152,10 +172,17 @@ export function BibleHighlightsProvider({
 
   // Clear all highlights
   const clearAllHighlights = useCallback(() => {
+    const previousHighlights = [...highlights];
     setHighlights([]);
 
-    console.log("[BibleHighlightsContext] Cleared all highlights");
-  }, []);
+    toast("All highlights cleared", {
+      type: "default",
+      duration: 4000,
+      onUndo: () => {
+        setHighlights(previousHighlights);
+      },
+    });
+  }, [highlights, toast]);
 
   const value = {
     highlights,

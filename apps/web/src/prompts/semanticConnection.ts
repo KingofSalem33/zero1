@@ -17,25 +17,23 @@ export const buildGoDeeperPrompt = ({
   fromVerse,
   toVerse,
   connectionLabel,
-  synopsis,
   topicVerses = [],
   topicHints = [],
   connectionExplanation,
 }: GoDeeperPromptInput): string => {
-  return `TASK: Provide an exegetical explanation of the current topic connection.
+  return `TASK: Write an expository teaching on the connection between these verses.
 
-=== THE DATA ===
-[SOURCE ANCHOR]
+=== THE VERSES ===
+[PRIMARY ANCHOR]
 ${fromVerse.reference}: "${fromVerse.text}"
 
-[TARGET CONNECTION]
+[CONNECTED VERSE]
 ${toVerse.reference}: "${toVerse.text}"
 
-[METADATA]
-- Type: ${connectionLabel}
-- Previous Synopsis: "${synopsis}"
-${connectionExplanation ? `\n[CONNECTION LOGIC]\n${connectionExplanation}` : ""}
-${topicVerses.length > 0 ? "\n[TOPIC VERSES]\n" : ""}${topicVerses
+[CONNECTION TYPE]
+${connectionLabel}
+${connectionExplanation ? `\n[CONNECTION INSIGHT]\n${connectionExplanation}` : ""}
+${topicVerses.length > 0 ? "\n[SUPPORTING VERSES]\n" : ""}${topicVerses
     .map(
       (verse) =>
         `- [${verse.reference}] "${verse.text.slice(0, 220)}${
@@ -44,29 +42,40 @@ ${topicVerses.length > 0 ? "\n[TOPIC VERSES]\n" : ""}${topicVerses
     )
     .join(
       "\n",
-    )}${topicHints.length > 0 ? "\n\n[TOPIC SIGNALS]\n" : ""}${topicHints
+    )}${topicHints.length > 0 ? "\n\n[THEMATIC THREADS]\n" : ""}${topicHints
     .map((hint) => `- ${hint}`)
     .join("\n")}
 
 === INSTRUCTION ===
-Using ONLY the KJV text above, write in compiler mode.
-Movement must come from sequence, contrast, repetition of exact words, or canon movement. Do not add explanation.
+Write a Scripture-governed exposition (5-6 paragraphs) where the Word interprets itself.
 
-Allowed witness structures (choose one):
-A) Convergence: Verse A clause; Verse B clause; Verse C clause; final clause.
-B) Call -> Answer: Scripture question clause; answer clause; repeated answer clause; final clause.
-C) Beginning -> End: Genesis clause; Gospel clause; Epistle clause; final clause.
+CORE PRINCIPLE:
+Let Scripture carry the weight. Your role is to set the verses beside one another and let them speak. Commentary should be minimal—one or two sentences between quotes, stating plainly what the text declares. Do not layer theological explanation on top. Do not analyze from outside. Let the Word testify.
 
-Rules:
-1) Every sentence MUST include a short quoted clause (<= 8 words) from the provided verses.
-2) No sentence may contain interpretation without a quoted clause.
-3) Do not repeat a verse unless you use a different clause from it.
-4) Use as many verses as needed, not all. Do not repeat the synopsis.
-5) Do not add any forward carry, invitation, or question.
-6) End with a final clause and reference (no summary sentence).
-7) Openings may be a direct clause, a Scripture question clause, or "The Scripture declares..."
-8) Use minimal connectors only (and, but, for, yet, again). Avoid explanatory connectors (thus, therefore, by this).
-Write in your Scripture-governed voice, restrained and declarative.`;
+VOICE AND STYLE:
+- Open each paragraph with the Scripture itself, quoted fully: "text here" (Book Ch:v)
+- Follow with brief, declarative commentary—what the verse says, not what it means theologically
+- Transitions should be short and plain: "This same truth appears in..." / "The LORD further declares..." / "Isaiah speaks again..."
+- God, the LORD, the Scripture, the Word as subjects—not "we see" or "this reveals to us"
+- KJV diction only. No contractions. Echo the rhythm and weight of the Authorized Version.
+- Restrained, not expansive. Every sentence must earn its place.
+
+STRUCTURE:
+1. Open by quoting the primary verse fully. Follow with 1-2 sentences stating what it declares.
+2. Quote the connected verse fully. Show how it accords with or confirms the first—briefly.
+3. If the verse has multiple parts, quote them separately with minimal commentary between.
+4. If supporting verses exist, introduce each with a short transition and let it speak.
+5. Close with synthesis: "Thus the Scripture speaks with one voice..." Gather what was already quoted—do not add new interpretation.
+
+FORBIDDEN:
+- Theological explanation layered on top ("The theological thread that unites these passages is...")
+- Meta-commentary ("This declaration does not stand alone, but instead is set within a context of...")
+- Reader-focused language ("we see," "this reveals to us," "this invites us")
+- Contractions ("it's," "don't," "won't")
+- Speculative phrases ("could mean," "may suggest," "perhaps")
+- Excessive adjectives and adverbs—let the text's own words provide the weight
+
+The goal: a reader should be able to remove your commentary and still have a coherent chain of Scripture. Your words serve only to join the witnesses together.`;
 };
 
 export const buildGoDeeperDisplayText = ({

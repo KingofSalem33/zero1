@@ -12,6 +12,7 @@ import { BookmarkPanel } from "./BookmarkPanel";
 import { useChatStream } from "../hooks/useChatStream";
 import { NarrativeMap } from "./golden-thread/NarrativeMap";
 import { useGoldenThreadHighlighting } from "../hooks/useGoldenThreadHighlighting";
+import { useChatScrollMemory } from "../hooks/useScrollMemory";
 import type { VisualContextBundle } from "../types/goldenThread";
 import type {
   GoDeeperPayload,
@@ -198,6 +199,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const composerRef = useRef<HTMLDivElement>(null);
   const messagesFetchedRef = useRef(false);
   const lastPromptModeRef = useRef<PromptMode | null>(null);
+
+  // Scroll position memory - remembers where user was in the chat
+  const { scrollRef: chatScrollRef } = useChatScrollMemory(threadId);
   const lastUserPromptRef = useRef<string | null>(null);
   const [nextSuggestedPrompt, setNextSuggestedPrompt] =
     useState<PendingPrompt | null>(null);
@@ -2521,6 +2525,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           {/* Messages Container */}
           {!isEmptyState && (
             <div
+              ref={chatScrollRef}
               className={`flex-1 overflow-y-auto px-6 py-8 pb-28 ${showVisualization ? "border-r border-neutral-700" : ""}`}
             >
               {/* Message list - always visible */}

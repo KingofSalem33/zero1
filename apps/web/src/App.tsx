@@ -3,6 +3,7 @@ import "./App.css";
 import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
 import { useAuth } from "./contexts/AuthContext";
 import { BibleHighlightsProvider } from "./contexts/BibleHighlightsContext";
+import { ToastProvider } from "./components/Toast";
 import type { VisualContextBundle } from "./types/goldenThread";
 import type { GoDeeperPayload } from "./types/chat";
 import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
@@ -376,130 +377,132 @@ function App() {
 
   // Main layout: Sidebar + Workspace
   return (
-    <BibleHighlightsProvider>
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-        <div className="flex">
-          {/* Left Sidebar */}
-          <RoadmapSidebarV2
-            project={project}
-            onOpenFileManager={() => {}}
-            onOpenMemoryManager={() => {}}
-            onAskAI={() => {}}
-            currentChatId={currentChatId || undefined}
-            chats={chats}
-            onNewChat={handleNewChat}
-            onSelectChat={handleSelectChat}
-            showBible={viewMode === "reader"}
-            onToggleBible={handleToggleBible}
-            onEnterBibleStudy={handleEnterBibleStudy}
-            onOpenLibrary={handleOpenLibrary}
-            isCollapsed={sidebarCollapsed}
-            onToggleCollapse={setSidebarCollapsed}
-          />
+    <ToastProvider>
+      <BibleHighlightsProvider>
+        <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
+          <div className="flex">
+            {/* Left Sidebar */}
+            <RoadmapSidebarV2
+              project={project}
+              onOpenFileManager={() => {}}
+              onOpenMemoryManager={() => {}}
+              onAskAI={() => {}}
+              currentChatId={currentChatId || undefined}
+              chats={chats}
+              onNewChat={handleNewChat}
+              onSelectChat={handleSelectChat}
+              showBible={viewMode === "reader"}
+              onToggleBible={handleToggleBible}
+              onEnterBibleStudy={handleEnterBibleStudy}
+              onOpenLibrary={handleOpenLibrary}
+              isCollapsed={sidebarCollapsed}
+              onToggleCollapse={setSidebarCollapsed}
+            />
 
-          {/* Main Workspace - Renders only the active view */}
-          <main
-            className={`flex-1 min-h-screen relative transition-all duration-300 ${
-              sidebarCollapsed ? "md:ml-16" : "md:ml-64"
-            }`}
-          >
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center min-h-screen">
-                  <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
-                </div>
-              }
+            {/* Main Workspace - Renders only the active view */}
+            <main
+              className={`flex-1 h-screen overflow-hidden relative transition-all duration-300 ${
+                sidebarCollapsed ? "md:ml-16" : "md:ml-64"
+              }`}
             >
-              {viewMode === "reader" ? (
-                <BibleReader
-                  onNavigateToChat={handleNavigateToChat}
-                  onTrace={handleTrace}
-                  pendingVerseReference={pendingVerseReference}
-                  onVerseNavigationComplete={() =>
-                    setPendingVerseReference(null)
-                  }
-                />
-              ) : viewMode === "library" ? (
-                <LibraryView
-                  userId="anonymous"
-                  onGoDeeper={handleGoDeeper}
-                  onOpenMap={handleShowVisualization}
-                  onNavigateToVerse={handleNavigateToVerse}
-                />
-              ) : (
-                <UnifiedWorkspace
-                  project={project}
-                  onCreateProject={() => {}}
-                  onInspireMe={() => {}}
-                  toolsUsed={toolsUsed}
-                  setToolsUsed={setToolsUsed}
-                  creating={false}
-                  inspiring={false}
-                  onRefreshProject={() => {}}
-                  messages={currentMessages}
-                  onMessagesChange={setCurrentMessages}
-                  pendingPrompt={pendingChatPrompt}
-                  onPromptConsumed={() => setPendingChatPrompt(null)}
-                  bibleStudyMode={bibleStudyMode}
-                  onExitBibleStudy={() => setBibleStudyMode(false)}
-                  onResetBibleStudy={handleResetBibleStudy}
-                  onTrace={handleTrace}
-                  onGoDeeper={handleGoDeeper}
-                  onShowVisualization={handleShowVisualization}
-                />
-              )}
-            </Suspense>
-          </main>
-        </div>
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center min-h-screen">
+                    <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+                  </div>
+                }
+              >
+                {viewMode === "reader" ? (
+                  <BibleReader
+                    onNavigateToChat={handleNavigateToChat}
+                    onTrace={handleTrace}
+                    pendingVerseReference={pendingVerseReference}
+                    onVerseNavigationComplete={() =>
+                      setPendingVerseReference(null)
+                    }
+                  />
+                ) : viewMode === "library" ? (
+                  <LibraryView
+                    userId="anonymous"
+                    onGoDeeper={handleGoDeeper}
+                    onOpenMap={handleShowVisualization}
+                    onNavigateToVerse={handleNavigateToVerse}
+                  />
+                ) : (
+                  <UnifiedWorkspace
+                    project={project}
+                    onCreateProject={() => {}}
+                    onInspireMe={() => {}}
+                    toolsUsed={toolsUsed}
+                    setToolsUsed={setToolsUsed}
+                    creating={false}
+                    inspiring={false}
+                    onRefreshProject={() => {}}
+                    messages={currentMessages}
+                    onMessagesChange={setCurrentMessages}
+                    pendingPrompt={pendingChatPrompt}
+                    onPromptConsumed={() => setPendingChatPrompt(null)}
+                    bibleStudyMode={bibleStudyMode}
+                    onExitBibleStudy={() => setBibleStudyMode(false)}
+                    onResetBibleStudy={handleResetBibleStudy}
+                    onTrace={handleTrace}
+                    onGoDeeper={handleGoDeeper}
+                    onShowVisualization={handleShowVisualization}
+                  />
+                )}
+              </Suspense>
+            </main>
+          </div>
 
-        {/* Trace Visualization Panel - Global overlay */}
-        {showVisualization && (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-            <div className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-neutral-200">
-                    Theological Thread Explorer (
-                    {visualBundle?.nodes?.length || 0} verses)
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setShowVisualization(false)}
-                  className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
-                  title="Close visualization"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+          {/* Trace Visualization Panel - Global overlay */}
+          {showVisualization && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+              <div className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-neutral-200">
+                      Theological Thread Explorer (
+                      {visualBundle?.nodes?.length || 0} verses)
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setShowVisualization(false)}
+                    className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
+                    title="Close visualization"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
 
-              {/* Map Container */}
-              <div className="flex-1 min-h-0 overflow-hidden relative">
-                <NarrativeMap
-                  bundle={visualBundle}
-                  highlightedRefs={[]}
-                  onTrace={handleTrace}
-                  onGoDeeper={handleGoDeeper}
-                  userId="anonymous"
-                />
+                {/* Map Container */}
+                <div className="flex-1 min-h-0 overflow-hidden relative">
+                  <NarrativeMap
+                    bundle={visualBundle}
+                    highlightedRefs={[]}
+                    onTrace={handleTrace}
+                    onGoDeeper={handleGoDeeper}
+                    userId="anonymous"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-    </BibleHighlightsProvider>
+          )}
+        </div>
+      </BibleHighlightsProvider>
+    </ToastProvider>
   );
 }
 

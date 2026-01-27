@@ -1,10 +1,12 @@
 /* global Range, HTMLButtonElement */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { ChapterFooter } from "./ChapterFooter";
 import { VerseReferencesModal } from "./VerseReferencesModal";
 import VerseTooltip from "./VerseTooltip";
+import { BibleChapterSkeleton } from "./Skeleton";
+import { useBibleScrollMemory } from "../hooks/useScrollMemory";
 
 interface Verse {
   verse: string;
@@ -138,10 +140,22 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   const bookSelectorRef = useRef<HTMLDivElement>(null);
   const selectedBookButtonRef = useRef<HTMLButtonElement>(null);
 
+  // Scroll position memory - remembers where user was in each chapter
+  const {
+    scrollRef: bibleScrollRef,
+    clearSavedPosition: clearBibleScroll,
+    restoreNow: restoreBibleScroll,
+  } = useBibleScrollMemory(selectedBook, selectedChapter);
+
+  // Track if we need to restore scroll (ref-based to avoid re-render flash)
+  const needsScrollRestore = useRef(true);
+  const hasRestoredOnce = useRef(false);
+
   // Load book data from GitHub
   useEffect(() => {
     const loadBook = async () => {
       setLoading(true);
+      needsScrollRestore.current = true; // Reset scroll flag when loading new content
       try {
         // Map display names to GitHub filenames
         // GitHub repo uses no spaces for "Song of Solomon" -> "SongofSolomon"
@@ -161,6 +175,20 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     loadBook();
   }, [selectedBook]);
 
+  // Restore scroll position after content loads (useLayoutEffect runs before paint)
+  useLayoutEffect(() => {
+    if (!loading && bookData && bibleScrollRef.current) {
+      // Restore scroll, then show
+      if (needsScrollRestore.current) {
+        restoreBibleScroll();
+        needsScrollRestore.current = false;
+        hasRestoredOnce.current = true;
+        // Force visibility update on the DOM element directly
+        bibleScrollRef.current.style.visibility = "visible";
+      }
+    }
+  }, [loading, bookData, restoreBibleScroll, bibleScrollRef]);
+
   // Save Bible position to localStorage when it changes
   useEffect(() => {
     localStorage.setItem("lastBibleBook", selectedBook);
@@ -170,15 +198,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     localStorage.setItem("lastBibleChapter", String(selectedChapter));
   }, [selectedChapter]);
 
-  // Scroll to top when chapter changes
-  useEffect(() => {
-    if (contentTopRef.current) {
-      contentTopRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }
-  }, [selectedBook, selectedChapter]);
+  // Note: Scroll position is now handled by useBibleScrollMemory hook
+  // It restores saved position per book+chapter, or stays at top for new chapters
 
   const currentChapter = bookData?.chapters.find(
     (ch) => ch.chapter === String(selectedChapter),
@@ -245,6 +266,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     }
 
     const scrollToTarget = () => {
+      // Clear saved scroll position since we're navigating to a specific verse
+      clearBibleScroll();
       const verseElement = document.querySelector(
         `[data-verse="${target.verse}"]`,
       ) as HTMLElement | null;
@@ -269,6 +292,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     onVerseNavigationComplete,
     selectedBook,
     selectedChapter,
+    clearBibleScroll,
   ]);
 
   // Scroll to selected book when dropdown opens
@@ -638,13 +662,19 @@ const BibleReader: React.FC<BibleReaderProps> = ({
         </div>
       </div>
 
-      {/* Bible Text Content */}
-      <div className="relative flex-1 overflow-y-auto">
+      {/* Bible Text Content - starts invisible, shown after scroll restore */}
+      <div
+        ref={bibleScrollRef}
+        className="relative flex-1 overflow-y-auto"
+        style={{ visibility: hasRestoredOnce.current ? "visible" : "hidden" }}
+      >
         <div className="max-w-4xl mx-auto px-8 py-12">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-4 border-neutral-700 border-t-brand-primary-500 rounded-full animate-spin" />
-            </div>
+            <BibleChapterSkeleton
+              bookName={selectedBook}
+              chapterNumber={selectedChapter}
+              verseCount={24}
+            />
           ) : currentChapter ? (
             <div className="space-y-8" ref={contentTopRef}>
               {/* Chapter Header */}
