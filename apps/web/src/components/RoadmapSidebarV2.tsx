@@ -55,7 +55,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-neutral-700/50">
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-4 border-b border-neutral-700/50">
         <div className="flex items-center gap-2">
           <svg
             className="w-5 h-5 text-brand-primary-400"
@@ -102,7 +102,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           {/* Bible Toggle Button */}
           <button
             onClick={onToggleBible}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
+            className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
               showBible
                 ? "bg-brand-primary-500/20 text-brand-primary-300"
                 : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
@@ -127,7 +127,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           {/* Bible Study Button */}
           <button
             onClick={onEnterBibleStudy}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+            className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
           >
             <svg
               className="w-4 h-4 flex-shrink-0"
@@ -148,7 +148,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
           {/* Library Button */}
           <button
             onClick={onOpenLibrary}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+            className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
           >
             <svg
               className="w-4 h-4 flex-shrink-0"
@@ -171,7 +171,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
         <div className="pt-2">
           <button
             onClick={() => setShowRecentChats(!showRecentChats)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-neutral-400 hover:text-neutral-300 transition-colors"
+            className="w-full flex items-center gap-2 px-4 py-2 text-neutral-400 hover:text-neutral-300 transition-colors"
           >
             <span className="text-xs font-medium">Recent Chats</span>
             <svg
@@ -209,7 +209,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                     <button
                       key={chat.id}
                       onClick={() => onSelectChat?.(chat.id)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-all group ${
+                      className={`w-full text-left px-4 py-2 rounded-lg transition-all group ${
                         currentChatId === chat.id
                           ? "bg-brand-primary-500/20 border border-brand-primary-500/30"
                           : "hover:bg-neutral-800/50 border border-transparent"

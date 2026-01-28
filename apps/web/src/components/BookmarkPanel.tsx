@@ -346,7 +346,7 @@ export function BookmarkPanel({
         <div className="flex gap-2 px-6 pt-4">
           <button
             onClick={() => setActiveTab("connections")}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
               activeTab === "connections"
                 ? "bg-blue-500/20 text-blue-200"
                 : "bg-white/5 text-neutral-400 hover:text-neutral-200"
@@ -356,7 +356,7 @@ export function BookmarkPanel({
           </button>
           <button
             onClick={() => setActiveTab("maps")}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
               activeTab === "maps"
                 ? "bg-blue-500/20 text-blue-200"
                 : "bg-white/5 text-neutral-400 hover:text-neutral-200"
@@ -386,7 +386,7 @@ export function BookmarkPanel({
               </div>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
               <svg
                 className="w-12 h-12 text-red-400"
                 fill="none"
@@ -409,33 +409,197 @@ export function BookmarkPanel({
               </button>
             </div>
           ) : emptyState.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <svg
-                className="w-16 h-16 text-neutral-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+            <div className="flex flex-col items-center justify-center py-8 gap-4">
+              {/* Compact illustration */}
+              <div className="relative">
+                {activeTab === "connections" ? (
+                  <svg
+                    viewBox="0 0 120 80"
+                    fill="none"
+                    className="w-32 h-20"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <linearGradient
+                        id="panel-conn-grad"
+                        x1="0%"
+                        y1="0%"
+                        x2="100%"
+                        y2="100%"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="#D97706"
+                          stopOpacity="0.6"
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="#7C3AED"
+                          stopOpacity="0.4"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M30 40 Q60 20 90 40"
+                      stroke="url(#panel-conn-grad)"
+                      strokeWidth="2"
+                      strokeDasharray="6 3"
+                      fill="none"
+                      opacity="0.6"
+                    >
+                      <animate
+                        attributeName="stroke-dashoffset"
+                        from="18"
+                        to="0"
+                        dur="2s"
+                        repeatCount="indefinite"
+                      />
+                    </path>
+                    <circle
+                      cx="30"
+                      cy="40"
+                      r="12"
+                      fill="#1a1a1a"
+                      stroke="#D97706"
+                      strokeWidth="1.5"
+                    />
+                    <circle
+                      cx="90"
+                      cy="40"
+                      r="12"
+                      fill="#1a1a1a"
+                      stroke="#7C3AED"
+                      strokeWidth="1.5"
+                    />
+                    <path
+                      d="M57 25 L60 25 L60 32 L58.5 29 L57 32 Z"
+                      fill="#fafafa"
+                      opacity="0.5"
+                    >
+                      <animate
+                        attributeName="opacity"
+                        values="0.3;0.7;0.3"
+                        dur="2s"
+                        repeatCount="indefinite"
+                      />
+                    </path>
+                  </svg>
+                ) : (
+                  <svg
+                    viewBox="0 0 120 80"
+                    fill="none"
+                    className="w-32 h-20"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <linearGradient
+                        id="panel-map-grad"
+                        x1="0%"
+                        y1="0%"
+                        x2="100%"
+                        y2="100%"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="#3B82F6"
+                          stopOpacity="0.6"
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="#8B5CF6"
+                          stopOpacity="0.4"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <g stroke="#3B82F6" strokeWidth="1" opacity="0.4">
+                      <line x1="35" y1="25" x2="60" y2="40" />
+                      <line x1="60" y1="40" x2="85" y2="25" />
+                      <line x1="60" y1="40" x2="70" y2="60" />
+                      <line x1="70" y1="60" x2="50" y2="55" />
+                    </g>
+                    <circle
+                      cx="35"
+                      cy="25"
+                      r="5"
+                      fill="#1a1a1a"
+                      stroke="#3B82F6"
+                      strokeWidth="1"
+                    >
+                      <animate
+                        attributeName="r"
+                        values="4;6;4"
+                        dur="3s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                    <circle
+                      cx="60"
+                      cy="40"
+                      r="8"
+                      fill="#1a1a1a"
+                      stroke="#8B5CF6"
+                      strokeWidth="1.5"
+                    >
+                      <animate
+                        attributeName="r"
+                        values="7;9;7"
+                        dur="2.5s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                    <circle
+                      cx="85"
+                      cy="25"
+                      r="4"
+                      fill="#1a1a1a"
+                      stroke="#3B82F6"
+                      strokeWidth="1"
+                    />
+                    <circle
+                      cx="70"
+                      cy="60"
+                      r="5"
+                      fill="#1a1a1a"
+                      stroke="#06B6D4"
+                      strokeWidth="1"
+                    />
+                    <circle
+                      cx="50"
+                      cy="55"
+                      r="6"
+                      fill="#1a1a1a"
+                      stroke="#10B981"
+                      strokeWidth="1"
+                    />
+                  </svg>
+                )}
+                <div
+                  className="absolute inset-0 -z-10 opacity-20 blur-2xl"
+                  style={{
+                    background:
+                      activeTab === "connections"
+                        ? "radial-gradient(circle, #D97706 0%, transparent 70%)"
+                        : "radial-gradient(circle, #3B82F6 0%, transparent 70%)",
+                  }}
                 />
-              </svg>
-              <p className="text-sm text-neutral-400">
-                {activeTab === "connections"
-                  ? "No saved connections yet"
-                  : "No saved maps yet"}
-              </p>
-              <p className="text-xs text-neutral-500 text-center max-w-xs">
-                {activeTab === "connections"
-                  ? "Save a connection from the map to collect it here."
-                  : "Save a map snapshot to return here later."}
-              </p>
+              </div>
+
+              {/* Text */}
+              <div className="text-center max-w-xs space-y-2">
+                <p className="text-sm font-medium text-neutral-300">
+                  {activeTab === "connections"
+                    ? "Your saved connections will appear here"
+                    : "Your saved maps will appear here"}
+                </p>
+                <p className="text-xs text-neutral-500 leading-relaxed">
+                  {activeTab === "connections"
+                    ? "Tap any verse connection to save it."
+                    : "Save a map snapshot while exploring."}
+                </p>
+              </div>
             </div>
           ) : activeTab === "connections" ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {connections.map((connection) => (
                 <div
                   key={connection.id}
@@ -475,7 +639,7 @@ export function BookmarkPanel({
                       ? ` • ${connection.bundleMeta.anchorRef}`
                       : ""}
                   </div>
-                  <p className="text-sm text-neutral-200 leading-relaxed mt-3">
+                  <p className="text-sm text-neutral-200 leading-relaxed mt-4">
                     {truncateText(connection.synopsis)}
                   </p>
 
@@ -498,17 +662,17 @@ export function BookmarkPanel({
                     </div>
                   )}
 
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-4 flex gap-2">
                     <button
                       onClick={() => handleOpenConnection(connection)}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-300 rounded text-xs font-medium transition-colors flex items-center gap-1.5"
+                      className="px-4 py-2 bg-white/5 hover:bg-white/10 text-neutral-300 rounded text-xs font-medium transition-colors flex items-center gap-2"
                     >
                       View
                     </button>
                     <button
                       onClick={() => handleGoDeeper(connection)}
                       disabled={!connection.bundle}
-                      className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Go Deeper
                     </button>
@@ -517,7 +681,7 @@ export function BookmarkPanel({
               ))}
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {maps.map((entry) => (
                 <div
                   key={entry.id}
@@ -554,7 +718,7 @@ export function BookmarkPanel({
                     {entry.bundleMeta?.verseCount ?? 0} verses •{" "}
                     {entry.bundleMeta?.edgeCount ?? 0} connections
                   </div>
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-4 flex gap-2">
                     <button
                       onClick={() => {
                         if (!entry.bundle) return;
@@ -562,7 +726,7 @@ export function BookmarkPanel({
                         onClose();
                       }}
                       disabled={!entry.bundle}
-                      className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Open Map
                     </button>

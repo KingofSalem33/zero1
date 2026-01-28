@@ -433,6 +433,7 @@ function App() {
                     onGoDeeper={handleGoDeeper}
                     onOpenMap={handleShowVisualization}
                     onNavigateToVerse={handleNavigateToVerse}
+                    onExploreBible={handleToggleBible}
                   />
                 ) : (
                   <UnifiedWorkspace

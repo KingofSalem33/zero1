@@ -58,6 +58,7 @@ interface LibraryViewProps {
   onGoDeeper?: (payload: GoDeeperPayload) => void;
   onOpenMap?: (bundle: VisualContextBundle) => void;
   onNavigateToVerse?: (reference?: string) => void;
+  onExploreBible?: () => void;
 }
 
 type LibraryTab = "connections" | "maps" | "highlights";
@@ -134,11 +135,574 @@ const getConnectionVerseList = (connection: LibraryConnection) => {
   return [connection.fromVerse, connection.toVerse];
 };
 
+// Beautiful illustrated empty state component
+function EmptyState({
+  type,
+  onAction,
+}: {
+  type: "connections" | "maps" | "highlights";
+  onAction?: () => void;
+}) {
+  const content = {
+    connections: {
+      title: "Your saved connections will appear here",
+      description:
+        "Tap any verse connection on the map to save it. Build your personal library of biblical insights.",
+      actionLabel: "Explore Bible",
+      illustration: (
+        <svg
+          viewBox="0 0 200 160"
+          fill="none"
+          className="w-48 h-40"
+          aria-hidden="true"
+        >
+          {/* Gradient definitions */}
+          <defs>
+            <linearGradient
+              id="conn-gradient-1"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#D97706" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.4" />
+            </linearGradient>
+            <linearGradient
+              id="conn-gradient-2"
+              x1="100%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#0891B2" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0.4" />
+            </linearGradient>
+            <filter id="conn-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* Connection lines with animation */}
+          <path
+            d="M50 80 Q100 40 150 80"
+            stroke="url(#conn-gradient-1)"
+            strokeWidth="2"
+            strokeDasharray="8 4"
+            fill="none"
+            opacity="0.7"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              from="24"
+              to="0"
+              dur="2s"
+              repeatCount="indefinite"
+            />
+          </path>
+          <path
+            d="M50 80 Q100 120 150 80"
+            stroke="url(#conn-gradient-2)"
+            strokeWidth="2"
+            strokeDasharray="8 4"
+            fill="none"
+            opacity="0.7"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              from="0"
+              to="24"
+              dur="2s"
+              repeatCount="indefinite"
+            />
+          </path>
+
+          {/* Left verse node */}
+          <g filter="url(#conn-glow)">
+            <circle
+              cx="50"
+              cy="80"
+              r="20"
+              fill="#1a1a1a"
+              stroke="#D97706"
+              strokeWidth="2"
+            />
+            <text
+              x="50"
+              y="76"
+              textAnchor="middle"
+              fill="#D97706"
+              fontSize="8"
+              fontWeight="bold"
+            >
+              Gen
+            </text>
+            <text x="50" y="88" textAnchor="middle" fill="#a3a3a3" fontSize="7">
+              1:1
+            </text>
+          </g>
+
+          {/* Right verse node */}
+          <g filter="url(#conn-glow)">
+            <circle
+              cx="150"
+              cy="80"
+              r="20"
+              fill="#1a1a1a"
+              stroke="#7C3AED"
+              strokeWidth="2"
+            />
+            <text
+              x="150"
+              y="76"
+              textAnchor="middle"
+              fill="#7C3AED"
+              fontSize="8"
+              fontWeight="bold"
+            >
+              John
+            </text>
+            <text
+              x="150"
+              y="88"
+              textAnchor="middle"
+              fill="#a3a3a3"
+              fontSize="7"
+            >
+              1:1
+            </text>
+          </g>
+
+          {/* Center bookmark/save indicator */}
+          <g opacity="0.5">
+            <path
+              d="M95 50 L100 50 L100 62 L97.5 58 L95 62 Z"
+              fill="#fafafa"
+              opacity="0.8"
+            >
+              <animate
+                attributeName="opacity"
+                values="0.4;0.9;0.4"
+                dur="2s"
+                repeatCount="indefinite"
+              />
+            </path>
+          </g>
+
+          {/* Subtle decorative elements */}
+          <circle cx="85" cy="110" r="2" fill="#D97706" opacity="0.3" />
+          <circle cx="115" cy="110" r="2" fill="#7C3AED" opacity="0.3" />
+          <circle cx="100" cy="120" r="1.5" fill="#0891B2" opacity="0.2" />
+        </svg>
+      ),
+    },
+    maps: {
+      title: "Your saved maps will appear here",
+      description:
+        "Save a map snapshot while exploring to bookmark your journey. Return anytime to continue where you left off.",
+      actionLabel: "Explore Bible",
+      illustration: (
+        <svg
+          viewBox="0 0 200 160"
+          fill="none"
+          className="w-48 h-40"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient
+              id="map-gradient"
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.4" />
+            </linearGradient>
+            <filter id="map-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* Constellation lines */}
+          <g stroke="#3B82F6" strokeWidth="1" opacity="0.4">
+            <line x1="60" y1="50" x2="100" y2="70" />
+            <line x1="100" y1="70" x2="140" y2="45" />
+            <line x1="100" y1="70" x2="120" y2="100" />
+            <line x1="120" y1="100" x2="80" y2="110" />
+            <line x1="80" y1="110" x2="60" y2="50" />
+            <line x1="80" y1="110" x2="100" y2="70" />
+          </g>
+
+          {/* Verse nodes as constellation stars */}
+          <g filter="url(#map-glow)">
+            <circle
+              cx="60"
+              cy="50"
+              r="8"
+              fill="#1a1a1a"
+              stroke="#3B82F6"
+              strokeWidth="1.5"
+            >
+              <animate
+                attributeName="r"
+                values="7;9;7"
+                dur="3s"
+                repeatCount="indefinite"
+              />
+            </circle>
+            <circle
+              cx="100"
+              cy="70"
+              r="12"
+              fill="#1a1a1a"
+              stroke="#8B5CF6"
+              strokeWidth="2"
+            >
+              <animate
+                attributeName="r"
+                values="11;13;11"
+                dur="2.5s"
+                repeatCount="indefinite"
+              />
+            </circle>
+            <circle
+              cx="140"
+              cy="45"
+              r="6"
+              fill="#1a1a1a"
+              stroke="#3B82F6"
+              strokeWidth="1.5"
+            >
+              <animate
+                attributeName="r"
+                values="5;7;5"
+                dur="3.5s"
+                repeatCount="indefinite"
+              />
+            </circle>
+            <circle
+              cx="120"
+              cy="100"
+              r="7"
+              fill="#1a1a1a"
+              stroke="#06B6D4"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="80"
+              cy="110"
+              r="9"
+              fill="#1a1a1a"
+              stroke="#10B981"
+              strokeWidth="1.5"
+            />
+          </g>
+
+          {/* Map frame/save indicator */}
+          <rect
+            x="40"
+            y="30"
+            width="120"
+            height="100"
+            rx="8"
+            fill="none"
+            stroke="#525252"
+            strokeWidth="1"
+            strokeDasharray="4 4"
+            opacity="0.5"
+          />
+
+          {/* Save icon */}
+          <g transform="translate(92, 130)" opacity="0.6">
+            <rect
+              x="0"
+              y="0"
+              width="16"
+              height="12"
+              rx="2"
+              fill="none"
+              stroke="#a3a3a3"
+              strokeWidth="1"
+            />
+            <path
+              d="M4 4 L8 8 L12 4"
+              stroke="#a3a3a3"
+              strokeWidth="1"
+              fill="none"
+            />
+          </g>
+        </svg>
+      ),
+    },
+    highlights: {
+      title: "Your highlights will appear here",
+      description:
+        "Select any verse while reading and choose a color to highlight it. Your marked passages are saved here.",
+      actionLabel: "Read Bible",
+      illustration: (
+        <svg
+          viewBox="0 0 200 160"
+          fill="none"
+          className="w-48 h-40"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient
+              id="highlight-yellow"
+              x1="0%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#FBBF24" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.4" />
+            </linearGradient>
+            <linearGradient
+              id="highlight-green"
+              x1="0%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#34D399" stopOpacity="0.7" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0.3" />
+            </linearGradient>
+            <linearGradient
+              id="highlight-pink"
+              x1="0%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#F472B6" stopOpacity="0.7" />
+              <stop offset="100%" stopColor="#EC4899" stopOpacity="0.3" />
+            </linearGradient>
+            <filter
+              id="highlight-glow"
+              x="-50%"
+              y="-50%"
+              width="200%"
+              height="200%"
+            >
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* Paper/page background */}
+          <rect
+            x="50"
+            y="30"
+            width="100"
+            height="100"
+            rx="4"
+            fill="#1f1f1f"
+            stroke="#3f3f3f"
+            strokeWidth="1"
+          />
+
+          {/* Text lines with highlights */}
+          <g>
+            {/* Line 1 - with yellow highlight */}
+            <rect
+              x="60"
+              y="45"
+              width="70"
+              height="8"
+              rx="1"
+              fill="url(#highlight-yellow)"
+              filter="url(#highlight-glow)"
+            >
+              <animate
+                attributeName="opacity"
+                values="0.7;1;0.7"
+                dur="2s"
+                repeatCount="indefinite"
+              />
+            </rect>
+            <rect
+              x="60"
+              y="47"
+              width="70"
+              height="4"
+              rx="0.5"
+              fill="#525252"
+              opacity="0.3"
+            />
+
+            {/* Line 2 - plain */}
+            <rect x="60" y="58" width="80" height="4" rx="0.5" fill="#404040" />
+
+            {/* Line 3 - with green highlight */}
+            <rect
+              x="60"
+              y="68"
+              width="55"
+              height="8"
+              rx="1"
+              fill="url(#highlight-green)"
+              filter="url(#highlight-glow)"
+            >
+              <animate
+                attributeName="opacity"
+                values="0.6;0.9;0.6"
+                dur="2.5s"
+                repeatCount="indefinite"
+              />
+            </rect>
+            <rect
+              x="60"
+              y="70"
+              width="55"
+              height="4"
+              rx="0.5"
+              fill="#525252"
+              opacity="0.3"
+            />
+
+            {/* Line 4 - plain */}
+            <rect x="60" y="81" width="75" height="4" rx="0.5" fill="#404040" />
+
+            {/* Line 5 - with pink highlight */}
+            <rect
+              x="60"
+              y="91"
+              width="60"
+              height="8"
+              rx="1"
+              fill="url(#highlight-pink)"
+              filter="url(#highlight-glow)"
+            >
+              <animate
+                attributeName="opacity"
+                values="0.5;0.85;0.5"
+                dur="3s"
+                repeatCount="indefinite"
+              />
+            </rect>
+            <rect
+              x="60"
+              y="93"
+              width="60"
+              height="4"
+              rx="0.5"
+              fill="#525252"
+              opacity="0.3"
+            />
+
+            {/* Line 6 - plain */}
+            <rect
+              x="60"
+              y="104"
+              width="65"
+              height="4"
+              rx="0.5"
+              fill="#404040"
+            />
+
+            {/* Line 7 - plain shorter */}
+            <rect
+              x="60"
+              y="113"
+              width="40"
+              height="4"
+              rx="0.5"
+              fill="#404040"
+            />
+          </g>
+
+          {/* Highlighter pen */}
+          <g transform="translate(130, 85) rotate(45)" opacity="0.7">
+            <rect x="0" y="0" width="6" height="35" rx="1" fill="#FBBF24" />
+            <rect x="0" y="30" width="6" height="8" rx="1" fill="#78716C" />
+            <rect
+              x="1"
+              y="0"
+              width="4"
+              height="4"
+              rx="0.5"
+              fill="#FDE68A"
+              opacity="0.6"
+            />
+          </g>
+        </svg>
+      ),
+    },
+  };
+
+  const { title, description, actionLabel, illustration } = content[type];
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-6 gap-6">
+      {/* Illustration */}
+      <div className="relative">
+        {illustration}
+        {/* Subtle radial glow behind illustration */}
+        <div
+          className="absolute inset-0 -z-10 opacity-30 blur-3xl"
+          style={{
+            background:
+              type === "connections"
+                ? "radial-gradient(circle, #D97706 0%, transparent 70%)"
+                : type === "maps"
+                  ? "radial-gradient(circle, #3B82F6 0%, transparent 70%)"
+                  : "radial-gradient(circle, #FBBF24 0%, transparent 70%)",
+          }}
+        />
+      </div>
+
+      {/* Text content */}
+      <div className="text-center max-w-sm space-y-2">
+        <h3 className="text-lg font-semibold text-neutral-200">{title}</h3>
+        <p className="text-sm text-neutral-400 leading-relaxed">
+          {description}
+        </p>
+      </div>
+
+      {/* Action button */}
+      {onAction && (
+        <button
+          onClick={onAction}
+          className="group mt-2 px-6 py-3 bg-gradient-to-r from-brand-primary-500/20 to-brand-primary-600/20 hover:from-brand-primary-500/30 hover:to-brand-primary-600/30 border border-brand-primary-500/30 hover:border-brand-primary-400/50 text-brand-primary-200 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2 shadow-lg shadow-brand-primary-500/10 hover:shadow-brand-primary-500/20"
+        >
+          <span>{actionLabel}</span>
+          <svg
+            className="w-4 h-4 transition-transform group-hover:translate-x-0.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 7l5 5m0 0l-5 5m5-5H6"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function LibraryView({
   userId = "anonymous",
   onGoDeeper,
   onOpenMap,
   onNavigateToVerse,
+  onExploreBible,
 }: LibraryViewProps) {
   const { highlights, removeHighlight } = useBibleHighlightsContext();
   const [activeTab, setActiveTab] = useState<LibraryTab>("connections");
@@ -353,7 +917,7 @@ export function LibraryView({
     >
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-3">
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-2">
             <svg
               className="w-8 h-8 text-brand-primary-400"
               fill="none"
@@ -413,7 +977,7 @@ export function LibraryView({
             </div>
           )
         ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
             <svg
               className="w-12 h-12 text-red-400"
               fill="none"
@@ -436,35 +1000,10 @@ export function LibraryView({
             </button>
           </div>
         ) : emptyStateCount[activeTab] === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <svg
-              className="w-16 h-16 text-neutral-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-              />
-            </svg>
-            <p className="text-sm text-neutral-400">
-              {activeTab === "connections"
-                ? "No saved connections yet"
-                : activeTab === "maps"
-                  ? "No saved maps yet"
-                  : "No highlights yet"}
-            </p>
-            <p className="text-xs text-neutral-500 text-center max-w-xs">
-              {activeTab === "connections"
-                ? "Save a connection from the map to collect it here."
-                : activeTab === "maps"
-                  ? "Save a map snapshot to return here later."
-                  : "Highlight verses in the Bible to save them here."}
-            </p>
-          </div>
+          <EmptyState
+            type={activeTab}
+            onAction={onExploreBible || onNavigateToVerse}
+          />
         ) : activeTab === "connections" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedConnections.map((connection) => {
@@ -510,7 +1049,7 @@ export function LibraryView({
                     </svg>
                   </button>
 
-                  <div className="max-h-[80vh] overflow-y-auto p-3 pr-8">
+                  <div className="max-h-[80vh] overflow-y-auto p-4 pr-8">
                     <div className="flex items-center gap-2 mb-2">
                       <div
                         className="w-2 h-2 rounded-full"
@@ -527,7 +1066,7 @@ export function LibraryView({
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-2 mb-4">
                       {visibleVerses.map((verse) => (
                         <button
                           key={`${connection.id}-${verse.reference}`}
@@ -555,7 +1094,7 @@ export function LibraryView({
                       )}
                     </div>
 
-                    <div className="mb-3">
+                    <div className="mb-4">
                       <div className="text-[13px] text-white/80 leading-relaxed line-clamp-4">
                         {truncateText(connection.synopsis, 200)}
                       </div>
@@ -565,7 +1104,7 @@ export function LibraryView({
                       <button
                         onClick={() => handleGoDeeper(connection)}
                         disabled={!connection.bundle}
-                        className="group px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="group px-4 py-2 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{
                           backgroundColor: `${color}20`,
                           color,
@@ -633,11 +1172,11 @@ export function LibraryView({
                   {entry.bundleMeta?.verseCount ?? 0} verses •{" "}
                   {entry.bundleMeta?.edgeCount ?? 0} connections
                 </div>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-4 flex gap-2">
                   <button
                     onClick={() => entry.bundle && onOpenMap?.(entry.bundle)}
                     disabled={!entry.bundle}
-                    className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Open Map
                   </button>
@@ -651,9 +1190,9 @@ export function LibraryView({
               <div
                 key={highlight.id}
                 onClick={() => onNavigateToVerse?.()}
-                className="group bg-neutral-900/50 hover:bg-neutral-900/80 border border-neutral-800/50 hover:border-neutral-700/50 rounded-xl p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-brand-primary-500/5 hover:scale-[1.02]"
+                className="group bg-neutral-900/50 hover:bg-neutral-900/80 border border-neutral-800/50 hover:border-neutral-700/50 rounded-xl p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-brand-primary-500/5 hover:scale-[1.02]"
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <h3 className="text-brand-primary-300 font-semibold text-sm mb-0.5">
                       {highlight.book} {highlight.chapter}:{highlight.verse}
@@ -686,7 +1225,7 @@ export function LibraryView({
                   </button>
                 </div>
                 <div
-                  className="relative mb-3 p-3 rounded-lg border-l-4 bg-neutral-800/30"
+                  className="relative mb-4 p-4 rounded-lg border-l-4 bg-neutral-800/30"
                   style={{
                     borderLeftColor: highlight.color,
                     backgroundColor: `${highlight.color}15`,
