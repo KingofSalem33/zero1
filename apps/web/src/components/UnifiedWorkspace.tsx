@@ -6,7 +6,6 @@
   useMemo,
 } from "react";
 import { MessageStream } from "./golden-thread/MessageStream";
-import { SmoothStreamingText } from "./SmoothStreamingText";
 import { ToolBadges } from "./ToolBadges";
 import { VerseSearchIndicator } from "./VerseSearchIndicator";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
@@ -2732,7 +2731,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   streamingMessage.content &&
                   !streamingMessage.isComplete && (
                     <div className="space-y-2">
-                      <SmoothStreamingText
+                      <MessageStream
                         content={streamingMessage.content}
                         onVerseClick={handleVerseClick}
                         onTrace={handleGoDeeper}

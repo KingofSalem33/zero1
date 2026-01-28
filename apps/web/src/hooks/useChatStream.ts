@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useCallback, useRef } from "react";
-import { flushSync } from "react-dom";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { VisualContextBundle } from "../types/goldenThread";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -56,6 +55,10 @@ export interface StreamingMessage {
   searchingVerses: string[]; // Verses being explored during search
 }
 
+// Smooth text release rate - chars per frame at 60fps
+// ~4 chars/frame = 240 chars/sec = comfortable reading pace
+const CHARS_PER_FRAME = 4;
+
 export function useChatStream(
   onMapData?: (bundle: VisualContextBundle) => void,
 ) {
@@ -64,6 +67,54 @@ export function useChatStream(
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<any>(null);
+
+  // Delta buffering for smooth text release
+  const deltaBufferRef = useRef<string>("");
+  const displayedContentRef = useRef<string>("");
+  const rafRef = useRef<number>(0);
+  const isAnimatingRef = useRef(false);
+
+  // Animation loop - drains buffer at steady pace
+  const animateText = useCallback(() => {
+    const buffer = deltaBufferRef.current;
+    const displayed = displayedContentRef.current;
+
+    if (buffer.length > displayed.length) {
+      // Release next chunk of characters
+      const charsToAdd = Math.min(
+        CHARS_PER_FRAME,
+        buffer.length - displayed.length,
+      );
+      const newContent = buffer.slice(0, displayed.length + charsToAdd);
+      displayedContentRef.current = newContent;
+
+      setStreamingMessage((prev) => {
+        if (!prev) return prev;
+        return { ...prev, content: newContent };
+      });
+
+      rafRef.current = window.requestAnimationFrame(animateText);
+    } else {
+      isAnimatingRef.current = false;
+    }
+  }, []);
+
+  // Start animation if not running
+  const ensureAnimating = useCallback(() => {
+    if (!isAnimatingRef.current) {
+      isAnimatingRef.current = true;
+      rafRef.current = window.requestAnimationFrame(animateText);
+    }
+  }, [animateText]);
+
+  // Cleanup animation on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
 
   const startStream = useCallback(
     async (
@@ -81,7 +132,14 @@ export function useChatStream(
         abortControllerRef.current.abort();
       }
 
-      // Reset state
+      // Reset state and buffers
+      deltaBufferRef.current = "";
+      displayedContentRef.current = "";
+      isAnimatingRef.current = false;
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current);
+      }
+
       setIsStreaming(true);
       setError(null);
       setStreamingMessage({
@@ -126,7 +184,7 @@ export function useChatStream(
 
         const decoder = new (window as any).TextDecoder();
         let buffer = "";
-        let currentEvent = ""; // Persist event type across chunks
+        let currentEvent = "";
 
         while (true) {
           const { done, value } = await reader.read();
@@ -135,54 +193,59 @@ export function useChatStream(
             break;
           }
 
-          // Decode chunk and add to buffer
           buffer += decoder.decode(value, { stream: true });
-
-          // Process complete SSE messages
           const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // Keep incomplete line in buffer
+          buffer = lines.pop() || "";
 
           for (const line of lines) {
-            // Reset currentEvent on blank line (end of SSE message)
             if (line === "") {
               currentEvent = "";
               continue;
             }
             if (line.startsWith("event:")) {
               currentEvent = line.slice(6).trim();
-              console.log("[useChatStream] Event line:", currentEvent);
             } else if (line.startsWith("data:")) {
               const data = line.slice(5).trim();
               if (!data) continue;
 
               try {
                 const parsed = JSON.parse(data);
-                console.log(
-                  "[useChatStream] Processing event:",
-                  currentEvent,
-                  "data:",
-                  parsed,
-                );
-
-                // Capture event type before async operations (prevents currentEvent from being reset by blank lines)
                 const eventType = currentEvent;
 
-                // Use flushSync only for content to prevent text corruption
-                // while allowing other updates to batch
                 if (eventType === "content") {
-                  flushSync(() => {
-                    setStreamingMessage((prev) => {
-                      if (!prev) return prev;
-                      const contentEvent = parsed as ContentEvent;
-                      return {
-                        ...prev,
-                        content: prev.content + (contentEvent.delta || ""),
-                      };
-                    });
+                  // Buffer the delta instead of immediate update
+                  const contentEvent = parsed as ContentEvent;
+                  deltaBufferRef.current += contentEvent.delta || "";
+                  ensureAnimating();
+                } else if (eventType === "done") {
+                  // Handle done outside setState to properly manage refs
+                  const doneEvent = parsed as DoneEvent;
+
+                  // Stop animation
+                  if (rafRef.current) {
+                    window.cancelAnimationFrame(rafRef.current);
+                    rafRef.current = 0;
+                  }
+                  isAnimatingRef.current = false;
+
+                  // Capture final content from buffer
+                  const finalContent = deltaBufferRef.current;
+                  displayedContentRef.current = finalContent;
+
+                  setStreamingMessage((prev) => {
+                    if (!prev) return prev;
+                    return {
+                      ...prev,
+                      content: finalContent,
+                      isComplete: true,
+                      citations: doneEvent.citations,
+                      suggestTrace: doneEvent.suggestTrace,
+                      connectionCount: doneEvent.connectionCount,
+                      anchorId: doneEvent.anchorId,
+                    };
                   });
                 } else {
                   setStreamingMessage((prev) => {
-                    // Initialize prev if null (defensive)
                     const currentState = prev || {
                       content: "",
                       isComplete: false,
@@ -191,13 +254,6 @@ export function useChatStream(
                       erroredTools: [],
                       searchingVerses: [],
                     };
-
-                    console.log(
-                      "[useChatStream] About to switch on event:",
-                      eventType,
-                      "currentState:",
-                      currentState,
-                    );
 
                     switch (eventType) {
                       case "verse_search": {
@@ -251,27 +307,11 @@ export function useChatStream(
                       }
 
                       case "map_data": {
-                        // Handle Golden Thread visualization data
                         const mapDataEvent = parsed as VisualContextBundle;
                         if (onMapData) {
                           onMapData(mapDataEvent);
                         }
                         return currentState;
-                      }
-
-                      case "done": {
-                        const doneEvent = parsed as DoneEvent;
-                        console.log(
-                          "[useChatStream] 🎉 DONE event received, setting isComplete=true",
-                        );
-                        return {
-                          ...currentState,
-                          isComplete: true,
-                          citations: doneEvent.citations,
-                          suggestTrace: doneEvent.suggestTrace,
-                          connectionCount: doneEvent.connectionCount,
-                          anchorId: doneEvent.anchorId,
-                        };
                       }
 
                       case "error": {
@@ -296,7 +336,6 @@ export function useChatStream(
       } catch (err) {
         if (err instanceof Error) {
           if (err.name === "AbortError") {
-            // Stream was intentionally cancelled
             console.log("Stream cancelled");
           } else {
             setError(err.message);
@@ -307,7 +346,7 @@ export function useChatStream(
         setIsStreaming(false);
       }
     },
-    [onMapData],
+    [onMapData, ensureAnimating],
   );
 
   const cancelStream = useCallback(() => {
@@ -315,10 +354,18 @@ export function useChatStream(
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+    }
     setIsStreaming(false);
   }, []);
 
   const reset = useCallback(() => {
+    deltaBufferRef.current = "";
+    displayedContentRef.current = "";
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+    }
     setStreamingMessage(null);
     setError(null);
     setIsStreaming(false);
