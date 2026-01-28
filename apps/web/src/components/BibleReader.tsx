@@ -1,5 +1,11 @@
 /* global Range, HTMLButtonElement */
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { ChapterFooter } from "./ChapterFooter";
@@ -7,6 +13,10 @@ import { VerseReferencesModal } from "./VerseReferencesModal";
 import VerseTooltip from "./VerseTooltip";
 import { BibleChapterSkeleton } from "./Skeleton";
 import { useBibleScrollMemory } from "../hooks/useScrollMemory";
+import {
+  useSwipeNavigation,
+  useKeyboardNavigation,
+} from "../hooks/useSwipeNavigation";
 
 interface Verse {
   verse: string;
@@ -150,6 +160,11 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   // Track if we need to restore scroll (ref-based to avoid re-render flash)
   const needsScrollRestore = useRef(true);
   const hasRestoredOnce = useRef(false);
+  // Track if we're doing explicit navigation (prev/next) vs returning to a chapter
+  const isExplicitNavigation = useRef(false);
+
+  // Fade transition state for smooth chapter changes
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Load book data from GitHub
   useEffect(() => {
@@ -178,9 +193,16 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   // Restore scroll position after content loads (useLayoutEffect runs before paint)
   useLayoutEffect(() => {
     if (!loading && bookData && bibleScrollRef.current) {
-      // Restore scroll, then show
+      // Handle scroll positioning, then show
       if (needsScrollRestore.current) {
-        restoreBibleScroll();
+        if (isExplicitNavigation.current) {
+          // Explicit navigation (prev/next) - go to top
+          bibleScrollRef.current.scrollTop = 0;
+          isExplicitNavigation.current = false;
+        } else {
+          // Returning to a chapter - restore saved position
+          restoreBibleScroll();
+        }
         needsScrollRestore.current = false;
         hasRestoredOnce.current = true;
         // Force visibility update on the DOM element directly
@@ -331,32 +353,80 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     };
   }, [showBookSelector]);
 
-  const handlePreviousChapter = () => {
-    if (selectedChapter > 1) {
-      setSelectedChapter(selectedChapter - 1);
-    } else {
-      // Go to previous book's last chapter
-      const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
-      if (currentBookIndex > 0) {
-        setSelectedBook(BIBLE_BOOKS[currentBookIndex - 1]);
-        // Will need to get last chapter of previous book
-        setSelectedChapter(1); // Temporary, should be last chapter
-      }
-    }
-  };
+  // Smooth chapter navigation with fade transition
+  const navigateWithTransition = useCallback(
+    (navigate: () => void) => {
+      setIsTransitioning(true);
+      // Mark as explicit navigation so we scroll to top instead of restoring
+      isExplicitNavigation.current = true;
+      // Wait for fade out, then navigate
+      setTimeout(() => {
+        navigate();
+        // Scroll to top immediately after navigation
+        if (bibleScrollRef.current) {
+          bibleScrollRef.current.scrollTop = 0;
+        }
+        // Fade back in after a brief moment
+        setTimeout(() => setIsTransitioning(false), 50);
+      }, 150);
+    },
+    [bibleScrollRef],
+  );
 
-  const handleNextChapter = () => {
-    if (bookData && selectedChapter < bookData.chapters.length) {
-      setSelectedChapter(selectedChapter + 1);
-    } else {
-      // Go to next book's first chapter
-      const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
-      if (currentBookIndex < BIBLE_BOOKS.length - 1) {
-        setSelectedBook(BIBLE_BOOKS[currentBookIndex + 1]);
-        setSelectedChapter(1);
+  const handlePreviousChapter = useCallback(() => {
+    const canGoPrev =
+      selectedChapter > 1 || BIBLE_BOOKS.indexOf(selectedBook) > 0;
+    if (!canGoPrev) return;
+
+    navigateWithTransition(() => {
+      if (selectedChapter > 1) {
+        setSelectedChapter(selectedChapter - 1);
+      } else {
+        // Go to previous book's last chapter
+        const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
+        if (currentBookIndex > 0) {
+          setSelectedBook(BIBLE_BOOKS[currentBookIndex - 1]);
+          // Will need to get last chapter of previous book
+          setSelectedChapter(1); // Temporary, should be last chapter
+        }
       }
-    }
-  };
+    });
+  }, [selectedBook, selectedChapter, navigateWithTransition]);
+
+  const handleNextChapter = useCallback(() => {
+    const canGoNext =
+      (bookData && selectedChapter < bookData.chapters.length) ||
+      BIBLE_BOOKS.indexOf(selectedBook) < BIBLE_BOOKS.length - 1;
+    if (!canGoNext) return;
+
+    navigateWithTransition(() => {
+      if (bookData && selectedChapter < bookData.chapters.length) {
+        setSelectedChapter(selectedChapter + 1);
+      } else {
+        // Go to next book's first chapter
+        const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
+        if (currentBookIndex < BIBLE_BOOKS.length - 1) {
+          setSelectedBook(BIBLE_BOOKS[currentBookIndex + 1]);
+          setSelectedChapter(1);
+        }
+      }
+    });
+  }, [bookData, selectedBook, selectedChapter, navigateWithTransition]);
+
+  // Keyboard arrow navigation (← → for prev/next chapter)
+  useKeyboardNavigation({
+    onPrevious: handlePreviousChapter,
+    onNext: handleNextChapter,
+    enabled: !showBookSelector, // Disable when book selector is open
+  });
+
+  // Swipe navigation for mobile (swipe left = next, swipe right = prev)
+  const swipeRef = useSwipeNavigation<HTMLDivElement>({
+    onSwipeLeft: handleNextChapter,
+    onSwipeRight: handlePreviousChapter,
+    threshold: 50,
+    maxTime: 300,
+  });
 
   const handleHighlight = (
     text: string,
@@ -664,11 +734,22 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
       {/* Bible Text Content - starts invisible, shown after scroll restore */}
       <div
-        ref={bibleScrollRef}
+        ref={(node) => {
+          // Merge refs: bibleScrollRef for scroll memory, swipeRef for gestures
+          (
+            bibleScrollRef as React.MutableRefObject<HTMLDivElement | null>
+          ).current = node;
+          (swipeRef as React.MutableRefObject<HTMLDivElement | null>).current =
+            node;
+        }}
         className="relative flex-1 overflow-y-auto"
         style={{ visibility: hasRestoredOnce.current ? "visible" : "hidden" }}
       >
-        <div className="max-w-4xl mx-auto px-8 py-12">
+        <div
+          className={`max-w-4xl mx-auto px-8 py-12 transition-opacity duration-150 ${
+            isTransitioning ? "opacity-0" : "opacity-100"
+          }`}
+        >
           {loading ? (
             <BibleChapterSkeleton
               bookName={selectedBook}
