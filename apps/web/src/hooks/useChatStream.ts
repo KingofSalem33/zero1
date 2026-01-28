@@ -39,6 +39,10 @@ export interface MapDataEvent {
   bundle: VisualContextBundle;
 }
 
+export interface VerseSearchEvent {
+  verse: string;
+}
+
 export interface StreamingMessage {
   content: string;
   isComplete: boolean;
@@ -49,6 +53,7 @@ export interface StreamingMessage {
   activeTools: string[]; // Tools currently executing
   completedTools: string[]; // Tools that finished successfully
   erroredTools: string[]; // Tools that errored
+  searchingVerses: string[]; // Verses being explored during search
 }
 
 export function useChatStream(
@@ -85,6 +90,7 @@ export function useChatStream(
         activeTools: [],
         completedTools: [],
         erroredTools: [],
+        searchingVerses: [],
       });
 
       const abortController = new (window as any).AbortController();
@@ -183,6 +189,7 @@ export function useChatStream(
                       activeTools: [],
                       completedTools: [],
                       erroredTools: [],
+                      searchingVerses: [],
                     };
 
                     console.log(
@@ -193,6 +200,17 @@ export function useChatStream(
                     );
 
                     switch (eventType) {
+                      case "verse_search": {
+                        const verseEvent = parsed as VerseSearchEvent;
+                        return {
+                          ...currentState,
+                          searchingVerses: [
+                            ...currentState.searchingVerses,
+                            verseEvent.verse,
+                          ],
+                        };
+                      }
+
                       case "tool_call": {
                         const toolCallEvent = parsed as ToolCallEvent;
                         return {

@@ -2005,6 +2005,13 @@ export async function explainScriptureWithKernelStream(
           },
         )
       : null;
+    // Stream verses being explored to the client for visual feedback
+    for (const node of visualBundle.nodes.slice(0, 15)) {
+      const verseRef = `${node.book_name} ${node.chapter}:${node.verse}`;
+      res.write(`event: verse_search\n`);
+      res.write(`data: ${JSON.stringify({ verse: verseRef })}\n\n`);
+    }
+
     // Build user message from the pre-built bundle
     res.write("event: map_data\n");
     res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
@@ -2392,6 +2399,13 @@ export async function explainScriptureWithKernelStream(
         await: "discoverConnections",
       },
     );
+  }
+
+  // Stream verses being explored to the client for visual feedback
+  for (const node of visualBundle.nodes.slice(0, 15)) {
+    const verseRef = `${node.book_name} ${node.chapter}:${node.verse}`;
+    res.write(`event: verse_search\n`);
+    res.write(`data: ${JSON.stringify({ verse: verseRef })}\n\n`);
   }
 
   // Send map data first

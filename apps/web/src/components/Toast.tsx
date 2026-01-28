@@ -97,10 +97,10 @@ function ToastItem({
       role="status"
       aria-live="polite"
     >
-      {/* Subtle status indicator */}
+      {/* Subtle status indicator with animation */}
       {toast.type === "success" && (
         <svg
-          className="w-4 h-4 text-green-500/70 flex-shrink-0"
+          className="w-4 h-4 text-green-500/70 flex-shrink-0 checkmark-animated"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

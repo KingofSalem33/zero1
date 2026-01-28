@@ -106,6 +106,19 @@ router.post("/", async (req, res) => {
       },
     );
 
+    // Stream verses being explored to the client
+    const allVerses = [
+      context.anchor,
+      ...context.ring0,
+      ...context.connections,
+    ];
+    for (const verse of allVerses) {
+      res.write(`event: verse_search\n`);
+      res.write(
+        `data: ${JSON.stringify({ verse: formatReference(verse) })}\n\n`,
+      );
+    }
+
     const anchorRef = formatReference(context.anchor);
     const strategy = buildResponseStrategy({
       mode: "go_deeper_short",

@@ -669,7 +669,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 disabled={
                   selectedBook === BIBLE_BOOKS[0] && selectedChapter === 1
                 }
-                className="p-2 hover:bg-neutral-800 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-2 hover:bg-neutral-800 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
               >
                 <svg
                   className="w-5 h-5 text-neutral-300"
@@ -698,7 +698,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                       Math.max(1, parseInt(e.target.value) || 1),
                     )
                   }
-                  className="w-16 px-3 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-white text-center focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50"
+                  className="w-16 px-3 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-white text-center input-glow input-depth"
                 />
                 <span className="text-sm text-neutral-500">
                   of {bookData?.chapters.length || "..."}
@@ -711,7 +711,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                   selectedBook === BIBLE_BOOKS[BIBLE_BOOKS.length - 1] &&
                   selectedChapter === (bookData?.chapters.length || 1)
                 }
-                className="p-2 hover:bg-neutral-800 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="p-2 hover:bg-neutral-800 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
               >
                 <svg
                   className="w-5 h-5 text-neutral-300"
@@ -835,7 +835,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                   disabled={
                     selectedBook === BIBLE_BOOKS[0] && selectedChapter === 1
                   }
-                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/50 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm"
+                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/50 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm active:scale-95"
                   title="Previous Chapter"
                 >
                   <svg
@@ -867,7 +867,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                     selectedBook === BIBLE_BOOKS[BIBLE_BOOKS.length - 1] &&
                     selectedChapter === (bookData?.chapters.length || 1)
                   }
-                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/50 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm"
+                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/50 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm active:scale-95"
                   title="Next Chapter"
                 >
                   <svg
