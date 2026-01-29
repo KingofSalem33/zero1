@@ -24,6 +24,22 @@ const normalizeToken = (value: string) =>
 const makeVerseKey = (book: string, chapter: number, verse: number) =>
   `${normalizeToken(book)}:${chapter}:${verse}`;
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const sanitized = hex.replace("#", "");
+  const normalized =
+    sanitized.length === 3
+      ? sanitized
+          .split("")
+          .map((value) => `${value}${value}`)
+          .join("")
+      : sanitized;
+  const numeric = parseInt(normalized, 16);
+  const r = (numeric >> 16) & 255;
+  const g = (numeric >> 8) & 255;
+  const b = numeric & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   const {
     verse,
@@ -65,18 +81,10 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     return () => window.clearTimeout(timer);
   }, [discoveryPulseKey]);
 
-  // Enhanced styling for anchor node, compact for others
   const baseClasses =
-    "rounded border cursor-pointer relative " +
-    "transition-all duration-150 ease-in-out " +
-    "hover:scale-105 hover:shadow-lg hover:z-10 " +
-    "active:scale-98 active:transition-transform active:duration-75";
-
-  const stateClasses = isAnchor
-    ? "bg-yellow-400 border-yellow-600 text-black font-bold"
-    : isHighlighted
-      ? "bg-yellow-100 border-yellow-500 text-black font-semibold shadow-sm hover:shadow-md"
-      : "bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-gray-400";
+    "group relative cursor-pointer select-none rounded-[14px] border " +
+    "backdrop-blur-md transition-[transform,box-shadow,border-color,background-color,opacity] duration-200 ease-out " +
+    "hover:-translate-y-0.5 hover:z-10 active:translate-y-0";
 
   // Node sizing based on depth from anchor
   // Anchor: 180x90 (full size)
@@ -91,9 +99,6 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     : 0;
   const hubScale = 1 + hubBoost * 0.045;
   const showHubBadge = !isDimmed && normalizedConnections >= 3;
-  const hubRingIntensity = Math.min(hubBoost / 10, 1);
-  const hubRingColor = `rgba(56, 189, 248, ${0.08 + hubRingIntensity * 0.18})`;
-  const hubGlowColor = `rgba(56, 189, 248, ${0.12 + hubRingIntensity * 0.22})`;
   const uniqueParallelCount = React.useMemo(() => {
     const parallels = verse.parallelPassages || [];
     if (parallels.length === 0) return 0;
@@ -177,6 +182,25 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     enableSemanticGlow && semanticConnectionType
       ? semanticGlowStyles[semanticConnectionType]
       : null;
+  const ringHex =
+    branchHighlight?.color ||
+    glowStyle?.border ||
+    (isAnchor ? "#F4B62B" : "#CBD5E1");
+  const ringTint = hexToRgba(
+    ringHex,
+    isDimmed
+      ? 0.08
+      : isHighlighted || branchHighlight
+        ? 0.12
+        : isAnchor
+          ? 0.18
+          : 0.14,
+  );
+  const ringBorder = hexToRgba(
+    ringHex,
+    isDimmed ? 0.08 : isHighlighted || branchHighlight ? 0.1 : 0.14,
+  );
+  const branchGlow = branchHighlight?.glowColor || branchHighlight?.color;
   let width: number, height: number, padding: string;
   const bookLabel = verse.book_name || verse.book_abbrev.toUpperCase();
   const primaryLabel =
@@ -186,19 +210,19 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   if (isAnchor) {
     width = 180;
     height = 90;
-    padding = "px-3 py-2";
+    padding = "px-4 py-3";
   } else if (nodeDepth === 1) {
     width = 120;
     height = 50;
-    padding = "px-2 py-1";
+    padding = "px-2.5 py-1.5";
   } else if (nodeDepth === 2) {
     width = 100;
     height = 42;
-    padding = "px-1.5 py-0.5";
+    padding = "px-2 py-1";
   } else {
     width = 85;
     height = 35;
-    padding = "px-1.5 py-0.5";
+    padding = "px-1.5 py-1";
   }
 
   // Sprint 1: Scale node size by mass for hub prominence
@@ -257,7 +281,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
       )}
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <div
-        className={`${baseClasses} ${stateClasses} ${padding}`}
+        className={`${baseClasses} ${padding}`}
         style={{
           width: `${width}px`,
           height: `${height}px`,
@@ -266,53 +290,59 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          alignItems: "flex-start",
+          alignItems: "center",
+          textAlign: "center",
           boxSizing: "border-box",
-          // Glowing border for anchor node with hover pulse animation
-          ...(isAnchor && {
-            boxShadow:
-              "0 0 20px #FBBF24, 0 0 40px #F59E0B, 0 4px 15px rgba(0,0,0,0.3)",
-            borderWidth: "3px",
-            animation: "glow-pulse 2s ease-in-out infinite",
-          }),
-          // 🌟 GOLDEN THREAD: Semantic glow for connected nodes (shows connection type)
-          ...(!isAnchor &&
-            glowStyle && {
-              boxShadow: glowStyle.glow,
-              borderColor: glowStyle.border,
-              borderWidth: "2.5px",
-              animation: glowStyle.animation, // Only GOLD has animation (sparkle effect)
-            }),
-          ...(branchHighlight && {
-            boxShadow: `0 0 10px ${branchHighlight.glowColor}, 0 0 5px ${branchHighlight.color}`,
-            borderColor: branchHighlight.color,
-            borderWidth: "3px",
-            zIndex: 2,
-          }),
-          ...(isDimmed && {
-            boxShadow: "none",
-            borderColor: "#D1D5DB",
-            borderWidth: "1px",
-            animation: "none",
-          }),
+          color: "rgba(255,255,255,0.9)",
+          background:
+            "radial-gradient(120% 140% at 20% 10%, rgba(255,255,255,0.14), transparent 58%), linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))",
+          borderColor: isDimmed
+            ? "rgba(255,255,255,0.08)"
+            : "rgba(255,255,255,0.14)",
+          borderWidth: "1px",
+          boxShadow: isDimmed
+            ? "none"
+            : [
+                "0 14px 30px rgba(0,0,0,0.42)",
+                "inset 0 1px 0 rgba(255,255,255,0.10)",
+                isAnchor ? "0 18px 40px rgba(0,0,0,0.55)" : "",
+                isHighlighted ? "0 8px 18px rgba(59,130,246,0.08)" : "",
+                branchGlow ? `0 0 10px ${branchGlow}` : "",
+              ]
+                .filter(Boolean)
+                .join(", "),
+          backdropFilter: "blur(14px) saturate(140%)",
+          WebkitBackdropFilter: "blur(14px) saturate(140%)",
           // Entrance animation
           opacity: hasEntered ? (isDimmed ? 0.25 : 1) : 0,
           transform: hasEntered
             ? `translateY(0) scale(${hubScale})`
-            : `translateY(-10px) scale(${hubScale * 0.95})`,
+            : `translateY(-8px) scale(${hubScale * 0.97})`,
           transition:
             "opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), transform 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 600ms ease, border-color 600ms ease",
         }}
       >
-        {hubBoost > 0 && !isDimmed && !branchHighlight && (
-          <span
-            className="pointer-events-none absolute inset-[-6px] rounded-[14px]"
-            style={{
-              boxShadow: `0 0 0 1px ${hubRingColor}, 0 0 ${6 + hubBoost}px ${2 + hubBoost * 0.5}px ${hubGlowColor}`,
-            }}
-          />
-        )}
-
+        <span
+          className="pointer-events-none absolute left-3 right-3 top-1 h-px rounded-full"
+          style={{
+            background: `linear-gradient(90deg, transparent, ${
+              isAnchor
+                ? "#F4B62B"
+                : glowStyle?.border
+                  ? glowStyle.border
+                  : "rgba(255,255,255,0.2)"
+            }, transparent)`,
+            opacity: isDimmed ? 0.2 : 0.9,
+          }}
+        />
+        <span
+          className="pointer-events-none absolute inset-[-2px] rounded-[16px]"
+          style={{
+            border: `1px solid ${ringBorder}`,
+            boxShadow: `0 0 0 1px rgba(255,255,255,0.02), 0 0 8px ${ringTint}`,
+            opacity: isDimmed ? 0.5 : 1,
+          }}
+        />
         {pulseActive && (
           <span
             className="pointer-events-none absolute inset-0 rounded"
@@ -322,20 +352,21 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           />
         )}
         {showHubBadge && (
-          <span className="absolute -top-2 -left-2 min-w-[18px] h-[18px] px-1 rounded-full bg-neutral-950/90 text-cyan-100 text-[9px] font-semibold flex items-center justify-center border border-cyan-300/50 shadow-sm">
+          <span className="absolute -top-2 -left-2 min-w-[18px] h-[18px] px-1 rounded-full bg-neutral-950/85 text-cyan-100 text-[9px] font-semibold flex items-center justify-center border border-cyan-200/30 shadow-sm">
             {normalizedConnections}
           </span>
         )}
         <div
           className={
             isAnchor
-              ? "text-[13px] font-mono font-bold whitespace-nowrap"
+              ? "text-[13px] font-serif font-semibold tracking-[0.01em] whitespace-nowrap"
               : nodeDepth <= 1
-                ? "text-[11px] font-mono font-semibold whitespace-nowrap"
+                ? "text-[11px] font-serif font-medium whitespace-nowrap flex items-center gap-1.5"
                 : nodeDepth === 2
-                  ? "text-[10px] font-mono font-medium whitespace-nowrap"
-                  : "text-[9px] font-mono font-medium whitespace-nowrap"
+                  ? "text-[10px] font-serif font-medium whitespace-nowrap flex items-center gap-1"
+                  : "text-[9px] font-serif font-medium whitespace-nowrap flex items-center gap-1"
           }
+          style={{ textShadow: "0 2px 10px rgba(0,0,0,0.45)" }}
         >
           {primaryLabel}
         </div>
@@ -343,12 +374,12 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           <div
             className={
               isAnchor
-                ? "text-[10px] font-mono text-neutral-600 whitespace-nowrap"
+                ? "text-[10px] text-white/60 whitespace-nowrap"
                 : nodeDepth <= 1
-                  ? "text-[9px] font-mono text-neutral-600 whitespace-nowrap"
+                  ? "text-[9px] text-white/55 whitespace-nowrap"
                   : nodeDepth === 2
-                    ? "text-[8px] font-mono text-neutral-600 whitespace-nowrap"
-                    : "text-[7px] font-mono text-neutral-600 whitespace-nowrap"
+                    ? "text-[8px] text-white/50 whitespace-nowrap"
+                    : "text-[7px] text-white/45 whitespace-nowrap"
             }
           >
             {secondaryLabel}
@@ -359,12 +390,12 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           <div
             className={
               isAnchor
-                ? "text-[10px] mt-1 max-w-[170px] truncate leading-tight"
+                ? "text-[10px] mt-1 max-w-[170px] truncate leading-tight text-white/70"
                 : nodeDepth <= 1
-                  ? "text-[9px] mt-0.5 max-w-[110px] truncate leading-tight"
+                  ? "text-[9px] mt-0.5 max-w-[110px] truncate leading-tight text-white/65"
                   : nodeDepth === 2
-                    ? "text-[8px] mt-0.5 max-w-[95px] truncate leading-tight"
-                    : "text-[7px] mt-0.5 max-w-[80px] truncate leading-tight"
+                    ? "text-[8px] mt-0.5 max-w-[95px] truncate leading-tight text-white/60"
+                    : "text-[7px] mt-0.5 max-w-[80px] truncate leading-tight text-white/55"
             }
           >
             {isAnchor
@@ -381,7 +412,14 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
               e.stopPropagation();
               onShowParallels(verse.id);
             }}
-            className="absolute -top-2 -right-2 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white shadow-md transition-all duration-150 ease-in-out hover:scale-110 hover:shadow-lg active:scale-95 cursor-pointer"
+            className="absolute -top-2 -right-2 h-5 w-5 rounded-full border border-white/15 text-[9px] font-semibold text-white/85 shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+            style={{
+              background:
+                "radial-gradient(120% 140% at 20% 10%, rgba(255,255,255,0.14), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03))",
+              backdropFilter: "blur(12px) saturate(140%)",
+              WebkitBackdropFilter: "blur(12px) saturate(140%)",
+              boxShadow: "0 10px 18px rgba(0,0,0,0.32)",
+            }}
             title={`${uniqueParallelCount} parallel ${uniqueParallelCount === 1 ? "account" : "accounts"}`}
           >
             +{uniqueParallelCount}

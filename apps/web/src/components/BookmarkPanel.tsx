@@ -346,20 +346,20 @@ export function BookmarkPanel({
         <div className="flex gap-2 px-6 pt-4">
           <button
             onClick={() => setActiveTab("connections")}
-            className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeTab === "connections"
-                ? "bg-blue-500/20 text-blue-200"
-                : "bg-white/5 text-neutral-400 hover:text-neutral-200"
+                ? "bg-neutral-800/60 backdrop-blur-md border border-amber-300/20 text-neutral-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                : "bg-neutral-800/40 backdrop-blur-sm border border-amber-200/[0.08] text-neutral-400 hover:bg-neutral-800/50 hover:border-amber-200/[0.12] hover:text-neutral-300"
             }`}
           >
             Connections
           </button>
           <button
             onClick={() => setActiveTab("maps")}
-            className={`px-4 py-2 rounded-md text-xs font-semibold transition-colors ${
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
               activeTab === "maps"
-                ? "bg-blue-500/20 text-blue-200"
-                : "bg-white/5 text-neutral-400 hover:text-neutral-200"
+                ? "bg-neutral-800/60 backdrop-blur-md border border-amber-300/20 text-neutral-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                : "bg-neutral-800/40 backdrop-blur-sm border border-amber-200/[0.08] text-neutral-400 hover:bg-neutral-800/50 hover:border-amber-200/[0.12] hover:text-neutral-300"
             }`}
           >
             Maps

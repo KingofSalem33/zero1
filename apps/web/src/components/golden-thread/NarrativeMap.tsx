@@ -433,12 +433,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [selectedBranch, setSelectedBranch] = useState<BranchCluster | null>(
     null,
   );
-  const [tooltipState, setTooltipState] = useState<{
-    visible: boolean;
-    expanded: boolean;
-    position: { x: number; y: number };
-    count: number;
-  }>({ visible: false, expanded: false, position: { x: 0, y: 0 }, count: 0 });
 
   // Focus Mode state
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
@@ -451,10 +445,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [branchClusters, setBranchClusters] = useState<
     Map<string, BranchCluster>
   >(new Map());
-
-  // Tooltip timers
-  const tooltipTimerRef = useRef<number | null>(null);
-  const expandTooltipTimerRef = useRef<number | null>(null);
 
   // ESC key listener for Focus Mode
   useEffect(() => {
@@ -521,11 +511,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   useEffect(() => {
     autoCenteredRef.current = false;
   }, [bundle?.rootId, bundle?.nodes?.length, bundle?.edges?.length]);
-
-  // Mouse velocity tracking (for tooltip spam prevention)
-  const mousePositionsRef = useRef<
-    Array<{ x: number; y: number; time: number }>
-  >([]);
 
   // Handler for expanding collapsed branches
   const handleExpandNode = useCallback((nodeId: number) => {
@@ -1105,7 +1090,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           onShowParallels: (verseId: number) => handleShowParallels(verseId),
           depth: verse.depth,
           semanticConnectionType,
-          enableSemanticGlow: false,
+          enableSemanticGlow: true,
           isDimmed: false,
           branchHighlight: undefined,
           discoveryPulseKey: undefined,
@@ -2427,70 +2412,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     );
   }, [focusedNodeId]);
 
-  // Mouse velocity check
-  const checkMouseVelocity = useCallback((x: number, y: number): boolean => {
-    const now = Date.now();
-    const positions = mousePositionsRef.current;
-
-    // Add current position
-    positions.push({ x, y, time: now });
-
-    // Keep only last 3 positions
-    if (positions.length > 3) {
-      positions.shift();
-    }
-
-    // Need at least 2 points to calculate velocity
-    if (positions.length < 2) return false;
-
-    // Calculate distance and time between first and last position
-    const first = positions[0];
-    const last = positions[positions.length - 1];
-    const distance = Math.sqrt(
-      Math.pow(last.x - first.x, 2) + Math.pow(last.y - first.y, 2),
-    );
-    const timeDiff = last.time - first.time;
-
-    // Velocity threshold: 500 pixels per second
-    const velocity = timeDiff > 0 ? (distance / timeDiff) * 1000 : 0;
-    return velocity > 500;
-  }, []);
-
-  // Edge hover handlers
-  const getBranchPreviewCount = useCallback(
-    (edge: Edge): number => {
-      const edgeData = edge.data as EdgeData & { visualStyleType?: string };
-      const styleType =
-        edgeData?.styleType || edgeData?.visualStyleType || "GREY";
-      if (styleType === "GREY") return 0;
-
-      const baseId = Number(edge.source);
-      if (!Number.isFinite(baseId)) return 0;
-
-      const connected = new Set<number>();
-      edges.forEach((candidate) => {
-        const candidateData = candidate.data as EdgeData & {
-          visualStyleType?: string;
-        };
-        const candidateStyle =
-          candidateData?.styleType || candidateData?.visualStyleType || "GREY";
-        if (candidateStyle !== styleType) return;
-
-        const sourceId = Number(candidate.source);
-        const targetId = Number(candidate.target);
-        if (sourceId === baseId && Number.isFinite(targetId)) {
-          connected.add(targetId);
-        } else if (targetId === baseId && Number.isFinite(sourceId)) {
-          connected.add(sourceId);
-        }
-      });
-
-      const isAnchorBase = bundle?.rootId === baseId;
-      return isAnchorBase ? connected.size : connected.size + 1;
-    },
-    [bundle?.rootId, edges],
-  );
-
   // Handle edge click for colored branches
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
@@ -2552,10 +2473,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
   const handleEdgeMouseEnter = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      const isFastMoving = checkMouseVelocity(event.clientX, event.clientY);
-      const previewCount = getBranchPreviewCount(edge);
-
-      // 🌟 GOLDEN THREAD: Boost anchor ray glow on hover
+      // GOLDEN THREAD: Boost anchor ray glow on hover
       const edgeData = edge.data as {
         isAnchorRay?: boolean;
         styleType?: string;
@@ -2570,79 +2488,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       // Set hovered branch (instant highlighting)
       setHoveredBranch(cluster);
-
-      // Clear any existing timers
-      if (tooltipTimerRef.current) {
-        clearTimeout(tooltipTimerRef.current);
-      }
-      if (expandTooltipTimerRef.current) {
-        clearTimeout(expandTooltipTimerRef.current);
-      }
-
-      // Don't show tooltip if moving fast
-      if (isFastMoving) {
-        setTooltipState({
-          visible: false,
-          expanded: false,
-          position: { x: 0, y: 0 },
-          count: previewCount,
-        });
-        return;
-      }
-
-      // Show basic tooltip after 300ms
-      tooltipTimerRef.current = window.setTimeout(() => {
-        setTooltipState({
-          visible: true,
-          expanded: false,
-          position: { x: event.clientX, y: event.clientY },
-          count: previewCount,
-        });
-
-        // Expand tooltip after another 500ms (800ms total)
-        expandTooltipTimerRef.current = window.setTimeout(() => {
-          setTooltipState((prev) => ({
-            ...prev,
-            expanded: true,
-          }));
-        }, 500);
-      }, 300);
     },
-    [branchClusters, checkMouseVelocity, getBranchPreviewCount],
+    [branchClusters],
   );
 
   const handleEdgeMouseLeave = useCallback(() => {
-    // 🌟 GOLDEN THREAD: Clear hovered anchor ray when mouse leaves
+    // GOLDEN THREAD: Clear hovered anchor ray when mouse leaves
     setHoveredAnchorRay(null);
-
     setHoveredBranch(null);
-    setTooltipState({
-      visible: false,
-      expanded: false,
-      position: { x: 0, y: 0 },
-      count: 0,
-    });
-
-    // Clear timers
-    if (tooltipTimerRef.current) {
-      clearTimeout(tooltipTimerRef.current);
-      tooltipTimerRef.current = null;
-    }
-    if (expandTooltipTimerRef.current) {
-      clearTimeout(expandTooltipTimerRef.current);
-      expandTooltipTimerRef.current = null;
-    }
-
-    // Clear velocity tracking
-    mousePositionsRef.current = [];
   }, []);
-
-  const tooltipCount =
-    hoveredBranch && tooltipState.count > 0
-      ? tooltipState.count
-      : hoveredBranch
-        ? hoveredBranch.nodeIds.size
-        : 0;
 
   return (
     <div className="h-full w-full relative">
@@ -2685,56 +2539,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           {mapSaveError && (
             <span className="text-[10px] text-red-400">{mapSaveError}</span>
           )}
-        </div>
-      )}
-
-      {/* Tooltip */}
-      {tooltipState.visible && hoveredBranch && (
-        <div
-          className="absolute z-50 pointer-events-none"
-          style={{
-            left: tooltipState.position.x + 10,
-            top: tooltipState.position.y + 10,
-            transition: "all 150ms ease-out",
-          }}
-        >
-          <div
-            className="bg-gray-900/95 text-white rounded-lg shadow-2xl border border-gray-700"
-            style={{
-              width: tooltipState.expanded ? "220px" : "180px",
-              transition: "width 150ms ease-out",
-            }}
-          >
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{
-                    backgroundColor: EDGE_STYLES[hoveredBranch.styleType].color,
-                  }}
-                />
-                <span className="font-semibold text-sm">
-                  {EDGE_STYLES[hoveredBranch.styleType].label}
-                </span>
-              </div>
-              <div className="text-xs text-gray-300">
-                {tooltipCount} {tooltipCount === 1 ? "verse" : "verses"} in
-                branch
-              </div>
-
-              {tooltipState.expanded && (
-                <>
-                  <div className="border-t border-gray-700 my-2" />
-                  <div className="text-xs text-gray-400 leading-relaxed">
-                    {hoveredBranch.pathPreview}
-                  </div>
-                  <div className="text-xs text-cyan-400 mt-2">
-                    Click to explore →
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
         </div>
       )}
 

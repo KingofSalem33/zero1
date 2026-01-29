@@ -944,10 +944,10 @@ export function LibraryView({
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   activeTab === tab
-                    ? "bg-brand-primary-500/20 text-brand-primary-200"
-                    : "bg-white/5 text-neutral-400 hover:text-neutral-200"
+                    ? "bg-neutral-800/60 backdrop-blur-md border border-amber-300/20 text-neutral-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                    : "bg-neutral-800/40 backdrop-blur-sm border border-amber-200/[0.08] text-neutral-400 hover:bg-neutral-800/50 hover:border-amber-200/[0.12] hover:text-neutral-300"
                 }`}
               >
                 {tab === "connections"
