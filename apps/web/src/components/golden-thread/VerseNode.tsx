@@ -56,6 +56,8 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   } = data;
   const [hasEntered, setHasEntered] = React.useState(false);
   const [pulseActive, setPulseActive] = React.useState(false);
+  const [isPressed, setIsPressed] = React.useState(false);
+  const [clickPulseKey, setClickPulseKey] = React.useState<number | null>(null);
 
   // Trigger entrance animation on mount
   React.useEffect(() => {
@@ -80,6 +82,15 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     }, 900);
     return () => window.clearTimeout(timer);
   }, [discoveryPulseKey]);
+
+  const handlePointerDown = () => {
+    setIsPressed(true);
+    setClickPulseKey(Date.now());
+  };
+
+  const handlePointerUp = () => {
+    setIsPressed(false);
+  };
 
   const baseClasses =
     "group relative cursor-pointer select-none rounded-[12px] border " +
@@ -264,9 +275,30 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           }
         `}</style>
       )}
+      {clickPulseKey !== null && (
+        <style>{`
+          @keyframes click-pulse {
+            0% {
+              box-shadow: 0 0 0 0 rgba(255,255,255,0.12);
+              opacity: 0.6;
+            }
+            70% {
+              box-shadow: 0 0 0 6px rgba(255,255,255,0.05);
+              opacity: 0.2;
+            }
+            100% {
+              box-shadow: 0 0 0 10px rgba(255,255,255,0);
+              opacity: 0;
+            }
+          }
+        `}</style>
+      )}
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <div
         className={`${baseClasses} ${padding}`}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
         style={{
           width: `${width}px`,
           height: `${height}px`,
@@ -300,10 +332,10 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           // Entrance animation
           opacity: hasEntered ? (isDimmed ? 0.25 : 1) : 0,
           transform: hasEntered
-            ? `translateY(0) scale(${hubScale})`
+            ? `translateY(0) scale(${hubScale * (isPressed ? 0.992 : 1)})`
             : `translateY(-8px) scale(${hubScale * 0.97})`,
           transition:
-            "opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), transform 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 600ms ease, border-color 600ms ease",
+            "opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), transform 120ms ease-out, box-shadow 600ms ease, border-color 600ms ease",
         }}
       >
         <span
@@ -333,6 +365,15 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
             className="pointer-events-none absolute inset-0 rounded"
             style={{
               animation: "discovery-pulse 900ms ease-out",
+            }}
+          />
+        )}
+        {clickPulseKey !== null && (
+          <span
+            key={clickPulseKey}
+            className="pointer-events-none absolute inset-0 rounded-[12px]"
+            style={{
+              animation: "click-pulse 360ms ease-out",
             }}
           />
         )}

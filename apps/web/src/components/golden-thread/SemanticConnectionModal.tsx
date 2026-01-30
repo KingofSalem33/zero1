@@ -806,6 +806,9 @@ export function SemanticConnectionModal({
                 />
               )}
             </h3>
+            <span className="text-[10px] text-neutral-400">
+              {Math.round(similarity * 100)}%
+            </span>
           </div>
 
           {/* Compact Verse Reference Chips */}
