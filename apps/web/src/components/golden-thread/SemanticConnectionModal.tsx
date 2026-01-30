@@ -44,7 +44,7 @@ interface SemanticConnectionModalProps {
     text: string;
   };
   connectionType: ConnectionType;
-  connectionChips?: string[];
+  connectionTitle?: string;
   similarity: number;
   position: { x: number; y: number };
   onClose: () => void;
@@ -130,6 +130,7 @@ export function SemanticConnectionModal({
   fromVerse,
   toVerse,
   connectionType,
+  connectionTitle,
   similarity,
   position,
   onClose,
@@ -153,6 +154,7 @@ export function SemanticConnectionModal({
     [connectionType],
   );
   const [synopsis, setSynopsis] = useState<string>("");
+  const [title, setTitle] = useState<string>(connectionTitle || "");
   const [verses, setVerses] = useState<
     Array<{ id: number; reference: string; text: string }>
   >([]);
@@ -230,6 +232,10 @@ export function SemanticConnectionModal({
   useEffect(() => {
     synopsisRef.current = synopsis;
   }, [synopsis]);
+
+  useEffect(() => {
+    setTitle(connectionTitle || "");
+  }, [connectionTitle]);
 
   useEffect(() => {
     if (libraryEntry) {
@@ -379,6 +385,7 @@ export function SemanticConnectionModal({
         setError(null);
         if (lastRequestKeyRef.current !== requestKey) {
           setSynopsis("");
+          setTitle(connectionTitle || "");
           setVerses(previewVerses);
         }
 
@@ -405,6 +412,7 @@ export function SemanticConnectionModal({
 
         const data = await response.json();
         console.log("[SemanticConnectionModal] Loaded synopsis:", data);
+        setTitle(typeof data?.title === "string" ? data.title : "");
         const returnedVerses = Array.isArray(data?.verses) ? data.verses : [];
         const orderedVerses = normalizedVerseIds
           .map((id) => returnedVerses.find((verse) => verse.id === id))
@@ -491,6 +499,8 @@ export function SemanticConnectionModal({
   // Note: Escape key handling is now provided by useFocusTrap hook
 
   const connectionLabel = CONNECTION_LABELS[normalizedConnectionType];
+  const modalTitle = title || (!loading ? connectionLabel : "");
+  const showTitleSkeleton = !modalTitle;
   const topicHints = useMemo(() => {
     if (!Array.isArray(connectionTopics) || connectionTopics.length === 0) {
       return [];
@@ -783,14 +793,19 @@ export function SemanticConnectionModal({
             />
             <h3
               id="semantic-connection-title"
-              className="font-semibold text-xs uppercase tracking-wide"
+              className="relative font-semibold text-xs uppercase tracking-wide"
               style={{ color: connectionColor }}
             >
-              {connectionLabel}
+              <span className={showTitleSkeleton ? "opacity-0" : ""}>
+                {modalTitle || "Loading"}
+              </span>
+              {showTitleSkeleton && (
+                <span
+                  className="absolute left-0 top-1/2 h-2.5 w-40 -translate-y-1/2 rounded bg-white/10 animate-pulse"
+                  aria-hidden="true"
+                />
+              )}
             </h3>
-            <span className="text-[10px] text-neutral-400">
-              {Math.round(similarity * 100)}%
-            </span>
           </div>
 
           {/* Compact Verse Reference Chips */}

@@ -271,7 +271,20 @@ Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. What shared themes or concepts connect these verses
 2. The theological or spiritual significance of this connection
 
-Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words.`
+Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words.
+
+Then write a TITLE that distills the significance in 6 words or less.
+- Natural, reverent tone (not academic).
+- Do not mention verse numbers.
+- Prefer concrete spiritual meaning over labels.
+- Examples: "Testing in the wilderness", "Hearts turn away again",
+  "Judgment after refusal", "A familiar rebuke", "Prophecy now fulfilled",
+  "Promise comes to pass", "Same key word appears", "Two witnesses, one story",
+  "Parallel account here", "Light versus darkness", "Obedience vs rebellion".
+
+Return exactly two lines:
+Title: <6 words or less>
+Synopsis: <34 words or less>`
         : `Analyze this ${connectionDesc} connecting ${sortedVerses.length} Bible verses:
 
 ${verseList}
@@ -283,7 +296,20 @@ Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. The overarching theme or pattern connecting ALL these verses
 2. The theological or spiritual significance of this connection as a whole
 
-Be direct and synthesizing. Maximum 34 words.`;
+Be direct and synthesizing. Maximum 34 words.
+
+Then write a TITLE that distills the significance in 6 words or less.
+- Natural, reverent tone (not academic).
+- Do not mention verse numbers.
+- Prefer concrete spiritual meaning over labels.
+- Examples: "Testing in the wilderness", "Hearts turn away again",
+  "Judgment after refusal", "A familiar rebuke", "Prophecy now fulfilled",
+  "Promise comes to pass", "Same key word appears", "Two witnesses, one story",
+  "Parallel account here", "Light versus darkness", "Obedience vs rebellion".
+
+Return exactly two lines:
+Title: <6 words or less>
+Synopsis: <34 words or less>`;
 
     const result = await profileTime(
       "semantic_connection.runModel",
@@ -312,7 +338,12 @@ Be direct and synthesizing. Maximum 34 words.`;
       },
     );
 
-    const synopsis = result.text || "Unable to generate synopsis.";
+    const rawText = result.text || "";
+    const titleMatch = rawText.match(/^\s*Title:\s*(.+)$/im);
+    const synopsisMatch = rawText.match(/^\s*Synopsis:\s*([\s\S]+)$/im);
+    const title = titleMatch?.[1]?.trim() || "";
+    const synopsis =
+      synopsisMatch?.[1]?.trim() || rawText || "Unable to generate synopsis.";
 
     // Log token usage for telemetry
     const tokenUsage = extractTokenUsage(
@@ -330,6 +361,7 @@ Be direct and synthesizing. Maximum 34 words.`;
     );
 
     return res.json({
+      title,
       synopsis,
       verses: sortedVerses.map(
         (v: {
