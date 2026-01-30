@@ -162,21 +162,45 @@ router.post("/synopsis", async (req, res) => {
 
     // Determine connection description
     const connectionDescriptions = {
-      GOLD: "same words (key words or phrases appear in both verses)",
-      PURPLE: "same teaching (shared theological truth)",
-      CYAN: "prophecy fulfilled (Old Testament prophecy -> New Testament event)",
-      GENEALOGY: "lineage connection (family line continuity)",
-      TYPOLOGY: "similar story (type/shadow mirroring later fulfillment)",
-      FULFILLMENT: "prophecy fulfilled (inferred connection)",
-      CONTRAST: "opposite ideas (contrasting teachings)",
-      PROGRESSION: "progression (later verse develops earlier idea)",
-      PATTERN: "pattern (literary or structural symmetry)",
-    };
+      CROSS_REFERENCE:
+        "cross-reference (canonical parallel or contextual link)",
+      LEXICON: "lexicon link (shared root or key term)",
+      ECHO: "echo (semantic or thematic resonance)",
+      FULFILLMENT: "fulfillment (prophetic or covenant link)",
+      PATTERN: "pattern (typology, contrast, progression, motif, lineage)",
+      // Legacy labels (backwards compatibility)
+      GOLD: "lexicon link (shared root or key term)",
+      PURPLE: "echo (semantic or thematic resonance)",
+      CYAN: "fulfillment (prophetic or covenant link)",
+      GENEALOGY: "pattern (typology, contrast, progression, motif, lineage)",
+      TYPOLOGY: "pattern (typology, contrast, progression, motif, lineage)",
+      CONTRAST: "pattern (typology, contrast, progression, motif, lineage)",
+      PROGRESSION: "pattern (typology, contrast, progression, motif, lineage)",
+    } as const;
 
     const connectionDesc =
       connectionDescriptions[
         connectionType as keyof typeof connectionDescriptions
       ] || "semantic connection";
+
+    const connectionToneMap = {
+      CROSS_REFERENCE: "cross-reference",
+      LEXICON: "lexicon",
+      ECHO: "echo",
+      FULFILLMENT: "fulfillment",
+      PATTERN: "pattern",
+      GOLD: "lexicon",
+      PURPLE: "echo",
+      CYAN: "fulfillment",
+      GENEALOGY: "pattern",
+      TYPOLOGY: "pattern",
+      CONTRAST: "pattern",
+      PROGRESSION: "pattern",
+    } as const;
+
+    const connectionTone =
+      connectionToneMap[connectionType as keyof typeof connectionToneMap] ||
+      (isLLMDiscovered ? connectionType.toLowerCase() : "semantic");
 
     type TopicContextEntry = { label: string; overlap: number | null };
 
@@ -240,7 +264,7 @@ router.post("/synopsis", async (req, res) => {
 
 ${verseList}
 
-These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionType === "GOLD" ? "same words" : connectionType === "PURPLE" ? "same teaching" : connectionType === "CYAN" ? "prophecy fulfilled" : connectionType === "GENEALOGY" ? "lineage" : connectionType === "TYPOLOGY" ? "similar story" : connectionType === "FULFILLMENT" ? "prophecy fulfilled" : connectionType === "CONTRAST" ? "opposite ideas" : connectionType === "PROGRESSION" ? "progression" : connectionType === "PATTERN" ? "pattern" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} connection.
+These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionTone} connection.
 ${topicContextText}
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:
@@ -252,7 +276,7 @@ Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words
 
 ${verseList}
 
-These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionType === "GOLD" ? "lexical" : connectionType === "PURPLE" ? "theological" : connectionType === "CYAN" ? "prophetic" : isLLMDiscovered ? connectionType.toLowerCase() : "semantic"} thread.
+These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionTone} thread.
 ${topicContextText}
 
 Provide a CONCISE analysis in EXACTLY 34 words or less:

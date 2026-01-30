@@ -108,20 +108,24 @@ const mulberry32 = (seed: number) => {
 };
 
 /**
- * Edge type to visual distance mapping
+ * Edge family to visual distance mapping
  * Stronger connections = shorter distance = nodes pulled closer
  */
 const EDGE_DISTANCE_MAP: Record<string, number> = {
-  TYPOLOGY: 140,
-  FULFILLMENT: 130,
-  CONTRAST: 180,
+  CROSS_REFERENCE: 165,
+  LEXICON: 125,
+  ECHO: 145,
+  FULFILLMENT: 135,
+  PATTERN: 150,
+  // Legacy aliases (kept for backwards compatibility)
+  GOLD: 125,
+  PURPLE: 145,
+  CYAN: 135,
+  GENEALOGY: 150,
+  TYPOLOGY: 150,
+  CONTRAST: 165,
   PROGRESSION: 150,
-  PATTERN: 120,
-  GOLD: 120, // ⬆️ Lexical connections - some breathing room while staying connected
-  PURPLE: 160, // ⬆️ Theological connections - moderate distance
-  CYAN: 140, // ⬆️ Prophetic connections - moderate distance
-  GENEALOGY: 155, // ⬆️ Lineage connections - moderate distance
-  GREY: 210, // ⬆️ Weak/synthetic connections - push farther for contrast
+  GREY: 210,
 };
 
 /**

@@ -68,28 +68,36 @@ type SemanticConnectionType = Parameters<
 type SemanticMapSession = GoDeeperPayload["mapSession"];
 
 const CONNECTION_COLORS: Record<string, string> = {
-  GOLD: "#D97706",
-  PURPLE: "#7C3AED",
-  CYAN: "#0891B2",
-  GENEALOGY: "#10B981",
-  TYPOLOGY: "#EA580C",
-  FULFILLMENT: "#14B8A6",
-  CONTRAST: "#DC2626",
-  PROGRESSION: "#16A34A",
-  PATTERN: "#3B82F6",
+  CROSS_REFERENCE: "#22C55E",
+  LEXICON: "#F59E0B",
+  ECHO: "#6366F1",
+  FULFILLMENT: "#06B6D4",
+  PATTERN: "#A78BFA",
+  // Legacy fallbacks
+  GOLD: "#F59E0B",
+  PURPLE: "#6366F1",
+  CYAN: "#06B6D4",
+  GENEALOGY: "#A78BFA",
+  TYPOLOGY: "#A78BFA",
+  CONTRAST: "#A78BFA",
+  PROGRESSION: "#A78BFA",
   DEFAULT: "#9CA3AF",
 };
 
 const CONNECTION_LABELS: Record<string, string> = {
-  GOLD: "Same Words",
-  PURPLE: "Same Teaching",
-  CYAN: "Prophecy Fulfilled",
-  GENEALOGY: "Lineage",
-  TYPOLOGY: "Similar Story",
-  FULFILLMENT: "Likely Fulfillment",
-  CONTRAST: "Opposite Ideas",
-  PROGRESSION: "Progression",
+  CROSS_REFERENCE: "Cross-Reference",
+  LEXICON: "Lexicon",
+  ECHO: "Echo",
+  FULFILLMENT: "Fulfillment",
   PATTERN: "Pattern",
+  // Legacy fallbacks
+  GOLD: "Lexicon",
+  PURPLE: "Echo",
+  CYAN: "Fulfillment",
+  GENEALOGY: "Pattern",
+  TYPOLOGY: "Pattern",
+  CONTRAST: "Pattern",
+  PROGRESSION: "Pattern",
 };
 
 const getClusterVerseIds = (mapSession: unknown) => {

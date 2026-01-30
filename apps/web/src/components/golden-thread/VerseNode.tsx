@@ -11,7 +11,7 @@ interface VerseNodeData {
   onShowParallels?: (verseId: number) => void; // Show parallel passages modal
   depth?: number; // Depth from anchor for size scaling
   enableSemanticGlow?: boolean;
-  semanticConnectionType?: string; // Connection type for this node (GOLD/PURPLE/CYAN/GREY)
+  semanticConnectionType?: string; // Connection family for this node
   isDimmed?: boolean;
   branchHighlight?: { color: string; glowColor: string };
   discoveryPulseKey?: number;
@@ -82,7 +82,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   }, [discoveryPulseKey]);
 
   const baseClasses =
-    "group relative cursor-pointer select-none rounded-[14px] border " +
+    "group relative cursor-pointer select-none rounded-[12px] border " +
     "backdrop-blur-md transition-[transform,box-shadow,border-color,background-color,opacity] duration-200 ease-out " +
     "hover:-translate-y-0.5 hover:z-10 active:translate-y-0";
 
@@ -135,46 +135,30 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     string,
     { glow: string; border: string; animation?: string }
   > = {
-    GOLD: {
-      glow: "0 0 8px #FBBF24, 0 0 14px #F59E0B",
-      border: "#D97706",
-      animation: "glow-pulse-gold 3s ease-in-out infinite", // ✨ Subtle sparkle for lexical
+    CROSS_REFERENCE: {
+      glow: "0 0 6px #86EFAC, 0 0 12px #22C55E",
+      border: "#22C55E",
     },
-    PURPLE: {
-      glow: "0 0 6px #A78BFA, 0 0 12px #7C3AED",
-      border: "#7C3AED",
+    LEXICON: {
+      glow: "0 0 6px #FCD34D, 0 0 12px #F59E0B",
+      border: "#F59E0B",
+      animation: "glow-pulse-gold 3s ease-in-out infinite",
     },
-    CYAN: {
-      glow: "0 0 6px #22D3EE, 0 0 12px #0891B2",
-      border: "#0891B2",
-    },
-    GENEALOGY: {
-      glow: "0 0 6px #34D399, 0 0 12px #10B981",
-      border: "#10B981",
-    },
-    TYPOLOGY: {
-      glow: "0 0 6px #F59E0B, 0 0 12px #EA580C",
-      border: "#EA580C",
+    ECHO: {
+      glow: "0 0 6px #A5B4FC, 0 0 12px #6366F1",
+      border: "#6366F1",
     },
     FULFILLMENT: {
-      glow: "0 0 6px #5EEAD4, 0 0 12px #14B8A6",
-      border: "#14B8A6",
-    },
-    CONTRAST: {
-      glow: "0 0 6px #F87171, 0 0 12px #DC2626",
-      border: "#DC2626",
-    },
-    PROGRESSION: {
-      glow: "0 0 6px #4ADE80, 0 0 12px #16A34A",
-      border: "#16A34A",
+      glow: "0 0 6px #67E8F9, 0 0 12px #06B6D4",
+      border: "#06B6D4",
     },
     PATTERN: {
-      glow: "0 0 6px #93C5FD, 0 0 12px #3B82F6",
-      border: "#3B82F6",
+      glow: "0 0 6px #C4B5FD, 0 0 12px #A78BFA",
+      border: "#A78BFA",
     },
     GREY: {
-      glow: "0 0 5px #B8F1FF",
-      border: "#D7F3FF",
+      glow: "0 0 5px #94A3B8",
+      border: "#CBD5E1",
     },
   };
 
@@ -189,18 +173,19 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   const ringTint = hexToRgba(
     ringHex,
     isDimmed
-      ? 0.08
+      ? 0.1
       : isHighlighted || branchHighlight
-        ? 0.12
+        ? 0.18
         : isAnchor
-          ? 0.18
-          : 0.14,
+          ? 0.22
+          : 0.19,
   );
   const ringBorder = hexToRgba(
     ringHex,
-    isDimmed ? 0.08 : isHighlighted || branchHighlight ? 0.1 : 0.14,
+    isDimmed ? 0.1 : isHighlighted || branchHighlight ? 0.16 : 0.18,
   );
   const branchGlow = branchHighlight?.glowColor || branchHighlight?.color;
+  const branchGlowTint = branchGlow ? hexToRgba(branchGlow, 0.35) : null;
   let width: number, height: number, padding: string;
   const bookLabel = verse.book_name || verse.book_abbrev.toUpperCase();
   const primaryLabel =
@@ -248,15 +233,15 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           }
         `}</style>
       )}
-      {/* 🌟 GOLDEN THREAD: Animation for lexical nodes (gold sparkle) */}
-      {semanticConnectionType === "GOLD" && (
+      {/* 🌟 GOLDEN THREAD: Animation for lexicon nodes (amber shimmer) */}
+      {semanticConnectionType === "LEXICON" && (
         <style>{`
           @keyframes glow-pulse-gold {
             0%, 100% {
-              box-shadow: 0 0 8px #FBBF24, 0 0 14px #F59E0B;
+              box-shadow: 0 0 6px #FCD34D, 0 0 12px #F59E0B;
             }
             50% {
-              box-shadow: 0 0 10px #FBBF24, 0 0 18px #F59E0B, 0 0 1px #FFF;
+              box-shadow: 0 0 8px #FCD34D, 0 0 16px #F59E0B, 0 0 1px #FFF;
             }
           }
         `}</style>
@@ -306,8 +291,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
                 "0 14px 30px rgba(0,0,0,0.42)",
                 "inset 0 1px 0 rgba(255,255,255,0.10)",
                 isAnchor ? "0 18px 40px rgba(0,0,0,0.55)" : "",
-                isHighlighted ? "0 8px 18px rgba(59,130,246,0.08)" : "",
-                branchGlow ? `0 0 10px ${branchGlow}` : "",
+                branchGlowTint ? `0 0 6px ${branchGlowTint}` : "",
               ]
                 .filter(Boolean)
                 .join(", "),
@@ -326,17 +310,18 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           className="pointer-events-none absolute left-3 right-3 top-1 h-px rounded-full"
           style={{
             background: `linear-gradient(90deg, transparent, ${
-              isAnchor
+              branchHighlight?.color ||
+              (isAnchor
                 ? "#F4B62B"
                 : glowStyle?.border
                   ? glowStyle.border
-                  : "rgba(255,255,255,0.2)"
+                  : "rgba(255,255,255,0.2)")
             }, transparent)`,
             opacity: isDimmed ? 0.2 : 0.9,
           }}
         />
         <span
-          className="pointer-events-none absolute inset-[-2px] rounded-[16px]"
+          className="pointer-events-none absolute inset-[-2px] rounded-[14px]"
           style={{
             border: `1px solid ${ringBorder}`,
             boxShadow: `0 0 0 1px rgba(255,255,255,0.02), 0 0 8px ${ringTint}`,

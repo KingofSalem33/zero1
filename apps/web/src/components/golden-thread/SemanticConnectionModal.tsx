@@ -14,16 +14,23 @@ import {
 } from "../../prompts/semanticConnection";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 
-type ConnectionType =
+type ConnectionFamily =
+  | "CROSS_REFERENCE"
+  | "LEXICON"
+  | "ECHO"
+  | "FULFILLMENT"
+  | "PATTERN";
+
+type LegacyConnectionType =
   | "GOLD"
   | "PURPLE"
   | "CYAN"
   | "GENEALOGY"
   | "TYPOLOGY"
-  | "FULFILLMENT"
   | "CONTRAST"
-  | "PROGRESSION"
-  | "PATTERN";
+  | "PROGRESSION";
+
+type ConnectionType = ConnectionFamily | LegacyConnectionType;
 
 interface SemanticConnectionModalProps {
   fromVerse: {
@@ -37,6 +44,7 @@ interface SemanticConnectionModalProps {
     text: string;
   };
   connectionType: ConnectionType;
+  connectionChips?: string[];
   similarity: number;
   position: { x: number; y: number };
   onClose: () => void;
@@ -50,13 +58,14 @@ interface SemanticConnectionModalProps {
     text: string;
   }>;
   connectionTopics?: Array<{
-    styleType: ConnectionType;
+    styleType: ConnectionFamily;
     label: string;
     color: string;
     count: number;
+    chips?: string[];
     verseIds?: number[];
   }>;
-  onSelectTopic?: (styleType: ConnectionType) => void;
+  onSelectTopic?: (styleType: ConnectionFamily) => void;
   visualBundle?: import("../../types/goldenThread").VisualContextBundle; // Pre-built map data
   userId?: string;
   presetSynopsis?: string;
@@ -76,28 +85,39 @@ interface SemanticConnectionModalProps {
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
-const CONNECTION_LABELS = {
-  GOLD: "Same Words",
-  PURPLE: "Same Teaching",
-  CYAN: "Prophecy Fulfilled",
-  GENEALOGY: "Lineage",
-  TYPOLOGY: "Similar Story",
-  FULFILLMENT: "Likely Fulfillment",
-  CONTRAST: "Opposite Ideas",
-  PROGRESSION: "Progression",
+const CONNECTION_LABELS: Record<ConnectionFamily, string> = {
+  CROSS_REFERENCE: "Cross-Reference",
+  LEXICON: "Lexicon",
+  ECHO: "Echo",
+  FULFILLMENT: "Fulfillment",
   PATTERN: "Pattern",
 };
 
-const CONNECTION_COLORS = {
-  GOLD: "#D97706",
-  PURPLE: "#7C3AED",
-  CYAN: "#0891B2",
-  GENEALOGY: "#10B981",
-  TYPOLOGY: "#EA580C",
-  FULFILLMENT: "#14B8A6",
-  CONTRAST: "#DC2626",
-  PROGRESSION: "#16A34A",
-  PATTERN: "#3B82F6",
+const CONNECTION_COLORS: Record<ConnectionFamily, string> = {
+  CROSS_REFERENCE: "#22C55E",
+  LEXICON: "#F59E0B",
+  ECHO: "#6366F1",
+  FULFILLMENT: "#06B6D4",
+  PATTERN: "#A78BFA",
+};
+
+const LEGACY_CONNECTION_MAP: Record<LegacyConnectionType, ConnectionFamily> = {
+  GOLD: "LEXICON",
+  PURPLE: "ECHO",
+  CYAN: "FULFILLMENT",
+  GENEALOGY: "PATTERN",
+  TYPOLOGY: "PATTERN",
+  CONTRAST: "PATTERN",
+  PROGRESSION: "PATTERN",
+};
+
+const normalizeConnectionType = (
+  connectionType: ConnectionType,
+): ConnectionFamily => {
+  if (connectionType in LEGACY_CONNECTION_MAP) {
+    return LEGACY_CONNECTION_MAP[connectionType as LegacyConnectionType];
+  }
+  return connectionType as ConnectionFamily;
 };
 
 const buildEdgeKey = (connectionType: string, fromId: number, toId: number) => {
@@ -128,6 +148,10 @@ export function SemanticConnectionModal({
   goDeeperOverride,
   maxVisibleVerses = 6,
 }: SemanticConnectionModalProps) {
+  const normalizedConnectionType = useMemo(
+    () => normalizeConnectionType(connectionType),
+    [connectionType],
+  );
   const [synopsis, setSynopsis] = useState<string>("");
   const [verses, setVerses] = useState<
     Array<{ id: number; reference: string; text: string }>
@@ -303,7 +327,7 @@ export function SemanticConnectionModal({
 
         const topicContext = Array.isArray(connectionTopics)
           ? connectionTopics
-              .filter((topic) => topic.styleType !== connectionType)
+              .filter((topic) => topic.styleType !== normalizedConnectionType)
               .map((topic) => {
                 const rawIds = Array.isArray(topic.verseIds)
                   ? topic.verseIds
@@ -331,7 +355,7 @@ export function SemanticConnectionModal({
 
         const requestKey = JSON.stringify({
           verseIds: normalizedVerseIds,
-          connectionType,
+          connectionType: normalizedConnectionType,
           similarity,
           isLLMDiscovered: Boolean(isLLMDiscovered),
           topicContext,
@@ -367,7 +391,7 @@ export function SemanticConnectionModal({
             body: JSON.stringify({
               verseIds: normalizedVerseIds, // Pass all connected verse IDs
               verses: previewVerses,
-              connectionType,
+              connectionType: normalizedConnectionType,
               similarity,
               isLLMDiscovered,
               topicContext,
@@ -438,7 +462,7 @@ export function SemanticConnectionModal({
   }, [
     fromVerse.id,
     toVerse.id,
-    connectionType,
+    normalizedConnectionType,
     similarity,
     isLLMDiscovered,
     // Use JSON.stringify to create stable dependency for array
@@ -466,7 +490,7 @@ export function SemanticConnectionModal({
 
   // Note: Escape key handling is now provided by useFocusTrap hook
 
-  const connectionLabel = CONNECTION_LABELS[connectionType];
+  const connectionLabel = CONNECTION_LABELS[normalizedConnectionType];
   const topicHints = useMemo(() => {
     if (!Array.isArray(connectionTopics) || connectionTopics.length === 0) {
       return [];
@@ -519,15 +543,15 @@ export function SemanticConnectionModal({
             clusterVerseIds.length > 0
               ? clusterVerseIds
               : [fromVerse.id, toVerse.id],
-          connectionType,
+          connectionType: normalizedConnectionType,
         },
         currentConnection: {
           fromId: fromVerse.id,
           toId: toVerse.id,
-          connectionType,
+          connectionType: normalizedConnectionType,
         },
         visitedEdgeKeys: [
-          buildEdgeKey(connectionType, fromVerse.id, toVerse.id),
+          buildEdgeKey(normalizedConnectionType, fromVerse.id, toVerse.id),
         ],
       },
     };
@@ -541,7 +565,7 @@ export function SemanticConnectionModal({
     topicHints,
     explanation,
     visualBundle,
-    connectionType,
+    normalizedConnectionType,
   ]);
 
   const handleGoDeeper = () => {
@@ -611,7 +635,7 @@ export function SemanticConnectionModal({
             bundleId,
             fromVerse,
             toVerse,
-            connectionType,
+            connectionType: normalizedConnectionType,
             similarity,
             synopsis,
             explanation,
@@ -694,7 +718,7 @@ export function SemanticConnectionModal({
     });
   };
 
-  const connectionColor = CONNECTION_COLORS[connectionType];
+  const connectionColor = CONNECTION_COLORS[normalizedConnectionType];
   const visibleVerses = showAllVerses
     ? verses
     : verses.slice(0, Math.max(0, maxVisibleVerses));
@@ -968,7 +992,7 @@ export function SemanticConnectionModal({
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {connectionTopics.map((topic) => {
-                  const isActive = topic.styleType === connectionType;
+                  const isActive = topic.styleType === normalizedConnectionType;
                   return (
                     <button
                       key={topic.styleType}

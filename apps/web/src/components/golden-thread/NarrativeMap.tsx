@@ -25,87 +25,70 @@ import { DiscoveryOverlay } from "./DiscoveryOverlay";
 import type {
   VisualContextBundle,
   EdgeType,
+  VisualEdge,
   ThreadNode,
 } from "../../types/goldenThread";
 import type { GoDeeperPayload } from "../../types/chat";
 
 // Refined Color System with Intentional Color Psychology
+// Signal-first connection families (5-color system) + neutral
 const EDGE_STYLES = {
   GREY: {
-    color: "#F8FAFF", // Electric white
-    glowColor: "#B8F1FF",
+    color: "#475569", // Neutral for synthetic edges only
+    glowColor: "#94A3B8",
     width: 1.2,
+    label: "Neutral",
+    description: "Layout-only helper edges",
+  },
+  CROSS_REFERENCE: {
+    color: "#22C55E", // Green
+    glowColor: "#86EFAC",
+    width: 1.4,
     label: "Cross-Reference",
-    description: "Direct cross-references between passages",
+    description: "Canonical cross-references and parallels",
   },
-  GOLD: {
-    color: "#D97706", // Richer, warmer gold - same roots, shared DNA
-    glowColor: "#FBBF24",
+  LEXICON: {
+    color: "#F59E0B", // Amber
+    glowColor: "#FCD34D",
     width: 2,
-    label: "Same Words",
-    description: "Key words or phrases appear in both verses",
+    label: "Lexicon",
+    description: "Shared roots or key terms",
   },
-  PURPLE: {
-    color: "#7C3AED", // Deeper, more royal purple - theological echo across time
-    glowColor: "#A78BFA",
+  ECHO: {
+    color: "#6366F1", // Indigo
+    glowColor: "#A5B4FC",
     width: 2,
-    label: "Same Teaching",
-    description: "Verses share the same theological truth",
-  },
-  CYAN: {
-    color: "#0891B2", // Sharper, more electric cyan - prophetic arrow (past -> future)
-    glowColor: "#22D3EE",
-    width: 2,
-    label: "Prophecy Fulfilled",
-    description: "OT promise fulfilled in the NT",
-  },
-  GENEALOGY: {
-    color: "#10B981",
-    glowColor: "#34D399",
-    width: 2,
-    label: "Lineage",
-    description: "Family line connections across Scripture",
-  },
-  // LLM-Discovered Connection Types
-  TYPOLOGY: {
-    color: "#EA580C", // Earthy orange - shadow foreshadowing substance
-    glowColor: "#F59E0B", // Divine gold glow
-    width: 2,
-    label: "Similar Story",
-    description: "Typology — events or people that mirror each other",
+    label: "Echo",
+    description: "Semantic or thematic echoes",
   },
   FULFILLMENT: {
-    color: "#14B8A6", // Teal
-    glowColor: "#5EEAD4",
+    color: "#06B6D4", // Cyan
+    glowColor: "#67E8F9",
     width: 2,
-    label: "Likely Fulfillment",
-    description: "A strong fulfillment pattern, though not explicit",
-  },
-  CONTRAST: {
-    color: "#DC2626", // Softer but still bold red - spiritual opposition
-    glowColor: "#F87171",
-    width: 2,
-    label: "Opposite Ideas",
-    description: "Verses show contrasting teachings",
-  },
-  PROGRESSION: {
-    color: "#16A34A", // More verdant, life-giving green - covenant unfolding
-    glowColor: "#4ADE80",
-    width: 2,
-    label: "Progression",
-    description: "Later verse builds on the earlier idea",
+    label: "Fulfillment",
+    description: "Prophetic or covenant fulfillment",
   },
   PATTERN: {
-    color: "#3B82F6", // Blue
-    glowColor: "#93C5FD",
+    color: "#A78BFA", // Violet
+    glowColor: "#C4B5FD",
     width: 2,
     label: "Pattern",
-    description: "Same literary or structural pattern",
+    description: "Typology, contrast, progression, motif, lineage",
   },
 } as const;
 
 const NEUTRAL_EDGE_OPACITY = 0.38;
 const EDGE_DASH_ARRAY = "6 10";
+const ELECTRIC_EDGE_COLOR = "rgba(248, 250, 252, 0.95)";
+const EDGE_CLICK_ENABLED = false;
+const EDGE_HOVER_ENABLED = false;
+const getEdgeStroke = (
+  visualStyleType: keyof typeof EDGE_STYLES,
+  isSynthetic?: boolean,
+) =>
+  visualStyleType === "GREY" || isSynthetic
+    ? "url(#edge-gradient-GREY)"
+    : ELECTRIC_EDGE_COLOR;
 const edgePulseDelay = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
@@ -123,20 +106,69 @@ const edgeFlowDelay = (id: string, depth?: number) => {
 
 type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
 
-// Map edge types to visual categories
-const TYPE_TO_STYLE_MAP: Record<string, keyof typeof EDGE_STYLES> = {
-  DEEPER: "GREY", // Regular cross-references = subtle grey
-  ROOTS: "GOLD", // Semantic lexical threads = gold highlight
-  ECHOES: "PURPLE", // Semantic theological threads = purple highlight
-  PROPHECY: "CYAN", // Semantic prophetic threads = cyan highlight
-  GENEALOGY: "GENEALOGY",
-  NARRATIVE: "GREY",
-  // LLM-discovered types
-  TYPOLOGY: "TYPOLOGY",
-  FULFILLMENT: "FULFILLMENT",
-  CONTRAST: "CONTRAST",
-  PROGRESSION: "PROGRESSION",
-  PATTERN: "PATTERN",
+const resolveConnectionFamily = (
+  edgeType: EdgeType,
+  metadata?: Record<string, unknown>,
+): ConnectionStyleType => {
+  const source = metadata?.source;
+
+  if (edgeType === "DEEPER") return "CROSS_REFERENCE";
+  if (edgeType === "NARRATIVE") return "CROSS_REFERENCE";
+
+  if (edgeType === "ROOTS") {
+    if (source === "semantic_thread") return "ECHO";
+    return "LEXICON";
+  }
+
+  if (edgeType === "ECHOES") return "ECHO";
+
+  if (edgeType === "PROPHECY" || edgeType === "FULFILLMENT") {
+    return "FULFILLMENT";
+  }
+
+  if (
+    edgeType === "TYPOLOGY" ||
+    edgeType === "CONTRAST" ||
+    edgeType === "PROGRESSION" ||
+    edgeType === "PATTERN" ||
+    edgeType === "GENEALOGY"
+  ) {
+    return "PATTERN";
+  }
+
+  return "CROSS_REFERENCE";
+};
+
+const resolveConnectionChip = (
+  edgeType: EdgeType,
+  metadata?: Record<string, unknown>,
+): string | null => {
+  const source = metadata?.source;
+  const thread = metadata?.thread;
+
+  if (edgeType === "DEEPER") return "Parallel";
+  if (edgeType === "NARRATIVE") return "Context";
+
+  if (edgeType === "ROOTS") {
+    if (source === "semantic_thread") return "Phrase";
+    if (source === "canonical") return "Shared Root";
+    return "Key Term";
+  }
+
+  if (edgeType === "ECHOES") {
+    if (thread === "theological") return "Parallel Teaching";
+    return "Theme";
+  }
+
+  if (edgeType === "PROPHECY") return "Prophetic";
+  if (edgeType === "FULFILLMENT") return "Fulfillment";
+  if (edgeType === "TYPOLOGY") return "Typology";
+  if (edgeType === "CONTRAST") return "Contrast";
+  if (edgeType === "PROGRESSION") return "Progression";
+  if (edgeType === "PATTERN") return "Motif";
+  if (edgeType === "GENEALOGY") return "Lineage";
+
+  return null;
 };
 
 interface BranchCluster {
@@ -150,6 +182,8 @@ interface BranchCluster {
 interface EdgeData {
   styleType?: keyof typeof EDGE_STYLES;
   edgeType?: EdgeType;
+  source?: string;
+  thread?: string;
   explanation?: string;
   confidence?: number;
   isLLMDiscovered?: boolean;
@@ -173,6 +207,7 @@ interface ConnectionTopicGroup {
   label: string;
   color: string;
   count: number;
+  chips?: string[];
   verses: ThreadNode[];
   verseIds: number[];
   edgeIds: string[];
@@ -401,6 +436,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     connectionType: ConnectionStyleType;
     similarity: number;
     position: { x: number; y: number };
+    connectionChips?: string[];
     explanation?: string;
     confidence?: number;
     isLLMDiscovered?: boolean;
@@ -594,7 +630,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       const groups = new Map<
         ConnectionStyleType,
-        { edgeIds: Set<string>; verseIds: Set<number> }
+        { edgeIds: Set<string>; verseIds: Set<number>; chips: Set<string> }
       >();
 
       incidentEdges.forEach((edge) => {
@@ -618,16 +654,25 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           groups.set(connectionStyle, {
             edgeIds: new Set<string>(),
             verseIds: new Set<number>(),
+            chips: new Set<string>(),
           });
         }
         const entry = groups.get(connectionStyle);
         entry?.edgeIds.add(edge.id);
         entry?.verseIds.add(otherId);
+        if (edgeData?.edgeType) {
+          const chip = resolveConnectionChip(edgeData.edgeType, edgeData);
+          if (chip) entry?.chips.add(chip);
+        }
       });
 
       const buildGroup = (
         styleType: ConnectionStyleType,
-        entry: { edgeIds: Set<string>; verseIds: Set<number> },
+        entry: {
+          edgeIds: Set<string>;
+          verseIds: Set<number>;
+          chips: Set<string>;
+        },
       ): ConnectionTopicGroup => {
         const verseIds = Array.from(entry.verseIds);
         const verses = verseIds
@@ -641,6 +686,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           label: EDGE_STYLES[styleType].label,
           color: EDGE_STYLES[styleType].color,
           count: verses.length,
+          chips: Array.from(entry.chips),
           verses,
           verseIds,
           edgeIds: Array.from(entry.edgeIds),
@@ -748,6 +794,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           text: toVerse.text,
         },
         connectionType: group.styleType,
+        connectionChips: group.chips,
         similarity: isLLMDiscovered ? llmConfidence || 0 : similarity,
         position,
         explanation: llmExplanation,
@@ -998,12 +1045,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   );
 
   const buildEdgeTypeLookup = useCallback((bundle: VisualContextBundle) => {
-    const edgeTypeLookup = new Map<string, EdgeType>();
+    const edgeLookup = new Map<string, VisualEdge>();
     (bundle.edges || []).forEach((edge) => {
-      edgeTypeLookup.set(`${edge.from}:${edge.to}`, edge.type);
-      edgeTypeLookup.set(`${edge.to}:${edge.from}`, edge.type);
+      edgeLookup.set(`${edge.from}:${edge.to}`, edge);
+      edgeLookup.set(`${edge.to}:${edge.from}`, edge);
     });
-    return edgeTypeLookup;
+    return edgeLookup;
   }, []);
 
   const buildInitialExpandedNodes = useCallback(
@@ -1039,7 +1086,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       verse: ThreadNode,
       bundle: VisualContextBundle,
       expandedIds: Set<number>,
-      edgeTypeLookup: Map<string, EdgeType>,
+      edgeTypeLookup: Map<string, VisualEdge>,
     ): Node => {
       const nodeId = verse.id.toString();
       const isAnchor = verse.id === bundle.rootId;
@@ -1068,12 +1115,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const inferredParentId =
           verse.parentId ?? (verse.depth === 1 ? bundle.rootId : undefined);
         if (inferredParentId) {
-          const edgeType = edgeTypeLookup.get(
-            `${inferredParentId}:${verse.id}`,
-          );
-          if (edgeType) {
-            semanticConnectionType =
-              TYPE_TO_STYLE_MAP[edgeType as EdgeType] || "PURPLE";
+          const edge = edgeTypeLookup.get(`${inferredParentId}:${verse.id}`);
+          if (edge) {
+            semanticConnectionType = resolveConnectionFamily(
+              edge.type,
+              edge.metadata,
+            );
           }
         }
       }
@@ -1207,7 +1254,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       dagreGraph.setNode(nodeId, { width, height });
     });
 
-    // Create edges (only between visible nodes) with 3-color system
+    // Create edges (only between visible nodes) with 5-family system
     const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
     const layoutEdges: Edge[] = [];
     const reactFlowEdges: Edge[] = [];
@@ -1227,16 +1274,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         dagreGraph.setEdge(fromId, toId);
 
-        // Determine edge style based on type
+        // Determine edge style based on type + provenance
         const edgeType = edge.type;
-        const styleType = TYPE_TO_STYLE_MAP[edgeType as EdgeType];
+        const finalStyleType = resolveConnectionFamily(
+          edgeType as EdgeType,
+          edge.metadata,
+        );
 
         // 🌟 GOLDEN THREAD: Check if this is a primary ray from the anchor
         const isAnchorRay = edge.from === bundle.rootId;
 
-        // 🌟 GOLDEN THREAD: Use semantic color for all edges (anchor rays stay thicker/animated)
-        const finalStyleType = styleType || "PURPLE";
-        const visualStyleType = "GREY";
+        // 🌟 GOLDEN THREAD: Use family color for all edges (anchor rays stay thicker/animated)
+        const visualStyleType = finalStyleType;
 
         const semanticStyle = EDGE_STYLES[finalStyleType];
         const visualStyle = EDGE_STYLES[visualStyleType];
@@ -1262,10 +1311,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           target: toId,
           type: "smoothstep",
           animated: false,
+          selectable: false,
           data: {
             styleType: finalStyleType, // 🌟 Preserve original type for hover reveal
             visualStyleType, // Current visual style
             edgeType,
+            source: edgeMetadata.source,
+            thread: edgeMetadata.thread,
             isSynthetic: false,
             isLLMDiscovered,
             isStructural,
@@ -1277,7 +1329,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             selectionScore: edgeMetadata.selectionScore,
           },
           style: {
-            stroke: `url(#edge-gradient-${visualStyleType})`, // Default neutral glow
+            stroke: getEdgeStroke(visualStyleType), // Electric white for semantic edges
             strokeWidth: finalWidth, // 🌟 Thicker for anchor rays
             strokeLinecap: "round",
             strokeDasharray: EDGE_DASH_ARRAY,
@@ -1296,7 +1348,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               : `drop-shadow(0 0 4px ${visualStyle.glowColor}55)`,
             transition:
               "opacity 150ms ease-in-out, stroke-width 150ms ease-in-out, filter 150ms ease-in-out",
-            cursor: finalStyleType !== "GREY" ? "pointer" : "default",
+            cursor:
+              EDGE_CLICK_ENABLED && finalStyleType !== "GREY"
+                ? "pointer"
+                : "default",
           },
           // 🌟 GOLDEN THREAD: Use visualStyleType for interaction width
           interactionWidth: isAnchorRay
@@ -1334,6 +1389,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             source: fromId,
             target: toId,
             type: "smoothstep",
+            selectable: false,
             data: {
               styleType: "GREY",
               edgeType: "NARRATIVE",
@@ -1849,10 +1905,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const highlights = (connections as DiscoveredConnection[])
           .slice(0, 6)
           .map((conn) => {
-            const label =
-              EDGE_STYLES[TYPE_TO_STYLE_MAP[conn.type] || "GREY"].label;
+            const styleType = resolveConnectionFamily(conn.type as EdgeType, {
+              source: "llm",
+            });
+            const label = EDGE_STYLES[styleType].label;
             return {
-              title: `${verseLabel(conn.from)} ƒ+' ${verseLabel(conn.to)}`,
+              title: `${verseLabel(conn.from)} -> ${verseLabel(conn.to)}`,
               subtitle: `Connection found: ${label}`,
             };
           });
@@ -1867,10 +1925,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         >();
         const pulseNodeIds = new Set<number>();
         const newEdges = (connections as DiscoveredConnection[]).map((conn) => {
-          const styleType =
-            TYPE_TO_STYLE_MAP[conn.type] || TYPE_TO_STYLE_MAP.DEEPER;
+          const styleType = resolveConnectionFamily(conn.type as EdgeType, {
+            source: "llm",
+          });
           const edgeStyle = EDGE_STYLES[styleType];
-          const visualStyleType = "GREY";
+          const visualStyleType = styleType;
           const visualStyle = EDGE_STYLES[visualStyleType];
 
           const finalOpacity = NEUTRAL_EDGE_OPACITY;
@@ -1891,10 +1950,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             source: conn.from.toString(),
             target: conn.to.toString(),
             type: "smoothstep",
+            selectable: false,
             data: {
               styleType,
               visualStyleType,
               edgeType: conn.type,
+              source: "llm",
               explanation: conn.explanation,
               confidence: conn.confidence,
               isLLMDiscovered: true,
@@ -1903,7 +1964,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               weight: conn.confidence,
             },
             style: {
-              stroke: `url(#edge-gradient-${visualStyleType})`,
+              stroke: getEdgeStroke(visualStyleType),
               strokeWidth: edgeStyle.width,
               strokeLinecap: "round",
               strokeDasharray: EDGE_DASH_ARRAY,
@@ -1920,10 +1981,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             animated: false,
           };
         });
-
-        console.log(
-          `[LLM Discovery] Adding ${newEdges.length} new edges to map`,
-        );
 
         // Deduplicate edges by ID when adding
         let appliedNewEdgeIds: string[] = [];
@@ -2096,7 +2153,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const edgeData = edge.data as EdgeData & { visualStyleType?: string };
         // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
         const visualStyleType =
-          edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+          edgeData?.visualStyleType || edgeData?.styleType || "CROSS_REFERENCE";
         const isSynthetic = edgeData?.isSynthetic;
         const finalOpacity =
           visualStyleType === "GREY"
@@ -2139,7 +2196,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           const edgeData = edge.data as EdgeData & { visualStyleType?: string };
           // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
           const visualStyleType =
-            edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+            edgeData?.styleType ||
+            edgeData?.visualStyleType ||
+            "CROSS_REFERENCE";
           const edgeStyle = EDGE_STYLES[visualStyleType];
           const baseWidth = edgeData?.baseWidth || edgeStyle.width;
           const isSynthetic = edgeData?.isSynthetic;
@@ -2160,11 +2219,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             ...edge,
             data: {
               ...(edge.data as EdgeData),
-              visualStyleType: "GREY",
+              visualStyleType,
             },
             style: {
               ...edge.style,
-              stroke: "url(#edge-gradient-GREY)",
+              stroke: getEdgeStroke(visualStyleType, isSynthetic),
               opacity: defaultOpacity,
               filter: baseFilter,
               strokeWidth: baseWidth,
@@ -2194,10 +2253,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           data: {
             ...node.data,
             isDimmed: !isInBranch,
-            branchHighlight:
-              isInBranch && isColoredBranch
-                ? { color: branchColor, glowColor: branchGlow }
-                : undefined,
+            branchHighlight: isColoredBranch
+              ? { color: branchColor, glowColor: branchGlow }
+              : undefined,
           },
         };
       }),
@@ -2228,11 +2286,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           style: {
             ...edge.style,
             opacity: isInBranch ? 1 : 0.2,
-            stroke: `url(#edge-gradient-${visualStyleType})`,
+            stroke:
+              isInBranch && visualStyleType !== "GREY"
+                ? `url(#edge-gradient-${visualStyleType})`
+                : getEdgeStroke(visualStyleType, edgeData?.isSynthetic),
             filter: isInBranch
-              ? `drop-shadow(0 0 6px ${edgeStyle.glowColor})`
-              : `drop-shadow(0 0 3px ${EDGE_STYLES.GREY.glowColor}35)`,
-            strokeWidth: isInBranch ? baseWidth + 1 : baseWidth,
+              ? `drop-shadow(0 0 4px ${edgeStyle.glowColor}70)`
+              : `drop-shadow(0 0 2px ${EDGE_STYLES.GREY.glowColor}30)`,
+            strokeWidth: isInBranch ? baseWidth + 0.6 : baseWidth,
             animationName: "edge-flow",
             animationDuration: isInBranch ? "3.4s" : "5.6s",
             animationTimingFunction: "linear",
@@ -2261,7 +2322,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const isHovered = hoveredAnchorRay === edge.id;
 
         const visualStyleType =
-          edgeData.visualStyleType || edgeData.styleType || "PURPLE";
+          edgeData.visualStyleType || edgeData.styleType || "CROSS_REFERENCE";
         const edgeStyle = EDGE_STYLES[visualStyleType];
         const baseWidth = edgeData?.baseWidth || edgeStyle.width;
 
@@ -2269,11 +2330,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           ...edge,
           style: {
             ...edge.style,
-            stroke: `url(#edge-gradient-${visualStyleType})`,
+            stroke: getEdgeStroke(visualStyleType, edgeData?.isSynthetic),
             strokeWidth: isHovered ? baseWidth + 1 : baseWidth,
             filter: isHovered
-              ? `drop-shadow(0 0 5px ${edgeStyle.glowColor}45)`
-              : `drop-shadow(0 0 3px ${edgeStyle.glowColor}30)`,
+              ? `drop-shadow(0 0 4px ${edgeStyle.glowColor}40)`
+              : `drop-shadow(0 0 2px ${edgeStyle.glowColor}25)`,
           },
         };
       }),
@@ -2392,7 +2453,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const edgeData = edge.data as EdgeData & { visualStyleType?: string };
         // 🌟 GOLDEN THREAD: Use visualStyleType for proper GREY styling
         const visualStyleType =
-          edgeData?.visualStyleType || edgeData?.styleType || "PURPLE";
+          edgeData?.visualStyleType || edgeData?.styleType || "CROSS_REFERENCE";
         const isSynthetic = edgeData?.isSynthetic;
         const defaultOpacity =
           visualStyleType === "GREY"
@@ -2415,6 +2476,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   // Handle edge click for colored branches
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
+      if (!EDGE_CLICK_ENABLED) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const edgeData = edge.data as EdgeData & { visualStyleType?: string };
       // For connection details popup, use original semantic type
       const styleType = edgeData?.styleType as
@@ -2449,6 +2515,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           label: EDGE_STYLES[styleType].label,
           color: EDGE_STYLES[styleType].color,
           count: 1,
+          chips: [],
           verses: [toVerse],
           verseIds: [toVerse.id],
           edgeIds: [edge.id],
@@ -2472,7 +2539,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   );
 
   const handleEdgeMouseEnter = useCallback(
-    (event: React.MouseEvent, edge: Edge) => {
+    (_event: React.MouseEvent, edge: Edge) => {
+      if (!EDGE_HOVER_ENABLED) return;
       // GOLDEN THREAD: Boost anchor ray glow on hover
       const edgeData = edge.data as {
         isAnchorRay?: boolean;
@@ -2493,6 +2561,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   );
 
   const handleEdgeMouseLeave = useCallback(() => {
+    if (!EDGE_HOVER_ENABLED) return;
     // GOLDEN THREAD: Clear hovered anchor ray when mouse leaves
     setHoveredAnchorRay(null);
     setHoveredBranch(null);
@@ -2564,7 +2633,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         {/* SVG gradient definitions for directional edge colors */}
         <svg style={{ position: "absolute", width: 0, height: 0 }}>
           <defs>
-            {/* Grey gradient */}
+            {/* Neutral gradient */}
             <linearGradient
               id="edge-gradient-GREY"
               x1="0%"
@@ -2572,65 +2641,43 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#F8FAFF" stopOpacity="0.95" />
-              <stop offset="100%" stopColor="#D7F3FF" stopOpacity="0.95" />
+              <stop offset="0%" stopColor="#64748B" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#475569" stopOpacity="0.6" />
             </linearGradient>
-            {/* Gold gradient */}
+            {/* Cross-Reference */}
             <linearGradient
-              id="edge-gradient-GOLD"
+              id="edge-gradient-CROSS_REFERENCE"
               x1="0%"
               y1="0%"
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#FBBF24" stopOpacity="1" />
-              <stop offset="100%" stopColor="#D97706" stopOpacity="1" />
+              <stop offset="0%" stopColor="#86EFAC" stopOpacity="1" />
+              <stop offset="100%" stopColor="#22C55E" stopOpacity="1" />
             </linearGradient>
-            {/* Purple gradient */}
+            {/* Lexicon */}
             <linearGradient
-              id="edge-gradient-PURPLE"
+              id="edge-gradient-LEXICON"
               x1="0%"
               y1="0%"
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#A78BFA" stopOpacity="1" />
-              <stop offset="100%" stopColor="#7C3AED" stopOpacity="1" />
+              <stop offset="0%" stopColor="#FCD34D" stopOpacity="1" />
+              <stop offset="100%" stopColor="#F59E0B" stopOpacity="1" />
             </linearGradient>
-            {/* Cyan gradient */}
+            {/* Echo */}
             <linearGradient
-              id="edge-gradient-CYAN"
+              id="edge-gradient-ECHO"
               x1="0%"
               y1="0%"
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#22D3EE" stopOpacity="1" />
-              <stop offset="100%" stopColor="#0891B2" stopOpacity="1" />
+              <stop offset="0%" stopColor="#A5B4FC" stopOpacity="1" />
+              <stop offset="100%" stopColor="#6366F1" stopOpacity="1" />
             </linearGradient>
-            {/* Genealogy gradient */}
-            <linearGradient
-              id="edge-gradient-GENEALOGY"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-            >
-              <stop offset="0%" stopColor="#34D399" stopOpacity="1" />
-              <stop offset="100%" stopColor="#10B981" stopOpacity="1" />
-            </linearGradient>
-            {/* Typology gradient (orange to gold) */}
-            <linearGradient
-              id="edge-gradient-TYPOLOGY"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-            >
-              <stop offset="0%" stopColor="#F59E0B" stopOpacity="1" />
-              <stop offset="100%" stopColor="#EA580C" stopOpacity="1" />
-            </linearGradient>
-            {/* Fulfillment gradient */}
+            {/* Fulfillment */}
             <linearGradient
               id="edge-gradient-FULFILLMENT"
               x1="0%"
@@ -2638,32 +2685,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#5EEAD4" stopOpacity="1" />
-              <stop offset="100%" stopColor="#14B8A6" stopOpacity="1" />
+              <stop offset="0%" stopColor="#67E8F9" stopOpacity="1" />
+              <stop offset="100%" stopColor="#06B6D4" stopOpacity="1" />
             </linearGradient>
-            {/* Contrast gradient */}
-            <linearGradient
-              id="edge-gradient-CONTRAST"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-            >
-              <stop offset="0%" stopColor="#F87171" stopOpacity="1" />
-              <stop offset="100%" stopColor="#DC2626" stopOpacity="1" />
-            </linearGradient>
-            {/* Progression gradient */}
-            <linearGradient
-              id="edge-gradient-PROGRESSION"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="0%"
-            >
-              <stop offset="0%" stopColor="#4ADE80" stopOpacity="1" />
-              <stop offset="100%" stopColor="#16A34A" stopOpacity="1" />
-            </linearGradient>
-            {/* Pattern gradient */}
+            {/* Pattern */}
             <linearGradient
               id="edge-gradient-PATTERN"
               x1="0%"
@@ -2671,8 +2696,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               x2="100%"
               y2="0%"
             >
-              <stop offset="0%" stopColor="#93C5FD" stopOpacity="1" />
-              <stop offset="100%" stopColor="#3B82F6" stopOpacity="1" />
+              <stop offset="0%" stopColor="#C4B5FD" stopOpacity="1" />
+              <stop offset="100%" stopColor="#A78BFA" stopOpacity="1" />
             </linearGradient>
           </defs>
         </svg>
@@ -2780,6 +2805,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           fromVerse={clickedConnection.fromVerse}
           toVerse={clickedConnection.toVerse}
           connectionType={clickedConnection.connectionType}
+          connectionChips={clickedConnection.connectionChips}
           similarity={clickedConnection.similarity}
           position={clickedConnection.position}
           onClose={() => {
