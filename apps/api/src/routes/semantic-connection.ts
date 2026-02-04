@@ -651,7 +651,7 @@ ${retryBlocks}`;
     }
 
     const finalTitles = knownKeys.reduce<Record<string, string>>((acc, key) => {
-      const candidate = titles[key];
+      const candidate = titles[key] ?? "";
       acc[key] = isInvalidTitle(candidate)
         ? fallbackTitles[key]
         : normalizeTitle(candidate);
