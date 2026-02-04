@@ -1032,7 +1032,7 @@ export function LibraryView({
                 <div
                   key={connection.id}
                   onClick={() => handleOpenConnection(connection)}
-                  className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden transition-all duration-200 hover:shadow-2xl cursor-pointer"
+                  className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden transition-all duration-200 hover:shadow-2xl cursor-pointer"
                 >
                   <button
                     onClick={() => deleteConnection(connection.id)}

@@ -9,7 +9,6 @@ import React, {
 import {
   ReactFlow,
   Background,
-  Controls,
   useNodesState,
   useEdgesState,
   type ReactFlowInstance,
@@ -77,18 +76,60 @@ const EDGE_STYLES = {
   },
 } as const;
 
-const NEUTRAL_EDGE_OPACITY = 0.38;
+const NEUTRAL_EDGE_OPACITY = 0.18;
 const EDGE_DASH_ARRAY = "6 10";
+const EDGE_THIN_WIDTH = 1.1;
+const EDGE_OPACITY_DEFAULT = 0.3;
+const EDGE_OPACITY_ANCHOR = 0.6;
+const EDGE_OPACITY_DIM = 0.15;
+const EDGE_OPACITY_SYNTHETIC = 0.12;
+const EDGE_RENDER_TYPE = "simplebezier";
 const ELECTRIC_EDGE_COLOR = "rgba(248, 250, 252, 0.95)";
+const ANCHOR_EDGE_COLOR = "#C5B358"; // Vegas gold
+const ANCHOR_EDGE_GLOW = "#E0C57A";
+const DEFAULT_EDGE_GLOW = "rgba(248, 250, 252, 0.35)";
 const EDGE_CLICK_ENABLED = false;
 const EDGE_HOVER_ENABLED = false;
 const getEdgeStroke = (
   visualStyleType: keyof typeof EDGE_STYLES,
   isSynthetic?: boolean,
+  isAnchorRay?: boolean,
+) => {
+  if (visualStyleType === "GREY" || isSynthetic) {
+    return "url(#edge-gradient-GREY)";
+  }
+  return isAnchorRay ? ANCHOR_EDGE_COLOR : ELECTRIC_EDGE_COLOR;
+};
+
+const getDefaultEdgeOpacity = ({
+  visualStyleType,
+  isSynthetic,
+  isAnchorRay,
+}: {
+  visualStyleType: keyof typeof EDGE_STYLES;
+  isSynthetic?: boolean;
+  isAnchorRay?: boolean;
+}) => {
+  if (visualStyleType === "GREY") return NEUTRAL_EDGE_OPACITY;
+  if (isSynthetic) return EDGE_OPACITY_SYNTHETIC;
+  return isAnchorRay ? EDGE_OPACITY_ANCHOR : EDGE_OPACITY_DEFAULT;
+};
+
+const getEdgeAnimationConfig = (
+  isLLMDiscovered: boolean,
+  flowDuration: string,
 ) =>
-  visualStyleType === "GREY" || isSynthetic
-    ? "url(#edge-gradient-GREY)"
-    : ELECTRIC_EDGE_COLOR;
+  isLLMDiscovered
+    ? {
+        animationName: "edge-flow, llm-shimmer",
+        animationDuration: `${flowDuration}, 8s`,
+        animationTimingFunction: "linear, ease-in-out",
+        animationIterationCount: "infinite",
+      }
+    : {
+        animationName: "none",
+        animationDuration: "0s",
+      };
 const edgePulseDelay = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
@@ -205,6 +246,8 @@ interface DiscoveredConnection {
 interface ConnectionTopicGroup {
   styleType: ConnectionStyleType;
   label: string;
+  displayLabel?: string;
+  labelSource?: "canonical" | "llm";
   color: string;
   count: number;
   chips?: string[];
@@ -436,10 +479,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     connectionType: ConnectionStyleType;
     similarity: number;
     position: { x: number; y: number };
-    connectionChips?: string[];
     explanation?: string;
     confidence?: number;
     isLLMDiscovered?: boolean;
+    isAnchorConnection?: boolean;
     connectedVerseIds?: number[];
     connectedVersesPreview?: Array<{
       id: number;
@@ -474,13 +517,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const lastAppliedFocusRef = useRef<string | null>(null);
 
-  // Legend collapsed state
-  const [legendCollapsed, setLegendCollapsed] = useState(false);
-
   // Pre-computed branch clusters (computed once per bundle)
   const [branchClusters, setBranchClusters] = useState<
     Map<string, BranchCluster>
   >(new Map());
+  const topicTitlesRequestRef = useRef(0);
 
   // ESC key listener for Focus Mode
   useEffect(() => {
@@ -614,6 +655,76 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     [bundle, formatNodeReference],
   );
 
+  const buildTopicTitlePayload = useCallback(
+    (baseVerse: ThreadNode, topics: ConnectionTopicGroup[]) => {
+      return topics.map((topic) => {
+        const seen = new Set<number>();
+        const verses = [baseVerse, ...topic.verses]
+          .filter((verse) => {
+            if (!verse || typeof verse.id !== "number") return false;
+            if (seen.has(verse.id)) return false;
+            seen.add(verse.id);
+            return true;
+          })
+          .slice(0, 4)
+          .map((verse) => ({
+            reference: formatNodeReference(verse),
+            text: verse.text,
+          }));
+        return {
+          type: topic.styleType,
+          verses,
+        };
+      });
+    },
+    [formatNodeReference],
+  );
+
+  const fetchTopicTitles = useCallback(
+    async (baseVerse: ThreadNode, topics: ConnectionTopicGroup[]) => {
+      if (!topics || topics.length === 0) return topics;
+      const payload = {
+        topics: buildTopicTitlePayload(baseVerse, topics),
+      };
+
+      try {
+        const response = await fetch(
+          `${API_URL}/api/semantic-connection/topic-titles`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch topic titles");
+        }
+
+        const data = await response.json();
+        const titles =
+          data && typeof data.titles === "object" ? data.titles : {};
+
+        return topics.map((topic) => {
+          const resolved =
+            typeof titles?.[topic.styleType] === "string"
+              ? titles[topic.styleType].trim()
+              : "";
+          return {
+            ...topic,
+            label: resolved || topic.label,
+            displayLabel: resolved || topic.displayLabel || topic.label,
+            labelSource: resolved ? "llm" : topic.labelSource,
+          };
+        });
+      } catch (error) {
+        console.warn("[NarrativeMap] Topic title fetch failed:", error);
+        return topics;
+      }
+    },
+    [buildTopicTitlePayload],
+  );
+
   const buildConnectionTopics = useCallback(
     (nodeId: number) => {
       if (!bundle) return null;
@@ -684,6 +795,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         return {
           styleType,
           label: EDGE_STYLES[styleType].label,
+          displayLabel: EDGE_STYLES[styleType].label,
+          labelSource: "canonical",
           color: EDGE_STYLES[styleType].color,
           count: verses.length,
           chips: Array.from(entry.chips),
@@ -734,7 +847,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   );
 
   const openConnectionModalForGroup = useCallback(
-    (
+    async (
       baseVerse: ThreadNode,
       group: ConnectionTopicGroup,
       position: { x: number; y: number },
@@ -761,6 +874,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
       const llmExplanation = edgeData?.explanation;
       const llmConfidence = edgeData?.confidence;
+      const isAnchorConnection = edgeData?.isAnchorRay || false;
 
       const highlightVerseIds = Array.from(
         new Set([baseId, ...group.verseIds]),
@@ -770,11 +884,32 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       const connectedVersesPreview = buildPreviewVerses(connectedVerseIds);
 
-      if (group.edgeIds.length > 0 || group.verseIds.length > 0) {
+      const requestId = (topicTitlesRequestRef.current += 1);
+      const labelsReady = topicGroups.every(
+        (topic) => topic.labelSource === "llm",
+      );
+      if (!labelsReady) {
+        setClickedConnection(null);
+        setSelectedBranch(null);
+      }
+      const resolvedTopics = labelsReady
+        ? topicGroups
+        : await fetchTopicTitles(baseVerse, topicGroups);
+
+      if (requestId !== topicTitlesRequestRef.current) return;
+
+      const resolvedGroup =
+        resolvedTopics.find((topic) => topic.styleType === group.styleType) ??
+        group;
+
+      if (
+        resolvedGroup.edgeIds.length > 0 ||
+        resolvedGroup.verseIds.length > 0
+      ) {
         setSelectedBranch({
-          edgeIds: new Set(group.edgeIds),
+          edgeIds: new Set(resolvedGroup.edgeIds),
           nodeIds: new Set(highlightVerseIds),
-          styleType: group.styleType,
+          styleType: resolvedGroup.styleType,
           edgeType: "DEEPER",
           pathPreview: "Connection",
         });
@@ -793,20 +928,26 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           reference: formatNodeReference(toVerse),
           text: toVerse.text,
         },
-        connectionType: group.styleType,
-        connectionChips: group.chips,
+        connectionType: resolvedGroup.styleType,
         similarity: isLLMDiscovered ? llmConfidence || 0 : similarity,
         position,
         explanation: llmExplanation,
         confidence: llmConfidence,
         isLLMDiscovered,
+        isAnchorConnection,
         connectedVerseIds,
         connectedVersesPreview,
-        connectionTopics: topicGroups,
+        connectionTopics: resolvedTopics,
         baseVerseId: baseId,
       });
     },
-    [buildPreviewVerses, bundle, selectPrimaryEdge],
+    [
+      buildPreviewVerses,
+      bundle,
+      fetchTopicTitles,
+      formatNodeReference,
+      selectPrimaryEdge,
+    ],
   );
 
   const handleSelectConnectionTopic = useCallback(
@@ -1282,34 +1423,24 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         );
 
         // 🌟 GOLDEN THREAD: Check if this is a primary ray from the anchor
-        const isAnchorRay = edge.from === bundle.rootId;
+        const isAnchorRay =
+          edge.from === bundle.rootId || edge.to === bundle.rootId;
 
         // 🌟 GOLDEN THREAD: Use family color for all edges (anchor rays stay thicker/animated)
         const visualStyleType = finalStyleType;
-
-        const semanticStyle = EDGE_STYLES[finalStyleType];
-        const visualStyle = EDGE_STYLES[visualStyleType];
 
         const edgeMetadata = edge.metadata || {};
         const isLLMDiscovered = edgeMetadata.source === "llm";
         const isStructural = edgeMetadata.source === "structure";
 
-        // Calculate width based on similarity strength
-        // Similarity range: 0-1, Width multiplier: 0.7-1.3
-        const similarity = edgeMetadata.similarity || edge.weight || 0.8; // Default to 0.8
-        const widthMultiplier = 0.7 + similarity * 0.6; // Maps 0→0.7, 1→1.3
-
-        // 🌟 GOLDEN THREAD: Anchor rays are thicker (aggressive contrast)
-        const baseWidth = isAnchorRay
-          ? 2.5
-          : semanticStyle.width * widthMultiplier;
-        const finalWidth = isAnchorRay ? baseWidth : baseWidth;
+        const baseWidth = EDGE_THIN_WIDTH;
+        const finalWidth = baseWidth;
 
         const edgePayload: Edge = {
           id: `e${fromId}-${toId}`,
           source: fromId,
           target: toId,
-          type: "smoothstep",
+          type: EDGE_RENDER_TYPE,
           animated: false,
           selectable: false,
           data: {
@@ -1329,23 +1460,20 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             selectionScore: edgeMetadata.selectionScore,
           },
           style: {
-            stroke: getEdgeStroke(visualStyleType), // Electric white for semantic edges
+            stroke: getEdgeStroke(visualStyleType, false, isAnchorRay),
             strokeWidth: finalWidth, // 🌟 Thicker for anchor rays
             strokeLinecap: "round",
-            strokeDasharray: EDGE_DASH_ARRAY,
+            strokeDasharray: isLLMDiscovered ? EDGE_DASH_ARRAY : "0",
             strokeDashoffset: 0,
             opacity: 0, // Start invisible for entrance animation
-            animationName: "edge-flow",
-            animationDuration: "5.6s",
-            animationTimingFunction: "linear",
-            animationIterationCount: "infinite",
+            ...getEdgeAnimationConfig(isLLMDiscovered, "5.6s"),
             animationDelay: edgeFlowDelay(
               `e${fromId}-${toId}`,
               depthById.get(edge.from),
             ),
             filter: isAnchorRay
-              ? `drop-shadow(0 0 6px ${visualStyle.glowColor}70)`
-              : `drop-shadow(0 0 4px ${visualStyle.glowColor}55)`,
+              ? `drop-shadow(0 0 6px ${ANCHOR_EDGE_GLOW}70)`
+              : `drop-shadow(0 0 4px ${DEFAULT_EDGE_GLOW})`,
             transition:
               "opacity 150ms ease-in-out, stroke-width 150ms ease-in-out, filter 150ms ease-in-out",
             cursor:
@@ -1388,7 +1516,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             id: `e${fromId}-${toId}-synthetic`,
             source: fromId,
             target: toId,
-            type: "smoothstep",
+            type: EDGE_RENDER_TYPE,
             selectable: false,
             data: {
               styleType: "GREY",
@@ -1396,20 +1524,17 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               isSynthetic: true,
               isLLMDiscovered: false,
               isStructural: false,
-              baseWidth: edgeStyle.width, // Store base width for hover effects
+              baseWidth: EDGE_THIN_WIDTH, // Store calculated width for hover effects
               weight: 0.4,
             },
             style: {
               stroke: `url(#edge-gradient-GREY)`, // Use directional gradient
-              strokeWidth: edgeStyle.width,
+              strokeWidth: EDGE_THIN_WIDTH,
               strokeLinecap: "round",
-              strokeDasharray: EDGE_DASH_ARRAY,
+              strokeDasharray: "0",
               strokeDashoffset: 0,
               opacity: 0, // Start invisible for entrance animation
-              animationName: "edge-flow",
-              animationDuration: "5.6s",
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
+              ...getEdgeAnimationConfig(false, "5.6s"),
               animationDelay: edgeFlowDelay(
                 `e${fromId}-${toId}-synthetic`,
                 depthById.get(node.parentId),
@@ -1928,12 +2053,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           const styleType = resolveConnectionFamily(conn.type as EdgeType, {
             source: "llm",
           });
-          const edgeStyle = EDGE_STYLES[styleType];
           const visualStyleType = styleType;
-          const visualStyle = EDGE_STYLES[visualStyleType];
+          const isAnchorRay =
+            conn.from === bundle?.rootId || conn.to === bundle?.rootId;
 
-          const finalOpacity = NEUTRAL_EDGE_OPACITY;
-          const finalFilter = `drop-shadow(0 0 4px ${visualStyle.glowColor}55)`;
+          const finalOpacity = getDefaultEdgeOpacity({
+            visualStyleType,
+            isSynthetic: false,
+            isAnchorRay,
+          });
+          const finalFilter = isAnchorRay
+            ? `drop-shadow(0 0 6px ${ANCHOR_EDGE_GLOW}70)`
+            : `drop-shadow(0 0 4px ${DEFAULT_EDGE_GLOW})`;
 
           const edgeId = `llm-${conn.type}-${conn.from}-${conn.to}`;
 
@@ -1949,7 +2080,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             id: edgeId,
             source: conn.from.toString(),
             target: conn.to.toString(),
-            type: "smoothstep",
+            type: EDGE_RENDER_TYPE,
             selectable: false,
             data: {
               styleType,
@@ -1960,22 +2091,22 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               confidence: conn.confidence,
               isLLMDiscovered: true,
               isStructural: false,
-              baseWidth: edgeStyle.width, // Store base width for hover effects
+              isAnchorRay,
+              baseWidth: EDGE_THIN_WIDTH, // Store base width for hover effects
               weight: conn.confidence,
             },
             style: {
-              stroke: getEdgeStroke(visualStyleType),
-              strokeWidth: edgeStyle.width,
+              stroke: getEdgeStroke(visualStyleType, false, isAnchorRay),
+              strokeWidth: EDGE_THIN_WIDTH,
               strokeLinecap: "round",
               strokeDasharray: EDGE_DASH_ARRAY,
               strokeDashoffset: 0,
               opacity: 0,
-              animationName: "edge-flow",
-              animationDuration: "5.6s",
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
+              ...getEdgeAnimationConfig(true, "5.6s"),
               animationDelay: edgeFlowDelay(edgeId),
-              filter: `drop-shadow(0 0 3px ${visualStyle.glowColor}35)`, // Start subtle
+              filter: isAnchorRay
+                ? `drop-shadow(0 0 4px ${ANCHOR_EDGE_GLOW}55)`
+                : `drop-shadow(0 0 3px ${DEFAULT_EDGE_GLOW})`, // Start subtle
               transition: "opacity 450ms ease, filter 450ms ease",
             },
             animated: false,
@@ -2108,7 +2239,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     !initialExpansionDone ||
     discovering ||
     remainingVerseCount < 2;
-  const deepCrawlLabel = discovering ? "Crawling..." : "Deep Seach";
+  const deepCrawlLabel = discovering ? "Crawling..." : "Deep Search";
   const deepCrawlTitle = isPericopeBundle
     ? "Deep search is available in verse view"
     : deepCrawlDisabled
@@ -2155,12 +2286,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         const visualStyleType =
           edgeData?.visualStyleType || edgeData?.styleType || "CROSS_REFERENCE";
         const isSynthetic = edgeData?.isSynthetic;
-        const finalOpacity =
-          visualStyleType === "GREY"
-            ? NEUTRAL_EDGE_OPACITY
-            : isSynthetic
-              ? 0.2
-              : 0.45;
+        const isAnchorRay = edgeData?.isAnchorRay;
+        const finalOpacity = getDefaultEdgeOpacity({
+          visualStyleType,
+          isSynthetic,
+          isAnchorRay,
+        });
 
         return {
           ...edge,
@@ -2199,21 +2330,22 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             edgeData?.styleType ||
             edgeData?.visualStyleType ||
             "CROSS_REFERENCE";
-          const edgeStyle = EDGE_STYLES[visualStyleType];
-          const baseWidth = edgeData?.baseWidth || edgeStyle.width;
+          const baseWidth = edgeData?.baseWidth || EDGE_THIN_WIDTH;
           const isSynthetic = edgeData?.isSynthetic;
-          const defaultOpacity =
-            visualStyleType === "GREY"
-              ? NEUTRAL_EDGE_OPACITY
-              : isSynthetic
-                ? 0.2
-                : 0.45;
+          const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
+          const isAnchorRay = edgeData?.isAnchorRay;
+          const defaultOpacity = getDefaultEdgeOpacity({
+            visualStyleType,
+            isSynthetic,
+            isAnchorRay,
+          });
 
           // Restore subtle glow for colored edges
-          const baseFilter =
-            visualStyleType === "GREY"
-              ? `drop-shadow(0 0 4px ${edgeStyle.glowColor}55)`
-              : `drop-shadow(0 0 2px ${edgeStyle.glowColor}30)`;
+          const baseFilter = isAnchorRay
+            ? `drop-shadow(0 0 5px ${ANCHOR_EDGE_GLOW}70)`
+            : visualStyleType === "GREY"
+              ? `drop-shadow(0 0 4px ${EDGE_STYLES.GREY.glowColor}55)`
+              : `drop-shadow(0 0 2px ${DEFAULT_EDGE_GLOW})`;
 
           return {
             ...edge,
@@ -2223,14 +2355,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             },
             style: {
               ...edge.style,
-              stroke: getEdgeStroke(visualStyleType, isSynthetic),
+              stroke: getEdgeStroke(visualStyleType, isSynthetic, isAnchorRay),
               opacity: defaultOpacity,
               filter: baseFilter,
               strokeWidth: baseWidth,
-              animationName: "edge-flow",
-              animationDuration: "5.6s",
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
+              ...getEdgeAnimationConfig(isLLMDiscovered, "5.6s"),
             },
           };
         }),
@@ -2238,9 +2367,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       return;
     }
 
-    const branchColor = EDGE_STYLES[activeBranch.styleType].color;
-    const branchGlow = EDGE_STYLES[activeBranch.styleType].glowColor;
-    const isColoredBranch = activeBranch.styleType !== "GREY";
+    const branchColor = "#E5E7EB";
+    const branchGlow = "rgba(248, 250, 252, 0.45)";
 
     // Highlight nodes with branch color (only colored branches glow)
     setNodes((nds) =>
@@ -2253,7 +2381,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           data: {
             ...node.data,
             isDimmed: !isInBranch,
-            branchHighlight: isColoredBranch
+            branchHighlight: isInBranch
               ? { color: branchColor, glowColor: branchGlow }
               : undefined,
           },
@@ -2269,13 +2397,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           visualStyleType?: string;
           isAnchorRay?: boolean;
         };
-        const semanticStyleType = edgeData?.styleType || "GREY";
-        const visualStyleType = isInBranch ? activeBranch.styleType : "GREY";
-        const edgeStyle = EDGE_STYLES[visualStyleType];
+        const visualStyleType =
+          edgeData?.visualStyleType || edgeData?.styleType || "CROSS_REFERENCE";
+        const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
+        const isAnchorRay = edgeData?.isAnchorRay;
 
         // Use stored baseWidth if available, otherwise fall back to semantic width
-        const baseWidth =
-          edgeData?.baseWidth || EDGE_STYLES[semanticStyleType].width;
+        const baseWidth = edgeData?.baseWidth || EDGE_THIN_WIDTH;
 
         return {
           ...edge,
@@ -2285,19 +2413,24 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           },
           style: {
             ...edge.style,
-            opacity: isInBranch ? 1 : 0.2,
-            stroke:
-              isInBranch && visualStyleType !== "GREY"
-                ? `url(#edge-gradient-${visualStyleType})`
-                : getEdgeStroke(visualStyleType, edgeData?.isSynthetic),
+            opacity: isInBranch ? 1 : EDGE_OPACITY_DIM,
+            stroke: getEdgeStroke(
+              visualStyleType,
+              edgeData?.isSynthetic,
+              isAnchorRay,
+            ),
             filter: isInBranch
-              ? `drop-shadow(0 0 4px ${edgeStyle.glowColor}70)`
-              : `drop-shadow(0 0 2px ${EDGE_STYLES.GREY.glowColor}30)`,
-            strokeWidth: isInBranch ? baseWidth + 0.6 : baseWidth,
-            animationName: "edge-flow",
-            animationDuration: isInBranch ? "3.4s" : "5.6s",
-            animationTimingFunction: "linear",
-            animationIterationCount: "infinite",
+              ? isAnchorRay
+                ? `drop-shadow(0 0 6px ${ANCHOR_EDGE_GLOW}75)`
+                : `drop-shadow(0 0 4px ${DEFAULT_EDGE_GLOW})`
+              : visualStyleType === "GREY"
+                ? `drop-shadow(0 0 2px ${EDGE_STYLES.GREY.glowColor}30)`
+                : `drop-shadow(0 0 2px ${DEFAULT_EDGE_GLOW})`,
+            strokeWidth: baseWidth,
+            ...getEdgeAnimationConfig(
+              isLLMDiscovered,
+              isInBranch ? "3.4s" : "5.6s",
+            ),
             animationDelay: isInBranch ? "0ms" : edge.style?.animationDelay,
           },
         };
@@ -2323,18 +2456,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         const visualStyleType =
           edgeData.visualStyleType || edgeData.styleType || "CROSS_REFERENCE";
-        const edgeStyle = EDGE_STYLES[visualStyleType];
-        const baseWidth = edgeData?.baseWidth || edgeStyle.width;
+        const baseWidth = edgeData?.baseWidth || EDGE_THIN_WIDTH;
 
         return {
           ...edge,
           style: {
             ...edge.style,
-            stroke: getEdgeStroke(visualStyleType, edgeData?.isSynthetic),
-            strokeWidth: isHovered ? baseWidth + 1 : baseWidth,
+            stroke: getEdgeStroke(
+              visualStyleType,
+              edgeData?.isSynthetic,
+              edgeData?.isAnchorRay,
+            ),
+            strokeWidth: baseWidth,
             filter: isHovered
-              ? `drop-shadow(0 0 4px ${edgeStyle.glowColor}40)`
-              : `drop-shadow(0 0 2px ${edgeStyle.glowColor}25)`,
+              ? `drop-shadow(0 0 4px ${ANCHOR_EDGE_GLOW}50)`
+              : `drop-shadow(0 0 2px ${ANCHOR_EDGE_GLOW}35)`,
           },
         };
       }),
@@ -2370,31 +2506,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         if (edge.target === focusedNodeId) connectedNodeIds.add(edge.source);
       });
 
-      // 🌟 GOLDEN THREAD: Check if focused node is anchor
-      const isAnchorFocused = focusedNodeId === bundle.rootId?.toString();
-
       // Dim non-focused nodes to 20% opacity, add GOLD glow to anchor connections
       setNodes((nds) =>
         nds.map((node) => {
           const isConnected = connectedNodeIds.has(node.id);
-          const isFocusedNode = node.id === focusedNodeId;
-
-          // 🌟 GOLDEN THREAD: If anchor is focused and this node is connected, add GOLD glow
-          const shouldGlowGold =
-            isAnchorFocused && isConnected && !isFocusedNode;
 
           return {
             ...node,
             style: {
               ...node.style,
               opacity: isConnected ? 1 : 0.2,
-              // 🌟 GOLDEN THREAD: Add GOLD glow for anchor connections
-              ...(shouldGlowGold && {
-                boxShadow: "0 0 20px #FBBF24, 0 0 40px #F59E0B",
-                borderColor: "#D97706",
-                borderWidth: "3px",
-                borderStyle: "solid",
-              }),
               transitionProperty: "opacity, box-shadow, border-color",
               transitionDuration: "300ms",
               transitionTimingFunction: "ease-in-out",
@@ -2513,6 +2634,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         selectedGroup = {
           styleType,
           label: EDGE_STYLES[styleType].label,
+          displayLabel: EDGE_STYLES[styleType].label,
+          labelSource: "canonical",
           color: EDGE_STYLES[styleType].color,
           count: 1,
           chips: [],
@@ -2576,6 +2699,16 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           }
           100% {
             stroke-dashoffset: -32;
+          }
+        }
+
+        @keyframes llm-shimmer {
+          0%,
+          100% {
+            stroke-opacity: 0.65;
+          }
+          50% {
+            stroke-opacity: 1;
           }
         }
       `}</style>
@@ -2701,101 +2834,50 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             </linearGradient>
           </defs>
         </svg>
-        <Background color="#f0f0f0" gap={16} />
-        <Controls />
+        <Background variant="lines" color="rgba(0,0,0,0)" gap={16} />
+        {/* Controls removed */}
       </ReactFlow>
 
-      {/* Floating Legend */}
-      <div className="absolute bottom-4 right-4 z-50">
-        <div
-          className="bg-gray-900/95 rounded-lg shadow-2xl border border-gray-700 overflow-hidden"
-          style={{
-            width: legendCollapsed ? "48px" : "280px",
-            transition: "width 250ms ease-in-out",
-          }}
-        >
-          {/* Legend Header */}
-          <div
-            className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800/50 transition-colors"
-            onClick={() => setLegendCollapsed(!legendCollapsed)}
-          >
-            <span className="text-white font-semibold text-sm">
-              {legendCollapsed ? "" : "Legend"}
-            </span>
-            <button
-              className="text-gray-400 hover:text-white transition-colors"
-              title={legendCollapsed ? "Expand legend" : "Collapse legend"}
-            >
-              <svg
-                className="w-5 h-5 transform transition-transform"
+      {/* Legend + Deep Search */}
+      <div className="absolute bottom-4 right-4 z-40">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl px-3 py-3 w-[220px]">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-white/50 mb-2">
+            Legend
+          </div>
+          <div className="space-y-2 text-[11px] text-white/80">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-6 h-[2px] rounded-full bg-white/80" />
+              <span>Graph connection</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-6 h-[2px] rounded-full"
+                style={{ backgroundColor: "#C5B358" }}
+              />
+              <span>Anchor connection</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-6 h-[2px] rounded-full"
                 style={{
-                  transform: legendCollapsed
-                    ? "rotate(180deg)"
-                    : "rotate(0deg)",
+                  background:
+                    "repeating-linear-gradient(90deg, rgba(248,250,252,0.9) 0 6px, transparent 6px 12px)",
                 }}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
+              />
+              <span>LLM connection</span>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <button
+              type="button"
+              onClick={() => startDiscovery("deep")}
+              disabled={deepCrawlDisabled}
+              title={deepCrawlTitle}
+              className="w-full px-3 py-2 rounded-full text-[11px] font-semibold tracking-wide transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/15 text-white"
+            >
+              {deepCrawlLabel}
             </button>
           </div>
-
-          {/* Legend Content */}
-          {!legendCollapsed && (
-            <div className="px-3 pb-3 space-y-4">
-              {/* Edge Colors */}
-              <div>
-                <div className="text-gray-400 text-xs font-semibold uppercase mb-2">
-                  Connection Types
-                </div>
-                <div className="space-y-1.5">
-                  {Object.entries(EDGE_STYLES)
-                    .filter(([key]) => key !== "GREY")
-                    .map(([key, style]) => (
-                      <div key={key} className="flex items-center gap-2">
-                        <div
-                          className="w-6 h-0.5 rounded-full"
-                          style={{
-                            background: `linear-gradient(to right, ${style.glowColor}, ${style.color})`,
-                          }}
-                        />
-                        <span
-                          className="text-white text-xs"
-                          title={style.description}
-                        >
-                          {style.label}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-gray-400 text-xs font-semibold uppercase mb-2">
-                  Explore
-                </div>
-                <button
-                  type="button"
-                  onClick={() => startDiscovery("deep")}
-                  disabled={deepCrawlDisabled}
-                  title={deepCrawlTitle}
-                  className="w-full px-3 py-2 rounded-md text-xs font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/15 text-white"
-                >
-                  {deepCrawlLabel}
-                </button>
-                <div className="mt-1 text-[10px] text-gray-500">
-                  Expand the map with more connections.
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -2805,7 +2887,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           fromVerse={clickedConnection.fromVerse}
           toVerse={clickedConnection.toVerse}
           connectionType={clickedConnection.connectionType}
-          connectionChips={clickedConnection.connectionChips}
           similarity={clickedConnection.similarity}
           position={clickedConnection.position}
           onClose={() => {
@@ -2815,6 +2896,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           onGoDeeper={onGoDeeper || (() => {})}
           explanation={clickedConnection.explanation}
           isLLMDiscovered={clickedConnection.isLLMDiscovered}
+          isAnchorConnection={clickedConnection.isAnchorConnection}
           connectedVerseIds={clickedConnection.connectedVerseIds}
           connectedVersesPreview={clickedConnection.connectedVersesPreview}
           connectionTopics={clickedConnection.connectionTopics}

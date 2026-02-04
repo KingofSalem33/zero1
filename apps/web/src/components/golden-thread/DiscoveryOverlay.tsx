@@ -11,9 +11,9 @@ interface DiscoveryOverlayProps {
 }
 
 const PHASE_LABELS: Record<DiscoveryOverlayProps["phase"], string> = {
-  selecting: "Selecting",
-  analyzing: "Analyzing",
-  connecting: "Mapping",
+  selecting: "Finding verses",
+  analyzing: "Understanding connections",
+  connecting: "Drawing the map",
   complete: "Complete",
 };
 
@@ -81,10 +81,10 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">
-                  Discovering Connections
+                  Connections in progress
                 </div>
                 <div className="mt-1 text-sm text-neutral-200">
-                  {phaseLabel} verses
+                  {phaseLabel}...
                 </div>
               </div>
               <div className="text-xs text-neutral-400">
@@ -154,7 +154,7 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
 
             {showHint && (
               <div className="mt-3 text-[11px] text-neutral-400">
-                You can explore while this finishes.
+                Feel free to explore.
               </div>
             )}
 

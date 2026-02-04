@@ -40,6 +40,9 @@ const hexToRgba = (hex: string, alpha: number) => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+const ANCHOR_GOLD = "#C5B358";
+const ANCHOR_GOLD_DEEP = "#9C8B2E";
+
 export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   const {
     verse,
@@ -147,25 +150,24 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     { glow: string; border: string; animation?: string }
   > = {
     CROSS_REFERENCE: {
-      glow: "0 0 6px #86EFAC, 0 0 12px #22C55E",
-      border: "#22C55E",
+      glow: "0 0 5px #CBD5E1",
+      border: "#CBD5E1",
     },
     LEXICON: {
-      glow: "0 0 6px #FCD34D, 0 0 12px #F59E0B",
-      border: "#F59E0B",
-      animation: "glow-pulse-gold 3s ease-in-out infinite",
+      glow: "0 0 5px #CBD5E1",
+      border: "#CBD5E1",
     },
     ECHO: {
-      glow: "0 0 6px #A5B4FC, 0 0 12px #6366F1",
-      border: "#6366F1",
+      glow: "0 0 5px #CBD5E1",
+      border: "#CBD5E1",
     },
     FULFILLMENT: {
-      glow: "0 0 6px #67E8F9, 0 0 12px #06B6D4",
-      border: "#06B6D4",
+      glow: "0 0 5px #CBD5E1",
+      border: "#CBD5E1",
     },
     PATTERN: {
-      glow: "0 0 6px #C4B5FD, 0 0 12px #A78BFA",
-      border: "#A78BFA",
+      glow: "0 0 5px #CBD5E1",
+      border: "#CBD5E1",
     },
     GREY: {
       glow: "0 0 5px #94A3B8",
@@ -177,10 +179,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     enableSemanticGlow && semanticConnectionType
       ? semanticGlowStyles[semanticConnectionType]
       : null;
-  const ringHex =
-    branchHighlight?.color ||
-    glowStyle?.border ||
-    (isAnchor ? "#F4B62B" : "#CBD5E1");
+  const ringHex = isAnchor ? ANCHOR_GOLD : glowStyle?.border || "#CBD5E1";
   const ringTint = hexToRgba(
     ringHex,
     isDimmed
@@ -236,23 +235,10 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
         <style>{`
           @keyframes glow-pulse {
             0%, 100% {
-              box-shadow: 0 0 14px #FBBF24, 0 0 26px #F59E0B, 0 2px 10px rgba(0,0,0,0.25);
+              box-shadow: 0 0 12px ${ANCHOR_GOLD}, 0 0 24px ${ANCHOR_GOLD_DEEP}, 0 2px 10px rgba(0,0,0,0.25);
             }
             50% {
-              box-shadow: 0 0 18px #FBBF24, 0 0 32px #F59E0B, 0 3px 14px rgba(0,0,0,0.3);
-            }
-          }
-        `}</style>
-      )}
-      {/* 🌟 GOLDEN THREAD: Animation for lexicon nodes (amber shimmer) */}
-      {semanticConnectionType === "LEXICON" && (
-        <style>{`
-          @keyframes glow-pulse-gold {
-            0%, 100% {
-              box-shadow: 0 0 6px #FCD34D, 0 0 12px #F59E0B;
-            }
-            50% {
-              box-shadow: 0 0 8px #FCD34D, 0 0 16px #F59E0B, 0 0 1px #FFF;
+              box-shadow: 0 0 16px ${ANCHOR_GOLD}, 0 0 28px ${ANCHOR_GOLD_DEEP}, 0 3px 14px rgba(0,0,0,0.3);
             }
           }
         `}</style>
@@ -342,12 +328,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           className="pointer-events-none absolute left-3 right-3 top-1 h-px rounded-full"
           style={{
             background: `linear-gradient(90deg, transparent, ${
-              branchHighlight?.color ||
-              (isAnchor
-                ? "#F4B62B"
-                : glowStyle?.border
-                  ? glowStyle.border
-                  : "rgba(255,255,255,0.2)")
+              isAnchor ? ANCHOR_GOLD : "rgba(255,255,255,0.2)"
             }, transparent)`,
             opacity: isDimmed ? 0.2 : 0.9,
           }}
@@ -378,7 +359,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           />
         )}
         {showHubBadge && (
-          <span className="absolute -top-2 -left-2 min-w-[18px] h-[18px] px-1 rounded-full bg-neutral-950/85 text-cyan-100 text-[9px] font-semibold flex items-center justify-center border border-cyan-200/30 shadow-sm">
+          <span className="absolute -top-2 -left-2 min-w-[18px] h-[18px] px-1 rounded-full bg-neutral-950/85 text-white/85 text-[9px] font-semibold flex items-center justify-center border border-white/15 shadow-sm">
             {normalizedConnections}
           </span>
         )}

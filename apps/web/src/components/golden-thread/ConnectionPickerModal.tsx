@@ -117,7 +117,7 @@ export function ConnectionPickerModal({
       aria-modal="true"
       aria-label={`Connections for ${verseLabel}`}
     >
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden w-[360px] max-w-sm">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden w-[360px] max-w-sm">
         <button
           onClick={onClose}
           className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"

@@ -51,6 +51,7 @@ interface SemanticConnectionModalProps {
   onGoDeeper: (prompt: GoDeeperPayload) => void;
   explanation?: string;
   isLLMDiscovered?: boolean;
+  isAnchorConnection?: boolean;
   connectedVerseIds?: number[];
   connectedVersesPreview?: Array<{
     id: number;
@@ -60,6 +61,8 @@ interface SemanticConnectionModalProps {
   connectionTopics?: Array<{
     styleType: ConnectionFamily;
     label: string;
+    displayLabel?: string;
+    labelSource?: "canonical" | "llm";
     color: string;
     count: number;
     chips?: string[];
@@ -93,13 +96,8 @@ const CONNECTION_LABELS: Record<ConnectionFamily, string> = {
   PATTERN: "Pattern",
 };
 
-const CONNECTION_COLORS: Record<ConnectionFamily, string> = {
-  CROSS_REFERENCE: "#22C55E",
-  LEXICON: "#F59E0B",
-  ECHO: "#6366F1",
-  FULFILLMENT: "#06B6D4",
-  PATTERN: "#A78BFA",
-};
+const MODAL_ACCENT_GOLD = "#C5B358";
+const MODAL_ACCENT_WHITE = "#F9F4EC";
 
 const LEGACY_CONNECTION_MAP: Record<LegacyConnectionType, ConnectionFamily> = {
   GOLD: "LEXICON",
@@ -137,6 +135,7 @@ export function SemanticConnectionModal({
   onGoDeeper,
   explanation,
   isLLMDiscovered,
+  isAnchorConnection = false,
   connectedVerseIds,
   connectedVersesPreview,
   connectionTopics,
@@ -412,7 +411,8 @@ export function SemanticConnectionModal({
 
         const data = await response.json();
         console.log("[SemanticConnectionModal] Loaded synopsis:", data);
-        setTitle(typeof data?.title === "string" ? data.title : "");
+        const resolvedTitle = typeof data?.title === "string" ? data.title : "";
+        setTitle(resolvedTitle);
         const returnedVerses = Array.isArray(data?.verses) ? data.verses : [];
         const orderedVerses = normalizedVerseIds
           .map((id) => returnedVerses.find((verse) => verse.id === id))
@@ -511,6 +511,28 @@ export function SemanticConnectionModal({
       .slice(0, 3)
       .map((topic) => `${topic.label} (${topic.count})`);
   }, [connectionTopics]);
+
+  const orderedTopics = useMemo(
+    () => (Array.isArray(connectionTopics) ? connectionTopics : []),
+    [connectionTopics],
+  );
+  const activeTopicIndex = useMemo(() => {
+    if (orderedTopics.length === 0) return 0;
+    const index = orderedTopics.findIndex(
+      (topic) => topic.styleType === normalizedConnectionType,
+    );
+    return index >= 0 ? index : 0;
+  }, [orderedTopics, normalizedConnectionType]);
+  const totalTopics = orderedTopics.length;
+
+  const handleAdvanceTopic = useCallback(() => {
+    if (totalTopics <= 1 || !onSelectTopic) return;
+    const nextIndex = (activeTopicIndex + 1) % totalTopics;
+    const nextTopic = orderedTopics[nextIndex];
+    if (nextTopic) {
+      onSelectTopic(nextTopic.styleType);
+    }
+  }, [activeTopicIndex, onSelectTopic, orderedTopics, totalTopics]);
 
   const buildGoDeeperPayload = useCallback(() => {
     const clusterVerseIds = Array.isArray(connectedVerseIds)
@@ -728,7 +750,9 @@ export function SemanticConnectionModal({
     });
   };
 
-  const connectionColor = CONNECTION_COLORS[normalizedConnectionType];
+  const connectionColor = isAnchorConnection
+    ? MODAL_ACCENT_GOLD
+    : MODAL_ACCENT_WHITE;
   const visibleVerses = showAllVerses
     ? verses
     : verses.slice(0, Math.max(0, maxVisibleVerses));
@@ -761,7 +785,7 @@ export function SemanticConnectionModal({
       aria-modal="true"
       aria-labelledby="semantic-connection-title"
     >
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm max-h-[80vh]">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm max-h-[80vh]">
         {/* Close button */}
         <button
           onClick={handleClose}
@@ -1003,35 +1027,43 @@ export function SemanticConnectionModal({
             </div>
           )}
 
-          {connectionTopics && connectionTopics.length > 1 && (
+          {totalTopics > 1 && (
             <div className="mt-4 border-t border-white/10 pt-3">
-              <div className="text-[10px] uppercase tracking-wide text-neutral-500">
-                Topics
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {connectionTopics.map((topic) => {
-                  const isActive = topic.styleType === normalizedConnectionType;
-                  return (
-                    <button
-                      key={topic.styleType}
-                      type="button"
-                      disabled={isActive}
-                      onClick={() => onSelectTopic?.(topic.styleType)}
-                      className="px-2 py-1 rounded-full text-[10px] font-semibold transition-colors disabled:cursor-default"
-                      style={{
-                        backgroundColor: isActive
-                          ? `${topic.color}30`
-                          : "rgba(255,255,255,0.06)",
-                        color: isActive ? topic.color : "#E5E7EB",
-                        border: `1px solid ${
-                          isActive ? topic.color : "rgba(255,255,255,0.12)"
-                        }`,
-                      }}
-                    >
-                      {topic.label}
-                    </button>
-                  );
-                })}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-end gap-1.5">
+                    {orderedTopics.map((topic, index) => {
+                      const isActive = index === activeTopicIndex;
+                      return (
+                        <span
+                          key={topic.styleType}
+                          aria-hidden="true"
+                          className="block w-[3px] rounded-full transition-all duration-300"
+                          style={{
+                            height: isActive ? "14px" : "9px",
+                            backgroundColor: isActive
+                              ? connectionColor
+                              : "rgba(255,255,255,0.35)",
+                            boxShadow: isActive
+                              ? `0 0 8px ${connectionColor}70`
+                              : "none",
+                            transform: isActive
+                              ? "rotate(-10deg)"
+                              : "rotate(-6deg)",
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAdvanceTopic}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-full text-sm font-semibold text-white/80 hover:text-white transition-colors border border-white/10 bg-white/5 hover:bg-white/10"
+                  aria-label="Next connection"
+                >
+                  <span aria-hidden="true">›</span>
+                </button>
               </div>
             </div>
           )}

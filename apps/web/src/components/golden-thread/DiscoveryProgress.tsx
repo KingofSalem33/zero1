@@ -51,7 +51,7 @@ export const DiscoveryProgress: React.FC<DiscoveryProgressProps> = ({
               {getPhaseIcon()}
             </div>
             <span className="text-white font-semibold text-sm">
-              Discovering Connections
+              Connections in progress
             </span>
           </div>
         </div>

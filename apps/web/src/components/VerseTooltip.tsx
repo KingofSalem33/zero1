@@ -315,7 +315,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
       >
         {/* Compact card matching highlight tooltip */}
         <div
-          className={`relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden ${tooltipMaxWidth}`}
+          className={`relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden ${tooltipMaxWidth}`}
         >
           {/* Close button */}
           <button

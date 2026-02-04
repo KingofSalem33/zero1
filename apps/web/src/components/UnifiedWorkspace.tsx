@@ -1854,8 +1854,16 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-neutral-300">
-                Theological Thread Explorer ({activeBundle.nodes?.length || 0}{" "}
-                verses)
+                {(activeBundle.nodes?.length || 0).toString()} verses connected
+                to{" "}
+                {(() => {
+                  const anchor = activeBundle.nodes?.find(
+                    (node) => node.id === activeBundle.rootId,
+                  );
+                  return anchor
+                    ? `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`
+                    : "the anchor verse";
+                })()}
               </h3>
             </div>
             <button

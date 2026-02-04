@@ -5,7 +5,7 @@ import { dispatchVerseNavigation } from "../../utils/verseNavigation";
 // --- 1. MAIN TITLE (H2) ---
 // The exegesis title - large, authoritative, serif
 const MainTitle = ({ children }: { children: React.ReactNode }) => (
-  <h2 className="mt-10 mb-8 font-serif text-4xl font-bold text-white leading-tight tracking-tight">
+  <h2 className="mt-10 mb-8 font-serif text-4xl font-bold text-white/90 leading-tight tracking-tight">
     {children}
   </h2>
 );
@@ -13,7 +13,7 @@ const MainTitle = ({ children }: { children: React.ReactNode }) => (
 // --- 2. SECTION HEADERS (H3) ---
 // Roman numeral sections - clear hierarchy, refined spacing
 const SectionHeader = ({ children }: { children: React.ReactNode }) => (
-  <h3 className="mt-12 mb-6 font-sans text-xl font-semibold text-white tracking-tight">
+  <h3 className="mt-12 mb-6 font-sans text-xl font-semibold text-white/85 tracking-tight">
     {children}
   </h3>
 );
@@ -21,7 +21,7 @@ const SectionHeader = ({ children }: { children: React.ReactNode }) => (
 // --- 3. THE INVITATION (Blockquote) ---
 // Renders as a distinct, elegant statement with gold accent
 const Invitation = ({ children }: { children: React.ReactNode }) => (
-  <blockquote className="border-l-4 border-[#D4AF37] pl-8 py-6 my-12 font-serif text-xl italic text-white/95 leading-relaxed bg-[#D4AF37]/5 rounded-r-lg">
+  <blockquote className="border-l-4 border-[#D4AF37] pl-8 py-6 my-12 font-serif text-xl italic text-white/85 leading-relaxed bg-[#D4AF37]/5 rounded-r-lg">
     {children}
   </blockquote>
 );
@@ -101,7 +101,7 @@ const InteractiveText = ({
   children: React.ReactNode;
   onVerseClick?: (reference: string, event: React.MouseEvent) => void;
 }) => (
-  <p className="mb-6 leading-[1.9] text-white font-sans text-[18px] tracking-[-0.01em]">
+  <p className="mb-6 leading-[1.9] text-white/80 font-sans text-[18px] tracking-[-0.01em]">
     {renderInteractiveChildren(children, onVerseClick)}
   </p>
 );
@@ -187,7 +187,7 @@ const VerseTooltip = ({
     >
       {/* Compact card matching highlight tooltip */}
 
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
         {/* Close button */}
 
         <button
@@ -368,13 +368,13 @@ export function MessageStream({
           // Strong emphasis - refined for readability
 
           strong: ({ children }) => (
-            <span className="font-bold text-white">{children}</span>
+            <span className="font-bold text-white/90">{children}</span>
           ),
 
           // Italic emphasis - elegant serif styling
 
           em: ({ children }) => (
-            <span className="font-serif text-[17px] text-white italic">
+            <span className="font-serif text-[17px] text-white/80 italic">
               {children}
             </span>
           ),
@@ -398,7 +398,7 @@ export function MessageStream({
           // List items - optimal line height
 
           li: ({ children }) => (
-            <li className="leading-[1.9] text-white text-[18px] pl-3">
+            <li className="leading-[1.9] text-white/80 text-[18px] pl-3">
               {children}
             </li>
           ),

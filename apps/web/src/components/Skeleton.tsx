@@ -127,7 +127,7 @@ export const BibleChapterSkeleton: React.FC<{
  * Library connection card skeleton - matches the card layout in LibraryView
  */
 export const LibraryCardSkeleton: React.FC = () => (
-  <div className="bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden p-3">
+  <div className="bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden p-3">
     {/* Connection type badge */}
     <div className="flex items-center gap-2 mb-2">
       <div className="w-2 h-2 rounded-full skeleton" />

@@ -178,7 +178,7 @@ const VerseTooltip = ({
       }}
     >
       {/* Compact card matching highlight tooltip */}
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -997,7 +997,7 @@ export function TextHighlightTooltip({
       }}
     >
       {/* Compact, dynamic card */}
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/10 rounded-lg shadow-xl overflow-hidden max-w-sm">
+      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
         {/* Close button */}
         <button
           onClick={closeTooltip}

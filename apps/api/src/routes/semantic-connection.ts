@@ -386,4 +386,283 @@ Synopsis: <34 words or less>`;
   }
 });
 
+/**
+ * POST /api/semantic-connection/topic-titles
+ * Generate short, reverent titles for each topic family in a connection cluster
+ */
+router.post("/topic-titles", async (req, res) => {
+  try {
+    const { topics } = req.body || {};
+    const rawTopics = Array.isArray(topics) ? topics : [];
+
+    const parsedTopics = rawTopics
+      .filter(
+        (topic: unknown) =>
+          topic && typeof topic === "object" && !Array.isArray(topic),
+      )
+      .map((topic: { type?: unknown; verses?: unknown }) => {
+        const type =
+          typeof topic.type === "string"
+            ? topic.type
+            : typeof (topic as { styleType?: unknown }).styleType === "string"
+              ? (topic as { styleType?: string }).styleType
+              : "";
+        const verses = Array.isArray(topic.verses)
+          ? topic.verses
+              .filter(
+                (verse: unknown) =>
+                  verse && typeof verse === "object" && !Array.isArray(verse),
+              )
+              .map((verse: { reference?: unknown; text?: unknown }) => ({
+                reference:
+                  typeof verse.reference === "string" ? verse.reference : "",
+                text: typeof verse.text === "string" ? verse.text : "",
+              }))
+              .filter((verse) => verse.reference && verse.text)
+              .slice(0, 4)
+          : [];
+        return { type, verses };
+      })
+      .filter((topic) => topic.type);
+
+    if (parsedTopics.length === 0) {
+      return res.status(400).json({ error: "No topics provided" });
+    }
+
+    const topicBlocks = parsedTopics
+      .map((topic, idx) => {
+        const verseText = topic.verses
+          .map((verse) => `- ${verse.reference}: "${verse.text}"`)
+          .join("\n");
+        return `${idx + 1}) ${topic.type}\n${verseText || "- (no verses supplied)"}`;
+      })
+      .join("\n\n");
+
+    const prompt = `Create a short title (2-6 words) for each topic below.
+Tone: natural and reverent (not academic).
+Do not mention verse numbers.
+Do not echo the internal type labels or their root words (cross, reference, lexicon, echo, fulfillment, pattern, prophecy, typology, motif, lineage, progression, contrast, parallel, context).
+Titles must be complete phrases, not truncated.
+
+Examples of the desired feel (do not copy):
+"Testing in the wilderness"
+"Hearts turn away again"
+"Promise comes to pass"
+"Same key word appears"
+"Light versus darkness"
+
+Return ONLY JSON in this shape:
+{"titles":{"CROSS_REFERENCE":"...", "LEXICON":"...", "ECHO":"...", "FULFILLMENT":"...", "PATTERN":"..."}}
+
+Topics:
+${topicBlocks}`;
+
+    const knownKeys = [
+      "CROSS_REFERENCE",
+      "LEXICON",
+      "ECHO",
+      "FULFILLMENT",
+      "PATTERN",
+    ];
+    const normalizeKey = (value: string) =>
+      value
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^A-Z_]/g, "");
+
+    const bannedFragments = [
+      "cross",
+      "reference",
+      "lexicon",
+      "echo",
+      "fulfillment",
+      "fulfilment",
+      "pattern",
+      "prophecy",
+      "prophetic",
+      "typology",
+      "motif",
+      "lineage",
+      "progression",
+      "contrast",
+      "parallel",
+      "context",
+      "genealogy",
+      "deeper",
+    ];
+
+    const fallbackTitles: Record<string, string> = {
+      CROSS_REFERENCE: "Two witnesses, one story",
+      LEXICON: "Same key word appears",
+      ECHO: "The scene matches",
+      FULFILLMENT: "Promise comes to pass",
+      PATTERN: "Hearts turn away again",
+    };
+
+    const normalizeTitle = (value: string) =>
+      value
+        .replace(/\s+/g, " ")
+        .replace(/["\u201C\u201D]/g, "")
+        .trim();
+
+    const isInvalidTitle = (value?: string) => {
+      if (!value) return true;
+      const trimmed = normalizeTitle(value);
+      if (!trimmed) return true;
+      const words = trimmed.split(/\s+/).filter(Boolean);
+      if (words.length < 2 || words.length > 6) return true;
+      const lower = trimmed.toLowerCase();
+      if (/\d+\s*:\s*\d+/.test(lower)) return true;
+      if (bannedFragments.some((fragment) => lower.includes(fragment))) {
+        return true;
+      }
+      return false;
+    };
+
+    const generateTitles = async (_keys: string[], promptText: string) =>
+      profileTime(
+        "semantic_connection.topic_titles",
+        () =>
+          runModel(
+            [
+              {
+                role: "system",
+                content:
+                  "You generate short, reverent Bible connection titles. Output JSON only.",
+              },
+              { role: "user", content: promptText },
+            ],
+            {
+              model: ENV.OPENAI_FAST_MODEL,
+              verbosity: "low",
+            },
+          ),
+        {
+          file: "routes/semantic-connection.ts",
+          fn: "topic_titles",
+          await: "client.responses.create",
+          model: ENV.OPENAI_FAST_MODEL,
+        },
+      );
+
+    const parseTitlesFromResult = (result: { text: string }) => {
+      let titles: Record<string, string> = {};
+      try {
+        const raw = result.text || "";
+        const jsonStart = raw.indexOf("{");
+        const jsonEnd = raw.lastIndexOf("}");
+        const jsonSlice =
+          jsonStart >= 0 && jsonEnd >= 0
+            ? raw.slice(jsonStart, jsonEnd + 1)
+            : "";
+        const parsed = jsonSlice ? JSON.parse(jsonSlice) : {};
+        if (parsed && typeof parsed === "object") {
+          const candidateTitles =
+            typeof (parsed as { titles?: unknown }).titles === "object"
+              ? (parsed as { titles?: Record<string, string> }).titles
+              : parsed;
+          if (candidateTitles && typeof candidateTitles === "object") {
+            titles = Object.entries(candidateTitles).reduce(
+              (acc, [key, value]) => {
+                const normalizedKey = normalizeKey(key);
+                if (
+                  knownKeys.includes(normalizedKey) &&
+                  typeof value === "string" &&
+                  value.trim().length > 0
+                ) {
+                  acc[normalizedKey] = normalizeTitle(value);
+                }
+                return acc;
+              },
+              {} as Record<string, string>,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "[Semantic Connection] Failed to parse topic titles",
+          error,
+        );
+      }
+
+      if (Object.keys(titles).length === 0 && result.text) {
+        result.text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .forEach((line) => {
+            const match = line.match(/^(?:[-*]\s*)?([A-Za-z_\s]+)\s*:\s*(.+)$/);
+            if (!match) return;
+            const normalizedKey = normalizeKey(match[1]);
+            const value = normalizeTitle(match[2]);
+            if (
+              knownKeys.includes(normalizedKey) &&
+              value &&
+              typeof value === "string"
+            ) {
+              titles[normalizedKey] = value;
+            }
+          });
+      }
+      return titles;
+    };
+
+    let titles: Record<string, string> = {};
+    try {
+      const result = await generateTitles(knownKeys, prompt);
+      titles = parseTitlesFromResult(result);
+    } catch (error) {
+      console.warn(
+        "[Semantic Connection] Topic titles generation failed",
+        error,
+      );
+    }
+    const invalidKeys = knownKeys.filter((key) => isInvalidTitle(titles[key]));
+
+    if (invalidKeys.length > 0) {
+      const retryBlocks = parsedTopics
+        .filter((topic) => invalidKeys.includes(topic.type))
+        .map((topic, idx) => {
+          const verseText = topic.verses
+            .map((verse) => `- ${verse.reference}: "${verse.text}"`)
+            .join("\n");
+          return `${idx + 1}) ${topic.type}\n${verseText || "- (no verses supplied)"}`;
+        })
+        .join("\n\n");
+
+      const retryPrompt = `Regenerate titles ONLY for the listed topics.
+Keep 2-6 words, natural and reverent.
+Do not mention verse numbers.
+Avoid these words: ${bannedFragments.join(", ")}.
+Return ONLY JSON in this shape:
+{"titles":{${invalidKeys.map((key) => `"${key}":"..."`).join(", ")}}}
+
+Topics:
+${retryBlocks}`;
+
+      try {
+        const retryResult = await generateTitles(invalidKeys, retryPrompt);
+        const retryTitles = parseTitlesFromResult(retryResult);
+        titles = { ...titles, ...retryTitles };
+      } catch (error) {
+        console.warn("[Semantic Connection] Retry topic titles failed", error);
+      }
+    }
+
+    const finalTitles = knownKeys.reduce<Record<string, string>>((acc, key) => {
+      const candidate = titles[key];
+      acc[key] = isInvalidTitle(candidate)
+        ? fallbackTitles[key]
+        : normalizeTitle(candidate);
+      return acc;
+    }, {});
+
+    return res.json({ titles: finalTitles });
+  } catch (error) {
+    console.error("[Semantic Connection] Topic titles error:", error);
+    return res.status(500).json({ error: "Failed to generate topic titles" });
+  }
+});
+
 export default router;
