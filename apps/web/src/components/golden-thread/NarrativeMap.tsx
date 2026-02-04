@@ -9,8 +9,10 @@ import React, {
 import {
   ReactFlow,
   Background,
+  getSimpleBezierPath,
   useNodesState,
   useEdgesState,
+  type EdgeProps,
   type ReactFlowInstance,
 } from "@xyflow/react";
 import type { Node, Edge } from "@xyflow/react";
@@ -77,7 +79,7 @@ const EDGE_STYLES = {
 } as const;
 
 const NEUTRAL_EDGE_OPACITY = 0.18;
-const EDGE_DASH_ARRAY = "6 10";
+const LLM_SHIMMER_DASH = "8 220";
 const EDGE_THIN_WIDTH = 1.1;
 const EDGE_OPACITY_DEFAULT = 0.3;
 const EDGE_OPACITY_ANCHOR = 0.6;
@@ -116,20 +118,12 @@ const getDefaultEdgeOpacity = ({
 };
 
 const getEdgeAnimationConfig = (
-  isLLMDiscovered: boolean,
-  flowDuration: string,
-) =>
-  isLLMDiscovered
-    ? {
-        animationName: "edge-flow, llm-shimmer",
-        animationDuration: `${flowDuration}, 8s`,
-        animationTimingFunction: "linear, ease-in-out",
-        animationIterationCount: "infinite",
-      }
-    : {
-        animationName: "none",
-        animationDuration: "0s",
-      };
+  _isLLMDiscovered: boolean,
+  _flowDuration: string,
+) => ({
+  animationName: "none",
+  animationDuration: "0s",
+});
 const edgePulseDelay = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
@@ -146,6 +140,62 @@ const edgeFlowDelay = (id: string, depth?: number) => {
 };
 
 type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
+
+const LlmEdge: React.FC<EdgeProps> = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style,
+  markerEnd,
+}) => {
+  const [edgePath] = getSimpleBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
+
+  const baseStroke =
+    (style?.stroke as string | undefined) ?? ELECTRIC_EDGE_COLOR;
+  const baseWidth =
+    (style?.strokeWidth as number | undefined) ?? EDGE_THIN_WIDTH;
+  const baseOpacity = (style?.opacity as number | undefined) ?? 1;
+  const shimmerDelay = edgeFlowDelay(id);
+
+  return (
+    <>
+      <path
+        id={id}
+        d={edgePath}
+        fill="none"
+        stroke={baseStroke}
+        strokeWidth={baseWidth}
+        strokeLinecap="round"
+        opacity={baseOpacity}
+        markerEnd={markerEnd}
+      />
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="rgba(248, 250, 252, 0.9)"
+        strokeWidth={Math.max(baseWidth + 0.8, 1.6)}
+        strokeLinecap="round"
+        strokeDasharray={LLM_SHIMMER_DASH}
+        strokeDashoffset="0"
+        opacity={Math.min(baseOpacity + 0.2, 1)}
+        markerEnd={markerEnd}
+        className="llm-sweep"
+        style={{ animationDelay: shimmerDelay }}
+      />
+    </>
+  );
+};
 
 const resolveConnectionFamily = (
   edgeType: EdgeType,
@@ -258,6 +308,10 @@ interface ConnectionTopicGroup {
 
 const nodeTypes = {
   verseNode: VerseNode,
+};
+
+const edgeTypes = {
+  llmEdge: LlmEdge,
 };
 
 const DISCOVERY_BATCH_SIZE = 12;
@@ -1440,7 +1494,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           id: `e${fromId}-${toId}`,
           source: fromId,
           target: toId,
-          type: EDGE_RENDER_TYPE,
+          type: isLLMDiscovered ? "llmEdge" : EDGE_RENDER_TYPE,
           animated: false,
           selectable: false,
           data: {
@@ -1463,7 +1517,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             stroke: getEdgeStroke(visualStyleType, false, isAnchorRay),
             strokeWidth: finalWidth, // 🌟 Thicker for anchor rays
             strokeLinecap: "round",
-            strokeDasharray: isLLMDiscovered ? EDGE_DASH_ARRAY : "0",
+            strokeDasharray: "0",
             strokeDashoffset: 0,
             opacity: 0, // Start invisible for entrance animation
             ...getEdgeAnimationConfig(isLLMDiscovered, "5.6s"),
@@ -2080,7 +2134,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             id: edgeId,
             source: conn.from.toString(),
             target: conn.to.toString(),
-            type: EDGE_RENDER_TYPE,
+            type: "llmEdge",
             selectable: false,
             data: {
               styleType,
@@ -2099,7 +2153,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               stroke: getEdgeStroke(visualStyleType, false, isAnchorRay),
               strokeWidth: EDGE_THIN_WIDTH,
               strokeLinecap: "round",
-              strokeDasharray: EDGE_DASH_ARRAY,
+              strokeDasharray: "0",
               strokeDashoffset: 0,
               opacity: 0,
               ...getEdgeAnimationConfig(true, "5.6s"),
@@ -2702,6 +2756,20 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           }
         }
 
+        @keyframes llm-sweep {
+          0% {
+            stroke-dashoffset: 0;
+            stroke-opacity: 0.4;
+          }
+          40% {
+            stroke-opacity: 0.9;
+          }
+          100% {
+            stroke-dashoffset: -240;
+            stroke-opacity: 0.4;
+          }
+        }
+
         @keyframes llm-shimmer {
           0%,
           100% {
@@ -2710,6 +2778,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           50% {
             stroke-opacity: 1;
           }
+        }
+
+        .llm-sweep {
+          animation: llm-sweep 4.8s linear infinite;
         }
       `}</style>
       <DiscoveryOverlay
@@ -2754,6 +2826,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         onEdgeMouseEnter={handleEdgeMouseEnter}
         onEdgeMouseLeave={handleEdgeMouseLeave}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         minZoom={0.2}
         maxZoom={2.0}
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
@@ -2861,7 +2934,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                 className="inline-block w-6 h-[2px] rounded-full"
                 style={{
                   background:
-                    "repeating-linear-gradient(90deg, rgba(248,250,252,0.9) 0 6px, transparent 6px 12px)",
+                    "linear-gradient(90deg, rgba(248,250,252,0.35), rgba(248,250,252,0.95), rgba(248,250,252,0.35))",
                 }}
               />
               <span>LLM connection</span>
