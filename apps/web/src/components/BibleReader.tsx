@@ -13,6 +13,12 @@ import { VerseReferencesModal } from "./VerseReferencesModal";
 import VerseTooltip from "./VerseTooltip";
 import { BibleChapterSkeleton } from "./Skeleton";
 import { useBibleScrollMemory } from "../hooks/useScrollMemory";
+import type { VisualContextBundle } from "../types/goldenThread";
+import {
+  getStoredMapSession,
+  MAP_SESSION_UPDATED_EVENT,
+  type StoredMapSession,
+} from "../utils/mapSessionStorage";
 import {
   useSwipeNavigation,
   useKeyboardNavigation,
@@ -106,6 +112,7 @@ const BIBLE_BOOKS = [
 interface BibleReaderProps {
   onNavigateToChat?: (prompt: string) => void;
   onTrace?: (text: string) => void;
+  onOpenMap?: (bundle: VisualContextBundle) => void;
   pendingVerseReference?: string | null;
   onVerseNavigationComplete?: () => void;
 }
@@ -113,6 +120,7 @@ interface BibleReaderProps {
 const BibleReader: React.FC<BibleReaderProps> = ({
   onNavigateToChat,
   onTrace,
+  onOpenMap,
   pendingVerseReference,
   onVerseNavigationComplete,
 }) => {
@@ -138,6 +146,9 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     reference: string;
     position: { top: number; left: number };
   } | null>(null);
+  const [lastMapSession, setLastMapSession] = useState<StoredMapSession | null>(
+    () => getStoredMapSession(),
+  );
   const verseTooltipRef = useRef<HTMLDivElement>(null);
   const pendingNavigationRef = useRef<{
     book: string;
@@ -219,6 +230,18 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   useEffect(() => {
     localStorage.setItem("lastBibleChapter", String(selectedChapter));
   }, [selectedChapter]);
+
+  useEffect(() => {
+    const refreshSession = () => {
+      setLastMapSession(getStoredMapSession());
+    };
+    refreshSession();
+    if (typeof window === "undefined") return;
+    window.addEventListener(MAP_SESSION_UPDATED_EVENT, refreshSession);
+    return () => {
+      window.removeEventListener(MAP_SESSION_UPDATED_EVENT, refreshSession);
+    };
+  }, []);
 
   // Note: Scroll position is now handled by useBibleScrollMemory hook
   // It restores saved position per book+chapter, or stays at top for new chapters
@@ -560,12 +583,17 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     setSelectedVerseTooltip({ reference, position });
   };
 
+  const handleOpenMapSession = useCallback(() => {
+    if (!lastMapSession?.bundle || !onOpenMap) return;
+    onOpenMap(lastMapSession.bundle);
+  }, [lastMapSession, onOpenMap]);
+
   return (
     <div className="h-full flex flex-col bg-black">
       {/* Header with Navigation */}
       <div className="flex-shrink-0 border-b border-neutral-800/50 bg-neutral-900/50">
         <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Book Selector */}
             <div
               className="relative"
@@ -663,7 +691,36 @@ const BibleReader: React.FC<BibleReaderProps> = ({
             </div>
 
             {/* Chapter Navigation */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {lastMapSession && onOpenMap && (
+                <button
+                  type="button"
+                  onClick={handleOpenMapSession}
+                  title={`Map: ${lastMapSession.anchorLabel} (${lastMapSession.verseCount} verses)`}
+                  className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-neutral-700/60 bg-neutral-900/40 hover:bg-neutral-800/70 text-[11px] text-neutral-200 transition-all shadow-sm"
+                >
+                  <svg
+                    className="w-3.5 h-3.5 text-neutral-300 group-hover:text-white transition-colors"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  <span className="text-neutral-400">Map:</span>
+                  <span className="max-w-[160px] truncate text-white font-semibold">
+                    {lastMapSession.anchorLabel}
+                  </span>
+                  <span className="text-neutral-400">
+                    ({lastMapSession.verseCount} verses)
+                  </span>
+                </button>
+              )}
               <button
                 onClick={handlePreviousChapter}
                 disabled={

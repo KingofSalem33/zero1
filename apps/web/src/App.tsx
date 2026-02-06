@@ -422,6 +422,7 @@ function App() {
                   <BibleReader
                     onNavigateToChat={handleNavigateToChat}
                     onTrace={handleTrace}
+                    onOpenMap={handleShowVisualization}
                     pendingVerseReference={pendingVerseReference}
                     onVerseNavigationComplete={() =>
                       setPendingVerseReference(null)

@@ -23,11 +23,20 @@ const formatVerseLine = (verse: Verse): string =>
 const buildLightUserMessage = (
   userPrompt: string,
   context: Awaited<ReturnType<typeof buildLightContext>>,
+  priorExchange?: { user?: string; assistant?: string },
 ): string => {
   const ring0Lines = context.ring0.map(formatVerseLine).join("\n");
   const connectionLines = context.connections.map(formatVerseLine).join("\n");
 
-  return `USER QUESTION: "${userPrompt}"
+  const priorBlock =
+    priorExchange && (priorExchange.user || priorExchange.assistant)
+      ? `PREVIOUS QUESTION: "${priorExchange.user ?? ""}"
+PREVIOUS RESPONSE (for continuity): ${priorExchange.assistant ?? ""}
+
+`
+      : "";
+
+  return `${priorBlock}USER QUESTION: "${userPrompt}"
 
 ANCHOR:
 ${formatVerseLine(context.anchor)}
@@ -58,6 +67,26 @@ router.post("/", async (req, res) => {
           : typeof req.body?.text === "string"
             ? req.body.text
             : "";
+
+    const rawHistory = Array.isArray(req.body?.history)
+      ? (req.body.history as Array<{ role?: unknown; content?: unknown }>)
+      : [];
+    const extractHistoryText = (entry?: {
+      role?: unknown;
+      content?: unknown;
+    }) => (typeof entry?.content === "string" ? entry.content.trim() : "");
+    const lastAssistant = [...rawHistory]
+      .reverse()
+      .find((entry) => entry.role === "assistant");
+    const lastUser = [...rawHistory]
+      .reverse()
+      .find((entry) => entry.role === "user");
+    const truncate = (value: string, limit: number) =>
+      value.length > limit ? `${value.slice(0, limit).trim()}…` : value;
+    const priorExchange = {
+      user: truncate(extractHistoryText(lastUser), 280),
+      assistant: truncate(extractHistoryText(lastAssistant), 1200),
+    };
 
     if (!message.trim()) {
       res.status(400).json({ error: "message is required" });
@@ -126,7 +155,7 @@ router.post("/", async (req, res) => {
       anchorRef,
     });
     const systemPrompt = buildSystemPrompt(strategy);
-    const userMessage = buildLightUserMessage(message, context);
+    const userMessage = buildLightUserMessage(message, context, priorExchange);
 
     await runModelStream(
       res,

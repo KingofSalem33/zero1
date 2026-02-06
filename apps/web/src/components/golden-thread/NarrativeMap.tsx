@@ -19,6 +19,7 @@ import type { Node, Edge } from "@xyflow/react";
 import dagre from "dagre"; // LEGACY: Will be replaced by force-directed layout
 import "@xyflow/react/dist/style.css";
 import { calculateForceLayout } from "../../utils/forceLayout";
+import { storeMapSession } from "../../utils/mapSessionStorage";
 import { VerseNode } from "./VerseNode";
 import { SemanticConnectionModal } from "./SemanticConnectionModal";
 import { ParallelPassagesModal } from "./ParallelPassagesModal";
@@ -79,11 +80,10 @@ const EDGE_STYLES = {
 } as const;
 
 const NEUTRAL_EDGE_OPACITY = 0.18;
-const LLM_SHIMMER_DASH = "8 220";
 const EDGE_THIN_WIDTH = 1.1;
 const EDGE_OPACITY_DEFAULT = 0.3;
 const EDGE_OPACITY_ANCHOR = 0.6;
-const EDGE_OPACITY_DIM = 0.15;
+const EDGE_OPACITY_DIM = 0;
 const EDGE_OPACITY_SYNTHETIC = 0.12;
 const EDGE_RENDER_TYPE = "simplebezier";
 const ELECTRIC_EDGE_COLOR = "rgba(248, 250, 252, 0.95)";
@@ -166,34 +166,18 @@ const LlmEdge: React.FC<EdgeProps> = ({
   const baseWidth =
     (style?.strokeWidth as number | undefined) ?? EDGE_THIN_WIDTH;
   const baseOpacity = (style?.opacity as number | undefined) ?? 1;
-  const shimmerDelay = edgeFlowDelay(id);
 
   return (
-    <>
-      <path
-        id={id}
-        d={edgePath}
-        fill="none"
-        stroke={baseStroke}
-        strokeWidth={baseWidth}
-        strokeLinecap="round"
-        opacity={baseOpacity}
-        markerEnd={markerEnd}
-      />
-      <path
-        d={edgePath}
-        fill="none"
-        stroke="rgba(248, 250, 252, 0.9)"
-        strokeWidth={Math.max(baseWidth + 0.8, 1.6)}
-        strokeLinecap="round"
-        strokeDasharray={LLM_SHIMMER_DASH}
-        strokeDashoffset="0"
-        opacity={Math.min(baseOpacity + 0.2, 1)}
-        markerEnd={markerEnd}
-        className="llm-sweep"
-        style={{ animationDelay: shimmerDelay }}
-      />
-    </>
+    <path
+      id={id}
+      d={edgePath}
+      fill="none"
+      stroke={baseStroke}
+      strokeWidth={baseWidth}
+      strokeLinecap="round"
+      opacity={baseOpacity}
+      markerEnd={markerEnd}
+    />
   );
 };
 
@@ -437,6 +421,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const llmEdgesRef = useRef<Edge[]>([]);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
   const [discovering, setDiscovering] = useState(false);
+  const [flowReady, setFlowReady] = useState(false);
+  const hadBranchHighlightRef = useRef(false);
   const [analyzedVerseIds, setAnalyzedVerseIds] = useState<Set<number>>(
     new Set(),
   );
@@ -467,6 +453,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     setMapSaved(false);
     setMapSaveError(null);
   }, [bundle?.rootId, bundle?.nodes?.length, bundle?.edges?.length]);
+
+  useEffect(() => {
+    if (bundle) {
+      storeMapSession(bundle);
+    }
+  }, [bundle]);
 
   const resolveAnchorRef = useCallback(() => {
     if (!bundle) return undefined;
@@ -742,14 +734,24 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       };
 
       try {
+        const controller =
+          typeof window !== "undefined" ? new window.AbortController() : null;
+        const timeoutId =
+          controller && typeof window !== "undefined"
+            ? window.setTimeout(() => controller.abort(), 1800)
+            : null;
         const response = await fetch(
           `${API_URL}/api/semantic-connection/topic-titles`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: controller?.signal,
             body: JSON.stringify(payload),
           },
         );
+        if (timeoutId && typeof window !== "undefined") {
+          window.clearTimeout(timeoutId);
+        }
 
         if (!response.ok) {
           throw new Error("Failed to fetch topic titles");
@@ -942,18 +944,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const labelsReady = topicGroups.every(
         (topic) => topic.labelSource === "llm",
       );
-      if (!labelsReady) {
-        setClickedConnection(null);
-        setSelectedBranch(null);
-      }
-      const resolvedTopics = labelsReady
-        ? topicGroups
-        : await fetchTopicTitles(baseVerse, topicGroups);
-
-      if (requestId !== topicTitlesRequestRef.current) return;
 
       const resolvedGroup =
-        resolvedTopics.find((topic) => topic.styleType === group.styleType) ??
+        topicGroups.find((topic) => topic.styleType === group.styleType) ??
         group;
 
       if (
@@ -991,9 +984,22 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         isAnchorConnection,
         connectedVerseIds,
         connectedVersesPreview,
-        connectionTopics: resolvedTopics,
+        connectionTopics: topicGroups,
         baseVerseId: baseId,
       });
+
+      if (!labelsReady) {
+        const resolvedTopics = await fetchTopicTitles(baseVerse, topicGroups);
+        if (requestId !== topicTitlesRequestRef.current) return;
+        setClickedConnection((prev) =>
+          prev
+            ? {
+                ...prev,
+                connectionTopics: resolvedTopics,
+              }
+            : prev,
+        );
+      }
     },
     [
       buildPreviewVerses,
@@ -1866,7 +1872,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     let layoutFrame: number | null = null;
     const layoutDelay = initialExpansionDone ? 0 : 140;
 
-    if (!autoCenteredRef.current) {
+    if (!autoCenteredRef.current && flowReady) {
       window.requestAnimationFrame(() => {
         centerMapView(0);
       });
@@ -1905,7 +1911,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           setEdgesAnimated(true);
         }, nodeEntranceTime);
 
-        if (!autoCenteredRef.current) {
+        if (!autoCenteredRef.current && flowReady) {
           window.requestAnimationFrame(() => {
             centerMapView(520);
             autoCenteredRef.current = true;
@@ -1938,6 +1944,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     bundle,
     centerMapView,
     expandedNodes,
+    flowReady,
     handleExpandNode,
     highlightedRefs,
     initialExpansionDone,
@@ -2364,6 +2371,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   useEffect(() => {
     const activeBranch = selectedBranch ?? hoveredBranch;
     if (!activeBranch) {
+      const shouldSnap = hadBranchHighlightRef.current;
+      hadBranchHighlightRef.current = false;
       // Reset to neutral state
       setNodes((nds) =>
         nds.map((node) => ({
@@ -2414,6 +2423,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               filter: baseFilter,
               strokeWidth: baseWidth,
               ...getEdgeAnimationConfig(isLLMDiscovered, "5.6s"),
+              ...(shouldSnap ? { transition: "none" } : {}),
             },
           };
         }),
@@ -2421,6 +2431,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       return;
     }
 
+    hadBranchHighlightRef.current = true;
     const branchColor = "#E5E7EB";
     const branchGlow = "rgba(248, 250, 252, 0.45)";
 
@@ -2481,6 +2492,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
                 ? `drop-shadow(0 0 2px ${EDGE_STYLES.GREY.glowColor}30)`
                 : `drop-shadow(0 0 2px ${DEFAULT_EDGE_GLOW})`,
             strokeWidth: baseWidth,
+            transition: "none",
             ...getEdgeAnimationConfig(
               isLLMDiscovered,
               isInBranch ? "3.4s" : "5.6s",
@@ -2584,10 +2596,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           ...edge,
           style: {
             ...edge.style,
-            opacity: connectedEdgeIds.has(edge.id) ? 0.7 : 0.1,
-            transitionProperty: "opacity",
-            transitionDuration: "300ms",
-            transitionTimingFunction: "ease-in-out",
+            opacity: connectedEdgeIds.has(edge.id) ? 0.7 : 0,
+            transition: "none",
           },
         })),
       );
@@ -2642,6 +2652,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           style: {
             ...edge.style,
             opacity: defaultOpacity,
+            transition: "none",
           },
         };
       }),
@@ -2756,20 +2767,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           }
         }
 
-        @keyframes llm-sweep {
-          0% {
-            stroke-dashoffset: 0;
-            stroke-opacity: 0.4;
-          }
-          40% {
-            stroke-opacity: 0.9;
-          }
-          100% {
-            stroke-dashoffset: -240;
-            stroke-opacity: 0.4;
-          }
-        }
-
         @keyframes llm-shimmer {
           0%,
           100% {
@@ -2778,10 +2775,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           50% {
             stroke-opacity: 1;
           }
-        }
-
-        .llm-sweep {
-          animation: llm-sweep 4.8s linear infinite;
         }
       `}</style>
       <DiscoveryOverlay
@@ -2832,6 +2825,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
         onInit={(instance) => {
           flowInstanceRef.current = instance;
+          setFlowReady(true);
         }}
         className="h-full w-full"
         style={{ width: "100%", height: "100%" }}

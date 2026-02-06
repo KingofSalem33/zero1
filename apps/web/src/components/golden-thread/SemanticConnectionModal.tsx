@@ -492,8 +492,14 @@ export function SemanticConnectionModal({
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    const timeoutId = window.setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [handleClose]);
 
   // Note: Escape key handling is now provided by useFocusTrap hook
@@ -756,9 +762,15 @@ export function SemanticConnectionModal({
   const visibleVerses = showAllVerses
     ? verses
     : verses.slice(0, Math.max(0, maxVisibleVerses));
+  const totalVerseCount = useMemo(() => {
+    if (Array.isArray(connectedVerseIds) && connectedVerseIds.length > 0) {
+      return connectedVerseIds.length;
+    }
+    return verses.length;
+  }, [connectedVerseIds, verses.length]);
   const hiddenVerseCount = showAllVerses
     ? 0
-    : Math.max(0, verses.length - visibleVerses.length);
+    : Math.max(0, totalVerseCount - visibleVerses.length);
 
   // Merge refs for modal (focus trap + local ref for positioning)
   const setModalRefs = useCallback(
@@ -858,9 +870,9 @@ export function SemanticConnectionModal({
                   <button
                     type="button"
                     onClick={() => setShowAllVerses(true)}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/5 text-neutral-400 hover:text-neutral-200 transition-colors"
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/5 text-neutral-300 hover:text-white transition-colors"
                   >
-                    +{hiddenVerseCount} more
+                    Show all {totalVerseCount}
                   </button>
                 )}
               </>
