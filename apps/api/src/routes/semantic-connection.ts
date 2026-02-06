@@ -423,7 +423,14 @@ router.post("/topic-titles", async (req, res) => {
           : [];
         return { type, verses };
       })
-      .filter((topic) => topic.type);
+      .filter(
+        (
+          topic,
+        ): topic is {
+          type: string;
+          verses: { reference: string; text: string }[];
+        } => Boolean(topic.type),
+      );
 
     if (parsedTopics.length === 0) {
       return res.status(400).json({ error: "No topics provided" });
