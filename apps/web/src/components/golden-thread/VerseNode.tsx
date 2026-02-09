@@ -8,10 +8,11 @@ interface VerseNodeData {
   isAnchor: boolean;
   collapsedChildCount: number;
   onExpand: () => void;
-  onShowParallels?: (verseId: number) => void; // Show parallel passages modal
-  depth?: number; // Depth from anchor for size scaling
+  onShowParallels?: (verseId: number) => void;
+  onHoverChange?: (hovered: boolean) => void;
+  depth?: number;
   enableSemanticGlow?: boolean;
-  semanticConnectionType?: string; // Connection family for this node
+  semanticConnectionType?: string;
   isDimmed?: boolean;
   branchHighlight?: { color: string; glowColor: string };
   discoveryPulseKey?: number;
@@ -41,7 +42,6 @@ const hexToRgba = (hex: string, alpha: number) => {
 };
 
 const ANCHOR_GOLD = "#C5B358";
-const ANCHOR_GOLD_DEEP = "#9C8B2E";
 
 export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
   const {
@@ -50,7 +50,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     isAnchor,
     onShowParallels,
     depth,
-    semanticConnectionType, // Semantic connection for this node
+    semanticConnectionType,
     enableSemanticGlow,
     isDimmed,
     branchHighlight,
@@ -143,31 +143,27 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     return count;
   }, [verse]);
 
-  // 🌟 GOLDEN THREAD: Semantic border/halo colors for first-degree nodes
-  // These show the TYPE of connection from the anchor (revealed via node border, not edge color)
-  const semanticGlowStyles: Record<
-    string,
-    { glow: string; border: string; animation?: string }
-  > = {
+  // Semantic border tints show the connection family via subtle node border color
+  const semanticGlowStyles: Record<string, { glow: string; border: string }> = {
     CROSS_REFERENCE: {
-      glow: "0 0 5px #CBD5E1",
-      border: "#CBD5E1",
+      glow: "0 0 5px rgba(34, 197, 94, 0.35)",
+      border: "#86EFAC",
     },
     LEXICON: {
-      glow: "0 0 5px #CBD5E1",
-      border: "#CBD5E1",
+      glow: "0 0 5px rgba(245, 158, 11, 0.35)",
+      border: "#FCD34D",
     },
     ECHO: {
-      glow: "0 0 5px #CBD5E1",
-      border: "#CBD5E1",
+      glow: "0 0 5px rgba(99, 102, 241, 0.35)",
+      border: "#A5B4FC",
     },
     FULFILLMENT: {
-      glow: "0 0 5px #CBD5E1",
-      border: "#CBD5E1",
+      glow: "0 0 5px rgba(6, 182, 212, 0.35)",
+      border: "#67E8F9",
     },
     PATTERN: {
-      glow: "0 0 5px #CBD5E1",
-      border: "#CBD5E1",
+      glow: "0 0 5px rgba(167, 139, 250, 0.35)",
+      border: "#C4B5FD",
     },
     GREY: {
       glow: "0 0 5px #94A3B8",
@@ -212,12 +208,12 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     padding = "px-2.5 py-1.5";
   } else if (nodeDepth === 2) {
     width = 100;
-    height = 42;
+    height = 44;
     padding = "px-2 py-1";
   } else {
-    width = 85;
-    height = 35;
-    padding = "px-1.5 py-1";
+    width = 95;
+    height = 44;
+    padding = "px-2 py-1";
   }
 
   // Sprint 1: Scale node size by mass for hub prominence
@@ -230,61 +226,18 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
 
   return (
     <>
-      {/* Glow pulse animation for anchor node */}
-      {isAnchor && (
-        <style>{`
-          @keyframes glow-pulse {
-            0%, 100% {
-              box-shadow: 0 0 12px ${ANCHOR_GOLD}, 0 0 24px ${ANCHOR_GOLD_DEEP}, 0 2px 10px rgba(0,0,0,0.25);
-            }
-            50% {
-              box-shadow: 0 0 16px ${ANCHOR_GOLD}, 0 0 28px ${ANCHOR_GOLD_DEEP}, 0 3px 14px rgba(0,0,0,0.3);
-            }
-          }
-        `}</style>
-      )}
-      {pulseActive && (
-        <style>{`
-          @keyframes discovery-pulse {
-            0% {
-              box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55);
-              opacity: 0.9;
-            }
-            70% {
-              box-shadow: 0 0 12px 3px rgba(56, 189, 248, 0.25);
-              opacity: 0.35;
-            }
-            100% {
-              box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
-              opacity: 0;
-            }
-          }
-        `}</style>
-      )}
-      {clickPulseKey !== null && (
-        <style>{`
-          @keyframes click-pulse {
-            0% {
-              box-shadow: 0 0 0 0 rgba(255,255,255,0.12);
-              opacity: 0.6;
-            }
-            70% {
-              box-shadow: 0 0 0 6px rgba(255,255,255,0.05);
-              opacity: 0.2;
-            }
-            100% {
-              box-shadow: 0 0 0 10px rgba(255,255,255,0);
-              opacity: 0;
-            }
-          }
-        `}</style>
-      )}
       <Handle type="target" position={Position.Top} className="opacity-0" />
       <div
         className={`${baseClasses} ${padding}`}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onPointerEnter={(e) => {
+          if (e.pointerType !== "touch") data.onHoverChange?.(true);
+        }}
+        onPointerLeave={(e) => {
+          handlePointerUp();
+          if (e.pointerType !== "touch") data.onHoverChange?.(false);
+        }}
         style={{
           width: `${width}px`,
           height: `${height}px`,
@@ -316,12 +269,12 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           backdropFilter: "blur(14px) saturate(140%)",
           WebkitBackdropFilter: "blur(14px) saturate(140%)",
           // Entrance animation
-          opacity: hasEntered ? (isDimmed ? 0.25 : 1) : 0,
+          opacity: hasEntered ? (isDimmed ? 0.15 : 1) : 0,
           transform: hasEntered
             ? `translateY(0) scale(${hubScale * (isPressed ? 0.992 : 1)})`
             : `translateY(-8px) scale(${hubScale * 0.97})`,
           transition:
-            "opacity 400ms cubic-bezier(0.4, 0, 0.2, 1), transform 120ms ease-out, box-shadow 600ms ease, border-color 600ms ease",
+            "opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 120ms ease-out, box-shadow 260ms ease, border-color 260ms ease",
         }}
       >
         <span
@@ -371,7 +324,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
                 ? "text-[11px] font-serif font-medium whitespace-nowrap flex items-center gap-1.5"
                 : nodeDepth === 2
                   ? "text-[10px] font-serif font-medium whitespace-nowrap flex items-center gap-1"
-                  : "text-[9px] font-serif font-medium whitespace-nowrap flex items-center gap-1"
+                  : "text-[10px] font-serif font-medium whitespace-nowrap flex items-center gap-1"
           }
           style={{ textShadow: "0 2px 10px rgba(0,0,0,0.45)" }}
         >
@@ -384,9 +337,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
                 ? "text-[10px] text-white/60 whitespace-nowrap"
                 : nodeDepth <= 1
                   ? "text-[9px] text-white/55 whitespace-nowrap"
-                  : nodeDepth === 2
-                    ? "text-[8px] text-white/50 whitespace-nowrap"
-                    : "text-[7px] text-white/45 whitespace-nowrap"
+                  : "text-[9px] text-white/50 whitespace-nowrap"
             }
           >
             {secondaryLabel}
@@ -400,9 +351,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
                 ? "text-[10px] mt-1 max-w-[170px] truncate leading-tight text-white/70"
                 : nodeDepth <= 1
                   ? "text-[9px] mt-0.5 max-w-[110px] truncate leading-tight text-white/65"
-                  : nodeDepth === 2
-                    ? "text-[8px] mt-0.5 max-w-[95px] truncate leading-tight text-white/60"
-                    : "text-[7px] mt-0.5 max-w-[80px] truncate leading-tight text-white/55"
+                  : "text-[9px] mt-0.5 max-w-[90px] truncate leading-tight text-white/55"
             }
           >
             {isAnchor
@@ -419,17 +368,23 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
               e.stopPropagation();
               onShowParallels(verse.id);
             }}
-            className="absolute -top-2 -right-2 h-5 w-5 rounded-full border border-white/15 text-[9px] font-semibold text-white/85 shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
-            style={{
-              background:
-                "radial-gradient(120% 140% at 20% 10%, rgba(255,255,255,0.14), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03))",
-              backdropFilter: "blur(12px) saturate(140%)",
-              WebkitBackdropFilter: "blur(12px) saturate(140%)",
-              boxShadow: "0 10px 18px rgba(0,0,0,0.32)",
-            }}
+            className="absolute -top-4 -right-4 flex items-center justify-center"
+            style={{ width: "44px", height: "44px" }}
             title={`${uniqueParallelCount} parallel ${uniqueParallelCount === 1 ? "account" : "accounts"}`}
           >
-            +{uniqueParallelCount}
+            <span
+              className="h-5 w-5 rounded-full border border-white/15 text-[9px] font-semibold text-white/85 shadow-sm flex items-center justify-center transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
+              style={{
+                background:
+                  "radial-gradient(120% 140% at 20% 10%, rgba(255,255,255,0.14), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03))",
+                backdropFilter: "blur(12px) saturate(140%)",
+                WebkitBackdropFilter: "blur(12px) saturate(140%)",
+                boxShadow: "0 10px 18px rgba(0,0,0,0.32)",
+              }}
+              aria-hidden="true"
+            >
+              +{uniqueParallelCount}
+            </span>
           </button>
         )}
       </div>

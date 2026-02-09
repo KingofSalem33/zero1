@@ -14,6 +14,8 @@ import {
 } from "../../prompts/semanticConnection";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 
+const __DEV__ = import.meta.env.DEV;
+
 type ConnectionFamily =
   | "CROSS_REFERENCE"
   | "LEXICON"
@@ -326,9 +328,10 @@ export function SemanticConnectionModal({
         }
 
         const activeSet = new Set(normalizedVerseIds);
-        console.log(
-          `[SemanticConnectionModal] Fetching synopsis for ${normalizedVerseIds.length} connected verses`,
-        );
+        if (__DEV__)
+          console.log(
+            `[SemanticConnectionModal] Fetching synopsis for ${normalizedVerseIds.length} connected verses`,
+          );
 
         const topicContext = Array.isArray(connectionTopics)
           ? connectionTopics
@@ -410,7 +413,8 @@ export function SemanticConnectionModal({
         }
 
         const data = await response.json();
-        console.log("[SemanticConnectionModal] Loaded synopsis:", data);
+        if (__DEV__)
+          console.log("[SemanticConnectionModal] Loaded synopsis:", data);
         const resolvedTitle = typeof data?.title === "string" ? data.title : "";
         setTitle(resolvedTitle);
         const returnedVerses = Array.isArray(data?.verses) ? data.verses : [];
@@ -426,10 +430,11 @@ export function SemanticConnectionModal({
           const missingIds = normalizedVerseIds.filter(
             (id) => !returnedVerses.some((v) => v.id === id),
           );
-          console.warn(
-            `[SemanticConnectionModal] API returned ${orderedVerses.length}/${normalizedVerseIds.length} verses. Missing IDs:`,
-            missingIds,
-          );
+          if (__DEV__)
+            console.warn(
+              `[SemanticConnectionModal] API returned ${orderedVerses.length}/${normalizedVerseIds.length} verses. Missing IDs:`,
+              missingIds,
+            );
         }
 
         if (
@@ -480,29 +485,7 @@ export function SemanticConnectionModal({
     presetSynopsis,
   ]);
 
-  // Close on click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      const clickedInsideModal = modalRef.current?.contains(target);
-      const clickedInsideTooltip = verseTooltipRef.current?.contains(target);
-
-      if (!clickedInsideModal && !clickedInsideTooltip) {
-        handleClose();
-      }
-    };
-
-    const timeoutId = window.setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [handleClose]);
-
-  // Note: Escape key handling is now provided by useFocusTrap hook
+  // Note: Escape key handling is provided by useFocusTrap hook.
 
   const connectionLabel = CONNECTION_LABELS[normalizedConnectionType];
   const modalTitle = title || (!loading ? connectionLabel : "");
@@ -530,15 +513,6 @@ export function SemanticConnectionModal({
     return index >= 0 ? index : 0;
   }, [orderedTopics, normalizedConnectionType]);
   const totalTopics = orderedTopics.length;
-
-  const handleAdvanceTopic = useCallback(() => {
-    if (totalTopics <= 1 || !onSelectTopic) return;
-    const nextIndex = (activeTopicIndex + 1) % totalTopics;
-    const nextTopic = orderedTopics[nextIndex];
-    if (nextTopic) {
-      onSelectTopic(nextTopic.styleType);
-    }
-  }, [activeTopicIndex, onSelectTopic, orderedTopics, totalTopics]);
 
   const buildGoDeeperPayload = useCallback(() => {
     const clusterVerseIds = Array.isArray(connectedVerseIds)
@@ -786,312 +760,323 @@ export function SemanticConnectionModal({
   );
 
   const modalContent = (
-    <div
-      ref={setModalRefs}
-      className="fixed z-[80] transition-all duration-150 ease-out"
-      style={{
-        left: `${adjustedPosition.x}px`,
-        top: `${adjustedPosition.y}px`,
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="semantic-connection-title"
-    >
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm max-h-[80vh]">
-        {/* Close button */}
-        <button
-          onClick={handleClose}
-          className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
-          aria-label="Close"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+    <div className="fixed inset-0 z-[80]">
+      {/* Backdrop to dim the map while the modal is open */}
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/55 backdrop-blur-[1px] cursor-default"
+        aria-label="Close modal"
+        onMouseDown={handleClose}
+      />
+      <div
+        ref={setModalRefs}
+        className="absolute transition-all duration-150 ease-out"
+        style={{
+          left: `${adjustedPosition.x}px`,
+          top: `${adjustedPosition.y}px`,
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="semantic-connection-title"
+      >
+        <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
+          {/* Close button */}
+          <button
+            onClick={handleClose}
+            className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
+            aria-label="Close"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-
-        {/* Content */}
-        <div className="max-h-[80vh] overflow-y-auto p-3 pr-8">
-          {/* Header */}
-          <div className="flex items-center gap-2 mb-2">
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: connectionColor }}
-            />
-            <h3
-              id="semantic-connection-title"
-              className="relative font-semibold text-xs uppercase tracking-wide"
-              style={{ color: connectionColor }}
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <span className={showTitleSkeleton ? "opacity-0" : ""}>
-                {modalTitle || "Loading"}
-              </span>
-              {showTitleSkeleton && (
-                <span
-                  className="absolute left-0 top-1/2 h-2.5 w-40 -translate-y-1/2 rounded bg-white/10 animate-pulse"
-                  aria-hidden="true"
-                />
-              )}
-            </h3>
-            <span className="text-[10px] text-neutral-400">
-              {Math.round(similarity * 100)}%
-            </span>
-          </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
 
-          {/* Compact Verse Reference Chips */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {verses.length > 0 ? (
-              <>
-                {visibleVerses.map((verse, idx) => (
+          {/* Content */}
+          <div className="max-h-[80vh] overflow-y-auto p-3 pr-8">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: connectionColor }}
+              />
+              <h3
+                id="semantic-connection-title"
+                className="relative font-semibold text-xs uppercase tracking-wide"
+                style={{ color: connectionColor }}
+              >
+                <span className={showTitleSkeleton ? "opacity-0" : ""}>
+                  {modalTitle || "Loading"}
+                </span>
+                {showTitleSkeleton && (
+                  <span
+                    className="absolute left-0 top-1/2 h-2.5 w-40 -translate-y-1/2 rounded bg-white/10 animate-pulse"
+                    aria-hidden="true"
+                  />
+                )}
+              </h3>
+              <span className="text-[10px] text-neutral-400">
+                {Math.round(similarity * 100)}%
+              </span>
+            </div>
+
+            {/* Compact Verse Reference Chips */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {verses.length > 0 ? (
+                <>
+                  {visibleVerses.map((verse, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={(event) => handleVerseChipClick(verse, event)}
+                      className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-110"
+                      style={{
+                        backgroundColor: `${connectionColor}20`,
+                        color: connectionColor,
+                      }}
+                      aria-label={`View ${verse.reference}`}
+                    >
+                      {verse.reference}
+                    </button>
+                  ))}
+                  {hiddenVerseCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllVerses(true)}
+                      className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/5 text-neutral-300 hover:text-white transition-colors"
+                    >
+                      Show all {totalVerseCount}
+                    </button>
+                  )}
+                </>
+              ) : hasCluster ? (
+                <div className="text-xs text-neutral-400">
+                  Loading {connectedVerseIds?.length ?? 0} verses...
+                </div>
+              ) : (
+                // Fallback while loading
+                <>
                   <button
-                    key={idx}
                     type="button"
-                    onClick={(event) => handleVerseChipClick(verse, event)}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors hover:brightness-110"
+                    onClick={(event) => handleVerseChipClick(fromVerse, event)}
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold"
                     style={{
                       backgroundColor: `${connectionColor}20`,
                       color: connectionColor,
                     }}
-                    aria-label={`View ${verse.reference}`}
                   >
-                    {verse.reference}
+                    {fromVerse.reference}
                   </button>
-                ))}
-                {hiddenVerseCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => setShowAllVerses(true)}
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/5 text-neutral-300 hover:text-white transition-colors"
+                    onClick={(event) => handleVerseChipClick(toVerse, event)}
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                    style={{
+                      backgroundColor: `${connectionColor}20`,
+                      color: connectionColor,
+                    }}
                   >
-                    Show all {totalVerseCount}
+                    {toVerse.reference}
                   </button>
-                )}
-              </>
-            ) : hasCluster ? (
-              <div className="text-xs text-neutral-400">
-                Loading {connectedVerseIds?.length ?? 0} verses...
+                </>
+              )}
+            </div>
+            {verses.length > maxVisibleVerses && showAllVerses && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAllVerses((prev) => !prev)}
+                  className="text-[10px] text-neutral-400 hover:text-neutral-200 transition-colors"
+                >
+                  Show fewer verses
+                </button>
               </div>
-            ) : (
-              // Fallback while loading
-              <>
-                <button
-                  type="button"
-                  onClick={(event) => handleVerseChipClick(fromVerse, event)}
-                  className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                  style={{
-                    backgroundColor: `${connectionColor}20`,
-                    color: connectionColor,
-                  }}
-                >
-                  {fromVerse.reference}
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => handleVerseChipClick(toVerse, event)}
-                  className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                  style={{
-                    backgroundColor: `${connectionColor}20`,
-                    color: connectionColor,
-                  }}
-                >
-                  {toVerse.reference}
-                </button>
-              </>
             )}
-          </div>
-          {verses.length > maxVisibleVerses && showAllVerses && (
+
+            {/* Synopsis */}
             <div className="mb-3">
-              <button
-                type="button"
-                onClick={() => setShowAllVerses((prev) => !prev)}
-                className="text-[10px] text-neutral-400 hover:text-neutral-200 transition-colors"
-              >
-                Show fewer verses
-              </button>
-            </div>
-          )}
-
-          {/* Synopsis */}
-          <div className="mb-3">
-            {loading && (
-              <div className="flex items-center gap-2 py-1.5">
-                <div
-                  className="w-1 h-1 rounded-full animate-pulse"
-                  style={{ backgroundColor: connectionColor }}
-                />
-                <div
-                  className="w-1 h-1 rounded-full animate-pulse [animation-delay:150ms]"
-                  style={{ backgroundColor: connectionColor }}
-                />
-                <div
-                  className="w-1 h-1 rounded-full animate-pulse [animation-delay:300ms]"
-                  style={{ backgroundColor: connectionColor }}
-                />
-                <span className="text-xs text-neutral-400 ml-1 font-medium">
-                  Analyzing connection
-                </span>
-              </div>
-            )}
-            {error && <div className="text-red-400 text-xs">{error}</div>}
-            {!loading && !error && (
-              <>
-                <div className="text-[13px] text-white/80 leading-relaxed">
-                  {synopsis}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleGoDeeper}
-              disabled={loading || !synopsis}
-              className="group px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: `${connectionColor}20`,
-                color: connectionColor,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = `${connectionColor}30`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = `${connectionColor}20`;
-              }}
-            >
-              <span>Go Deeper</span>
-              <svg
-                className="w-3 h-3 transition-transform group-hover:translate-y-0.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </button>
-            {!libraryEntry && (
-              <button
-                onClick={handleSaveConnection}
-                disabled={saving || saved || !visualBundle || loading}
-                className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  backgroundColor: saved
-                    ? "rgba(255,255,255,0.12)"
-                    : "rgba(255,255,255,0.06)",
-                  color: saved ? "#E5E7EB" : "#D1D5DB",
-                }}
-              >
-                {saved ? "Saved" : saving ? "Saving..." : "Save"}
-              </button>
-            )}
-          </div>
-          {saveError && (
-            <div className="mt-2 text-xs text-red-400">{saveError}</div>
-          )}
-
-          {libraryEntry && (
-            <div className="mt-4 border-t border-white/10 pt-3">
-              <div className="text-[10px] uppercase tracking-wide text-neutral-500">
-                Notes & Tags
-              </div>
-              <div className="mt-2 space-y-2">
-                <textarea
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Add a note about why this matters..."
-                  className="w-full rounded-md bg-white/5 border border-white/10 text-xs text-white/80 placeholder:text-neutral-500 p-2 resize-none focus:outline-none focus:border-white/20"
-                  rows={2}
-                />
-                <input
-                  value={tagsInput}
-                  onChange={(event) => setTagsInput(event.target.value)}
-                  placeholder="Tags (comma-separated)"
-                  className="w-full rounded-md bg-white/5 border border-white/10 text-xs text-white/80 placeholder:text-neutral-500 px-2 py-1.5 focus:outline-none focus:border-white/20"
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleUpdateLibraryMeta}
-                    disabled={metaSaving}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 bg-white/5 hover:bg-white/10 text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {metaSaving
-                      ? "Saving..."
-                      : metaSaved
-                        ? "Saved"
-                        : "Save Notes"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {totalTopics > 1 && (
-            <div className="mt-4 border-t border-white/10 pt-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-end gap-1.5">
-                    {orderedTopics.map((topic, index) => {
-                      const isActive = index === activeTopicIndex;
-                      return (
-                        <span
-                          key={topic.styleType}
-                          aria-hidden="true"
-                          className="block w-[3px] rounded-full transition-all duration-300"
-                          style={{
-                            height: isActive ? "14px" : "9px",
-                            backgroundColor: isActive
-                              ? connectionColor
-                              : "rgba(255,255,255,0.35)",
-                            boxShadow: isActive
-                              ? `0 0 8px ${connectionColor}70`
-                              : "none",
-                            transform: isActive
-                              ? "rotate(-10deg)"
-                              : "rotate(-6deg)",
-                          }}
-                        />
-                      );
-                    })}
+              {loading && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 py-1.5">
+                    <div
+                      className="w-1 h-1 rounded-full animate-pulse"
+                      style={{ backgroundColor: connectionColor }}
+                    />
+                    <div
+                      className="w-1 h-1 rounded-full animate-pulse [animation-delay:150ms]"
+                      style={{ backgroundColor: connectionColor }}
+                    />
+                    <div
+                      className="w-1 h-1 rounded-full animate-pulse [animation-delay:300ms]"
+                      style={{ backgroundColor: connectionColor }}
+                    />
+                    <span className="text-xs text-neutral-400 ml-1 font-medium">
+                      Analyzing connection
+                    </span>
+                  </div>
+                  <div className="space-y-1.5" aria-hidden="true">
+                    <div className="h-3 w-full rounded bg-white/[0.06] animate-pulse" />
+                    <div className="h-3 w-[90%] rounded bg-white/[0.06] animate-pulse [animation-delay:75ms]" />
+                    <div className="h-3 w-[75%] rounded bg-white/[0.06] animate-pulse [animation-delay:150ms]" />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAdvanceTopic}
-                  className="inline-flex items-center justify-center h-7 w-7 rounded-full text-sm font-semibold text-white/80 hover:text-white transition-colors border border-white/10 bg-white/5 hover:bg-white/10"
-                  aria-label="Next connection"
-                >
-                  <span aria-hidden="true">›</span>
-                </button>
-              </div>
+              )}
+              {error && <div className="text-red-400 text-xs">{error}</div>}
+              {!loading && !error && (
+                <>
+                  <div className="text-[13px] text-white/80 leading-relaxed">
+                    {synopsis}
+                  </div>
+                </>
+              )}
             </div>
-          )}
-        </div>
-      </div>
 
-      {selectedVerseTooltip && (
-        <VerseTooltip
-          ref={verseTooltipRef}
-          reference={selectedVerseTooltip.reference}
-          position={selectedVerseTooltip.position}
-          onClose={() => setSelectedVerseTooltip(null)}
-          accentColor={connectionColor}
-          maxWidthClassName="max-w-[92vw] w-[420px]"
-        />
-      )}
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleGoDeeper}
+                disabled={loading || !synopsis}
+                className="group px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: `${connectionColor}20`,
+                  color: connectionColor,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = `${connectionColor}30`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = `${connectionColor}20`;
+                }}
+              >
+                <span>Go Deeper</span>
+                <svg
+                  className="w-3 h-3 transition-transform group-hover:translate-y-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {!libraryEntry && (
+                <button
+                  onClick={handleSaveConnection}
+                  disabled={saving || saved || !visualBundle || loading}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: saved
+                      ? "rgba(255,255,255,0.12)"
+                      : "rgba(255,255,255,0.06)",
+                    color: saved ? "#E5E7EB" : "#D1D5DB",
+                  }}
+                >
+                  {saved ? "Saved" : saving ? "Saving..." : "Save"}
+                </button>
+              )}
+            </div>
+            {saveError && (
+              <div className="mt-2 text-xs text-red-400">{saveError}</div>
+            )}
+
+            {libraryEntry && (
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+                  Notes & Tags
+                </div>
+                <div className="mt-2 space-y-2">
+                  <textarea
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="Add a note about why this matters..."
+                    className="w-full rounded-md bg-white/5 border border-white/10 text-xs text-white/80 placeholder:text-neutral-500 p-2 resize-none focus:outline-none focus:border-white/20"
+                    rows={2}
+                  />
+                  <input
+                    value={tagsInput}
+                    onChange={(event) => setTagsInput(event.target.value)}
+                    placeholder="Tags (comma-separated)"
+                    className="w-full rounded-md bg-white/5 border border-white/10 text-xs text-white/80 placeholder:text-neutral-500 px-2 py-1.5 focus:outline-none focus:border-white/20"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleUpdateLibraryMeta}
+                      disabled={metaSaving}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 bg-white/5 hover:bg-white/10 text-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {metaSaving
+                        ? "Saving..."
+                        : metaSaved
+                          ? "Saved"
+                          : "Save Notes"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {totalTopics > 1 && (
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {orderedTopics.map((topic, index) => {
+                    const isActive = index === activeTopicIndex;
+                    const displayName = topic.displayLabel || topic.label;
+                    return (
+                      <button
+                        key={topic.styleType}
+                        type="button"
+                        onClick={() => onSelectTopic?.(topic.styleType)}
+                        className="px-2 py-1 rounded-full text-[10px] font-medium transition-all duration-150"
+                        style={{
+                          backgroundColor: isActive
+                            ? `${topic.color}25`
+                            : "rgba(255,255,255,0.05)",
+                          color: isActive
+                            ? topic.color
+                            : "rgba(255,255,255,0.55)",
+                          borderWidth: "1px",
+                          borderStyle: "solid",
+                          borderColor: isActive
+                            ? `${topic.color}40`
+                            : "rgba(255,255,255,0.08)",
+                        }}
+                        aria-label={`${displayName}, ${topic.count} ${topic.count === 1 ? "verse" : "verses"}`}
+                        aria-current={isActive ? "true" : undefined}
+                      >
+                        {displayName} ({topic.count})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {selectedVerseTooltip && (
+          <VerseTooltip
+            ref={verseTooltipRef}
+            reference={selectedVerseTooltip.reference}
+            position={selectedVerseTooltip.position}
+            onClose={() => setSelectedVerseTooltip(null)}
+            accentColor={connectionColor}
+            maxWidthClassName="max-w-[92vw] w-[420px]"
+          />
+        )}
+      </div>
     </div>
   );
 
