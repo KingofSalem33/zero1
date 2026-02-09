@@ -180,6 +180,14 @@ export function SemanticConnectionModal({
   const lastRequestKeyRef = useRef<string | null>(null);
   const synopsisRef = useRef("");
   const [adjustedPosition, setAdjustedPosition] = useState(position);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number; ox: number; oy: number }>(
+    { x: 0, y: 0, ox: 0, oy: 0 },
+  );
   const [selectedVerseTooltip, setSelectedVerseTooltip] = useState<{
     reference: string;
     position: { top: number; left: number };
@@ -746,6 +754,52 @@ export function SemanticConnectionModal({
     ? 0
     : Math.max(0, totalVerseCount - visibleVerses.length);
 
+  // Drag handlers
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      isDraggingRef.current = true;
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+      dragStartRef.current = {
+        x: clientX,
+        y: clientY,
+        ox: dragOffset.x,
+        oy: dragOffset.y,
+      };
+    },
+    [dragOffset],
+  );
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent | globalThis.TouchEvent) => {
+      if (!isDraggingRef.current) return;
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+      setDragOffset({
+        x: dragStartRef.current.ox + (clientX - dragStartRef.current.x),
+        y: dragStartRef.current.oy + (clientY - dragStartRef.current.y),
+      });
+    };
+    const handleUp = () => {
+      isDraggingRef.current = false;
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("touchmove", handleMove);
+    window.addEventListener("touchend", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
+    };
+  }, []);
+
+  // Reset drag offset when position changes (new topic selected)
+  useEffect(() => {
+    setDragOffset({ x: 0, y: 0 });
+  }, [position]);
+
   // Merge refs for modal (focus trap + local ref for positioning)
   const setModalRefs = useCallback(
     (node: HTMLDivElement | null) => {
@@ -764,42 +818,52 @@ export function SemanticConnectionModal({
       {/* Backdrop to dim the map while the modal is open */}
       <button
         type="button"
-        className="absolute inset-0 bg-black/55 backdrop-blur-[1px] cursor-default"
+        className="absolute inset-0 bg-black/30 cursor-default"
         aria-label="Close modal"
         onMouseDown={handleClose}
       />
       <div
         ref={setModalRefs}
-        className="absolute transition-all duration-150 ease-out"
+        className="absolute"
         style={{
-          left: `${adjustedPosition.x}px`,
-          top: `${adjustedPosition.y}px`,
+          left: `${adjustedPosition.x + dragOffset.x}px`,
+          top: `${adjustedPosition.y + dragOffset.y}px`,
         }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="semantic-connection-title"
       >
         <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
-          {/* Close button */}
-          <button
-            onClick={handleClose}
-            className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
-            aria-label="Close"
+          {/* Drag handle + Close button */}
+          <div
+            className="flex items-center justify-between px-3 py-1.5 cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
           >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <div className="flex gap-0.5">
+              <div className="w-6 h-0.5 rounded-full bg-white/15" />
+            </div>
+            <button
+              onClick={handleClose}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150"
+              aria-label="Close"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
 
           {/* Content */}
           <div className="max-h-[80vh] overflow-y-auto p-3 pr-8">
@@ -940,6 +1004,67 @@ export function SemanticConnectionModal({
               )}
             </div>
 
+            {/* Topic Navigator – Dots + Arrow */}
+            {totalTopics > 1 && (
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="text-[9px] text-white/30 tracking-wide">
+                  More connections
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {orderedTopics.map((topic, index) => (
+                    <button
+                      key={topic.styleType}
+                      type="button"
+                      onClick={() => onSelectTopic?.(topic.styleType)}
+                      className="w-2 h-2 rounded-full transition-all duration-150"
+                      style={{
+                        backgroundColor:
+                          index === activeTopicIndex
+                            ? connectionColor
+                            : "transparent",
+                        border: `1.5px solid ${connectionColor}`,
+                        opacity: index === activeTopicIndex ? 1 : 0.35,
+                      }}
+                      aria-label={`${topic.label}, ${topic.count} ${topic.count === 1 ? "verse" : "verses"}`}
+                      aria-current={
+                        index === activeTopicIndex ? "true" : undefined
+                      }
+                    />
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = (activeTopicIndex + 1) % totalTopics;
+                    onSelectTopic?.(orderedTopics[next].styleType);
+                  }}
+                  className="p-0.5 rounded transition-colors"
+                  style={{ color: `${connectionColor}60` }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = connectionColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = `${connectionColor}60`;
+                  }}
+                  aria-label="Next connection type"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex items-center gap-2">
               <button
@@ -1024,42 +1149,6 @@ export function SemanticConnectionModal({
                           : "Save Notes"}
                     </button>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {totalTopics > 1 && (
-              <div className="mt-3 border-t border-white/10 pt-3">
-                <div className="flex flex-wrap gap-1.5">
-                  {orderedTopics.map((topic, index) => {
-                    const isActive = index === activeTopicIndex;
-                    const displayName = topic.displayLabel || topic.label;
-                    return (
-                      <button
-                        key={topic.styleType}
-                        type="button"
-                        onClick={() => onSelectTopic?.(topic.styleType)}
-                        className="px-2 py-1 rounded-full text-[10px] font-medium transition-all duration-150"
-                        style={{
-                          backgroundColor: isActive
-                            ? `${topic.color}25`
-                            : "rgba(255,255,255,0.05)",
-                          color: isActive
-                            ? topic.color
-                            : "rgba(255,255,255,0.55)",
-                          borderWidth: "1px",
-                          borderStyle: "solid",
-                          borderColor: isActive
-                            ? `${topic.color}40`
-                            : "rgba(255,255,255,0.08)",
-                        }}
-                        aria-label={`${displayName}, ${topic.count} ${topic.count === 1 ? "verse" : "verses"}`}
-                        aria-current={isActive ? "true" : undefined}
-                      >
-                        {displayName} ({topic.count})
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
             )}

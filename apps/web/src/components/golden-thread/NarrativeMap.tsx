@@ -955,17 +955,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         (topic) => topic.labelSource === "llm",
       );
 
-      if (resolvedGroup.edgeIds.length > 0) {
-        setSelectedBranch({
-          edgeIds: new Set(resolvedGroup.edgeIds),
-          nodeIds: new Set(highlightVerseIds),
-          styleType: resolvedGroup.styleType,
-          edgeType: "DEEPER",
-          pathPreview: "Connection",
-        });
-      } else {
-        setSelectedBranch(null);
-      }
+      setSelectedBranch({
+        edgeIds: new Set(resolvedGroup.edgeIds),
+        nodeIds: new Set(highlightVerseIds),
+        styleType: resolvedGroup.styleType,
+        edgeType: "DEEPER",
+        pathPreview: "Connection",
+      });
 
       setClickedConnection({
         fromVerse: {
@@ -1080,8 +1076,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             preferredStyle,
           );
           if (selectedGroup) {
-            // Keep selection spotlight active while the modal is open.
-            setFocusedNodeId(node.id);
+            setFocusedNodeId(null);
             setHoveredNodeId(null);
 
             const parentId =
@@ -2477,7 +2472,13 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     // Highlight edges
     setEdges((eds) =>
       eds.map((edge) => {
-        const isInBranch = activeBranch.edgeIds.has(edge.id);
+        const isInBranchById = activeBranch.edgeIds.has(edge.id);
+        // Fallback: if edgeIds is empty, highlight edges connecting two highlighted nodes
+        const connectsHighlightedNodes =
+          activeBranch.edgeIds.size === 0 &&
+          activeBranch.nodeIds.has(Number(edge.source)) &&
+          activeBranch.nodeIds.has(Number(edge.target));
+        const isInBranch = isInBranchById || connectsHighlightedNodes;
         const edgeData = edge.data as EdgeData;
         const styleType = edgeData?.styleType || "CROSS_REFERENCE";
         const isLLMDiscovered = edgeData?.isLLMDiscovered || false;
@@ -2626,6 +2627,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   // Reset styling when exiting spotlight
   useEffect(() => {
     if (attentionNodeId !== null) return; // Still spotlighting
+    if (selectedBranch || hoveredBranch) return; // Branch highlighting takes priority
 
     // Reset node dimming and remove wrapper styling
     setNodes((nds) =>
@@ -2670,7 +2672,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         };
       }),
     );
-  }, [attentionNodeId]);
+  }, [attentionNodeId, selectedBranch, hoveredBranch]);
 
   // Handle edge click for colored branches
   const handleEdgeClick = useCallback(
