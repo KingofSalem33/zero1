@@ -54,6 +54,7 @@ function App() {
   const [visualBundle, setVisualBundle] = useState<VisualContextBundle | null>(
     null,
   );
+  const [tracedText, setTracedText] = useState<string>("");
 
   // Focus trap for visualization modal
   const visualizationRef = useFocusTrap<HTMLDivElement>(showVisualization, {
@@ -137,6 +138,7 @@ function App() {
       console.log("[App] Trace requested for:", selectedText);
 
       // Show visualization panel immediately with loading state
+      setTracedText(selectedText);
       setShowVisualization(true);
       setVisualBundle(null); // Clear previous bundle
 
@@ -499,23 +501,27 @@ function App() {
                 aria-labelledby="visualization-title"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700 bg-neutral-800/50">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-neutral-950/40 backdrop-blur-sm">
                   <div className="flex items-center gap-3">
                     <h3
                       id="visualization-title"
-                      className="text-sm font-semibold text-neutral-200"
+                      className="text-[13px] font-semibold text-neutral-300 flex items-center gap-2"
                     >
-                      Theological Thread Explorer (
-                      {visualBundle?.nodes?.length || 0} verses)
+                      <span className="text-[#D4AF37]">Golden Thread</span>
+                      {visualBundle?.nodes?.length ? (
+                        <span className="text-[11px] font-normal text-neutral-600">
+                          {visualBundle.nodes.length} verses
+                        </span>
+                      ) : null}
                     </h3>
                   </div>
                   <button
                     onClick={() => setShowVisualization(false)}
-                    className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors"
-                    title="Close visualization"
+                    className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 text-neutral-500 hover:text-neutral-300 transition-all duration-150 flex items-center justify-center"
+                    title="Close"
                   >
                     <svg
-                      className="w-5 h-5"
+                      className="w-3.5 h-3.5"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -538,6 +544,7 @@ function App() {
                     onTrace={handleTrace}
                     onGoDeeper={handleGoDeeper}
                     userId="anonymous"
+                    tracedText={tracedText}
                   />
                 </div>
               </div>

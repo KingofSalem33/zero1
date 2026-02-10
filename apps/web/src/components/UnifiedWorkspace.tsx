@@ -2835,6 +2835,9 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 <VerseSearchIndicator
                   verses={streamingMessage?.searchingVerses || []}
                   isActive={isStreaming && !streamingMessage?.content}
+                  tracedText={lastUserPromptRef.current || ""}
+                  activeTools={streamingMessage?.activeTools || []}
+                  completedTools={streamingMessage?.completedTools || []}
                 />
 
                 {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}

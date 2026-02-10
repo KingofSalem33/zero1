@@ -309,6 +309,7 @@ interface NarrativeMapProps {
   onTrace?: (prompt: string) => void;
   onGoDeeper?: (prompt: GoDeeperPayload) => void;
   userId?: string;
+  tracedText?: string;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -417,6 +418,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   onTrace,
   onGoDeeper,
   userId = "anonymous",
+  tracedText,
 }) => {
   const bundle = useMemo(() => collapseDuplicateBundle(rawBundle), [rawBundle]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -451,6 +453,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [mapSaved, setMapSaved] = useState(false);
   const [mapSaveError, setMapSaveError] = useState<string | null>(null);
   const [showHelpHints, setShowHelpHints] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const autoCenteredRef = useRef(false);
 
@@ -2325,12 +2328,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     !initialExpansionDone ||
     discovering ||
     remainingVerseCount < 2;
-  const deepCrawlLabel = discovering ? "Crawling..." : "Deep Search";
+  const deepCrawlLabel = discovering ? "Discovering..." : "Discover More";
   const deepCrawlTitle = isPericopeBundle
-    ? "Deep search is available in verse view"
+    ? "Discovery is available in verse view"
     : deepCrawlDisabled
-      ? "No more verses to analyze"
-      : "Analyze more verses for new connections";
+      ? "No more verses to explore"
+      : "Find deeper connections across Scripture";
 
   const shouldShowOverlay = !bundle || discovering || !initialExpansionDone;
 
@@ -2808,6 +2811,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         progress={bundle ? discoveryProgress.progress : 0}
         message={bundle ? discoveryProgress.message : "Preparing map..."}
         visible={shouldShowOverlay}
+        tracedText={tracedText}
         highlightTitle={
           discovering
             ? discoveryHighlights[discoveryHighlightIndex]?.title
@@ -2825,10 +2829,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           <button
             onClick={handleSaveMap}
             disabled={mapSaving || mapSaved}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 backdrop-blur-sm ${
               mapSaved
-                ? "bg-emerald-500/20 text-emerald-300"
-                : "bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/20"
+                : "bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed"
             }`}
           >
             {mapSaved ? (
@@ -2896,70 +2900,199 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             </linearGradient>
           </defs>
         </svg>
-        <Background variant="lines" color="rgba(0,0,0,0)" gap={16} />
-        {/* Controls removed */}
+        <Background
+          variant="dots"
+          color="rgba(255,255,255,0.03)"
+          gap={20}
+          size={1}
+        />
       </ReactFlow>
 
-      {/* Legend + Help + Deep Search */}
+      {/* Zoom controls — bottom-right, above legend */}
+      <div className="absolute bottom-16 right-4 z-40 flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => flowInstanceRef.current?.zoomIn({ duration: 200 })}
+          className="w-7 h-7 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
+          aria-label="Zoom in"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 6v12M6 12h12"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => flowInstanceRef.current?.zoomOut({ duration: 200 })}
+          className="w-7 h-7 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
+          aria-label="Zoom out"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 12h12"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            flowInstanceRef.current?.fitView({ padding: 0.2, duration: 300 })
+          }
+          className="w-7 h-7 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
+          aria-label="Fit to view"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
+            />
+          </svg>
+        </button>
+      </div>
+
+      {/* Discover button — standalone, bottom-left */}
+      {bundle && (
+        <div className="absolute bottom-4 left-4 z-40">
+          <button
+            type="button"
+            onClick={() => startDiscovery("deep")}
+            disabled={deepCrawlDisabled}
+            title={deepCrawlTitle}
+            className="px-4 py-2 rounded-full text-[12px] font-semibold tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 backdrop-blur-xl shadow-lg flex items-center gap-2"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            {deepCrawlLabel}
+          </button>
+        </div>
+      )}
+
+      {/* Legend — collapsed by default, bottom-right */}
       <div className="absolute bottom-4 right-4 z-40">
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl px-3 py-3 w-[220px]">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-white/50">
-              Legend
+        {showLegend ? (
+          <div className="bg-neutral-900/80 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl px-3 py-3 w-[200px] transition-all duration-200">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] uppercase tracking-[0.15em] text-white/40">
+                Legend
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLegend(false)}
+                className="w-4 h-4 rounded-full text-white/40 hover:text-white/80 transition-colors flex items-center justify-center"
+                aria-label="Close legend"
+              >
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
             </div>
+            <div className="space-y-1.5 text-[11px] text-white/70">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-5 h-[2px] rounded-full bg-white/70" />
+                <span>Scripture link</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-5 h-[2px] rounded-full"
+                  style={{ backgroundColor: "#C5B358" }}
+                />
+                <span>Root verse</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block w-5 h-[2px] rounded-full"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, rgba(248,250,252,0.3), rgba(248,250,252,0.9), rgba(248,250,252,0.3))",
+                  }}
+                />
+                <span>AI-discovered</span>
+              </div>
+            </div>
+            {/* Help hints toggle */}
             <button
               type="button"
               onClick={() => setShowHelpHints((prev) => !prev)}
-              className="w-4 h-4 rounded-full border border-white/20 text-[9px] font-semibold text-white/50 hover:text-white/80 hover:border-white/40 transition-colors flex items-center justify-center"
-              aria-label="Toggle interaction hints"
+              className="mt-2 text-[10px] text-white/30 hover:text-white/60 transition-colors"
             >
-              ?
+              {showHelpHints ? "Hide tips" : "Show tips"}
             </button>
+            {showHelpHints && (
+              <div className="mt-1.5 pt-1.5 border-t border-white/5 space-y-1 text-[10px] text-white/50 leading-snug">
+                <div>Click a verse to explore</div>
+                <div>Hover to spotlight nearby</div>
+                <div>Scroll to zoom, drag to pan</div>
+              </div>
+            )}
           </div>
-          {showHelpHints && (
-            <div className="mb-3 pb-2 border-b border-white/10 space-y-1.5 text-[10px] text-white/60 leading-snug">
-              <div>Click a verse to explore connections</div>
-              <div>Hover to spotlight nearby nodes</div>
-              <div>Shift+click to lock focus mode</div>
-              <div>ESC to exit focus mode</div>
-              <div>Scroll to zoom, drag to pan</div>
-            </div>
-          )}
-          <div className="space-y-2 text-[11px] text-white/80">
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-6 h-[2px] rounded-full bg-white/80" />
-              <span>Graph connection</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block w-6 h-[2px] rounded-full"
-                style={{ backgroundColor: "#C5B358" }}
-              />
-              <span>Anchor connection</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block w-6 h-[2px] rounded-full"
-                style={{
-                  background:
-                    "linear-gradient(90deg, rgba(248,250,252,0.35), rgba(248,250,252,0.95), rgba(248,250,252,0.35))",
-                }}
-              />
-              <span>LLM connection</span>
-            </div>
-          </div>
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <button
-              type="button"
-              onClick={() => startDiscovery("deep")}
-              disabled={deepCrawlDisabled}
-              title={deepCrawlTitle}
-              className="w-full px-3 py-2 rounded-full text-[11px] font-semibold tracking-wide transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 hover:bg-white/15 text-white"
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowLegend(true)}
+            className="w-8 h-8 rounded-lg bg-neutral-900/60 backdrop-blur-xl border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 transition-all duration-200 flex items-center justify-center shadow-lg"
+            aria-label="Show legend"
+            title="Show legend"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              {deepCrawlLabel}
-            </button>
-          </div>
-        </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Semantic Connection Modal */}
@@ -3025,7 +3158,8 @@ export const NarrativeMap = React.memo(
         (ref, i) => ref === nextProps.highlightedRefs[i],
       ) &&
       prevProps.onTrace === nextProps.onTrace &&
-      prevProps.onGoDeeper === nextProps.onGoDeeper
+      prevProps.onGoDeeper === nextProps.onGoDeeper &&
+      prevProps.tracedText === nextProps.tracedText
     );
   },
 );
