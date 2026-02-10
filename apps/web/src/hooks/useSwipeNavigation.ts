@@ -59,9 +59,13 @@ export function useSwipeNavigation<T extends HTMLElement = HTMLDivElement>(
       // Reset
       touchStart.current = null;
 
+      // Don't swipe if user has an active text selection
+      const selection = window.getSelection();
+      if (selection && selection.toString().trim().length > 0) return;
+
       // Check if it's a horizontal swipe (not vertical scroll)
-      // Horizontal movement should be greater than vertical
-      if (Math.abs(deltaX) < Math.abs(deltaY)) return;
+      // Horizontal movement should be at least 1.5x vertical to avoid diagonal scrolls
+      if (Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
 
       // Check threshold and timing
       if (Math.abs(deltaX) < threshold) return;

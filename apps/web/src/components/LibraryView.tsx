@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
@@ -9,6 +9,7 @@ import {
   MapListItemSkeleton,
 } from "./Skeleton";
 import { useLibraryScrollMemory } from "../hooks/useScrollMemory";
+import { useToast } from "./Toast";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -156,7 +157,7 @@ function EmptyState({
       title: "Your saved connections will appear here",
       description:
         "Tap any verse connection on the map to save it. Build your personal library of biblical insights.",
-      actionLabel: "Explore Bible",
+      actionLabel: "Read Bible",
       illustration: (
         <svg
           viewBox="0 0 200 160"
@@ -164,30 +165,9 @@ function EmptyState({
           className="w-48 h-40"
           aria-hidden="true"
         >
-          {/* Gradient definitions */}
           <defs>
-            <linearGradient
-              id="conn-gradient-1"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#D97706" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.4" />
-            </linearGradient>
-            <linearGradient
-              id="conn-gradient-2"
-              x1="100%"
-              y1="0%"
-              x2="0%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#0891B2" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#10B981" stopOpacity="0.4" />
-            </linearGradient>
             <filter id="conn-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feGaussianBlur stdDeviation="2" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
                 <feMergeNode in="SourceGraphic" />
@@ -195,116 +175,112 @@ function EmptyState({
             </filter>
           </defs>
 
-          {/* Connection lines with animation */}
+          {/* Bezier edge between the two nodes */}
           <path
-            d="M50 80 Q100 40 150 80"
-            stroke="url(#conn-gradient-1)"
-            strokeWidth="2"
-            strokeDasharray="8 4"
+            d="M72 80 Q100 50 128 80"
+            stroke="#C5B358"
+            strokeWidth="1"
+            strokeLinecap="round"
             fill="none"
-            opacity="0.7"
-          >
-            <animate
-              attributeName="stroke-dashoffset"
-              from="24"
-              to="0"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-          </path>
+            opacity="0.45"
+          />
           <path
-            d="M50 80 Q100 120 150 80"
-            stroke="url(#conn-gradient-2)"
-            strokeWidth="2"
-            strokeDasharray="8 4"
+            d="M72 80 Q100 110 128 80"
+            stroke="#525252"
+            strokeWidth="1"
+            strokeLinecap="round"
             fill="none"
-            opacity="0.7"
-          >
-            <animate
-              attributeName="stroke-dashoffset"
-              from="0"
-              to="24"
-              dur="2s"
-              repeatCount="indefinite"
-            />
-          </path>
+            opacity="0.3"
+          />
 
-          {/* Left verse node */}
+          {/* Left verse node — rounded rect */}
           <g filter="url(#conn-glow)">
-            <circle
-              cx="50"
-              cy="80"
-              r="20"
+            <rect
+              x="30"
+              y="66"
+              width="42"
+              height="26"
+              rx="6"
               fill="#1a1a1a"
-              stroke="#D97706"
-              strokeWidth="2"
+              stroke="#C5B358"
+              strokeWidth="1.5"
             />
-            <text
-              x="50"
-              y="76"
-              textAnchor="middle"
-              fill="#D97706"
-              fontSize="8"
-              fontWeight="bold"
-            >
-              Gen
-            </text>
-            <text x="50" y="88" textAnchor="middle" fill="#a3a3a3" fontSize="7">
-              1:1
-            </text>
+            <rect
+              x="37"
+              y="75"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.5"
+            />
+            <rect
+              x="40"
+              y="82"
+              width="20"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.3"
+            />
           </g>
 
-          {/* Right verse node */}
+          {/* Right verse node — rounded rect */}
           <g filter="url(#conn-glow)">
-            <circle
-              cx="150"
-              cy="80"
-              r="20"
+            <rect
+              x="128"
+              y="66"
+              width="42"
+              height="26"
+              rx="6"
               fill="#1a1a1a"
-              stroke="#7C3AED"
-              strokeWidth="2"
+              stroke="#3f3f3f"
+              strokeWidth="1"
             />
-            <text
-              x="150"
-              y="76"
-              textAnchor="middle"
-              fill="#7C3AED"
-              fontSize="8"
-              fontWeight="bold"
-            >
-              John
-            </text>
-            <text
-              x="150"
-              y="88"
-              textAnchor="middle"
-              fill="#a3a3a3"
-              fontSize="7"
-            >
-              1:1
-            </text>
+            <rect
+              x="135"
+              y="75"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#404040"
+              opacity="0.5"
+            />
+            <rect
+              x="138"
+              y="82"
+              width="20"
+              height="3"
+              rx="1"
+              fill="#404040"
+              opacity="0.3"
+            />
           </g>
 
-          {/* Center bookmark/save indicator */}
-          <g opacity="0.5">
-            <path
-              d="M95 50 L100 50 L100 62 L97.5 58 L95 62 Z"
-              fill="#fafafa"
-              opacity="0.8"
-            >
-              <animate
-                attributeName="opacity"
-                values="0.4;0.9;0.4"
-                dur="2s"
-                repeatCount="indefinite"
-              />
-            </path>
-          </g>
+          {/* Small connection type pill at midpoint */}
+          <rect
+            x="88"
+            y="52"
+            width="24"
+            height="10"
+            rx="5"
+            fill="#1a1a1a"
+            stroke="#3f3f3f"
+            strokeWidth="0.8"
+          />
+          <rect
+            x="93"
+            y="56"
+            width="14"
+            height="2"
+            rx="1"
+            fill="#C5B358"
+            opacity="0.4"
+          />
 
-          {/* Subtle decorative elements */}
-          <circle cx="85" cy="110" r="2" fill="#D97706" opacity="0.3" />
-          <circle cx="115" cy="110" r="2" fill="#7C3AED" opacity="0.3" />
-          <circle cx="100" cy="120" r="1.5" fill="#0891B2" opacity="0.2" />
+          {/* Subtle accent dots */}
+          <circle cx="85" cy="105" r="1.5" fill="#C5B358" opacity="0.2" />
+          <circle cx="115" cy="105" r="1.5" fill="#525252" opacity="0.2" />
         </svg>
       ),
     },
@@ -312,7 +288,7 @@ function EmptyState({
       title: "Your saved maps will appear here",
       description:
         "Save a map snapshot while exploring to bookmark your journey. Return anytime to continue where you left off.",
-      actionLabel: "Explore Bible",
+      actionLabel: "Read Bible",
       illustration: (
         <svg
           viewBox="0 0 200 160"
@@ -321,18 +297,8 @@ function EmptyState({
           aria-hidden="true"
         >
           <defs>
-            <linearGradient
-              id="map-gradient"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.4" />
-            </linearGradient>
             <filter id="map-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feGaussianBlur stdDeviation="2" result="blur" />
               <feMerge>
                 <feMergeNode in="blur" />
                 <feMergeNode in="SourceGraphic" />
@@ -340,114 +306,174 @@ function EmptyState({
             </filter>
           </defs>
 
-          {/* Constellation lines */}
-          <g stroke="#3B82F6" strokeWidth="1" opacity="0.4">
-            <line x1="60" y1="50" x2="100" y2="70" />
-            <line x1="100" y1="70" x2="140" y2="45" />
-            <line x1="100" y1="70" x2="120" y2="100" />
-            <line x1="120" y1="100" x2="80" y2="110" />
-            <line x1="80" y1="110" x2="60" y2="50" />
-            <line x1="80" y1="110" x2="100" y2="70" />
-          </g>
-
-          {/* Verse nodes as constellation stars */}
-          <g filter="url(#map-glow)">
-            <circle
-              cx="60"
-              cy="50"
-              r="8"
-              fill="#1a1a1a"
-              stroke="#3B82F6"
-              strokeWidth="1.5"
-            >
-              <animate
-                attributeName="r"
-                values="7;9;7"
-                dur="3s"
-                repeatCount="indefinite"
-              />
-            </circle>
-            <circle
-              cx="100"
-              cy="70"
-              r="12"
-              fill="#1a1a1a"
-              stroke="#8B5CF6"
-              strokeWidth="2"
-            >
-              <animate
-                attributeName="r"
-                values="11;13;11"
-                dur="2.5s"
-                repeatCount="indefinite"
-              />
-            </circle>
-            <circle
-              cx="140"
-              cy="45"
-              r="6"
-              fill="#1a1a1a"
-              stroke="#3B82F6"
-              strokeWidth="1.5"
-            >
-              <animate
-                attributeName="r"
-                values="5;7;5"
-                dur="3.5s"
-                repeatCount="indefinite"
-              />
-            </circle>
-            <circle
-              cx="120"
-              cy="100"
-              r="7"
-              fill="#1a1a1a"
-              stroke="#06B6D4"
-              strokeWidth="1.5"
-            />
-            <circle
-              cx="80"
-              cy="110"
-              r="9"
-              fill="#1a1a1a"
-              stroke="#10B981"
-              strokeWidth="1.5"
-            />
-          </g>
-
-          {/* Map frame/save indicator */}
-          <rect
-            x="40"
-            y="30"
-            width="120"
-            height="100"
-            rx="8"
+          {/* Bezier edges — gold for anchor rays, white for others */}
+          <path
+            d="M100 75 Q72 58 55 48"
+            stroke="#C5B358"
+            strokeWidth="1"
+            strokeLinecap="round"
             fill="none"
+            opacity="0.4"
+          />
+          <path
+            d="M100 75 Q128 55 145 45"
+            stroke="#C5B358"
+            strokeWidth="1"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.4"
+          />
+          <path
+            d="M100 85 Q120 98 135 112"
             stroke="#525252"
             strokeWidth="1"
-            strokeDasharray="4 4"
-            opacity="0.5"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.35"
+          />
+          <path
+            d="M100 85 Q80 98 65 112"
+            stroke="#525252"
+            strokeWidth="1"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.35"
+          />
+          <path
+            d="M55 48 Q58 80 65 112"
+            stroke="#404040"
+            strokeWidth="1"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.2"
+          />
+          <path
+            d="M145 45 Q142 78 135 112"
+            stroke="#404040"
+            strokeWidth="1"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.2"
           />
 
-          {/* Save icon */}
-          <g transform="translate(92, 130)" opacity="0.6">
+          {/* Anchor node — larger, gold border */}
+          <g filter="url(#map-glow)">
             <rect
-              x="0"
-              y="0"
-              width="16"
-              height="12"
-              rx="2"
-              fill="none"
-              stroke="#a3a3a3"
-              strokeWidth="1"
+              x="75"
+              y="66"
+              width="50"
+              height="26"
+              rx="6"
+              fill="#1a1a1a"
+              stroke="#C5B358"
+              strokeWidth="1.5"
             />
-            <path
-              d="M4 4 L8 8 L12 4"
-              stroke="#a3a3a3"
-              strokeWidth="1"
-              fill="none"
+            <rect
+              x="82"
+              y="73"
+              width="36"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.5"
+            />
+            <rect
+              x="86"
+              y="80"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.3"
             />
           </g>
+
+          {/* Leaf nodes — smaller, neutral borders, rounded rects */}
+          <g>
+            <rect
+              x="34"
+              y="38"
+              width="42"
+              height="18"
+              rx="5"
+              fill="#1a1a1a"
+              stroke="#3f3f3f"
+              strokeWidth="1"
+            />
+            <rect
+              x="40"
+              y="45"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#404040"
+              opacity="0.5"
+            />
+
+            <rect
+              x="124"
+              y="35"
+              width="42"
+              height="18"
+              rx="5"
+              fill="#1a1a1a"
+              stroke="#3f3f3f"
+              strokeWidth="1"
+            />
+            <rect
+              x="130"
+              y="42"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#404040"
+              opacity="0.5"
+            />
+
+            <rect
+              x="44"
+              y="104"
+              width="42"
+              height="18"
+              rx="5"
+              fill="#1a1a1a"
+              stroke="#3f3f3f"
+              strokeWidth="1"
+            />
+            <rect
+              x="50"
+              y="111"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#404040"
+              opacity="0.5"
+            />
+
+            <rect
+              x="114"
+              y="104"
+              width="42"
+              height="18"
+              rx="5"
+              fill="#1a1a1a"
+              stroke="#3f3f3f"
+              strokeWidth="1"
+            />
+            <rect
+              x="120"
+              y="111"
+              width="28"
+              height="3"
+              rx="1"
+              fill="#404040"
+              opacity="0.5"
+            />
+          </g>
+
+          {/* Subtle gold accent dots at edge midpoints */}
+          <circle cx="76" cy="62" r="1.5" fill="#C5B358" opacity="0.3" />
+          <circle cx="124" cy="59" r="1.5" fill="#C5B358" opacity="0.3" />
         </svg>
       ),
     },
@@ -665,7 +691,7 @@ function EmptyState({
               type === "connections"
                 ? "radial-gradient(circle, #D97706 0%, transparent 70%)"
                 : type === "maps"
-                  ? "radial-gradient(circle, #3B82F6 0%, transparent 70%)"
+                  ? "radial-gradient(circle, #C5B358 0%, transparent 70%)"
                   : "radial-gradient(circle, #FBBF24 0%, transparent 70%)",
           }}
         />
@@ -713,6 +739,10 @@ export function LibraryView({
   onExploreBible,
 }: LibraryViewProps) {
   const { highlights, removeHighlight } = useBibleHighlightsContext();
+  const { toast } = useToast();
+  const pendingDeleteTimers = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
   const [activeTab, setActiveTab] = useState<LibraryTab>("connections");
   const [connections, setConnections] = useState<LibraryConnection[]>([]);
   const [maps, setMaps] = useState<LibraryMap[]>([]);
@@ -720,6 +750,7 @@ export function LibraryView({
   const [error, setError] = useState<string | null>(null);
   const [activeConnection, setActiveConnection] =
     useState<LibraryConnection | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Scroll position memory - remembers scroll position per tab
   const { scrollRef: libraryScrollRef } = useLibraryScrollMemory(activeTab);
@@ -786,42 +817,147 @@ export function LibraryView({
     return text.substring(0, maxLength) + "...";
   };
 
-  const deleteConnection = async (id: string) => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/library/connections/${id}?userId=${encodeURIComponent(
-          userId,
-        )}`,
-        { method: "DELETE" },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete connection");
-      }
-
-      setConnections((prev) => prev.filter((entry) => entry.id !== id));
-    } catch (err) {
-      console.error("Error deleting connection:", err);
-      setError("Failed to delete connection");
+  const getExportData = useCallback(() => {
+    if (activeTab === "connections") {
+      return connections.map((c) => ({
+        type: c.connectionType,
+        fromVerse: c.fromVerse,
+        toVerse: c.toVerse,
+        synopsis: c.synopsis,
+        explanation: c.explanation,
+        note: c.note,
+        tags: c.tags,
+        savedAt: c.createdAt,
+      }));
+    } else if (activeTab === "highlights") {
+      return highlights.map((h) => ({
+        reference: `${h.book} ${h.chapter}:${h.verse}`,
+        text: h.text,
+        color: h.color,
+        savedAt: h.createdAt,
+      }));
+    } else {
+      return maps.map((m) => ({
+        title: m.title,
+        verseCount: m.verseCount,
+        savedAt: m.createdAt,
+      }));
     }
+  }, [activeTab, connections, highlights, maps]);
+
+  const exportAsText = useCallback(() => {
+    const data = getExportData();
+    const label = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
+    let text = `Biblelot ${label} Export\n${"=".repeat(30)}\n\n`;
+
+    if (activeTab === "connections") {
+      (data as ReturnType<typeof getExportData>).forEach(
+        (item: Record<string, unknown>, i: number) => {
+          text += `${i + 1}. [${item.type}] ${item.fromVerse} → ${item.toVerse}\n`;
+          if (item.synopsis) text += `   ${item.synopsis}\n`;
+          if (item.note) text += `   Note: ${item.note}\n`;
+          text += "\n";
+        },
+      );
+    } else if (activeTab === "highlights") {
+      (data as ReturnType<typeof getExportData>).forEach(
+        (item: Record<string, unknown>, i: number) => {
+          text += `${i + 1}. ${item.reference}\n`;
+          text += `   "${item.text}"\n\n`;
+        },
+      );
+    } else {
+      (data as ReturnType<typeof getExportData>).forEach(
+        (item: Record<string, unknown>, i: number) => {
+          text += `${i + 1}. ${item.title} (${item.verseCount} verses)\n`;
+        },
+      );
+    }
+
+    navigator.clipboard.writeText(text);
+    toast(`${label} copied to clipboard`, { type: "success", duration: 2000 });
+    setShowExportMenu(false);
+  }, [getExportData, activeTab, toast]);
+
+  const exportAsJSON = useCallback(() => {
+    const data = getExportData();
+    const label = activeTab;
+    const blob = new window.Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `biblelot-${label}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast(`${label} downloaded as JSON`, { type: "success", duration: 2000 });
+    setShowExportMenu(false);
+  }, [getExportData, activeTab, toast]);
+
+  const deleteConnection = (id: string) => {
+    // Optimistic removal with undo
+    const removed = connections.find((c) => c.id === id);
+    if (!removed) return;
+    setConnections((prev) => prev.filter((entry) => entry.id !== id));
+
+    // Schedule actual API delete after toast expires
+    const timer = setTimeout(async () => {
+      pendingDeleteTimers.current.delete(id);
+      try {
+        const response = await fetch(
+          `${API_URL}/api/library/connections/${id}?userId=${encodeURIComponent(userId)}`,
+          { method: "DELETE" },
+        );
+        if (!response.ok) throw new Error("Failed to delete connection");
+      } catch (err) {
+        console.error("Error deleting connection:", err);
+        // Restore on API failure
+        setConnections((prev) => [...prev, removed]);
+        setError("Failed to delete connection");
+      }
+    }, 5000);
+    pendingDeleteTimers.current.set(id, timer);
+
+    toast("Connection deleted", {
+      duration: 5000,
+      onUndo: () => {
+        clearTimeout(timer);
+        pendingDeleteTimers.current.delete(id);
+        setConnections((prev) => [...prev, removed]);
+      },
+    });
   };
 
-  const deleteMap = async (id: string) => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/library/maps/${id}?userId=${encodeURIComponent(userId)}`,
-        { method: "DELETE" },
-      );
+  const deleteMap = (id: string) => {
+    const removed = maps.find((m) => m.id === id);
+    if (!removed) return;
+    setMaps((prev) => prev.filter((entry) => entry.id !== id));
 
-      if (!response.ok) {
-        throw new Error("Failed to delete map");
+    const timer = setTimeout(async () => {
+      pendingDeleteTimers.current.delete(id);
+      try {
+        const response = await fetch(
+          `${API_URL}/api/library/maps/${id}?userId=${encodeURIComponent(userId)}`,
+          { method: "DELETE" },
+        );
+        if (!response.ok) throw new Error("Failed to delete map");
+      } catch (err) {
+        console.error("Error deleting map:", err);
+        setMaps((prev) => [...prev, removed]);
+        setError("Failed to delete map");
       }
+    }, 5000);
+    pendingDeleteTimers.current.set(id, timer);
 
-      setMaps((prev) => prev.filter((entry) => entry.id !== id));
-    } catch (err) {
-      console.error("Error deleting map:", err);
-      setError("Failed to delete map");
-    }
+    toast("Map deleted", {
+      duration: 5000,
+      onUndo: () => {
+        clearTimeout(timer);
+        pendingDeleteTimers.current.delete(id);
+        setMaps((prev) => [...prev, removed]);
+      },
+    });
   };
 
   const handleGoDeeper = (connection: LibraryConnection) => {
@@ -946,7 +1082,7 @@ export function LibraryView({
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="flex flex-wrap items-center gap-2 mb-6">
           {(["connections", "maps", "highlights"] as LibraryTab[]).map(
             (tab) => (
               <button
@@ -965,6 +1101,81 @@ export function LibraryView({
                     : `Highlights (${highlights.length})`}
               </button>
             ),
+          )}
+
+          {/* Export button */}
+          {((activeTab === "connections" && connections.length > 0) ||
+            (activeTab === "maps" && maps.length > 0) ||
+            (activeTab === "highlights" && highlights.length > 0)) && (
+            <div className="relative ml-auto">
+              <button
+                onClick={() => setShowExportMenu((prev) => !prev)}
+                className="p-2 rounded-lg text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors"
+                title="Export"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+              </button>
+              {showExportMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowExportMenu(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl z-50 p-1">
+                    <button
+                      onClick={exportAsText}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/60 rounded-lg transition-colors"
+                    >
+                      <svg
+                        className="w-4 h-4 text-neutral-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                      Copy as text
+                    </button>
+                    <button
+                      onClick={exportAsJSON}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/60 rounded-lg transition-colors"
+                    >
+                      <svg
+                        className="w-4 h-4 text-neutral-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                        />
+                      </svg>
+                      Download JSON
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
 
@@ -1035,12 +1246,14 @@ export function LibraryView({
                   className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden transition-all duration-200 hover:shadow-2xl cursor-pointer"
                 >
                   <button
-                    onClick={() => deleteConnection(connection.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      deleteConnection(connection.id);
+                    }}
                     className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-red-300 hover:bg-white/10 transition-all duration-150 z-10 opacity-0 group-hover:opacity-100"
                     aria-label="Delete connection"
                     type="button"
                     onPointerDown={(event) => event.stopPropagation()}
-                    onClickCapture={(event) => event.stopPropagation()}
                   >
                     <svg
                       className="w-3.5 h-3.5"
@@ -1110,7 +1323,10 @@ export function LibraryView({
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleGoDeeper(connection)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleGoDeeper(connection);
+                        }}
                         disabled={!connection.bundle}
                         className="group px-4 py-2 rounded-md text-xs font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{
@@ -1119,7 +1335,6 @@ export function LibraryView({
                         }}
                         type="button"
                         onPointerDown={(event) => event.stopPropagation()}
-                        onClickCapture={(event) => event.stopPropagation()}
                       >
                         <span>Go Deeper</span>
                         <svg

@@ -24,6 +24,7 @@ interface RoadmapSidebarV2Props {
   onOpenLibrary?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
+  activeView?: "reader" | "chat" | "library";
 }
 
 const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
@@ -37,6 +38,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   onOpenLibrary,
   isCollapsed = false,
   onToggleCollapse,
+  activeView = "reader",
 }) => {
   const [showRecentChats, setShowRecentChats] = useState(() => {
     const saved = localStorage.getItem("showRecentChats");
@@ -124,10 +126,14 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             <span className="text-sm font-medium">Bible</span>
           </button>
 
-          {/* Bible Study Button */}
+          {/* Chat Button */}
           <button
             onClick={onEnterBibleStudy}
-            className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+            className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              activeView === "chat"
+                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+            }`}
           >
             <svg
               className="w-4 h-4 flex-shrink-0"
@@ -138,17 +144,21 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                strokeWidth={1.8}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
-            <span className="text-sm font-medium">Bible Study</span>
+            <span className="text-sm font-medium">Chat</span>
           </button>
 
           {/* Library Button */}
           <button
             onClick={onOpenLibrary}
-            className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+            className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              activeView === "library"
+                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+            }`}
           >
             <svg
               className="w-4 h-4 flex-shrink-0"
@@ -174,6 +184,11 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             className="w-full flex items-center gap-2 px-4 py-2 text-neutral-400 hover:text-neutral-300 transition-colors"
           >
             <span className="text-xs font-medium">Recent Chats</span>
+            {chats.length > 0 && (
+              <span className="text-[10px] text-neutral-500 ml-auto mr-1">
+                {chats.length}
+              </span>
+            )}
             <svg
               className={`w-3 h-3 flex-shrink-0 transition-transform ${
                 showRecentChats ? "rotate-90" : ""
@@ -294,11 +309,15 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 </svg>
               </button>
 
-              {/* Bible Study */}
+              {/* Chat */}
               <button
                 onClick={onEnterBibleStudy}
-                className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
-                title="Bible Study"
+                className={`p-3 rounded-lg transition-all ${
+                  activeView === "chat"
+                    ? "bg-brand-primary-500/20 text-brand-primary-300"
+                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+                }`}
+                title="Chat"
               >
                 <svg
                   className="w-5 h-5"
@@ -309,8 +328,8 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    strokeWidth={1.8}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                   />
                 </svg>
               </button>
@@ -318,7 +337,11 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               {/* Library */}
               <button
                 onClick={onOpenLibrary}
-                className="p-3 rounded-lg text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300 transition-all"
+                className={`p-3 rounded-lg transition-all ${
+                  activeView === "library"
+                    ? "bg-brand-primary-500/20 text-brand-primary-300"
+                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+                }`}
                 title="Library"
               >
                 <svg
@@ -345,8 +368,14 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
 
       {/* Mobile Overlay - Only when expanded */}
       {!isCollapsed && (
-        <div className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
-          <aside className="w-64 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl">
+        <div
+          className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+          onClick={() => handleToggleCollapse(true)}
+        >
+          <aside
+            className="w-64 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <SidebarContent />
           </aside>
         </div>

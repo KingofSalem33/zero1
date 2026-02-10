@@ -9,6 +9,8 @@ import type { GoDeeperPayload } from "./types/chat";
 import { NarrativeMap } from "./components/golden-thread/NarrativeMap";
 import { addVerseNavigationListener } from "./utils/verseNavigation";
 import { useFocusTrap } from "./hooks/useFocusTrap";
+import MobileBottomNav from "./components/MobileBottomNav";
+import MobileHeader from "./components/MobileHeader";
 
 // Lazy load heavy components for code splitting
 const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
@@ -220,8 +222,8 @@ function App() {
   // Save chats to localStorage whenever they change
   useEffect(() => {
     try {
-      // Keep only the last 10 chats to prevent storage overflow
-      const chatsToSave = chats.slice(-10);
+      // Keep only the last 50 chats to prevent storage overflow
+      const chatsToSave = chats.slice(-50);
       localStorage.setItem("chatHistory", JSON.stringify(chatsToSave));
     } catch (error) {
       // If localStorage is full, clear old data and try again
@@ -403,11 +405,24 @@ function App() {
               onOpenLibrary={handleOpenLibrary}
               isCollapsed={sidebarCollapsed}
               onToggleCollapse={setSidebarCollapsed}
+              activeView={viewMode}
+            />
+
+            {/* Mobile Header */}
+            <MobileHeader
+              title={
+                viewMode === "reader"
+                  ? "Bible"
+                  : viewMode === "chat"
+                    ? "Chat"
+                    : "Library"
+              }
+              onMenuToggle={() => setSidebarCollapsed(false)}
             />
 
             {/* Main Workspace - Renders only the active view */}
             <main
-              className={`flex-1 h-screen overflow-hidden relative transition-all duration-300 ${
+              className={`flex-1 h-screen overflow-hidden relative transition-all duration-300 pt-12 md:pt-0 pb-16 md:pb-0 ${
                 sidebarCollapsed ? "md:ml-16" : "md:ml-64"
               }`}
             >
@@ -460,6 +475,17 @@ function App() {
                 )}
               </Suspense>
             </main>
+
+            {/* Mobile Bottom Navigation */}
+            <MobileBottomNav
+              activeView={viewMode}
+              onNavigate={(view) => {
+                setViewMode(view);
+                if (view === "reader") setBibleStudyMode(false);
+                if (view === "chat") setBibleStudyMode(true);
+                if (view === "library") setBibleStudyMode(false);
+              }}
+            />
           </div>
 
           {/* Trace Visualization Panel - Global overlay */}

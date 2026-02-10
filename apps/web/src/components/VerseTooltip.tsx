@@ -70,13 +70,22 @@ interface VerseTooltipProps {
   position: { top: number; left: number };
   onClose: () => void;
   onTrace?: (reference: string) => void;
+  onGoDeeper?: (reference: string) => void;
   accentColor?: string;
   maxWidthClassName?: string;
 }
 
 const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
   (
-    { reference, position, onClose, onTrace, accentColor, maxWidthClassName },
+    {
+      reference,
+      position,
+      onClose,
+      onTrace,
+      onGoDeeper,
+      accentColor,
+      maxWidthClassName,
+    },
     ref,
   ) => {
     const [verseText, setVerseText] = useState<string>("");
@@ -301,8 +310,13 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
 
     // Ensure tooltip doesn't go off-screen
     const tooltipWidth = 384; // max-w-sm
-    const minLeft = tooltipWidth / 2 + 16; // Add 16px padding from edge
-    const adjustedLeft = Math.max(position.left, minLeft);
+    const padding = 16;
+    const minLeft = tooltipWidth / 2 + padding;
+    // Get the scroll container width (parent element)
+    const containerWidth =
+      tooltipRef.current?.offsetParent?.clientWidth || window.innerWidth;
+    const maxLeft = containerWidth - tooltipWidth / 2 - padding;
+    const adjustedLeft = Math.min(Math.max(position.left, minLeft), maxLeft);
 
     return (
       <div
@@ -412,6 +426,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                             backgroundColor: accentMuted,
                             color: accent,
                           }}
+                          title="Open connection map"
                         >
                           <span>Trace</span>
                           <svg
@@ -427,6 +442,31 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
                               d="M9 5l7 7-7 7"
                             />
                           </svg>
+                        </button>
+                      )}
+                      {onGoDeeper && (
+                        <button
+                          onClick={() => {
+                            onGoDeeper(reference);
+                            onClose();
+                          }}
+                          className="group px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white"
+                          title="Ask AI about this passage"
+                        >
+                          <svg
+                            className="w-3 h-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                            />
+                          </svg>
+                          <span>Go Deeper</span>
                         </button>
                       )}
 

@@ -5,11 +5,13 @@ export type VoiceOption = "onyx" | "nova";
 export interface UserPreferences {
   voice: VoiceOption;
   ttsEnabled: boolean;
+  hasSeenOnboarding: boolean;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   voice: "onyx", // Default to Onyx (deep, authoritative voice for Bible teaching)
   ttsEnabled: true,
+  hasSeenOnboarding: false,
 };
 
 const STORAGE_KEY = "bible-app-user-preferences";
@@ -56,10 +58,15 @@ export function useUserPreferences() {
     setPreferences((prev) => ({ ...prev, ttsEnabled: !prev.ttsEnabled }));
   };
 
+  const markOnboardingComplete = () => {
+    setPreferences((prev) => ({ ...prev, hasSeenOnboarding: true }));
+  };
+
   return {
     preferences,
     updateVoice,
     toggleTTS,
+    markOnboardingComplete,
     setPreferences,
   };
 }

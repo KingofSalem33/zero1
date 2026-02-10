@@ -18,6 +18,7 @@ import {
 import type { Node, Edge } from "@xyflow/react";
 import dagre from "dagre"; // LEGACY: Will be replaced by force-directed layout
 import "@xyflow/react/dist/style.css";
+import { useToast } from "../Toast";
 import { calculateForceLayout } from "../../utils/forceLayout";
 import { storeMapSession } from "../../utils/mapSessionStorage";
 import { VerseNode } from "./VerseNode";
@@ -445,6 +446,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   >([]);
   const [discoveryHighlightIndex, setDiscoveryHighlightIndex] = useState(0);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
+  const { toast } = useToast();
   const [mapSaving, setMapSaving] = useState(false);
   const [mapSaved, setMapSaved] = useState(false);
   const [mapSaveError, setMapSaveError] = useState<string | null>(null);
@@ -512,13 +514,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       }
 
       setMapSaved(true);
+      toast("Map saved to Library", { type: "success", duration: 2500 });
     } catch (error) {
       console.error("[NarrativeMap] Save map failed:", error);
       setMapSaveError("Could not save map");
+      toast("Failed to save map", { type: "error", duration: 3000 });
     } finally {
       setMapSaving(false);
     }
-  }, [bundle, mapSaving, mapSaved, resolveAnchorRef, userId]);
+  }, [bundle, mapSaving, mapSaved, resolveAnchorRef, userId, toast]);
   const autoDiscoveryRunRef = useRef(false);
 
   // Semantic connection modal state
@@ -2821,9 +2825,34 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           <button
             onClick={handleSaveMap}
             disabled={mapSaving || mapSaved}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+              mapSaved
+                ? "bg-emerald-500/20 text-emerald-300"
+                : "bg-white/10 hover:bg-white/20 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            }`}
           >
-            {mapSaved ? "Map Saved" : mapSaving ? "Saving..." : "Save Map"}
+            {mapSaved ? (
+              <>
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+                Saved
+              </>
+            ) : mapSaving ? (
+              "Saving..."
+            ) : (
+              "Save Map"
+            )}
           </button>
           {mapSaveError && (
             <span className="text-[10px] text-red-400">{mapSaveError}</span>

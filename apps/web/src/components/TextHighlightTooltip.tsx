@@ -11,6 +11,7 @@ import { dispatchVerseNavigation } from "../utils/verseNavigation";
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string) => void;
+  onNavigateToChat?: (reference: string) => void;
   userId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onHighlight?: (text: string, color: string, context?: any) => void;
@@ -338,6 +339,7 @@ const InteractiveText = ({
 
 export function TextHighlightTooltip({
   onGoDeeper,
+  onNavigateToChat,
   onHighlight,
   enableHighlight = false,
   bibleContext,
@@ -792,11 +794,25 @@ export function TextHighlightTooltip({
 
             // Calculate position relative to the scrolling container
             // rect.bottom is viewport-relative, so we subtract containerRect.top and add scrollTop
-            const top =
+            const tooltipEstimatedHeight = 200;
+            const belowTop =
               rect.bottom -
               containerRect.top +
               scrollContainer.scrollTop +
               spacing;
+            const aboveTop =
+              rect.top -
+              containerRect.top +
+              scrollContainer.scrollTop -
+              spacing -
+              tooltipEstimatedHeight;
+
+            // Flip above if not enough room below the selection in the viewport
+            const roomBelow = containerRect.bottom - rect.bottom;
+            const top =
+              roomBelow < tooltipEstimatedHeight + spacing * 2
+                ? Math.max(scrollContainer.scrollTop + 8, aboveTop)
+                : belowTop;
 
             // Center horizontally on the selection, relative to container
             let left =
@@ -1405,6 +1421,7 @@ export function TextHighlightTooltip({
           position={verseTooltipData.position}
           onClose={() => setVerseTooltipData(null)}
           onTrace={onGoDeeper}
+          onGoDeeper={onNavigateToChat}
         />
       )}
     </div>

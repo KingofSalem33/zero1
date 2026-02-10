@@ -196,6 +196,39 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // Removed micro-step state variables - no longer using cards UI
   // Removed completion modal - AI auto-advances conversationally
 
+  // Contextual heading for empty chat state based on last-read passage
+  const emptyStateHeading = useMemo(() => {
+    if (!bibleStudyMode)
+      return { title: "What would you like to examine?", subtitle: "" };
+    const lastBook = localStorage.getItem("lastBibleBook");
+    const lastChapter = localStorage.getItem("lastBibleChapter");
+    if (!lastBook)
+      return { title: "What would you like to examine?", subtitle: "" };
+
+    const prompts = [
+      {
+        title: `What stood out in ${lastBook} ${lastChapter}?`,
+        subtitle: "Ask about themes, context, or difficult passages",
+      },
+      {
+        title: `Explore ${lastBook} ${lastChapter}`,
+        subtitle:
+          "Uncover cross-references, word studies, or historical context",
+      },
+      {
+        title: `Go deeper into ${lastBook}`,
+        subtitle: "Ask anything about the text you just read",
+      },
+      {
+        title: `Questions about ${lastBook} ${lastChapter}?`,
+        subtitle: "Get AI-powered insight into this passage",
+      },
+    ];
+    // Pick one based on a daily rotation so it feels fresh but stable within a session
+    const dayIndex = Math.floor(Date.now() / 86400000) % prompts.length;
+    return prompts[dayIndex];
+  }, [bibleStudyMode]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const messagesFetchedRef = useRef(false);
@@ -617,6 +650,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   // TTS state management
   /* global HTMLAudioElement */
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Stop any playing audio
@@ -2615,13 +2649,29 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                       </svg>
                                     </button>
                                     <button
-                                      onClick={() =>
+                                      onClick={() => {
                                         navigator.clipboard.writeText(
                                           message.content,
-                                        )
+                                        );
+                                        setCopiedMessageId(message.id);
+                                        setTimeout(
+                                          () =>
+                                            setCopiedMessageId((prev) =>
+                                              prev === message.id ? null : prev,
+                                            ),
+                                          2000,
+                                        );
+                                      }}
+                                      className={`p-1 rounded-md transition-colors ${
+                                        copiedMessageId === message.id
+                                          ? "text-emerald-400 bg-emerald-500/10"
+                                          : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
+                                      }`}
+                                      title={
+                                        copiedMessageId === message.id
+                                          ? "Copied!"
+                                          : "Copy to clipboard"
                                       }
-                                      className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
-                                      title="Copy to clipboard"
                                     >
                                       <svg
                                         className="w-4 h-4"
@@ -2633,7 +2683,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                           strokeLinecap="round"
                                           strokeLinejoin="round"
                                           strokeWidth={2}
-                                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                          d={
+                                            copiedMessageId === message.id
+                                              ? "M5 13l4 4L19 7"
+                                              : "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                          }
                                         />
                                       </svg>
                                     </button>
@@ -2812,8 +2866,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           {isEmptyState && (
             <div className="text-center mb-10">
               <h1 className="text-4xl font-medium text-neutral-100 tracking-tight">
-                What would you like to examine?
+                {emptyStateHeading.title}
               </h1>
+              {emptyStateHeading.subtitle && (
+                <p className="text-neutral-500 text-base mt-2">
+                  {emptyStateHeading.subtitle}
+                </p>
+              )}
             </div>
           )}
           <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50">
@@ -2882,6 +2941,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               disabled={isProcessing}
               autoFocus={bibleStudyMode && isEmptyState}
             />
+            {currentInput.length > 1500 && (
+              <span
+                className={`text-[10px] font-medium tabular-nums self-end mb-1 mr-1 transition-colors ${
+                  currentInput.length > 4000
+                    ? "text-red-400"
+                    : currentInput.length > 3000
+                      ? "text-amber-400"
+                      : "text-neutral-500"
+                }`}
+              >
+                {currentInput.length.toLocaleString()}
+              </span>
+            )}
             <button
               onClick={() => handleSendMessage()}
               disabled={!currentInput.trim() || isProcessing}

@@ -163,7 +163,7 @@ export function ChapterFooter({
   }
 
   return (
-    <div className="pt-12 pb-8">
+    <div className="pt-12 pb-8" data-onboarding="footer">
       {/* Divider Line - Chapter closure */}
       <div className="max-w-3xl mx-auto mb-3">
         <div className="h-px bg-gradient-to-r from-transparent via-neutral-800/50 to-transparent" />

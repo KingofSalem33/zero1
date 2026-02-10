@@ -3,6 +3,7 @@ import React, {
   useState,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useCallback,
 } from "react";
@@ -110,6 +111,9 @@ const BIBLE_BOOKS = [
 ];
 
 interface BibleReaderProps {
+  book?: string;
+  chapter?: number;
+  onNavigate?: (book: string, chapter: number) => void;
   onNavigateToChat?: (prompt: string) => void;
   onTrace?: (text: string) => void;
   onOpenMap?: (bundle: VisualContextBundle) => void;
@@ -118,24 +122,56 @@ interface BibleReaderProps {
 }
 
 const BibleReader: React.FC<BibleReaderProps> = ({
+  book: bookProp,
+  chapter: chapterProp,
+  onNavigate,
   onNavigateToChat,
   onTrace,
   onOpenMap,
   pendingVerseReference,
   onVerseNavigationComplete,
 }) => {
-  // Restore last Bible position from localStorage
-  const [selectedBook, setSelectedBook] = useState<string>(() => {
+  // Use URL-controlled book/chapter if provided, otherwise fall back to localStorage
+  const [selectedBook, setSelectedBookInternal] = useState<string>(() => {
+    if (bookProp) return bookProp;
     const saved = localStorage.getItem("lastBibleBook");
     return saved || "Matthew";
   });
-  const [selectedChapter, setSelectedChapter] = useState<number>(() => {
+  const [selectedChapter, setSelectedChapterInternal] = useState<number>(() => {
+    if (chapterProp) return chapterProp;
     const saved = localStorage.getItem("lastBibleChapter");
     return saved ? parseInt(saved, 10) : 1;
   });
+
+  // Sync with URL-controlled props when they change
+  useEffect(() => {
+    if (bookProp && bookProp !== selectedBook) {
+      setSelectedBookInternal(bookProp);
+    }
+  }, [bookProp]);
+
+  useEffect(() => {
+    if (chapterProp !== undefined && chapterProp !== selectedChapter) {
+      setSelectedChapterInternal(chapterProp);
+    }
+  }, [chapterProp]);
+
+  // Wrapper setters: if onNavigate is provided, use it (URL routing); otherwise set internal state
+  const setSelectedBook = useCallback((book: string) => {
+    setSelectedBookInternal(book);
+  }, []);
+
+  const setSelectedChapter = useCallback((chapter: number) => {
+    setSelectedChapterInternal(chapter);
+  }, []);
   const [bookData, setBookData] = useState<Book | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showBookSelector, setShowBookSelector] = useState<boolean>(false);
+  const [bookFilter, setBookFilter] = useState<string>("");
+  const bookFilterRef = useRef<HTMLInputElement>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [selectedVerseForModal, setSelectedVerseForModal] = useState<{
     book: string;
     chapter: number;
@@ -157,6 +193,20 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   } | null>(null);
 
   const { addHighlight, getHighlightForVerse } = useBibleHighlightsContext();
+
+  // Filtered book lists for the book selector search
+  const filteredOTBooks = useMemo(() => {
+    const f = bookFilter.toLowerCase();
+    return f
+      ? BIBLE_BOOKS.slice(0, 39).filter((b) => b.toLowerCase().includes(f))
+      : BIBLE_BOOKS.slice(0, 39);
+  }, [bookFilter]);
+  const filteredNTBooks = useMemo(() => {
+    const f = bookFilter.toLowerCase();
+    return f
+      ? BIBLE_BOOKS.slice(39).filter((b) => b.toLowerCase().includes(f))
+      : BIBLE_BOOKS.slice(39);
+  }, [bookFilter]);
   const contentTopRef = useRef<HTMLDivElement>(null);
   const bookSelectorRef = useRef<HTMLDivElement>(null);
   const selectedBookButtonRef = useRef<HTMLButtonElement>(null);
@@ -181,18 +231,28 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   useEffect(() => {
     const loadBook = async () => {
       setLoading(true);
-      needsScrollRestore.current = true; // Reset scroll flag when loading new content
+      setLoadError(null);
+      needsScrollRestore.current = true;
       try {
-        // Map display names to GitHub filenames
-        // GitHub repo uses no spaces for "Song of Solomon" -> "SongofSolomon"
         const bookFileName = selectedBook.replace(/ /g, "");
         const response = await fetch(
           `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
         );
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load ${selectedBook} (${response.status})`,
+          );
+        }
         const data = await response.json();
         setBookData(data);
-      } catch {
-        // TODO: Handle error more gracefully
+      } catch (err) {
+        console.error("[BibleReader] Failed to load book:", err);
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Could not load this book. Check your connection and try again.",
+        );
+        setBookData(null);
       } finally {
         setLoading(false);
       }
@@ -230,6 +290,17 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   useEffect(() => {
     localStorage.setItem("lastBibleChapter", String(selectedChapter));
   }, [selectedChapter]);
+
+  // Show scroll-to-top button after scrolling 2 screens
+  useEffect(() => {
+    const el = bibleScrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      setShowScrollTop(el.scrollTop > el.clientHeight * 2);
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [bibleScrollRef]);
 
   useEffect(() => {
     const refreshSession = () => {
@@ -340,11 +411,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     clearBibleScroll,
   ]);
 
-  // Scroll to selected book when dropdown opens
+  // Reset filter and focus input when dropdown opens; scroll to selected book
   useEffect(() => {
-    if (showBookSelector && selectedBookButtonRef.current) {
-      // Use setTimeout to ensure the dropdown is fully rendered
+    if (showBookSelector) {
+      setBookFilter("");
+      // Focus the search input after render
       setTimeout(() => {
+        bookFilterRef.current?.focus();
         selectedBookButtonRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "center",
@@ -403,18 +476,32 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
     navigateWithTransition(() => {
       if (selectedChapter > 1) {
-        setSelectedChapter(selectedChapter - 1);
+        if (onNavigate) {
+          onNavigate(selectedBook, selectedChapter - 1);
+        } else {
+          setSelectedChapter(selectedChapter - 1);
+        }
       } else {
-        // Go to previous book's last chapter
         const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
         if (currentBookIndex > 0) {
-          setSelectedBook(BIBLE_BOOKS[currentBookIndex - 1]);
-          // Will need to get last chapter of previous book
-          setSelectedChapter(1); // Temporary, should be last chapter
+          const prevBook = BIBLE_BOOKS[currentBookIndex - 1];
+          if (onNavigate) {
+            onNavigate(prevBook, 1);
+          } else {
+            setSelectedBook(prevBook);
+            setSelectedChapter(1);
+          }
         }
       }
     });
-  }, [selectedBook, selectedChapter, navigateWithTransition]);
+  }, [
+    selectedBook,
+    selectedChapter,
+    navigateWithTransition,
+    onNavigate,
+    setSelectedBook,
+    setSelectedChapter,
+  ]);
 
   const handleNextChapter = useCallback(() => {
     const canGoNext =
@@ -424,17 +511,33 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
     navigateWithTransition(() => {
       if (bookData && selectedChapter < bookData.chapters.length) {
-        setSelectedChapter(selectedChapter + 1);
+        if (onNavigate) {
+          onNavigate(selectedBook, selectedChapter + 1);
+        } else {
+          setSelectedChapter(selectedChapter + 1);
+        }
       } else {
-        // Go to next book's first chapter
         const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
         if (currentBookIndex < BIBLE_BOOKS.length - 1) {
-          setSelectedBook(BIBLE_BOOKS[currentBookIndex + 1]);
-          setSelectedChapter(1);
+          const nextBook = BIBLE_BOOKS[currentBookIndex + 1];
+          if (onNavigate) {
+            onNavigate(nextBook, 1);
+          } else {
+            setSelectedBook(nextBook);
+            setSelectedChapter(1);
+          }
         }
       }
     });
-  }, [bookData, selectedBook, selectedChapter, navigateWithTransition]);
+  }, [
+    bookData,
+    selectedBook,
+    selectedChapter,
+    navigateWithTransition,
+    onNavigate,
+    setSelectedBook,
+    setSelectedChapter,
+  ]);
 
   // Keyboard arrow navigation (← → for prev/next chapter)
   useKeyboardNavigation({
@@ -447,8 +550,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   const swipeRef = useSwipeNavigation<HTMLDivElement>({
     onSwipeLeft: handleNextChapter,
     onSwipeRight: handlePreviousChapter,
-    threshold: 50,
-    maxTime: 300,
+    threshold: 80,
+    maxTime: 400,
   });
 
   const handleHighlight = (
@@ -635,56 +738,128 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
               {/* Book Selector Dropdown */}
               {showBookSelector && (
-                <div className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto bg-neutral-900 border-2 border-neutral-700 rounded-lg shadow-2xl z-[9999]">
-                  <div className="p-2 pointer-events-auto">
-                    <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-3 py-2">
-                      Old Testament
-                    </div>
-                    {BIBLE_BOOKS.slice(0, 39).map((book) => (
-                      <button
-                        key={book}
-                        ref={
-                          selectedBook === book ? selectedBookButtonRef : null
-                        }
-                        type="button"
-                        onMouseDown={() => {
-                          setSelectedBook(book);
-                          setSelectedChapter(1);
-                          setShowBookSelector(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer ${
-                          selectedBook === book
-                            ? "bg-brand-primary-500/20 text-brand-primary-300"
-                            : "hover:bg-neutral-800 text-neutral-300"
-                        }`}
+                <div className="absolute top-full left-0 mt-2 w-80 bg-neutral-900 border-2 border-neutral-700 rounded-lg shadow-2xl z-[9999]">
+                  {/* Search input */}
+                  <div className="sticky top-0 p-2 bg-neutral-900 border-b border-neutral-800/50 z-10">
+                    <div className="relative">
+                      <svg
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        {book}
-                      </button>
-                    ))}
-                    <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-3 py-2 mt-2">
-                      New Testament
-                    </div>
-                    {BIBLE_BOOKS.slice(39).map((book) => (
-                      <button
-                        key={book}
-                        ref={
-                          selectedBook === book ? selectedBookButtonRef : null
-                        }
-                        type="button"
-                        onMouseDown={() => {
-                          setSelectedBook(book);
-                          setSelectedChapter(1);
-                          setShowBookSelector(false);
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                      <input
+                        ref={bookFilterRef}
+                        type="text"
+                        value={bookFilter}
+                        onChange={(e) => setBookFilter(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setShowBookSelector(false);
+                          } else if (e.key === "Enter") {
+                            const allFiltered = [
+                              ...filteredOTBooks,
+                              ...filteredNTBooks,
+                            ];
+                            if (allFiltered.length === 1) {
+                              const book = allFiltered[0];
+                              if (onNavigate) {
+                                onNavigate(book, 1);
+                              } else {
+                                setSelectedBook(book);
+                                setSelectedChapter(1);
+                              }
+                              setShowBookSelector(false);
+                            }
+                          }
                         }}
-                        className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer ${
-                          selectedBook === book
-                            ? "bg-brand-primary-500/20 text-brand-primary-300"
-                            : "hover:bg-neutral-800 text-neutral-300"
-                        }`}
-                      >
-                        {book}
-                      </button>
-                    ))}
+                        placeholder="Search books..."
+                        className="w-full pl-9 pr-3 py-2 bg-neutral-800/50 border border-neutral-700/50 rounded-md text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-brand-primary-500/50"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto p-2 pointer-events-auto">
+                    {filteredOTBooks.length > 0 && (
+                      <>
+                        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-3 py-2">
+                          Old Testament
+                        </div>
+                        {filteredOTBooks.map((book) => (
+                          <button
+                            key={book}
+                            ref={
+                              selectedBook === book
+                                ? selectedBookButtonRef
+                                : null
+                            }
+                            type="button"
+                            onMouseDown={() => {
+                              if (onNavigate) {
+                                onNavigate(book, 1);
+                              } else {
+                                setSelectedBook(book);
+                                setSelectedChapter(1);
+                              }
+                              setShowBookSelector(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer ${
+                              selectedBook === book
+                                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                                : "hover:bg-neutral-800 text-neutral-300"
+                            }`}
+                          >
+                            {book}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {filteredNTBooks.length > 0 && (
+                      <>
+                        <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-3 py-2 mt-2">
+                          New Testament
+                        </div>
+                        {filteredNTBooks.map((book) => (
+                          <button
+                            key={book}
+                            ref={
+                              selectedBook === book
+                                ? selectedBookButtonRef
+                                : null
+                            }
+                            type="button"
+                            onMouseDown={() => {
+                              if (onNavigate) {
+                                onNavigate(book, 1);
+                              } else {
+                                setSelectedBook(book);
+                                setSelectedChapter(1);
+                              }
+                              setShowBookSelector(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer ${
+                              selectedBook === book
+                                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                                : "hover:bg-neutral-800 text-neutral-300"
+                            }`}
+                          >
+                            {book}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {filteredOTBooks.length === 0 &&
+                      filteredNTBooks.length === 0 && (
+                        <div className="text-center py-6 text-neutral-500 text-sm">
+                          No books match &ldquo;{bookFilter}&rdquo;
+                        </div>
+                      )}
                   </div>
                 </div>
               )}
@@ -750,11 +925,17 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                   min="1"
                   max={bookData?.chapters.length || 1}
                   value={selectedChapter}
-                  onChange={(e) =>
-                    setSelectedChapter(
-                      Math.max(1, parseInt(e.target.value) || 1),
-                    )
-                  }
+                  onChange={(e) => {
+                    const newChapter = Math.max(
+                      1,
+                      parseInt(e.target.value) || 1,
+                    );
+                    if (onNavigate) {
+                      onNavigate(selectedBook, newChapter);
+                    } else {
+                      setSelectedChapter(newChapter);
+                    }
+                  }}
                   className="w-16 px-3 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-white text-center input-glow input-depth"
                 />
                 <span className="text-sm text-neutral-500">
@@ -784,6 +965,58 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                   />
                 </svg>
               </button>
+
+              {/* Keyboard shortcuts hint */}
+              <div className="relative hidden md:block">
+                <button
+                  onClick={() => setShowShortcuts((s) => !s)}
+                  className="p-2 hover:bg-neutral-800 rounded-lg transition-all text-neutral-500 hover:text-neutral-300"
+                  title="Keyboard shortcuts"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </button>
+                {showShortcuts && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-[70]"
+                      onClick={() => setShowShortcuts(false)}
+                    />
+                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-4 z-[71]">
+                      <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
+                        Keyboard Shortcuts
+                      </h4>
+                      <div className="space-y-2">
+                        {[
+                          ["←  →", "Previous / Next chapter"],
+                          ["Esc", "Close popups"],
+                          ["Enter", "Select book (when filtered to one)"],
+                        ].map(([key, desc]) => (
+                          <div key={key} className="flex items-center gap-3">
+                            <kbd className="px-1.5 py-0.5 bg-neutral-800 border border-neutral-700 rounded text-[10px] font-mono text-neutral-300 min-w-[2.5rem] text-center">
+                              {key}
+                            </kbd>
+                            <span className="text-xs text-neutral-400">
+                              {desc}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -854,7 +1087,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                           className={`inline ${isFirstVerseOfParagraph ? "ml-8" : ""}`}
                         >
                           <sup
-                            className="text-brand-primary-400 hover:text-[#D4AF37] font-semibold text-[11px] mr-1.5 opacity-60 hover:opacity-100 cursor-pointer hover:underline transition-all"
+                            className="relative text-brand-primary-400 hover:text-[#D4AF37] font-semibold text-[11px] mr-1.5 opacity-60 hover:opacity-100 cursor-pointer hover:underline transition-all before:absolute before:inset-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-11 before:h-11 before:content-[''] md:before:hidden"
+                            data-verse-number={verse.verse}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleVerseNumberClick(parseInt(verse.verse), e);
@@ -954,6 +1188,49 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 }}
               />
             </div>
+          ) : loadError ? (
+            <div className="text-center py-20 px-6">
+              <svg
+                className="w-12 h-12 mx-auto mb-4 text-neutral-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p className="text-neutral-400 text-sm mb-1">
+                Could not load {selectedBook}
+              </p>
+              <p className="text-neutral-600 text-xs mb-4">{loadError}</p>
+              <button
+                onClick={() => {
+                  setLoadError(null);
+                  setLoading(true);
+                  const bookFileName = selectedBook.replace(/ /g, "");
+                  fetch(
+                    `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
+                  )
+                    .then((res) => {
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                      return res.json();
+                    })
+                    .then((data) => {
+                      setBookData(data);
+                      setLoadError(null);
+                    })
+                    .catch((err) => setLoadError(err.message))
+                    .finally(() => setLoading(false));
+                }}
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm rounded-lg transition-colors border border-neutral-700/50"
+              >
+                Try Again
+              </button>
+            </div>
           ) : (
             <div className="text-center py-20 text-neutral-500">
               No content available
@@ -964,6 +1241,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
         {/* Text Highlight Tooltip - inside scrolling container */}
         <TextHighlightTooltip
           onGoDeeper={handleGoDeeper}
+          onNavigateToChat={handleExploreDeeper}
           onHighlight={handleHighlight}
           enableHighlight={true}
           bibleContext={{
@@ -993,8 +1271,34 @@ const BibleReader: React.FC<BibleReaderProps> = ({
             reference={selectedVerseTooltip.reference}
             position={selectedVerseTooltip.position}
             onClose={() => setSelectedVerseTooltip(null)}
-            onTrace={handleExploreDeeper}
+            onTrace={(ref) => onTrace?.(ref)}
+            onGoDeeper={handleExploreDeeper}
           />
+        )}
+
+        {/* Scroll to top FAB */}
+        {showScrollTop && (
+          <button
+            onClick={() =>
+              bibleScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+            }
+            className="sticky bottom-6 ml-auto mr-6 float-right p-3 bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 rounded-full shadow-lg text-neutral-400 hover:text-white hover:bg-neutral-700/80 transition-all z-30"
+            title="Scroll to top"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 15l7-7 7 7"
+              />
+            </svg>
+          </button>
         )}
       </div>
     </div>

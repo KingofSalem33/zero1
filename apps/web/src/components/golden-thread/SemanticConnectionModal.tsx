@@ -8,6 +8,7 @@ import React, {
 import { createPortal } from "react-dom";
 import VerseTooltip from "../VerseTooltip";
 import type { GoDeeperPayload } from "../../types/chat";
+import { useToast } from "../Toast";
 import {
   buildGoDeeperDisplayText,
   buildGoDeeperPrompt,
@@ -150,6 +151,7 @@ export function SemanticConnectionModal({
   goDeeperOverride,
   maxVisibleVerses = 6,
 }: SemanticConnectionModalProps) {
+  const { toast } = useToast();
   const normalizedConnectionType = useMemo(
     () => normalizeConnectionType(connectionType),
     [connectionType],
@@ -674,9 +676,11 @@ export function SemanticConnectionModal({
       }
 
       setSaved(true);
+      toast("Connection saved to Library", { type: "success", duration: 2500 });
     } catch (err) {
       console.error("[SemanticConnectionModal] Save failed:", err);
       setSaveError("Could not save this connection");
+      toast("Failed to save connection", { type: "error", duration: 3000 });
     } finally {
       setSaving(false);
     }
