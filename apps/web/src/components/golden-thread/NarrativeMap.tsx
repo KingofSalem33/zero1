@@ -25,6 +25,7 @@ import { VerseNode } from "./VerseNode";
 import { SemanticConnectionModal } from "./SemanticConnectionModal";
 import { ParallelPassagesModal } from "./ParallelPassagesModal";
 import { DiscoveryOverlay } from "./DiscoveryOverlay";
+import { useUserPreferences } from "../../hooks/useUserPreferences";
 import type {
   VisualContextBundle,
   EdgeType,
@@ -120,12 +121,23 @@ const getDefaultEdgeOpacity = ({
 };
 
 const getEdgeAnimationConfig = (
-  _isLLMDiscovered: boolean,
+  isLLMDiscovered: boolean,
   _flowDuration: string,
-) => ({
-  animationName: "none",
-  animationDuration: "0s",
-});
+) =>
+  isLLMDiscovered
+    ? {
+        animationName: "llm-shimmer",
+        animationDuration: "3s",
+        animationIterationCount: "infinite",
+        animationTimingFunction: "linear",
+      }
+    : {
+        // Subtle flowing dash for non-LLM edges (visible only because of dasharray)
+        animationName: "edge-flow",
+        animationDuration: "4s",
+        animationIterationCount: "infinite",
+        animationTimingFunction: "linear",
+      };
 const edgePulseDelay = (id: string) => {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
@@ -198,6 +210,7 @@ const resolveConnectionFamily = (
   }
 
   if (edgeType === "ECHOES") return "ECHO";
+  if (edgeType === "ALLUSION") return "ECHO";
 
   if (edgeType === "PROPHECY" || edgeType === "FULFILLMENT") {
     return "FULFILLMENT";
@@ -237,6 +250,7 @@ const resolveConnectionChip = (
     return "Theme";
   }
 
+  if (edgeType === "ALLUSION") return "Allusion";
   if (edgeType === "PROPHECY") return "Prophetic";
   if (edgeType === "FULFILLMENT") return "Fulfillment";
   if (edgeType === "TYPOLOGY") return "Typology";
@@ -293,8 +307,33 @@ interface ConnectionTopicGroup {
   edgeIds: string[];
 }
 
+/** Non-interactive depth ring background — renders concentric circles at ring radii */
+const DepthRingsNode = React.memo(() => (
+  <svg
+    width={1680}
+    height={1680}
+    viewBox="-840 -840 1680 1680"
+    style={{ pointerEvents: "none", overflow: "visible" }}
+  >
+    {[360, 600, 840].map((r, i) => (
+      <circle
+        key={i}
+        cx={0}
+        cy={0}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.035)"
+        strokeWidth={1}
+        strokeDasharray="6 10"
+      />
+    ))}
+  </svg>
+));
+DepthRingsNode.displayName = "DepthRingsNode";
+
 const nodeTypes = {
   verseNode: VerseNode,
+  depthRings: DepthRingsNode,
 };
 
 const edgeTypes = {
@@ -310,6 +349,8 @@ interface NarrativeMapProps {
   onGoDeeper?: (prompt: GoDeeperPayload) => void;
   userId?: string;
   tracedText?: string;
+  /** Verse reference known at trace-time (before bundle loads), e.g. "John 3:16" */
+  preloadAnchorRef?: string;
 }
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
@@ -419,6 +460,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   onGoDeeper,
   userId = "anonymous",
   tracedText,
+  preloadAnchorRef,
 }) => {
   const bundle = useMemo(() => collapseDuplicateBundle(rawBundle), [rawBundle]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -448,6 +490,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   >([]);
   const [discoveryHighlightIndex, setDiscoveryHighlightIndex] = useState(0);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
+  const [awePulseActive, setAwePulseActive] = useState(false);
   const { toast } = useToast();
   const [mapSaving, setMapSaving] = useState(false);
   const [mapSaved, setMapSaved] = useState(false);
@@ -455,7 +498,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   const [showHelpHints, setShowHelpHints] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
   const flowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const { preferences: userPrefs, markMapOnboardingComplete } =
+    useUserPreferences();
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null);
   const autoCenteredRef = useRef(false);
+
+  // Anchor label: use preloadAnchorRef immediately (known at trace-time),
+  // then upgrade to bundle-derived label once bundle loads
+  const anchorLabel = useMemo(() => {
+    if (bundle?.nodes?.length) {
+      const a = bundle.nodes.find((n) => n.depth === 0) || bundle.nodes[0];
+      const book = a.book_name || a.book_abbrev || "";
+      return `${book} ${a.chapter}:${a.verse}`;
+    }
+    return preloadAnchorRef;
+  }, [bundle, preloadAnchorRef]);
 
   useEffect(() => {
     setMapSaved(false);
@@ -1240,8 +1297,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const nodeDepth = verse.depth || 0;
       if (isAnchor) return { width: 180, height: 90 };
       if (nodeDepth === 1) return { width: 120, height: 50 };
-      if (nodeDepth === 2) return { width: 100, height: 44 };
-      return { width: 95, height: 44 };
+      if (nodeDepth === 2) return { width: 105, height: 52 };
+      return { width: 100, height: 52 };
     },
     [],
   );
@@ -1533,7 +1590,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             stroke: getEdgeStroke(finalStyleType, false, isAnchorRay),
             strokeWidth: EDGE_THIN_WIDTH,
             strokeLinecap: "round",
-            strokeDasharray: "0",
+            strokeDasharray: "200 4",
             strokeDashoffset: 0,
             opacity: 0, // Start invisible for entrance animation
             ...getEdgeAnimationConfig(isLLMDiscovered, "5.6s"),
@@ -1600,10 +1657,11 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               stroke: `url(#edge-gradient-GREY)`, // Use directional gradient
               strokeWidth: EDGE_THIN_WIDTH,
               strokeLinecap: "round",
-              strokeDasharray: "0",
+              strokeDasharray: "none",
               strokeDashoffset: 0,
               opacity: 0, // Start invisible for entrance animation
-              ...getEdgeAnimationConfig(false, "5.6s"),
+              animationName: "none",
+              animationDuration: "0s",
               animationDelay: edgeFlowDelay(
                 `e${fromId}-${toId}-synthetic`,
                 depthById.get(node.parentId),
@@ -1843,7 +1901,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         `[Layout DEBUG] Final layout: ${reactFlowNodes.length} nodes, ${reactFlowEdges.length} edges`,
       );
 
-    return { nodes: reactFlowNodes, edges: reactFlowEdges };
+    // Add depth ring indicators as a background node centered on the anchor
+    const depthRingsNode: Node = {
+      id: "__depth-rings__",
+      type: "depthRings",
+      position: { x: 0, y: 0 },
+      data: {},
+      selectable: false,
+      draggable: false,
+      focusable: false,
+      style: { zIndex: -1, pointerEvents: "none" as const },
+    };
+    return {
+      nodes: [depthRingsNode, ...reactFlowNodes],
+      edges: reactFlowEdges,
+    };
   };
 
   // Auto-expand anchor and depth 1 nodes on initial load
@@ -1869,6 +1941,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
     setExpandedNodes(nodesToExpand);
     setInitialExpansionDone(true);
+    // Start overlay hold NOW (same sync pass) so overlay stays visible with labels
+    setOverlayHoldActive(true);
   }, [bundle, buildInitialExpandedNodes, initialExpansionDone]);
 
   // Update layout when bundle, highlights, or expanded nodes change
@@ -1927,6 +2001,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         edgeTimer = window.setTimeout(() => {
           setEdgesAnimated(true);
+          setAwePulseActive(true);
         }, nodeEntranceTime);
 
         if (!autoCenteredRef.current && flowReady) {
@@ -1966,6 +2041,27 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     handleExpandNode,
     highlightedRefs,
     initialExpansionDone,
+  ]);
+
+  // Show map onboarding on first graph render
+  useEffect(() => {
+    if (
+      flowReady &&
+      initialExpansionDone &&
+      !userPrefs.hasSeenMapOnboarding &&
+      bundle &&
+      bundle.nodes.length > 0 &&
+      onboardingStep === null
+    ) {
+      const timer = window.setTimeout(() => setOnboardingStep(0), 800);
+      return () => window.clearTimeout(timer);
+    }
+  }, [
+    flowReady,
+    initialExpansionDone,
+    userPrefs.hasSeenMapOnboarding,
+    bundle,
+    onboardingStep,
   ]);
 
   const selectVersesForDiscovery = useCallback(
@@ -2185,7 +2281,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               stroke: getEdgeStroke(styleType, false, isAnchorRay),
               strokeWidth: EDGE_THIN_WIDTH,
               strokeLinecap: "round",
-              strokeDasharray: "0",
+              strokeDasharray: "none",
               strokeDashoffset: 0,
               opacity: 0,
               ...getEdgeAnimationConfig(true, "5.6s"),
@@ -2335,7 +2431,19 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       ? "No more verses to explore"
       : "Find deeper connections across Scripture";
 
-  const shouldShowOverlay = !bundle || discovering || !initialExpansionDone;
+  // Keep overlay visible briefly after expansion so verse labels render during fade-out.
+  // The hold is activated synchronously in the useLayoutEffect that sets initialExpansionDone,
+  // and this useEffect clears it after 600ms so the overlay fades away.
+  const [overlayHoldActive, setOverlayHoldActive] = useState(false);
+  useEffect(() => {
+    if (overlayHoldActive) {
+      const timer = window.setTimeout(() => setOverlayHoldActive(false), 600);
+      return () => window.clearTimeout(timer);
+    }
+  }, [overlayHoldActive]);
+
+  const shouldShowOverlay =
+    !bundle || discovering || !initialExpansionDone || overlayHoldActive;
 
   useEffect(() => {
     if (!discovering || discoveryHighlights.length === 0) return;
@@ -2805,6 +2913,15 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           70% { box-shadow: 0 0 0 6px rgba(255,255,255,0.05); opacity: 0.2; }
           100% { box-shadow: 0 0 0 10px rgba(255,255,255,0); opacity: 0; }
         }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes awe-pulse {
+          0% { opacity: 0; transform: scale(0.6); }
+          30% { opacity: 1; }
+          100% { opacity: 0; transform: scale(1.8); }
+        }
       `}</style>
       <DiscoveryOverlay
         phase={bundle ? discoveryProgress.phase : "selecting"}
@@ -2823,6 +2940,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             : undefined
         }
         showHint={bundle ? true : false}
+        anchorLabel={anchorLabel}
       />
       {bundle && (
         <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
@@ -2877,7 +2995,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         edgeTypes={edgeTypes}
         minZoom={0.2}
         maxZoom={2.0}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+        defaultViewport={{
+          x: 0,
+          y: 0,
+          zoom:
+            typeof window !== "undefined" && window.innerWidth < 640
+              ? 1.0
+              : 0.8,
+        }}
         onInit={(instance) => {
           flowInstanceRef.current = instance;
           setFlowReady(true);
@@ -2900,6 +3025,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             </linearGradient>
           </defs>
         </svg>
+        {/* Depth ring indicators — rendered as a non-interactive node so they pan/zoom with the graph */}
         <Background
           variant="dots"
           color="rgba(255,255,255,0.03)"
@@ -2908,12 +3034,25 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         />
       </ReactFlow>
 
+      {/* Awe-moment radial pulse on graph completion */}
+      {awePulseActive && (
+        <div
+          className="absolute inset-0 pointer-events-none z-30"
+          onAnimationEnd={() => setAwePulseActive(false)}
+          style={{
+            background:
+              "radial-gradient(circle at 50% 50%, rgba(212,175,55,0.12) 0%, rgba(212,175,55,0.04) 30%, transparent 60%)",
+            animation: "awe-pulse 1.2s ease-out forwards",
+          }}
+        />
+      )}
+
       {/* Zoom controls — bottom-right, above legend */}
       <div className="absolute bottom-16 right-4 z-40 flex flex-col gap-1">
         <button
           type="button"
           onClick={() => flowInstanceRef.current?.zoomIn({ duration: 200 })}
-          className="w-7 h-7 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
+          className="w-9 h-9 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
           aria-label="Zoom in"
         >
           <svg
@@ -2933,7 +3072,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         <button
           type="button"
           onClick={() => flowInstanceRef.current?.zoomOut({ duration: 200 })}
-          className="w-7 h-7 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
+          className="w-9 h-9 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
           aria-label="Zoom out"
         >
           <svg
@@ -2955,7 +3094,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           onClick={() =>
             flowInstanceRef.current?.fitView({ padding: 0.2, duration: 300 })
           }
-          className="w-7 h-7 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
+          className="w-9 h-9 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
           aria-label="Fit to view"
         >
           <svg
@@ -3074,7 +3213,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           <button
             type="button"
             onClick={() => setShowLegend(true)}
-            className="w-8 h-8 rounded-lg bg-neutral-900/60 backdrop-blur-xl border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 transition-all duration-200 flex items-center justify-center shadow-lg"
+            className="w-10 h-10 rounded-lg bg-neutral-900/60 backdrop-blur-xl border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 transition-all duration-200 flex items-center justify-center shadow-lg"
             aria-label="Show legend"
             title="Show legend"
           >
@@ -3142,6 +3281,111 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           }}
         />
       )}
+
+      {/* First-time map onboarding — 3-step tooltip sequence */}
+      {onboardingStep !== null && (
+        <div className="absolute inset-0 z-50 pointer-events-none">
+          {/* Scrim */}
+          <div
+            className="absolute inset-0 bg-black/40 pointer-events-auto"
+            onClick={() => {
+              setOnboardingStep(null);
+              markMapOnboardingComplete();
+            }}
+          />
+          {/* Tooltip card */}
+          <div
+            className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl p-5"
+            style={{
+              animation: "fade-in 300ms ease-out",
+            }}
+          >
+            {/* Step indicator */}
+            <div className="flex items-center gap-1.5 mb-3">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="h-1 rounded-full transition-all duration-200"
+                  style={{
+                    width: i === onboardingStep ? "16px" : "6px",
+                    backgroundColor:
+                      i === onboardingStep
+                        ? "#D4AF37"
+                        : i < onboardingStep
+                          ? "rgba(212,175,55,0.4)"
+                          : "rgba(255,255,255,0.15)",
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Step content */}
+            {onboardingStep === 0 && (
+              <>
+                <div className="text-[13px] font-serif font-semibold text-white/90 mb-1.5">
+                  The anchor verse
+                </div>
+                <div className="text-[11px] text-white/60 leading-relaxed">
+                  The large node at the center is your anchor — the verse your
+                  conversation is rooted in. Everything else flows from it.
+                </div>
+              </>
+            )}
+            {onboardingStep === 1 && (
+              <>
+                <div className="text-[13px] font-serif font-semibold text-white/90 mb-1.5">
+                  Connected Scripture
+                </div>
+                <div className="text-[11px] text-white/60 leading-relaxed">
+                  Lines trace real cross-references and shared themes between
+                  passages. Gold lines connect to the anchor. White lines link
+                  related verses.
+                </div>
+              </>
+            )}
+            {onboardingStep === 2 && (
+              <>
+                <div className="text-[13px] font-serif font-semibold text-white/90 mb-1.5">
+                  Explore deeper
+                </div>
+                <div className="text-[11px] text-white/60 leading-relaxed">
+                  Click any verse to see its connections. Use the{" "}
+                  <span className="text-[#D4AF37]">Discover</span> button to let
+                  AI find hidden links across Scripture.
+                </div>
+              </>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-between mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setOnboardingStep(null);
+                  markMapOnboardingComplete();
+                }}
+                className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onboardingStep < 2) {
+                    setOnboardingStep(onboardingStep + 1);
+                  } else {
+                    setOnboardingStep(null);
+                    markMapOnboardingComplete();
+                  }
+                }}
+                className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 transition-all duration-150"
+              >
+                {onboardingStep < 2 ? "Next" : "Got it"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3159,7 +3403,8 @@ export const NarrativeMap = React.memo(
       ) &&
       prevProps.onTrace === nextProps.onTrace &&
       prevProps.onGoDeeper === nextProps.onGoDeeper &&
-      prevProps.tracedText === nextProps.tracedText
+      prevProps.tracedText === nextProps.tracedText &&
+      prevProps.preloadAnchorRef === nextProps.preloadAnchorRef
     );
   },
 );

@@ -10,7 +10,7 @@ import { dispatchVerseNavigation } from "../utils/verseNavigation";
 /* global Element, AbortController, Range */
 
 interface TextHighlightTooltipProps {
-  onGoDeeper: (text: string) => void;
+  onGoDeeper: (text: string, anchorRef?: string) => void;
   onNavigateToChat?: (reference: string) => void;
   userId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -941,7 +941,16 @@ export function TextHighlightTooltip({
 
   const handleGoDeeper = () => {
     if (selectedText) {
-      onGoDeeper(selectedText);
+      // Build anchor reference from detected verse context (e.g., "John 3:16")
+      let anchorRef: string | undefined;
+      if (
+        detectedVerseContext?.book &&
+        detectedVerseContext.chapter &&
+        detectedVerseContext.verses?.length
+      ) {
+        anchorRef = `${detectedVerseContext.book} ${detectedVerseContext.chapter}:${detectedVerseContext.verses[0]}`;
+      }
+      onGoDeeper(selectedText, anchorRef);
       closeTooltip();
       window.getSelection()?.removeAllRanges();
     }

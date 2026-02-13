@@ -10,18 +10,12 @@ import {
 } from "./networkScience";
 import { profileSpan, profileTime } from "../profiling/requestProfiler";
 import type { VisualEdge } from "./types";
+import { cosineSimilarity, type DbVerse } from "./mathUtils";
 
+export { cosineSimilarity } from "./mathUtils";
 export { findAnchorVerse } from "./semanticSearch";
 
-export interface Verse {
-  id: number;
-  book_abbrev: string;
-  book_name: string;
-  chapter: number;
-  verse: number;
-  text: string;
-  similarity?: number;
-}
+export type Verse = DbVerse;
 
 export interface LightContext {
   anchor: Verse;
@@ -114,31 +108,12 @@ type PericopeConnectionRow = {
 };
 
 const PERICOPE_EDGE_TYPE_MAP: Record<string, VisualEdge["type"]> = {
-  NARRATIVE_PARALLEL: "TYPOLOGY",
+  NARRATIVE_PARALLEL: "NARRATIVE",
   THEMATIC_ECHO: "PATTERN",
-  TYPE_ANTITYPE: "FULFILLMENT",
+  TYPE_ANTITYPE: "TYPOLOGY",
 };
 
-/**
- * Compute cosine similarity between two vectors.
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  if (normA === 0 || normB === 0) return 0;
-
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+// cosineSimilarity re-exported from mathUtils above
 
 export async function rankByQueryRelevance<T extends { id: number }>(
   items: T[],

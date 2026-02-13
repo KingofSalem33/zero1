@@ -6,12 +6,14 @@ export interface UserPreferences {
   voice: VoiceOption;
   ttsEnabled: boolean;
   hasSeenOnboarding: boolean;
+  hasSeenMapOnboarding: boolean;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   voice: "onyx", // Default to Onyx (deep, authoritative voice for Bible teaching)
   ttsEnabled: true,
   hasSeenOnboarding: false,
+  hasSeenMapOnboarding: false,
 };
 
 const STORAGE_KEY = "bible-app-user-preferences";
@@ -62,11 +64,16 @@ export function useUserPreferences() {
     setPreferences((prev) => ({ ...prev, hasSeenOnboarding: true }));
   };
 
+  const markMapOnboardingComplete = () => {
+    setPreferences((prev) => ({ ...prev, hasSeenMapOnboarding: true }));
+  };
+
   return {
     preferences,
     updateVoice,
     toggleTTS,
     markOnboardingComplete,
+    markMapOnboardingComplete,
     setPreferences,
   };
 }

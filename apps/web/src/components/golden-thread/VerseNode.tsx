@@ -118,24 +118,46 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
     if (parallels.length === 0) return 0;
     const primaryBook = verse.book_name || verse.book_abbrev;
     const primaryKey = makeVerseKey(primaryBook, verse.chapter, verse.verse);
-    const primaryTokens = [verse.book_name, verse.book_abbrev]
-      .filter(Boolean)
-      .map((value) => normalizeToken(value as string));
+    // Build alternate keys for book name variations (e.g., "Gen" vs "Genesis")
+    const primaryKeys = new Set<string>();
+    primaryKeys.add(primaryKey);
+    if (verse.book_name) {
+      primaryKeys.add(
+        makeVerseKey(verse.book_name, verse.chapter, verse.verse),
+      );
+    }
+    if (verse.book_abbrev) {
+      primaryKeys.add(
+        makeVerseKey(verse.book_abbrev, verse.chapter, verse.verse),
+      );
+    }
     const seen = new Set<string>();
     let count = 0;
 
     parallels.forEach((parallel) => {
+      // Skip exact ID match
       if (parallel.id === verse.id) return;
-      const ref = parallel.reference ? normalizeToken(parallel.reference) : "";
-      const verseToken = `${verse.chapter}:${verse.verse}`;
-      if (ref && ref.includes(verseToken)) {
-        if (primaryTokens.some((token) => ref.includes(token))) {
+      // Skip same chapter:verse in same book (check all name variations)
+      if (
+        parallel.chapter === verse.chapter &&
+        parallel.verse === verse.verse
+      ) {
+        const parallelBookToken = normalizeToken(
+          parallel.book_name || parallel.book_abbrev || "",
+        );
+        const primaryBookToken = normalizeToken(primaryBook);
+        if (parallelBookToken === primaryBookToken) return;
+        // Also check abbreviation match
+        if (
+          verse.book_abbrev &&
+          parallelBookToken === normalizeToken(verse.book_abbrev)
+        ) {
           return;
         }
       }
       const parallelBook = parallel.book_name || parallel.book_abbrev || "";
       const key = makeVerseKey(parallelBook, parallel.chapter, parallel.verse);
-      if (key === primaryKey || seen.has(key)) return;
+      if (primaryKeys.has(key) || seen.has(key)) return;
       seen.add(key);
       count += 1;
     });
@@ -312,7 +334,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
           />
         )}
         {showHubBadge && (
-          <span className="absolute -top-2 -left-2 min-w-[18px] h-[18px] px-1 rounded-full bg-neutral-950/85 text-white/85 text-[9px] font-semibold flex items-center justify-center border border-white/15 shadow-sm">
+          <span className="absolute -top-2.5 -left-2.5 min-w-[22px] h-[22px] px-1 rounded-full bg-neutral-950/85 text-white/85 text-[9px] font-semibold flex items-center justify-center border border-white/15 shadow-sm">
             {normalizedConnections}
           </span>
         )}
@@ -343,23 +365,7 @@ export const VerseNode: React.FC<{ data: VerseNodeData }> = ({ data }) => {
             {secondaryLabel}
           </div>
         )}
-        {/* Show verse preview for anchor or highlighted nodes */}
-        {(isAnchor || isHighlighted) && (
-          <div
-            className={
-              isAnchor
-                ? "text-[10px] mt-1 max-w-[170px] truncate leading-tight text-white/70"
-                : nodeDepth <= 1
-                  ? "text-[9px] mt-0.5 max-w-[110px] truncate leading-tight text-white/65"
-                  : "text-[9px] mt-0.5 max-w-[90px] truncate leading-tight text-white/55"
-            }
-          >
-            {isAnchor
-              ? verse.text.substring(0, 50) +
-                (verse.text.length > 50 ? "..." : "")
-              : verse.text}
-          </div>
-        )}
+        {/* Verse text snippets removed — cleaner nodes, less cognitive load */}
         {/* Collapse/expand badges removed - map now starts fully expanded */}
         {/* User only sees parallel passage badges (purple, top-right) */}
         {uniqueParallelCount > 0 && onShowParallels && (

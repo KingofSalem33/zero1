@@ -24,37 +24,37 @@ export const CONCEPT_MAPPINGS: ConceptMapping[] = [
   {
     pattern: /sermon\s+on\s+the\s+mount/i,
     reference: "Matthew 5:1",
-    description: "Sermon on the Mount (Matthew 5-7)"
+    description: "Sermon on the Mount (Matthew 5-7)",
   },
   {
     pattern: /beatitudes/i,
     reference: "Matthew 5:3",
-    description: "The Beatitudes"
+    description: "The Beatitudes",
   },
   {
     pattern: /lord'?s?\s+prayer/i,
     reference: "Matthew 6:9",
-    description: "The Lord's Prayer"
+    description: "The Lord's Prayer",
   },
   {
     pattern: /our\s+father\s+(who\s+art|which\s+art)/i,
     reference: "Matthew 6:9",
-    description: "Our Father prayer"
+    description: "Our Father prayer",
   },
   {
     pattern: /golden\s+rule/i,
     reference: "Matthew 7:12",
-    description: "The Golden Rule"
+    description: "The Golden Rule",
   },
   {
     pattern: /great\s+commission/i,
     reference: "Matthew 28:19",
-    description: "The Great Commission"
+    description: "The Great Commission",
   },
   {
     pattern: /great\s+commandment/i,
     reference: "Matthew 22:37",
-    description: "The Great Commandment"
+    description: "The Great Commandment",
   },
 
   // ========================================
@@ -63,77 +63,77 @@ export const CONCEPT_MAPPINGS: ConceptMapping[] = [
   {
     pattern: /ten\s+commandments/i,
     reference: "Exodus 20:1",
-    description: "The Ten Commandments"
+    description: "The Ten Commandments",
   },
   {
     pattern: /creation\s+(story|account|of\s+the\s+world)/i,
     reference: "Genesis 1:1",
-    description: "Creation account"
+    description: "Creation account",
   },
   {
     pattern: /adam\s+and\s+eve/i,
     reference: "Genesis 2:7",
-    description: "Adam and Eve in the Garden"
+    description: "Adam and Eve in the Garden",
   },
   {
     pattern: /fall\s+of\s+man/i,
     reference: "Genesis 3:1",
-    description: "The Fall"
+    description: "The Fall",
   },
   {
     pattern: /noah'?s?\s+ark/i,
     reference: "Genesis 6:14",
-    description: "Noah's Ark"
+    description: "Noah's Ark",
   },
   {
     pattern: /the\s+flood/i,
     reference: "Genesis 7:11",
-    description: "The Great Flood"
+    description: "The Great Flood",
   },
   {
     pattern: /tower\s+of\s+babel/i,
     reference: "Genesis 11:1",
-    description: "Tower of Babel"
+    description: "Tower of Babel",
   },
   {
     pattern: /abraham\s+and\s+isaac/i,
     reference: "Genesis 22:1",
-    description: "Abraham's test of faith"
+    description: "Abraham's test of faith",
   },
   {
     pattern: /burning\s+bush/i,
     reference: "Exodus 3:2",
-    description: "The Burning Bush"
+    description: "The Burning Bush",
   },
   {
     pattern: /parting\s+(of\s+)?the\s+red\s+sea/i,
     reference: "Exodus 14:21",
-    description: "Parting of the Red Sea"
+    description: "Parting of the Red Sea",
   },
   {
     pattern: /crossing\s+(of\s+)?the\s+red\s+sea/i,
     reference: "Exodus 14:21",
-    description: "Crossing the Red Sea"
+    description: "Crossing the Red Sea",
   },
   {
     pattern: /david\s+and\s+goliath/i,
     reference: "1 Samuel 17:4",
-    description: "David and Goliath"
+    description: "David and Goliath",
   },
   {
     pattern: /daniel\s+in\s+the\s+lion'?s?\s+den/i,
     reference: "Daniel 6:16",
-    description: "Daniel in the lions' den"
+    description: "Daniel in the lions' den",
   },
   {
     pattern: /fiery\s+furnace/i,
     reference: "Daniel 3:20",
-    description: "Shadrach, Meshach, and Abednego in the fiery furnace"
+    description: "Shadrach, Meshach, and Abednego in the fiery furnace",
   },
   {
     pattern: /jonah\s+and\s+the\s+(whale|fish)/i,
     reference: "Jonah 1:17",
-    description: "Jonah and the great fish"
+    description: "Jonah and the great fish",
   },
 
   // ========================================
@@ -142,22 +142,22 @@ export const CONCEPT_MAPPINGS: ConceptMapping[] = [
   {
     pattern: /lord\s+is\s+my\s+shepherd/i,
     reference: "Psalm 23:1",
-    description: "Psalm 23 - The Lord is my shepherd"
+    description: "Psalm 23 - The Lord is my shepherd",
   },
   {
     pattern: /psalm\s+23/i,
     reference: "Psalm 23:1",
-    description: "Psalm 23"
+    description: "Psalm 23",
   },
   {
     pattern: /shepherd'?s?\s+psalm/i,
     reference: "Psalm 23:1",
-    description: "The Shepherd's Psalm"
+    description: "The Shepherd's Psalm",
   },
   {
     pattern: /valley\s+of\s+the\s+shadow/i,
     reference: "Psalm 23:4",
-    description: "Valley of the shadow of death"
+    description: "Valley of the shadow of death",
   },
 
   // ========================================
@@ -166,67 +166,67 @@ export const CONCEPT_MAPPINGS: ConceptMapping[] = [
   {
     pattern: /birth\s+of\s+jesus/i,
     reference: "Luke 2:7",
-    description: "Birth of Jesus"
+    description: "Birth of Jesus",
   },
   {
     pattern: /nativity/i,
     reference: "Luke 2:7",
-    description: "The Nativity"
+    description: "The Nativity",
   },
   {
     pattern: /christmas\s+story/i,
     reference: "Luke 2:7",
-    description: "The Christmas story"
+    description: "The Christmas story",
   },
   {
     pattern: /wise\s+men/i,
     reference: "Matthew 2:1",
-    description: "The Wise Men"
+    description: "The Wise Men",
   },
   {
     pattern: /star\s+of\s+bethlehem/i,
     reference: "Matthew 2:2",
-    description: "Star of Bethlehem"
+    description: "Star of Bethlehem",
   },
   {
     pattern: /last\s+supper/i,
     reference: "Matthew 26:26",
-    description: "The Last Supper"
+    description: "The Last Supper",
   },
   {
     pattern: /crucifixion/i,
     reference: "Matthew 27:35",
-    description: "The Crucifixion"
+    description: "The Crucifixion",
   },
   {
     pattern: /resurrection/i,
     reference: "Matthew 28:6",
-    description: "The Resurrection"
+    description: "The Resurrection",
   },
   {
     pattern: /easter/i,
     reference: "Matthew 28:6",
-    description: "Easter - The Resurrection"
+    description: "Easter - The Resurrection",
   },
   {
     pattern: /ascension/i,
     reference: "Acts 1:9",
-    description: "The Ascension"
+    description: "The Ascension",
   },
   {
     pattern: /pentecost/i,
     reference: "Acts 2:1",
-    description: "Pentecost"
+    description: "Pentecost",
   },
   {
     pattern: /road\s+to\s+damascus/i,
     reference: "Acts 9:3",
-    description: "Paul's conversion on the road to Damascus"
+    description: "Paul's conversion on the road to Damascus",
   },
   {
     pattern: /paul'?s?\s+conversion/i,
     reference: "Acts 9:3",
-    description: "Paul's conversion"
+    description: "Paul's conversion",
   },
 
   // ========================================
@@ -235,37 +235,37 @@ export const CONCEPT_MAPPINGS: ConceptMapping[] = [
   {
     pattern: /prodigal\s+son/i,
     reference: "Luke 15:11",
-    description: "Parable of the Prodigal Son"
+    description: "Parable of the Prodigal Son",
   },
   {
     pattern: /good\s+samaritan/i,
     reference: "Luke 10:30",
-    description: "Parable of the Good Samaritan"
+    description: "Parable of the Good Samaritan",
   },
   {
     pattern: /sower/i,
     reference: "Matthew 13:3",
-    description: "Parable of the Sower"
+    description: "Parable of the Sower",
   },
   {
     pattern: /mustard\s+seed/i,
     reference: "Matthew 13:31",
-    description: "Parable of the Mustard Seed"
+    description: "Parable of the Mustard Seed",
   },
   {
     pattern: /lost\s+sheep/i,
     reference: "Luke 15:4",
-    description: "Parable of the Lost Sheep"
+    description: "Parable of the Lost Sheep",
   },
   {
     pattern: /talents/i,
     reference: "Matthew 25:14",
-    description: "Parable of the Talents"
+    description: "Parable of the Talents",
   },
   {
     pattern: /wise\s+and\s+foolish\s+virgins/i,
     reference: "Matthew 25:1",
-    description: "Parable of the Wise and Foolish Virgins"
+    description: "Parable of the Wise and Foolish Virgins",
   },
 
   // ========================================
@@ -274,32 +274,148 @@ export const CONCEPT_MAPPINGS: ConceptMapping[] = [
   {
     pattern: /god\s+so\s+loved\s+the\s+world/i,
     reference: "John 3:16",
-    description: "For God so loved the world..."
+    description: "For God so loved the world...",
   },
   {
     pattern: /love\s+chapter/i,
     reference: "1 Corinthians 13:1",
-    description: "1 Corinthians 13 - The Love Chapter"
+    description: "1 Corinthians 13 - The Love Chapter",
   },
   {
     pattern: /faith\s+chapter/i,
     reference: "Hebrews 11:1",
-    description: "Hebrews 11 - The Faith Chapter"
+    description: "Hebrews 11 - The Faith Chapter",
   },
   {
     pattern: /armor\s+of\s+god/i,
     reference: "Ephesians 6:11",
-    description: "The Armor of God"
+    description: "The Armor of God",
   },
   {
     pattern: /fruit\s+of\s+the\s+spirit/i,
     reference: "Galatians 5:22",
-    description: "Fruit of the Spirit"
+    description: "Fruit of the Spirit",
   },
   {
     pattern: /fruits?\s+of\s+the\s+spirit/i,
     reference: "Galatians 5:22",
-    description: "Fruit of the Spirit"
+    description: "Fruit of the Spirit",
+  },
+
+  // ========================================
+  // Core Theological Texts & Confessions
+  // ========================================
+  {
+    pattern: /shema/i,
+    reference: "Deuteronomy 6:4",
+    description: "The Shema - 'Hear, O Israel'",
+  },
+  {
+    pattern: /hear,?\s+o\s+israel/i,
+    reference: "Deuteronomy 6:4",
+    description: "The Shema",
+  },
+  {
+    pattern: /suffering\s+servant/i,
+    reference: "Isaiah 52:13",
+    description: "The Suffering Servant (Isaiah 52:13-53:12)",
+  },
+  {
+    pattern: /isaiah\s+53/i,
+    reference: "Isaiah 53:1",
+    description: "Isaiah 53 - The Suffering Servant",
+  },
+  {
+    pattern: /new\s+covenant/i,
+    reference: "Jeremiah 31:31",
+    description: "The New Covenant promise",
+  },
+  {
+    pattern: /melchizedek/i,
+    reference: "Genesis 14:18",
+    description: "Melchizedek, priest of God Most High",
+  },
+
+  // ========================================
+  // Feasts & Liturgical Events
+  // ========================================
+  {
+    pattern: /passover/i,
+    reference: "Exodus 12:1",
+    description: "The Passover",
+  },
+  {
+    pattern: /day\s+of\s+atonement/i,
+    reference: "Leviticus 16:1",
+    description: "Yom Kippur - Day of Atonement",
+  },
+  {
+    pattern: /yom\s+kippur/i,
+    reference: "Leviticus 16:1",
+    description: "Yom Kippur - Day of Atonement",
+  },
+
+  // ========================================
+  // Key Discourses & Events
+  // ========================================
+  {
+    pattern: /transfiguration/i,
+    reference: "Matthew 17:1",
+    description: "The Transfiguration",
+  },
+  {
+    pattern: /olivet\s+discourse/i,
+    reference: "Matthew 24:1",
+    description: "The Olivet Discourse (Matthew 24-25)",
+  },
+  {
+    pattern: /upper\s+room\s+discourse/i,
+    reference: "John 13:1",
+    description: "The Upper Room Discourse (John 13-17)",
+  },
+  {
+    pattern: /farewell\s+discourse/i,
+    reference: "John 13:1",
+    description: "Jesus's Farewell Discourse (John 13-17)",
+  },
+
+  // ========================================
+  // Songs & Hymns of Scripture
+  // ========================================
+  {
+    pattern: /song\s+of\s+moses/i,
+    reference: "Deuteronomy 32:1",
+    description: "The Song of Moses",
+  },
+  {
+    pattern: /magnificat/i,
+    reference: "Luke 1:46",
+    description: "The Magnificat - Mary's Song",
+  },
+  {
+    pattern: /mary'?s?\s+song/i,
+    reference: "Luke 1:46",
+    description: "Mary's Song (Magnificat)",
+  },
+  {
+    pattern: /benedictus/i,
+    reference: "Luke 1:68",
+    description: "The Benedictus - Zechariah's Song",
+  },
+  {
+    pattern: /zechariah'?s?\s+song/i,
+    reference: "Luke 1:68",
+    description: "Zechariah's Song (Benedictus)",
+  },
+  {
+    pattern: /nunc\s+dimittis/i,
+    reference: "Luke 2:29",
+    description: "The Nunc Dimittis - Simeon's Song",
+  },
+  {
+    pattern: /simeon'?s?\s+(song|prayer)/i,
+    reference: "Luke 2:29",
+    description: "Simeon's Song (Nunc Dimittis)",
   },
 ];
 
@@ -312,7 +428,9 @@ export function matchConcept(query: string): string | null {
 
   for (const mapping of CONCEPT_MAPPINGS) {
     if (mapping.pattern.test(normalized)) {
-      console.log(`[Concept Mapping] Matched "${query}" -> ${mapping.reference} (${mapping.description})`);
+      console.log(
+        `[Concept Mapping] Matched "${query}" -> ${mapping.reference} (${mapping.description})`,
+      );
       return mapping.reference;
     }
   }

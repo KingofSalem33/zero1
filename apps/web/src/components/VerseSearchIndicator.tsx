@@ -8,8 +8,7 @@ interface VerseSearchIndicatorProps {
   completedTools?: string[];
 }
 
-// Deterministic positions for constellation nodes in a radial layout
-// Anchor node is centered; others are placed in expanding rings
+// Constellation layout — radial rings around a central anchor
 const NODE_POSITIONS: Array<{ x: number; y: number }> = [
   { x: 50, y: 50 }, // anchor (center)
   { x: 26, y: 32 },
@@ -26,20 +25,7 @@ const NODE_POSITIONS: Array<{ x: number; y: number }> = [
 ];
 
 // Which node each new node connects to (index into NODE_POSITIONS)
-const EDGE_TARGETS: number[] = [
-  -1, // anchor has no parent
-  0,
-  0,
-  0,
-  0, // first ring connects to anchor
-  1,
-  3,
-  4,
-  2, // second ring connects to first ring
-  5,
-  6,
-  8, // third ring connects to second ring
-];
+const EDGE_TARGETS: number[] = [-1, 0, 0, 0, 0, 1, 3, 4, 2, 5, 6, 8];
 
 type Phase = "searching" | "tracing" | "building";
 
@@ -232,17 +218,15 @@ export function VerseSearchIndicator({
     >
       {/* Glassmorphism container */}
       <div className="bg-neutral-900/60 backdrop-blur-xl border border-white/5 rounded-xl p-5 max-w-md">
-        {/* Gold header — traced text */}
-        {displayText && (
-          <div className="mb-3">
-            <span className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">
-              Tracing
-            </span>
-            <p className="text-[#D4AF37] text-sm font-semibold leading-snug mt-0.5 truncate">
-              {displayText}
-            </p>
-          </div>
-        )}
+        {/* Gold header */}
+        <div className="mb-3">
+          <span className="text-[11px] uppercase tracking-[0.15em] text-neutral-500 font-medium">
+            {displayText ? "Seeking" : "Seeking"}
+          </span>
+          <p className="text-[#D4AF37] text-sm font-semibold leading-snug mt-0.5 truncate">
+            {displayText || "Connections across Scripture"}
+          </p>
+        </div>
 
         {/* Contextual micro-copy with crossfade */}
         <div className="relative h-5 mb-4 overflow-hidden">
@@ -273,7 +257,7 @@ export function VerseSearchIndicator({
           </span>
         </div>
 
-        {/* Animated constellation SVG */}
+        {/* Animated constellation SVG — rectangles matching map/overlay style */}
         <div className="relative w-full h-[160px] mb-3">
           <svg
             viewBox="0 0 100 100"
@@ -293,9 +277,8 @@ export function VerseSearchIndicator({
                   x2={edge.to.x}
                   y2={edge.to.y}
                   stroke="rgba(255, 255, 255, 0.08)"
-                  strokeWidth={0.5}
+                  strokeWidth={0.6}
                   strokeDasharray={length}
-                  strokeDashoffset={0}
                   style={{
                     animation: `edge-draw 0.6s ease-out ${edge.index * 0.15}s both`,
                     strokeDashoffset: length,
@@ -304,43 +287,34 @@ export function VerseSearchIndicator({
               );
             })}
 
-            {/* Nodes */}
+            {/* Discovered nodes — stroke outlines that explode in */}
             {NODE_POSITIONS.slice(0, visibleNodeCount).map((pos, i) => {
-              const isAnchor = i === 0;
               const isLatest = i === visibleNodeCount - 1 && i > 0;
               return (
                 <g key={`node-${i}`}>
-                  {/* Glow for anchor */}
-                  {isAnchor && (
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={6}
-                      fill="rgba(212, 175, 55, 0.15)"
-                      style={{
-                        animation: "node-pulse 2s ease-in-out infinite",
-                      }}
-                    />
-                  )}
-                  {/* Node circle */}
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r={isAnchor ? 3.5 : 2.2}
-                    fill={isAnchor ? "#D4AF37" : "rgba(212, 175, 55, 0.7)"}
+                  <rect
+                    x={pos.x - 4}
+                    y={pos.y - 2}
+                    width={8}
+                    height={4}
+                    rx={1.5}
+                    fill="none"
+                    stroke="rgba(212, 175, 55, 0.65)"
+                    strokeWidth={0.5}
                     style={{
                       animation: `node-appear 0.4s ease-out ${i * 0.15}s both`,
                       transformOrigin: `${pos.x}px ${pos.y}px`,
                     }}
                   />
-                  {/* Pulse ring on latest node */}
                   {isLatest && (
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={4}
+                    <rect
+                      x={pos.x - 5.5}
+                      y={pos.y - 3.5}
+                      width={11}
+                      height={7}
+                      rx={2}
                       fill="none"
-                      stroke="rgba(212, 175, 55, 0.4)"
+                      stroke="rgba(212, 175, 55, 0.35)"
                       strokeWidth={0.5}
                       style={{
                         animation: "node-pulse 1.5s ease-in-out infinite",
@@ -351,14 +325,16 @@ export function VerseSearchIndicator({
               );
             })}
 
-            {/* Faint placeholder nodes for positions not yet filled */}
+            {/* Faint placeholder nodes */}
             {NODE_POSITIONS.slice(visibleNodeCount).map((pos, i) => (
-              <circle
+              <rect
                 key={`placeholder-${i}`}
-                cx={pos.x}
-                cy={pos.y}
-                r={1}
-                fill="rgba(255, 255, 255, 0.04)"
+                x={pos.x - 4}
+                y={pos.y - 2}
+                width={8}
+                height={4}
+                rx={1.5}
+                fill="rgba(255, 255, 255, 0.03)"
               />
             ))}
           </svg>

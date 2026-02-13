@@ -1927,6 +1927,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               onTrace={handleGoDeeper}
               onGoDeeper={onGoDeeper}
               userId="anonymous"
+              tracedText={lastUserPromptRef.current || ""}
             />
           </div>
         </div>

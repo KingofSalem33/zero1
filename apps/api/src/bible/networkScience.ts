@@ -113,6 +113,7 @@ export async function fetchChiasmStructureForVerse(
       .from("literary_structures")
       .select(baseSelect)
       .eq("center_verse_id", verseId)
+      .gte("confidence", 0.7)
       .limit(1);
 
     if (centerError) {
@@ -139,6 +140,7 @@ export async function fetchChiasmStructureForVerse(
       .from("literary_structures")
       .select(baseSelect)
       .contains("verse_ids", [verseId])
+      .gte("confidence", 0.7)
       .limit(1);
 
     if (memberError) {

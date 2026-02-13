@@ -9,29 +9,27 @@ interface DiscoveryOverlayProps {
   highlightSubtitle?: string;
   showHint?: boolean;
   visible?: boolean;
+  anchorLabel?: string; // Known anchor reference shown immediately before bundle loads
 }
 
-// Constellation layout — radial rings around a central anchor
+// Constellation layout — radial rings around a central anchor (matches chat)
 const NODE_POSITIONS: Array<{ x: number; y: number }> = [
-  { x: 50, y: 50 }, // anchor
-  { x: 24, y: 30 },
-  { x: 76, y: 26 },
-  { x: 80, y: 64 },
-  { x: 20, y: 70 },
-  { x: 50, y: 16 },
-  { x: 50, y: 84 },
-  { x: 12, y: 50 },
-  { x: 88, y: 50 },
-  { x: 32, y: 12 },
-  { x: 68, y: 88 },
-  { x: 87, y: 20 },
-  { x: 13, y: 80 },
-  { x: 40, y: 36 },
-  { x: 60, y: 64 },
+  { x: 50, y: 50 }, // anchor (center)
+  { x: 26, y: 32 },
+  { x: 74, y: 28 },
+  { x: 78, y: 62 },
+  { x: 22, y: 68 },
+  { x: 50, y: 18 },
+  { x: 50, y: 82 },
+  { x: 14, y: 50 },
+  { x: 86, y: 50 },
+  { x: 34, y: 14 },
+  { x: 66, y: 86 },
+  { x: 85, y: 22 },
 ];
 
 // Each node connects to a parent (index). -1 = anchor (no parent).
-const EDGE_TARGETS: number[] = [-1, 0, 0, 0, 0, 1, 3, 4, 2, 5, 6, 8, 7, 0, 0];
+const EDGE_TARGETS: number[] = [-1, 0, 0, 0, 0, 1, 3, 4, 2, 5, 6, 8];
 
 type Phase = "selecting" | "analyzing" | "connecting" | "complete";
 
@@ -68,6 +66,7 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
   highlightSubtitle,
   showHint = true,
   visible = true,
+  anchorLabel,
 }) => {
   const [messageTick, setMessageTick] = useState(0);
   const [messageTransition, setMessageTransition] = useState(false);
@@ -152,14 +151,14 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
         >
           {/* Header */}
           <div className="px-5 pt-5 pb-3">
-            {/* Traced text header */}
-            {displayText && (
+            {/* Anchor reference header */}
+            {(anchorLabel || displayText) && (
               <div className="mb-3">
                 <span className="text-[11px] uppercase tracking-[0.15em] text-neutral-500 font-medium">
                   Tracing
                 </span>
                 <p className="text-[#D4AF37] text-sm font-semibold leading-snug mt-0.5 truncate">
-                  {displayText}
+                  {anchorLabel || displayText}
                 </p>
               </div>
             )}
@@ -196,7 +195,7 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
 
           {/* Constellation SVG */}
           <div className="px-5">
-            <div className="relative w-full h-[180px]">
+            <div className="relative w-full h-[160px]">
               <svg
                 viewBox="0 0 100 100"
                 className="w-full h-full"
@@ -215,7 +214,7 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                       x2={edge.to.x}
                       y2={edge.to.y}
                       stroke="rgba(255, 255, 255, 0.08)"
-                      strokeWidth={0.5}
+                      strokeWidth={0.6}
                       strokeDasharray={length}
                       style={{
                         animation: `edge-draw 0.6s ease-out ${edge.index * 0.12}s both`,
@@ -225,38 +224,57 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                   );
                 })}
 
-                {/* Visible nodes */}
+                {/* Discovered nodes — same as chat, except anchor is larger with label */}
                 {NODE_POSITIONS.slice(0, visibleNodeCount).map((pos, i) => {
                   const isAnchor = i === 0;
                   const isLatest = i === visibleNodeCount - 1 && i > 0;
+                  const aw = 20; // anchor width
+                  const ah = 9; // anchor height
+                  const nw = 8; // normal node width
+                  const nh = 4; // normal node height
+                  const w = isAnchor ? aw : nw;
+                  const h = isAnchor ? ah : nh;
                   return (
                     <g key={`node-${i}`}>
-                      {isAnchor && (
-                        <circle
-                          cx={pos.x}
-                          cy={pos.y}
-                          r={7}
-                          fill="rgba(212, 175, 55, 0.12)"
-                          style={{
-                            animation: "node-pulse 2s ease-in-out infinite",
-                          }}
-                        />
-                      )}
-                      <circle
-                        cx={pos.x}
-                        cy={pos.y}
-                        r={isAnchor ? 3.5 : 2.2}
-                        fill={isAnchor ? "#D4AF37" : "rgba(212, 175, 55, 0.65)"}
+                      <rect
+                        x={pos.x - w / 2}
+                        y={pos.y - h / 2}
+                        width={w}
+                        height={h}
+                        rx={1.5}
+                        fill="none"
+                        stroke={
+                          isAnchor ? "#D4AF37" : "rgba(212, 175, 55, 0.65)"
+                        }
+                        strokeWidth={0.5}
                         style={{
                           animation: `node-appear 0.4s ease-out ${i * 0.12}s both`,
                           transformOrigin: `${pos.x}px ${pos.y}px`,
                         }}
                       />
+                      {isAnchor && anchorLabel && (
+                        <text
+                          x={pos.x}
+                          y={pos.y + 0.6}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fill="#D4AF37"
+                          fontSize={3.2}
+                          fontFamily="serif"
+                          style={{
+                            animation: `node-appear 0.4s ease-out 0s both`,
+                          }}
+                        >
+                          {anchorLabel}
+                        </text>
+                      )}
                       {isLatest && (
-                        <circle
-                          cx={pos.x}
-                          cy={pos.y}
-                          r={4.5}
+                        <rect
+                          x={pos.x - w / 2 - 1.5}
+                          y={pos.y - h / 2 - 1.5}
+                          width={w + 3}
+                          height={h + 3}
+                          rx={2}
                           fill="none"
                           stroke="rgba(212, 175, 55, 0.35)"
                           strokeWidth={0.5}
@@ -269,13 +287,15 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                   );
                 })}
 
-                {/* Placeholder nodes */}
+                {/* Placeholder nodes — faint background rectangles */}
                 {NODE_POSITIONS.slice(visibleNodeCount).map((pos, i) => (
-                  <circle
+                  <rect
                     key={`ph-${i}`}
-                    cx={pos.x}
-                    cy={pos.y}
-                    r={1}
+                    x={pos.x - 4}
+                    y={pos.y - 2}
+                    width={8}
+                    height={4}
+                    rx={1.5}
                     fill="rgba(255, 255, 255, 0.03)"
                   />
                 ))}

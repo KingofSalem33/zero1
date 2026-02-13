@@ -12,6 +12,7 @@ export type EdgeType =
   | "DEEPER"
   | "ROOTS"
   | "ECHOES"
+  | "ALLUSION"
   | "PROPHECY"
   | "GENEALOGY"
   | "NARRATIVE"
@@ -58,6 +59,12 @@ export interface ThreadNode {
   structureRole?: "center" | "mirror" | "member";
   mirrorOf?: number; // Verse ID of the mirror pair (if applicable)
   referenceKey?: string; // Canonical normalized reference (e.g., "john 1:1")
+  // Pericope metadata (optional, from backend)
+  pericopeId?: number; // ID of parent pericope
+  pericopeTitle?: string; // Display title (title_generated || title)
+  pericopeType?: string; // "narrative", "parable", "teaching", etc.
+  pericopeThemes?: string[]; // Theological themes
+  isPericopeAnchor?: boolean; // True if this verse is the pericope anchor
 }
 
 export interface VisualEdge {

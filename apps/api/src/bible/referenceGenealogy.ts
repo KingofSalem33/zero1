@@ -13,6 +13,7 @@
 
 import { supabase } from "../db";
 import type { Verse } from "./graphWalker";
+import { cosineSimilarity } from "./mathUtils";
 import { ensureVersesHaveText } from "./verseText";
 import type { ThreadNode, VisualEdge, VisualContextBundle } from "./types";
 import { makeOpenAI } from "../ai";
@@ -26,26 +27,7 @@ interface BuildTreeOptions {
   similarityThreshold?: number; // Minimum similarity score to follow a reference (default: 0.4)
 }
 
-/**
- * Compute cosine similarity between two vectors
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  if (normA === 0 || normB === 0) return 0;
-
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+// cosineSimilarity imported from mathUtils
 
 /**
  * Build a reference genealogy tree starting from an anchor verse.
@@ -282,25 +264,29 @@ export async function buildReferenceTree(
     const crossRefs = await fetchCrossReferencesForVerses(verseIdsAtThisLevel);
 
     // Build next level
-    const nextLevel: Array<{ id: number; parentId: number }> = [];
+    // Collect all candidate ref IDs across all parents for a single batched embedding fetch
+    const parentRefs = new Map<number, number[]>();
     for (const { id: verseId } of currentLevel) {
       if (!visited.has(verseId)) continue;
+      parentRefs.set(verseId, crossRefs.get(verseId) || []);
+    }
 
-      const refs = crossRefs.get(verseId) || [];
-      let limitedRefs = refs;
+    // Batch-fetch embeddings for ALL candidate refs at this level (single query instead of N)
+    let embeddingScores: Map<number, number> | null = null;
+    if (queryEmbedding) {
+      const allRefIds = new Set<number>();
+      for (const refs of parentRefs.values()) {
+        for (const id of refs) allRefIds.add(id);
+      }
 
-      // If we have a query embedding, score and filter references
-      if (queryEmbedding && refs.length > 0) {
-        // Fetch embeddings for all potential reference verses
+      if (allRefIds.size > 0) {
         const { data: refVerses, error: refError } = await supabase
           .from("verses")
           .select("id, embedding")
-          .in("id", refs);
+          .in("id", Array.from(allRefIds));
 
         if (!refError && refVerses) {
-          // Score each reference by similarity
-          const scoredRefs: Array<{ id: number; similarity: number }> = [];
-
+          embeddingScores = new Map();
           for (const refVerse of refVerses) {
             if (refVerse.embedding) {
               try {
@@ -308,47 +294,45 @@ export async function buildReferenceTree(
                   typeof refVerse.embedding === "string"
                     ? JSON.parse(refVerse.embedding)
                     : refVerse.embedding;
-
-                const similarity = cosineSimilarity(queryEmbedding, embedding);
-                scoredRefs.push({ id: refVerse.id, similarity });
+                embeddingScores.set(
+                  refVerse.id,
+                  cosineSimilarity(queryEmbedding, embedding),
+                );
               } catch {
-                // Skip if embedding parse fails
-                scoredRefs.push({ id: refVerse.id, similarity: 0 });
+                embeddingScores.set(refVerse.id, 0);
               }
             } else {
-              scoredRefs.push({ id: refVerse.id, similarity: 0 });
+              embeddingScores.set(refVerse.id, 0);
             }
           }
+          console.log(
+            `[Reference Tree] Batch-scored ${embeddingScores.size} candidate refs at depth ${depth}`,
+          );
+        }
+      }
+    }
 
-          // Filter by threshold and sort by similarity
-          const filteredRefs = scoredRefs
-            .filter((r) => r.similarity >= similarityThreshold)
-            .sort((a, b) => b.similarity - a.similarity)
-            .slice(0, maxChildrenPerNode);
+    const nextLevel: Array<{ id: number; parentId: number }> = [];
+    for (const [verseId, refs] of parentRefs) {
+      let limitedRefs: number[];
 
-          limitedRefs = filteredRefs.map((r) => r.id);
+      if (embeddingScores && refs.length > 0) {
+        // Score and filter using pre-fetched embeddings
+        const scoredRefs = refs
+          .map((id) => ({ id, similarity: embeddingScores!.get(id) ?? 0 }))
+          .filter((r) => r.similarity >= similarityThreshold)
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, maxChildrenPerNode);
 
-          if (filteredRefs.length < refs.length) {
-            const kept = filteredRefs.length;
-            const filtered = refs.length - kept;
-            console.log(
-              `[Reference Tree] Verse ${verseId}: ${refs.length} refs → kept ${kept} above ${similarityThreshold} threshold (filtered ${filtered})`,
-            );
-            if (filteredRefs.length > 0) {
-              const topSim = (filteredRefs[0].similarity * 100).toFixed(1);
-              console.log(
-                `[Reference Tree]   Top reference similarity: ${topSim}%`,
-              );
-            }
-          }
-        } else {
-          // Fallback to naive slicing if embedding fetch fails
-          limitedRefs = refs.slice(0, maxChildrenPerNode);
+        limitedRefs = scoredRefs.map((r) => r.id);
+
+        if (scoredRefs.length < refs.length) {
+          console.log(
+            `[Reference Tree] Verse ${verseId}: ${refs.length} refs → kept ${scoredRefs.length} above ${similarityThreshold} threshold`,
+          );
         }
       } else {
-        // No query embedding - use naive slicing
         limitedRefs = refs.slice(0, maxChildrenPerNode);
-
         if (refs.length > maxChildrenPerNode) {
           console.log(
             `[Reference Tree] Verse ${verseId} has ${refs.length} refs, limiting to ${maxChildrenPerNode}`,

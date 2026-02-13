@@ -36,6 +36,9 @@ import {
   fetchChiasmStructureForVerse,
   type ChiasmStructure,
 } from "./networkScience";
+import { cosineSimilarity, clamp, type DbVerse } from "./mathUtils";
+
+export type Verse = DbVerse;
 
 type EdgeType = import("./types").EdgeType;
 
@@ -54,6 +57,7 @@ const CROSS_PERICOPE_RELAXED_MIN = 0.2;
 const CROSS_PERICOPE_OVERRIDE_WEIGHT = 0.9;
 const CROSS_PERICOPE_ALLOWLIST = new Set<EdgeType>([
   "ECHOES",
+  "ALLUSION",
   "PROPHECY",
   "FULFILLMENT",
   "TYPOLOGY",
@@ -75,14 +79,7 @@ const EDGE_SOURCE_WEIGHTS: Record<string, number> = {
 
 const MIN_ADDITIONAL_EDGE_WEIGHT = 0.25;
 
-export interface Verse {
-  id: number;
-  book_abbrev: string;
-  book_name: string;
-  chapter: number;
-  verse: number;
-  text: string;
-}
+// Verse type re-exported from mathUtils above
 
 export interface ContextBundle {
   anchor: Verse;
@@ -339,31 +336,58 @@ export async function buildContextBundle(
   // ========================================
   console.log(`[Graph Walker] Fetching Ring 0 (±${cfg.ring0Radius} verses)...`);
 
-  const { data: ring0Data, error: ring0Error } = await supabase
+  // First fetch the anchor to get its book/chapter context
+  const { data: anchorData, error: anchorError } = await supabase
     .from("verses")
     .select("*")
-    .gte("id", anchorId - cfg.ring0Radius)
-    .lte("id", anchorId + cfg.ring0Radius)
-    .order("id", { ascending: true });
+    .eq("id", anchorId)
+    .single();
 
-  if (ring0Error) {
-    console.error("[Graph Walker] Ring 0 fetch failed:", ring0Error);
-    throw new Error(`Failed to fetch Ring 0: ${ring0Error.message}`);
+  if (anchorError || !anchorData) {
+    throw new Error(`Anchor verse ID ${anchorId} not found`);
+  }
+
+  const anchorVerse = anchorData as Verse;
+
+  const isHybridRequested =
+    selection?.mode === "hybrid" && typeof selection.query === "string";
+
+  // Parallelize: Ring 0 fetch, chiasm structure, and query embedding are independent
+  const [ring0Result, structure, queryEmbeddingResult] = await Promise.all([
+    // Ring 0 by book + chapter + verse range
+    supabase
+      .from("verses")
+      .select("*")
+      .eq("book_abbrev", anchorVerse.book_abbrev)
+      .eq("chapter", anchorVerse.chapter)
+      .gte("verse", anchorVerse.verse - cfg.ring0Radius)
+      .lte("verse", anchorVerse.verse + cfg.ring0Radius)
+      .order("verse", { ascending: true }),
+    // Chiasm structure (only needs anchorId)
+    fetchChiasmStructureForVerse(anchorId),
+    // Query embedding (only needs selection.query)
+    isHybridRequested && selection?.query?.trim()
+      ? getQueryEmbedding(selection.query.trim(), "graph_walker.hybrid")
+      : Promise.resolve(null),
+  ]);
+
+  if (ring0Result.error) {
+    console.error("[Graph Walker] Ring 0 fetch failed:", ring0Result.error);
+    throw new Error(`Failed to fetch Ring 0: ${ring0Result.error.message}`);
   }
 
   const ring0 = await ensureVersesHaveText(
-    ring0Data as Verse[],
+    ring0Result.data as Verse[],
     "graph-walker:ring0",
   );
   const anchor = ring0.find((v) => v.id === anchorId);
 
   if (!anchor) {
-    throw new Error(`Anchor verse ID ${anchorId} not found`);
+    // Anchor should be in the result since we queried its chapter
+    throw new Error(`Anchor verse ID ${anchorId} not found in Ring 0 results`);
   }
 
-  const ring0Scoped = ring0.filter(
-    (verse) => verse.book_abbrev === anchor.book_abbrev,
-  );
+  const ring0Scoped = ring0;
 
   console.log(`[Graph Walker] Ring 0: ${ring0Scoped.length} verses`);
   console.log(
@@ -374,14 +398,11 @@ export async function buildContextBundle(
   const ring0Ids = ring0Scoped.map((v) => v.id);
 
   const gravity = { ...DEFAULT_GRAVITY, ...(cfg.gravity ?? {}) };
-  const structure = await fetchChiasmStructureForVerse(anchorId);
-  const isHybridRequested =
-    selection?.mode === "hybrid" && typeof selection.query === "string";
   const maxDepth =
     typeof selection?.maxDepth === "number" ? selection.maxDepth : undefined;
   const maxNodes =
     typeof selection?.maxNodes === "number" ? selection.maxNodes : undefined;
-  let queryEmbedding: number[] | null = null;
+  const queryEmbedding: number[] | null = queryEmbeddingResult;
   let anchorEmbedding: number[] | null = null;
 
   if (structure) {
@@ -390,19 +411,10 @@ export async function buildContextBundle(
     );
   }
 
-  if (isHybridRequested) {
-    const queryText = selection?.query?.trim();
-    if (queryText) {
-      queryEmbedding = await getQueryEmbedding(
-        queryText,
-        "graph_walker.hybrid",
-      );
-    }
-    if (!queryEmbedding) {
-      console.warn(
-        "[Graph Walker] Hybrid selection requested but query embedding unavailable. Falling back to gravity scoring.",
-      );
-    }
+  if (isHybridRequested && !queryEmbedding) {
+    console.warn(
+      "[Graph Walker] Hybrid selection requested but query embedding unavailable. Falling back to gravity scoring.",
+    );
   }
 
   const useHybrid = isHybridRequested && !!queryEmbedding;
@@ -550,10 +562,9 @@ export async function buildContextBundle(
           )
       : { ids: [], edges: [] };
   const ring2Ids = ring2Layer.ids;
-  const ring2 = await hydrateVerses(ring2Ids);
   const ring2Edges = ring2Layer.edges;
 
-  console.log(`[Graph Walker] Ring 2: ${ring2.length} verses`);
+  console.log(`[Graph Walker] Ring 2: ${ring2Ids.length} verses`);
   totalNodes += ring2Ids.length;
 
   // ========================================
@@ -592,10 +603,12 @@ export async function buildContextBundle(
   console.log(`[Graph Walker] Fetching Ring 3 (max ${ring3Limit})...`);
 
   ring2Ids.forEach((id) => excludeSet.add(id));
-  const ring3Layer =
+
+  // Parallelize: Ring 2 hydration + Ring 3 fetch are independent (both only need ring2Ids)
+  const ring3LayerPromise =
     ring3Limit > 0
       ? useHybrid
-        ? await fetchHybridLayer(
+        ? fetchHybridLayer(
             ring2Ids,
             ring3Limit,
             excludeSet,
@@ -603,7 +616,7 @@ export async function buildContextBundle(
             selectionWithAnchor!,
             scope,
           )
-        : await fetchRing1Connections(
+        : fetchRing1Connections(
             ring2Ids,
             ring3Limit,
             excludeSet,
@@ -612,7 +625,16 @@ export async function buildContextBundle(
             adaptiveEnabled ? adaptiveThreshold : undefined,
             scope,
           )
-      : { ids: [], edges: [] };
+      : Promise.resolve({
+          ids: [] as number[],
+          edges: [] as import("./types").VisualEdge[],
+        });
+
+  const [ring2, ring3Layer] = await Promise.all([
+    hydrateVerses(ring2Ids),
+    ring3LayerPromise,
+  ]);
+
   const ring3Ids = ring3Layer.ids;
   const ring3 = await hydrateVerses(ring3Ids);
   const ring3Edges = ring3Layer.edges;
@@ -746,8 +768,7 @@ export function formatVerse(verse: Verse): string {
   return `[${formatVerseRef(verse)}] ${verse.text}`;
 }
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, value));
+// clamp imported from mathUtils
 
 const applyGravityMetrics = async (
   nodes: import("./types").ThreadNode[],
@@ -763,7 +784,13 @@ const applyGravityMetrics = async (
     : new Set<number>();
 
   nodes.forEach((node) => {
-    const centrality = centralityMap.get(node.id) ?? 0.1;
+    const rawCentrality = centralityMap.get(node.id) ?? 0.1;
+    // Dampen high-centrality values to prevent "celebrity verses" from dominating.
+    // Below 0.8: linear. Above 0.8: logarithmic compression.
+    const centrality =
+      rawCentrality > 0.8
+        ? 0.8 + Math.log1p(rawCentrality - 0.8) * 0.2
+        : rawCentrality;
     const mirror = mirrorLookup.get(node.id);
     const isCenter = structure?.centerId === node.id;
     const inStructure = structureSet.has(node.id);
@@ -771,11 +798,11 @@ const applyGravityMetrics = async (
     let mass = 1 + centrality * 2;
     let structureRole: "center" | "mirror" | "member" | undefined;
 
-    // Sprint 1: Exponential scaling for super-hubs to amplify visual prominence
+    // Moderate scaling for high-centrality nodes (dampened values)
     if (centrality > 0.9) {
-      mass *= 1.5; // Top 10%: 50% boost (e.g., Luke 24:44)
+      mass *= 1.3; // Top tier: moderate boost
     } else if (centrality > 0.8) {
-      mass *= 1.3; // Top 20%: 30% boost (e.g., Isaiah 59:21)
+      mass *= 1.15; // High tier: slight boost
     }
 
     if (isCenter) {
@@ -962,19 +989,7 @@ const collapseDuplicateReferences = (
   };
 };
 
-const cosineSimilarity = (a: number[], b: number[]): number => {
-  if (a.length !== b.length) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-};
+// cosineSimilarity imported from mathUtils
 
 const parseEmbedding = (embedding: unknown): number[] | null => {
   if (!embedding) return null;
@@ -1354,7 +1369,7 @@ export async function buildVisualBundle(
   });
 
   bundle.ring1.forEach((v) => {
-    if (v.id === anchorId) return; // Skip the anchor itself
+    if (v.id === anchorId || nodeMap.has(v.id)) return; // Skip anchor and dupes
 
     const selectedEdge = ring1EdgeMap.get(v.id);
     const rawParentId = selectedEdge?.from || bundle.anchor.id;
@@ -1394,11 +1409,19 @@ export async function buildVisualBundle(
     }
   });
 
+  // Build Ring 1 ID set for fallback parenting (Ring 2 should parent to Ring 1, not anchor)
+  const ring1IdSet = new Set(bundle.ring1.map((v) => v.id));
+
   bundle.ring2.forEach((v) => {
-    if (v.id === anchorId) return; // Skip the anchor itself
+    if (v.id === anchorId || nodeMap.has(v.id)) return; // Skip anchor and dupes
 
     const selectedEdge = ring2EdgeMap.get(v.id);
-    const parentId = selectedEdge?.from || bundle.anchor.id;
+    // Prefer the edge's source; fallback to first Ring 1 verse, then anchor
+    const edgeParent = selectedEdge?.from;
+    const parentId =
+      edgeParent && (ring1IdSet.has(edgeParent) || edgeParent === anchorId)
+        ? edgeParent
+        : (bundle.ring1[0]?.id ?? bundle.anchor.id);
     const node: import("./types").ThreadNode = {
       ...v,
       depth: 2,
@@ -1432,11 +1455,22 @@ export async function buildVisualBundle(
     }
   });
 
+  // Build Ring 2 ID set for fallback parenting (Ring 3 should parent to Ring 2, not anchor)
+  const ring2IdSet = new Set(bundle.ring2.map((v) => v.id));
+
   bundle.ring3.forEach((v) => {
-    if (v.id === anchorId) return; // Skip the anchor itself
+    if (v.id === anchorId || nodeMap.has(v.id)) return; // Skip anchor and dupes
 
     const selectedEdge = ring3EdgeMap.get(v.id);
-    const parentId = selectedEdge?.from || bundle.anchor.id;
+    // Prefer the edge's source; fallback to first Ring 2 verse, then Ring 1, then anchor
+    const edgeParent = selectedEdge?.from;
+    const parentId =
+      edgeParent &&
+      (ring2IdSet.has(edgeParent) ||
+        ring1IdSet.has(edgeParent) ||
+        edgeParent === anchorId)
+        ? edgeParent
+        : (bundle.ring2[0]?.id ?? bundle.ring1[0]?.id ?? bundle.anchor.id);
     const node: import("./types").ThreadNode = {
       ...v,
       depth: 3,
@@ -1648,17 +1682,29 @@ function calculateSpinePath(
   // Start from anchor and traverse to deepest node
   let currentId = anchorId;
 
+  const nodeIds = new Set(nodes.map((n) => n.id));
+
   for (let depth = 1; depth <= 3; depth++) {
-    const childEdges = edges.filter((e) => e.from === currentId);
+    // Check both edge directions to handle undirected/reversed edges
+    const childEdges = edges
+      .filter(
+        (e) =>
+          (e.from === currentId && nodeIds.has(e.to)) ||
+          (e.to === currentId && nodeIds.has(e.from)),
+      )
+      .map((e) => ({
+        edge: e,
+        targetId: e.from === currentId ? e.to : e.from,
+      }));
 
     if (childEdges.length === 0) break;
 
     // Pick the highest-weighted child
-    const bestEdge = childEdges.reduce((best, current) =>
-      current.weight > best.weight ? current : best,
+    const best = childEdges.reduce((bestSoFar, current) =>
+      current.edge.weight > bestSoFar.edge.weight ? current : bestSoFar,
     );
 
-    const bestNode = nodes.find((n) => n.id === bestEdge.to);
+    const bestNode = nodes.find((n) => n.id === best.targetId);
     if (bestNode) {
       bestNode.isSpine = true;
       currentId = bestNode.id;

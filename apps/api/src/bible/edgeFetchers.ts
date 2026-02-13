@@ -26,6 +26,7 @@ const EDGE_POLICY: {
     DEEPER: 0.65,
     ROOTS: 0.94,
     ECHOES: 0.98,
+    ALLUSION: 0.91,
     PROPHECY: 0.96,
     GENEALOGY: 0.9,
     NARRATIVE: 0.2,
@@ -39,6 +40,7 @@ const EDGE_POLICY: {
     DEEPER: 80,
     ROOTS: 60,
     ECHOES: 40,
+    ALLUSION: 40,
     PROPHECY: 30,
     GENEALOGY: 30,
     NARRATIVE: 40,
@@ -165,21 +167,54 @@ export async function fetchDeeperEdges(
 ): Promise<VisualEdge[]> {
   if (sourceIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("cross_references")
-    .select("from_verse_id, to_verse_id, votes")
-    .in("from_verse_id", sourceIds)
-    .order("votes", { ascending: false })
-    .limit(limit);
+  // Fetch both directions: outgoing (from source) and incoming (to source)
+  const [outgoing, incoming] = await Promise.all([
+    supabase
+      .from("cross_references")
+      .select("from_verse_id, to_verse_id, votes")
+      .in("from_verse_id", sourceIds)
+      .order("votes", { ascending: false })
+      .limit(limit),
+    supabase
+      .from("cross_references")
+      .select("from_verse_id, to_verse_id, votes")
+      .in("to_verse_id", sourceIds)
+      .order("votes", { ascending: false })
+      .limit(limit),
+  ]);
 
-  if (error) {
-    console.error("[Edge Fetchers] Error fetching DEEPER edges:", error);
-    return [];
+  if (outgoing.error) {
+    console.error(
+      "[Edge Fetchers] Error fetching outgoing DEEPER edges:",
+      outgoing.error,
+    );
+  }
+  if (incoming.error) {
+    console.error(
+      "[Edge Fetchers] Error fetching incoming DEEPER edges:",
+      incoming.error,
+    );
   }
 
-  logDeeperVoteStats(data || []);
+  // Deduplicate by (from, to) pair, keeping highest vote count
+  const edgeKey = (from: number, to: number) => `${from}:${to}`;
+  const seen = new Map<
+    string,
+    { from_verse_id: number; to_verse_id: number; votes: number }
+  >();
 
-  return (data || []).map((row) => {
+  for (const row of [...(outgoing.data || []), ...(incoming.data || [])]) {
+    const key = edgeKey(row.from_verse_id, row.to_verse_id);
+    const existing = seen.get(key);
+    if (!existing || (row.votes ?? 0) > (existing.votes ?? 0)) {
+      seen.set(key, row);
+    }
+  }
+
+  const allRows = Array.from(seen.values());
+  logDeeperVoteStats(allRows);
+
+  return allRows.map((row) => {
     const rawVotes = typeof row.votes === "number" ? row.votes : 1;
     const votes = Math.max(1, rawVotes);
     const voteBoost = Math.min(
@@ -243,7 +278,7 @@ export async function fetchRootsEdges(
       .select("verse_id, strongs_number")
       .in("strongs_number", strongsNumbers)
       .not("verse_id", "in", `(${sourceIds.join(",")})`) // Exclude source verses
-      .limit(limit);
+      .limit(limit * 3); // Fetch extra to allow for filtering after weight discount
 
     if (connectedError || !connectedVerses) {
       console.error(
@@ -253,9 +288,27 @@ export async function fetchRootsEdges(
       return [];
     }
 
-    // Create edges with metadata about which Strong's number connects them
+    // Count how many verses share each Strong's number (semantic breadth proxy).
+    // Words appearing in many verses likely have wide semantic ranges and
+    // the connection is less meaningful (e.g., common words like ruach, logos).
+    const strongsFrequency = new Map<string, number>();
+    for (const row of connectedVerses) {
+      strongsFrequency.set(
+        row.strongs_number,
+        (strongsFrequency.get(row.strongs_number) ?? 0) + 1,
+      );
+    }
+    for (const row of strongsData) {
+      strongsFrequency.set(
+        row.strongs_number,
+        (strongsFrequency.get(row.strongs_number) ?? 0) + 1,
+      );
+    }
+
+    // Create edges with weight discount for high-frequency Strong's numbers
     const edges: VisualEdge[] = [];
     const seenPairs = new Set<string>();
+    const baseWeight = EDGE_POLICY.weights.ROOTS;
 
     for (const source of strongsData) {
       for (const target of connectedVerses) {
@@ -264,14 +317,24 @@ export async function fetchRootsEdges(
 
           // Avoid duplicate edges
           if (!seenPairs.has(pairKey)) {
+            const freq = strongsFrequency.get(source.strongs_number) ?? 1;
+            // Discount weight for high-frequency words:
+            // freq 1-10: full weight, freq 50: ~75% weight, freq 200+: ~55% weight
+            const freqDiscount = 1 / (1 + Math.log10(Math.max(1, freq / 10)));
+            const adjustedWeight = baseWeight * freqDiscount;
+
+            // Skip very common words (particles, prepositions) that produce noise
+            if (adjustedWeight < 0.45) continue;
+
             edges.push({
               from: source.verse_id,
               to: target.verse_id,
-              weight: EDGE_POLICY.weights.ROOTS,
+              weight: adjustedWeight,
               type: "ROOTS",
               metadata: {
                 strongsNumber: source.strongs_number,
                 source: "canonical",
+                frequency: freq,
               },
             });
             seenPairs.add(pairKey);
@@ -280,7 +343,12 @@ export async function fetchRootsEdges(
       }
     }
 
-    console.log(`[Edge Fetchers] Found ${edges.length} ROOTS edges`);
+    // Sort by weight descending so we keep the most specific connections
+    edges.sort((a, b) => b.weight - a.weight);
+
+    console.log(
+      `[Edge Fetchers] Found ${edges.length} ROOTS edges (after semantic range filtering)`,
+    );
     return edges.slice(0, limit);
   } catch (error) {
     console.error("[Edge Fetchers] Error in fetchRootsEdges:", error);
@@ -605,6 +673,7 @@ export async function fetchAllEdges(
     DEEPER: filteredEdges.filter((e) => e.type === "DEEPER").length,
     ROOTS: filteredEdges.filter((e) => e.type === "ROOTS").length,
     ECHOES: filteredEdges.filter((e) => e.type === "ECHOES").length,
+    ALLUSION: filteredEdges.filter((e) => e.type === "ALLUSION").length,
     PROPHECY: filteredEdges.filter((e) => e.type === "PROPHECY").length,
     GENEALOGY: filteredEdges.filter((e) => e.type === "GENEALOGY").length,
     TYPOLOGY: filteredEdges.filter((e) => e.type === "TYPOLOGY").length,
@@ -615,10 +684,10 @@ export async function fetchAllEdges(
   });
 
   console.log(`[Edge Fetchers] High-conviction threads:`, {
-    goldThreads: filteredEdges.filter((e) => e.metadata?.thread === "lexical")
+    goldThreads: filteredEdges.filter((e) => e.metadata?.thread === "thematic")
       .length,
     purpleThreads: filteredEdges.filter(
-      (e) => e.metadata?.thread === "theological",
+      (e) => e.metadata?.thread === "thematic_cross_testament",
     ).length,
     cyanThreads: filteredEdges.filter((e) => e.metadata?.thread === "prophetic")
       .length,

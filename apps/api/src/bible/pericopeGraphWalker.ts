@@ -51,9 +51,9 @@ const DEFAULT_RING_CONFIG: Required<
 };
 
 const EDGE_TYPE_MAP: Record<string, VisualEdge["type"]> = {
-  NARRATIVE_PARALLEL: "TYPOLOGY",
+  NARRATIVE_PARALLEL: "NARRATIVE",
   THEMATIC_ECHO: "PATTERN",
-  TYPE_ANTITYPE: "FULFILLMENT",
+  TYPE_ANTITYPE: "TYPOLOGY",
 };
 
 const buildPericopeNode = (

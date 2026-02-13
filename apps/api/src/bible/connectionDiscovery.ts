@@ -17,7 +17,13 @@ import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 export interface DiscoveredConnection {
   from: number; // verse ID
   to: number;
-  type: "TYPOLOGY" | "FULFILLMENT" | "CONTRAST" | "PROGRESSION" | "PATTERN";
+  type:
+    | "TYPOLOGY"
+    | "FULFILLMENT"
+    | "CONTRAST"
+    | "PROGRESSION"
+    | "PATTERN"
+    | "ALLUSION";
   explanation: string;
   confidence: number; // 0.85-1.0
 }
@@ -125,11 +131,12 @@ VERSES:
 ${verseList}
 
 Find significant connections involving:
-- TYPOLOGY: Shadow → substance patterns (e.g., Abraham sacrificing Isaac → God sacrificing Jesus)
-- FULFILLMENT: Prophecy → event (e.g., "scepter from Judah" → Jesus born in Judea)
-- CONTRAST: Inversion or opposition (e.g., First Adam brought death → Last Adam brought life)
-- PROGRESSION: Covenant or doctrinal development across verses
-- PATTERN: Structural, numerical, or chiastic patterns
+- TYPOLOGY: Shadow → substance patterns where the NT explicitly identifies the type-antitype relationship (e.g., Rom 5:14 Adam as type of Christ, Heb 9 tabernacle as type of heavenly things)
+- FULFILLMENT: Prophecy → event where the NT explicitly cites or references the OT passage as fulfilled
+- ALLUSION: Intentional indirect references that are not direct quotations but clearly echo an earlier text (e.g., Rev 1:14-15 alluding to Dan 7:9-10, John 1:1 alluding to Gen 1:1)
+- CONTRAST: Inversion or opposition explicit in the text (e.g., First Adam brought death → Last Adam brought life in Rom 5:12-21)
+- PROGRESSION: Covenant or doctrinal development across verses, grounded in both texts
+- PATTERN: Structural, numerical, or chiastic patterns with evidence from the text
 
 Return ALL connections with confidence >0.85.
 
@@ -137,7 +144,7 @@ For each connection, provide:
 {
   "from": 1,  // verse number (1-${verses.length})
   "to": 12,
-  "type": "FULFILLMENT",  // Must be one of: TYPOLOGY, FULFILLMENT, CONTRAST, PROGRESSION, PATTERN
+  "type": "FULFILLMENT",  // Must be one of: TYPOLOGY, FULFILLMENT, ALLUSION, CONTRAST, PROGRESSION, PATTERN
   "explanation": "Brief explanation (max 2 sentences)",
   "confidence": 0.95  // Between 0.85 and 1.0
 }
@@ -152,8 +159,17 @@ Return as:
       [
         {
           role: "system",
-          content:
-            "You are a biblical scholar analyzing theological connections between verses. Focus on typology, fulfillment, and structural patterns that lexical similarity cannot capture. Return your response in JSON format.",
+          content: `You are a conservative biblical scholar who interprets Scripture by Scripture using the grammatical-historical method. Your task is to identify theological connections between verses. Return your response in JSON format.
+
+METHODOLOGY CONSTRAINTS:
+- Ground every connection in what the text actually says. Do not allegorize or spiritualize.
+- TYPOLOGY: The type must be historical (not mythological). The New Testament must explicitly or clearly identify the type-antitype relationship (e.g., 1 Cor 10:1-4 identifies the rock as Christ; Heb 9 identifies the tabernacle as a type of heavenly things; Rom 5:14 identifies Adam as a type of Christ). Do NOT create typologies based solely on surface-level resemblance.
+- FULFILLMENT: The New Testament must explicitly cite or clearly reference the Old Testament passage as fulfilled (e.g., "that it might be fulfilled which was spoken by the prophet"). Do NOT infer fulfillment from thematic similarity alone.
+- CONTRAST: The contrast must be explicit in the text or in how the NT author uses the OT passage (e.g., Romans 5:12-21 explicitly contrasts Adam and Christ). Do NOT generate contrasts from superficial oppositions.
+- PROGRESSION: Must show clear doctrinal or covenantal development across the canon, grounded in the text of both passages.
+- PATTERN: Must reflect genuine literary or structural patterns (chiasm, inclusio, numerical patterns) with evidence from the text, not imposed from outside.
+
+Only return connections you are confident a careful, text-centered interpreter would affirm.`,
         },
         {
           role: "user",
@@ -225,6 +241,15 @@ Return as:
     );
 
     // Map verse numbers back to IDs and validate
+    const VALID_TYPES = new Set([
+      "TYPOLOGY",
+      "FULFILLMENT",
+      "ALLUSION",
+      "CONTRAST",
+      "PROGRESSION",
+      "PATTERN",
+    ]);
+
     const discovered: DiscoveredConnection[] = (connections as RawConnection[])
       .filter((conn) => {
         // Validate structure
@@ -238,6 +263,14 @@ Return as:
           console.warn(
             "[Connection Discovery] Invalid connection structure:",
             conn,
+          );
+          return false;
+        }
+
+        // Validate type is one of the allowed values
+        if (!VALID_TYPES.has(conn.type)) {
+          console.warn(
+            `[Connection Discovery] Invalid type "${conn.type}", skipping: ${conn.from} → ${conn.to}`,
           );
           return false;
         }

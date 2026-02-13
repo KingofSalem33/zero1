@@ -7,6 +7,7 @@
 
 import { supabase } from "../db";
 import type { VisualEdge } from "./types";
+import { cosineSimilarity } from "./mathUtils";
 
 // Helper: Determine if book is Old Testament
 function isOldTestament(bookAbbrev: string): boolean {
@@ -54,20 +55,7 @@ function isOldTestament(bookAbbrev: string): boolean {
   return otBooks.includes(bookAbbrev.toLowerCase());
 }
 
-// Helper: Cosine similarity between two embeddings
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+// cosineSimilarity imported from mathUtils
 
 type VerseEmbeddingRow = {
   id: number;
@@ -380,10 +368,10 @@ export async function findGoldThreads(
       from: pair.from,
       to: pair.to,
       weight: pair.similarity,
-      type: "ROOTS",
+      type: "DEEPER",
       metadata: {
         similarity: pair.similarity,
-        thread: "lexical",
+        thread: "thematic",
         source: "semantic_thread",
         confidence: pair.similarity,
       },
@@ -468,10 +456,10 @@ export async function findPurpleThreads(
       from: pair.from,
       to: pair.to,
       weight: pair.similarity,
-      type: "ECHOES", // Maps to GOLD visually, but represents quotation
+      type: "DEEPER",
       metadata: {
         similarity: pair.similarity,
-        thread: "theological",
+        thread: "thematic_cross_testament",
         source: "semantic_thread",
         confidence: pair.similarity,
       },

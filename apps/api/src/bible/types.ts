@@ -44,6 +44,7 @@ export type EdgeType =
   | "DEEPER"
   | "ROOTS"
   | "ECHOES"
+  | "ALLUSION"
   | "PROPHECY"
   | "GENEALOGY"
   | "NARRATIVE"
@@ -150,6 +151,7 @@ export const EDGE_STYLES: Record<EdgeType, EdgeStyle> = {
   DEEPER: { color: "#9CA3AF", dashArray: "0", width: 1 },
   ROOTS: { color: "#D4AF37", dashArray: "4 4", width: 1 },
   ECHOES: { color: "#3B82F6", dashArray: "0", width: 2 },
+  ALLUSION: { color: "#6366F1", dashArray: "4 3", width: 1.5 },
   PROPHECY: { color: "#A855F7", dashArray: "0", width: 1.5, glow: true },
   GENEALOGY: { color: "#10B981", dashArray: "0", width: 1 },
   NARRATIVE: { color: "#9CA3AF", dashArray: "0", width: 1 },

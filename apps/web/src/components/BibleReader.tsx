@@ -115,7 +115,7 @@ interface BibleReaderProps {
   chapter?: number;
   onNavigate?: (book: string, chapter: number) => void;
   onNavigateToChat?: (prompt: string) => void;
-  onTrace?: (text: string) => void;
+  onTrace?: (text: string, anchorRef?: string) => void;
   onOpenMap?: (bundle: VisualContextBundle) => void;
   pendingVerseReference?: string | null;
   onVerseNavigationComplete?: () => void;
@@ -620,10 +620,10 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     }
   };
 
-  const handleGoDeeper = (text: string) => {
+  const handleGoDeeper = (text: string, anchorRef?: string) => {
     // Use the canonical trace handler to show map visualization
     if (onTrace) {
-      onTrace(text);
+      onTrace(text, anchorRef);
     }
   };
 

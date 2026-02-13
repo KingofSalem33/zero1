@@ -502,19 +502,14 @@ function App() {
               >
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-neutral-950/40 backdrop-blur-sm">
-                  <div className="flex items-center gap-3">
-                    <h3
-                      id="visualization-title"
-                      className="text-[13px] font-semibold text-neutral-300 flex items-center gap-2"
-                    >
-                      <span className="text-[#D4AF37]">Golden Thread</span>
-                      {visualBundle?.nodes?.length ? (
-                        <span className="text-[11px] font-normal text-neutral-600">
-                          {visualBundle.nodes.length} verses
-                        </span>
-                      ) : null}
-                    </h3>
-                  </div>
+                  <span
+                    id="visualization-title"
+                    className="text-[11px] font-normal text-neutral-500"
+                  >
+                    {visualBundle?.nodes?.length
+                      ? `${visualBundle.nodes.length} verses`
+                      : ""}
+                  </span>
                   <button
                     onClick={() => setShowVisualization(false)}
                     className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 text-neutral-500 hover:text-neutral-300 transition-all duration-150 flex items-center justify-center"
