@@ -485,10 +485,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     progress: 0,
     message: "Initializing...",
   });
-  const [discoveryHighlights, setDiscoveryHighlights] = useState<
-    Array<{ title: string; subtitle: string }>
-  >([]);
-  const [discoveryHighlightIndex, setDiscoveryHighlightIndex] = useState(0);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
   const [awePulseActive, setAwePulseActive] = useState(false);
   const { toast } = useToast();
@@ -662,8 +658,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   useEffect(() => {
     autoDiscoveryRunRef.current = false;
     setAnalyzedVerseIds(new Set());
-    setDiscoveryHighlights([]);
-    setDiscoveryHighlightIndex(0);
     llmEdgesRef.current = [];
   }, [bundle]);
 
@@ -2187,7 +2181,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         if (connections.length === 0) {
           if (__DEV__)
             console.log("[LLM Discovery] No new connections discovered");
-          setDiscoveryHighlights([]);
           setDiscoveryProgress({
             phase: "complete",
             progress: 100,
@@ -2204,28 +2197,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           progress: 75,
           message: `Mapping ${connections.length} connections...`,
         });
-
-        const verseLabel = (id: number) => {
-          const verse = bundle?.nodes.find((node) => node.id === id);
-          if (!verse) return "Unknown";
-          return verse.displayLabel || formatNodeReference(verse);
-        };
-
-        const highlights = (connections as DiscoveredConnection[])
-          .slice(0, 6)
-          .map((conn) => {
-            const styleType = resolveConnectionFamily(conn.type as EdgeType, {
-              source: "llm",
-            });
-            const label = EDGE_STYLES[styleType].label;
-            return {
-              title: `${verseLabel(conn.from)} -> ${verseLabel(conn.to)}`,
-              subtitle: `Connection found: ${label}`,
-            };
-          });
-
-        setDiscoveryHighlights(highlights);
-        setDiscoveryHighlightIndex(0);
 
         // Add discovered edges to the map
         const edgeFinalStyles = new Map<
@@ -2371,7 +2342,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       } catch (error) {
         console.error("[LLM Discovery] Error:", error);
         // Silent fail - user still gets algorithmic connections
-        setDiscoveryHighlights([]);
         setDiscovering(false);
       }
     },
@@ -2444,18 +2414,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
   const shouldShowOverlay =
     !bundle || discovering || !initialExpansionDone || overlayHoldActive;
-
-  useEffect(() => {
-    if (!discovering || discoveryHighlights.length === 0) return;
-
-    const timer = window.setInterval(() => {
-      setDiscoveryHighlightIndex(
-        (prev) => (prev + 1) % discoveryHighlights.length,
-      );
-    }, 3600);
-
-    return () => window.clearInterval(timer);
-  }, [discovering, discoveryHighlights]);
 
   // Pre-compute branch clusters when edges change
   useEffect(() => {
@@ -2929,17 +2887,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         message={bundle ? discoveryProgress.message : "Preparing map..."}
         visible={shouldShowOverlay}
         tracedText={tracedText}
-        highlightTitle={
-          discovering
-            ? discoveryHighlights[discoveryHighlightIndex]?.title
-            : undefined
-        }
-        highlightSubtitle={
-          discovering
-            ? discoveryHighlights[discoveryHighlightIndex]?.subtitle
-            : undefined
-        }
-        showHint={bundle ? true : false}
         anchorLabel={anchorLabel}
       />
       {bundle && (

@@ -5,9 +5,6 @@ interface DiscoveryOverlayProps {
   progress: number;
   message: string;
   tracedText?: string;
-  highlightTitle?: string;
-  highlightSubtitle?: string;
-  showHint?: boolean;
   visible?: boolean;
   anchorLabel?: string; // Known anchor reference shown immediately before bundle loads
 }
@@ -54,7 +51,7 @@ function getPhaseMessage(phase: Phase, tick: number): string {
 function progressToNodeCount(progress: number): number {
   // 0% → 1 node (anchor), 100% → all nodes
   const ratio = Math.min(progress / 100, 1);
-  return Math.max(1, Math.round(ratio * NODE_POSITIONS.length));
+  return Math.round(ratio * NODE_POSITIONS.length);
 }
 
 export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
@@ -62,9 +59,6 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
   progress,
   message,
   tracedText,
-  highlightTitle,
-  highlightSubtitle,
-  showHint = true,
   visible = true,
   anchorLabel,
 }) => {
@@ -128,10 +122,6 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
     tracedText && tracedText.length > 60
       ? tracedText.slice(0, 57) + "..."
       : tracedText;
-
-  // Phase progress segments
-  const PHASES: Phase[] = ["selecting", "analyzing", "connecting", "complete"];
-  const currentPhaseIndex = PHASES.indexOf(phase);
 
   return (
     <div
@@ -224,16 +214,30 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                   );
                 })}
 
-                {/* Discovered nodes — same as chat, except anchor is larger with label */}
+                {/* All nodes start as faint placeholders */}
+                {NODE_POSITIONS.map((pos, i) => {
+                  const isAnchor = i === 0;
+                  const w = isAnchor ? 20 : 8;
+                  const h = isAnchor ? 9 : 4;
+                  return (
+                    <rect
+                      key={`bg-${i}`}
+                      x={pos.x - w / 2}
+                      y={pos.y - h / 2}
+                      width={w}
+                      height={h}
+                      rx={1.5}
+                      fill="rgba(255, 255, 255, 0.03)"
+                    />
+                  );
+                })}
+
+                {/* Discovered nodes — stroke outlines that explode in */}
                 {NODE_POSITIONS.slice(0, visibleNodeCount).map((pos, i) => {
                   const isAnchor = i === 0;
                   const isLatest = i === visibleNodeCount - 1 && i > 0;
-                  const aw = 20; // anchor width
-                  const ah = 9; // anchor height
-                  const nw = 8; // normal node width
-                  const nh = 4; // normal node height
-                  const w = isAnchor ? aw : nw;
-                  const h = isAnchor ? ah : nh;
+                  const w = isAnchor ? 20 : 8;
+                  const h = isAnchor ? 9 : 4;
                   return (
                     <g key={`node-${i}`}>
                       <rect
@@ -243,9 +247,7 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                         height={h}
                         rx={1.5}
                         fill="none"
-                        stroke={
-                          isAnchor ? "#D4AF37" : "rgba(212, 175, 55, 0.65)"
-                        }
+                        stroke="rgba(212, 175, 55, 0.65)"
                         strokeWidth={0.5}
                         style={{
                           animation: `node-appear 0.4s ease-out ${i * 0.12}s both`,
@@ -286,81 +288,20 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
                     </g>
                   );
                 })}
-
-                {/* Placeholder nodes — faint background rectangles */}
-                {NODE_POSITIONS.slice(visibleNodeCount).map((pos, i) => (
-                  <rect
-                    key={`ph-${i}`}
-                    x={pos.x - 4}
-                    y={pos.y - 2}
-                    width={8}
-                    height={4}
-                    rx={1.5}
-                    fill="rgba(255, 255, 255, 0.03)"
-                  />
-                ))}
               </svg>
             </div>
           </div>
 
-          {/* Footer: progress + details */}
-          <div className="px-5 pb-5 pt-2 space-y-3">
-            {/* Detail message from parent */}
-            <div className="text-[12px] text-neutral-500">{message}</div>
-
-            {/* Phase steps */}
-            <div className="flex gap-1.5">
-              {PHASES.map((p, idx) => {
-                const isActive = idx === currentPhaseIndex;
-                const isPast = idx < currentPhaseIndex;
-                return (
-                  <div
-                    key={p}
-                    className={`flex-1 h-[3px] rounded-full transition-all duration-500 ${
-                      isActive
-                        ? "bg-[#D4AF37]"
-                        : isPast
-                          ? "bg-[#D4AF37]/40"
-                          : "bg-white/5"
-                    }`}
-                  >
-                    {isActive && (
-                      <div className="h-full rounded-full overflow-hidden relative">
-                        <div className="absolute inset-0 animate-gold-shimmer" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Progress percentage */}
+          {/* Footer: status + gold shimmer bar */}
+          <div className="px-5 pb-5 pt-2 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-neutral-500">
-                {Math.round(progress)}% complete
-              </span>
-              {showHint && phase !== "complete" && (
-                <span className="text-[11px] text-neutral-600">
-                  Feel free to explore
-                </span>
-              )}
+              <span className="text-[12px] text-neutral-500">{message}</span>
             </div>
 
-            {/* Discovery highlights */}
-            {(highlightTitle || highlightSubtitle) && (
-              <div className="border-t border-white/5 pt-3">
-                {highlightTitle && (
-                  <div className="text-[12px] font-semibold text-neutral-200">
-                    {highlightTitle}
-                  </div>
-                )}
-                {highlightSubtitle && (
-                  <div className="mt-0.5 text-[11px] text-[#D4AF37]/80">
-                    {highlightSubtitle}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Gold progress bar (indeterminate) */}
+            <div className="relative h-[2px] bg-white/5 rounded-full overflow-hidden">
+              <div className="absolute inset-0 animate-gold-shimmer" />
+            </div>
           </div>
         </div>
       </div>

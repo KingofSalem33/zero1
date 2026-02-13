@@ -119,7 +119,7 @@ export function VerseSearchIndicator({
   const prevMessageRef = useRef<string>("Searching Scripture");
 
   const phase = derivePhase(verses, activeTools, completedTools);
-  const visibleNodeCount = Math.min(verses.length + 1, NODE_POSITIONS.length); // +1 for anchor
+  const visibleNodeCount = Math.min(verses.length, NODE_POSITIONS.length);
   const books = useMemo(() => getUniqueBooks(verses), [verses]);
 
   // Derive the contextual message
@@ -287,6 +287,19 @@ export function VerseSearchIndicator({
               );
             })}
 
+            {/* All nodes start as faint placeholders */}
+            {NODE_POSITIONS.map((pos, i) => (
+              <rect
+                key={`bg-${i}`}
+                x={pos.x - 4}
+                y={pos.y - 2}
+                width={8}
+                height={4}
+                rx={1.5}
+                fill="rgba(255, 255, 255, 0.03)"
+              />
+            ))}
+
             {/* Discovered nodes — stroke outlines that explode in */}
             {NODE_POSITIONS.slice(0, visibleNodeCount).map((pos, i) => {
               const isLatest = i === visibleNodeCount - 1 && i > 0;
@@ -324,19 +337,6 @@ export function VerseSearchIndicator({
                 </g>
               );
             })}
-
-            {/* Faint placeholder nodes */}
-            {NODE_POSITIONS.slice(visibleNodeCount).map((pos, i) => (
-              <rect
-                key={`placeholder-${i}`}
-                x={pos.x - 4}
-                y={pos.y - 2}
-                width={8}
-                height={4}
-                rx={1.5}
-                fill="rgba(255, 255, 255, 0.03)"
-              />
-            ))}
           </svg>
         </div>
 
