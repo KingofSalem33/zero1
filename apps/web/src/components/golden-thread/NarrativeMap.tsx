@@ -1988,7 +1988,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
         // Reset edge animation state and trigger after node entrance
         const maxNodeDepth = Math.max(
-          ...layoutedNodes.map((n) => (n.data.verse.depth as number) || 0),
+          ...layoutedNodes.map((n) => (n.data.verse?.depth as number) || 0),
           0,
         );
         const nodeEntranceTime = Math.min(maxNodeDepth * 80 + 400, 1200); // Wait for nodes to enter

@@ -136,11 +136,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   project,
 
   onCreateProject: _onCreateProject,
-  onInspireMe,
+  onInspireMe: _onInspireMe,
   toolsUsed,
   setToolsUsed,
-  creating,
-  inspiring,
+  creating: _creating,
+  inspiring: _inspiring,
   onRefreshProject,
   onAskAIRef,
   onOpenNewWorkspace: _onOpenNewWorkspace,
@@ -162,7 +162,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const setMessages = onMessagesChange || setInternalMessages;
   const [currentInput, setCurrentInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showUploadButton, setShowUploadButton] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [randomTopicLoading, setRandomTopicLoading] = useState<
     "random" | "ot" | "nt" | null
@@ -178,17 +177,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       kind: "random" | "ot" | "nt";
     }>
   >([]);
-  const [buildApproach, setBuildApproach] = useState<
-    "code" | "platform" | "auto" | null
-  >(null);
-  const [projectPurpose, setProjectPurpose] = useState<
-    "personal" | "business" | "learning" | "creative" | null
-  >(null);
-  const [coreProof, setCoreProof] = useState("");
-  const [budgetLimit, setBudgetLimit] = useState<
-    "$0" | "$100" | "$1000+" | null
-  >(null);
-  const [additionalContext, setAdditionalContext] = useState("");
   const [showBookmarkPanel, setShowBookmarkPanel] = useState(false);
   const [traceModeEnabled, setTraceModeEnabled] = useState(false);
 
@@ -231,8 +219,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesFetchedRef = useRef(false);
   const lastPromptModeRef = useRef<PromptMode | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   // Scroll position memory - remembers where user was in the chat
   const { scrollRef: chatScrollRef } = useChatScrollMemory(threadId);
@@ -255,7 +245,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         if (response.ok) {
           const data = await response.json();
           setThreadId(data.thread_id);
-          console.log(`[UnifiedWorkspace] Fetched thread: ${data.thread_id}`);
+          if (import.meta.env.DEV)
+            console.log(`[UnifiedWorkspace] Fetched thread: ${data.thread_id}`);
         }
       } catch (error) {
         console.error("[UnifiedWorkspace] Error fetching thread:", error);
@@ -288,9 +279,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           timestamp: new Date(msg.created_at),
         }));
         setMessages(threadMessages);
-        console.log(
-          `[UnifiedWorkspace] Loaded ${threadMessages.length} messages from thread`,
-        );
+        if (import.meta.env.DEV)
+          console.log(
+            `[UnifiedWorkspace] Loaded ${threadMessages.length} messages from thread`,
+          );
       } else if (response.status === 429) {
         // Rate limited - skip this poll
         console.warn(
@@ -312,9 +304,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       setMessages([]);
       messagesFetchedRef.current = false;
 
-      console.log(
-        `[UnifiedWorkspace] Switched to project ${project.id}, cleared workspace state`,
-      );
+      if (import.meta.env.DEV)
+        console.log(
+          `[UnifiedWorkspace] Switched to project ${project.id}, cleared workspace state`,
+        );
     }
   }, [project?.id]);
 
@@ -488,10 +481,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 // NEW: Gap #2 Fix - Auto-refresh when backend updates state
                 try {
                   const refreshData = JSON.parse(data);
-                  console.log(
-                    "🔄 [UnifiedWorkspace] Received refresh request:",
-                    refreshData.trigger,
-                  );
+                  if (import.meta.env.DEV)
+                    console.log(
+                      "🔄 [UnifiedWorkspace] Received refresh request:",
+                      refreshData.trigger,
+                    );
                   onRefreshProject();
                 } catch {
                   // Ignore JSON parse errors
@@ -500,12 +494,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 // NEW: Gap #2 Fix - Handle substep completion
                 try {
                   const completionData = JSON.parse(data);
-                  console.log(
-                    "[UnifiedWorkspace] Substep completed:",
-                    completionData.phase_id,
-                    "/",
-                    completionData.substep_number,
-                  );
+                  if (import.meta.env.DEV)
+                    console.log(
+                      "[UnifiedWorkspace] Substep completed:",
+                      completionData.phase_id,
+                      "/",
+                      completionData.substep_number,
+                    );
                   // Show celebration message if briefing exists
                   if (completionData.briefing) {
                     const celebrationMessage: ChatMessage = {
@@ -524,11 +519,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 // NEW: Gap #2 Fix - Handle artifact completions
                 try {
                   const artifactData = JSON.parse(data);
-                  console.log(
-                    "🧪 [UnifiedWorkspace] Artifact completions:",
-                    artifactData.completed_substeps.length,
-                    "substeps",
-                  );
+                  if (import.meta.env.DEV)
+                    console.log(
+                      "🧪 [UnifiedWorkspace] Artifact completions:",
+                      artifactData.completed_substeps.length,
+                      "substeps",
+                    );
                   // Show completion info in chat
                   const completionMessage: ChatMessage = {
                     id: (Date.now() + 3).toString(),
@@ -545,10 +541,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 // NEW: Gap #2 Fix - Handle phase unlock
                 try {
                   const phaseData = JSON.parse(data);
-                  console.log(
-                    "🔓 [UnifiedWorkspace] Phase unlocked:",
-                    phaseData.phase_id,
-                  );
+                  if (import.meta.env.DEV)
+                    console.log(
+                      "🔓 [UnifiedWorkspace] Phase unlocked:",
+                      phaseData.phase_id,
+                    );
                   // Show celebration for phase unlock
                   const unlockMessage: ChatMessage = {
                     id: (Date.now() + 4).toString(),
@@ -610,7 +607,30 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
   }, [onAskAIRef, handleAskAI]);
 
-  // Disable auto-scroll; user controls scroll position manually
+  // Track whether user has scrolled away from bottom
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distanceFromBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollToBottom(distanceFromBottom > 150);
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [chatScrollRef]);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // Auto-resize textarea to fit content
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [currentInput]);
 
   const getContextualPlaceholder = (): string => {
     if (bibleStudyMode && traceModeEnabled) {
@@ -734,7 +754,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   }, []);
 
   // Use simple chat stream hook for LLM-only mode
-  const { streamingMessage, isStreaming, startStream } =
+  const { streamingMessage, isStreaming, startStream, cancelStream } =
     useChatStream(handleMapData);
 
   const isEmptyState =
@@ -1503,36 +1523,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 
   // When streaming is complete, add it to messages array
   useEffect(() => {
-    console.log(
-      "[UnifiedWorkspace] Effect triggered - streamingMessage:",
-      streamingMessage
-        ? {
-            isComplete: streamingMessage.isComplete,
-            hasContent: !!streamingMessage.content,
-            contentLength: streamingMessage.content?.length || 0,
-          }
-        : "null",
-    );
-
     if (!streamingMessage) return;
 
     // Early return if streaming is not complete - prevents running during streaming
     if (!streamingMessage.isComplete) return;
 
-    console.log(
-      "[UnifiedWorkspace] Stream COMPLETE:",
-      "isComplete:",
-      streamingMessage.isComplete,
-      "hasContent:",
-      !!streamingMessage.content,
-      "contentLength:",
-      streamingMessage.content?.length || 0,
-      "alreadyAdded:",
-      addedStreamingMessageRef.current,
-    );
-
     if (streamingMessage.content && !addedStreamingMessageRef.current) {
-      console.log("[UnifiedWorkspace] Adding completed message to array");
       addedStreamingMessageRef.current = true;
 
       const newMessage = {
@@ -1551,23 +1547,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       }
       setNextSuggestedPrompt(null);
 
-      setMessages((prev) => {
-        console.log(
-          "[UnifiedWorkspace] Created message - ID:",
-          newMessage.id,
-          "Type:",
-          newMessage.type,
-          "Content length:",
-          newMessage.content.length,
-        );
-        console.log(
-          "[UnifiedWorkspace] Messages before:",
-          prev.length,
-          "Messages after:",
-          prev.length + 1,
-        );
-        return [...prev, newMessage];
-      });
+      setMessages((prev) => [...prev, newMessage]);
 
       // Clear tool badges and pending bundle when streaming is complete
       setToolsUsed([]);
@@ -1863,7 +1843,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     onResetBibleStudy?.();
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -1884,7 +1864,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     () =>
       showVisualization &&
       activeBundle && (
-        <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col">
+        <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col transition-all duration-500">
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-neutral-300">
@@ -1947,7 +1927,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     if (isProcessing || isStreaming) return;
 
     setIsProcessing(true);
-    setCurrentInput(reference); // Show it in the input briefly
 
     // Add user message to chat
     const newMessage: ChatMessage = {
@@ -2030,536 +2009,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     setIsProcessing(false);
   };
 
-  // LLM-only branch: Skip landing page, always show workshop
-  // Empty state when no project
-  // eslint-disable-next-line no-constant-condition, no-constant-binary-expression
-  if (false && !project) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full px-6 py-12">
-        <div className="max-w-3xl w-full space-y-8">
-          {/* Hero Section */}
-          <div className="text-center space-y-3">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-brand mb-2">
-              <svg
-                className="w-9 h-9 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-white">
-              Dream it. Build it. Ship it.
-            </h1>
-            <p className="text-neutral-400 text-base max-w-md mx-auto">
-              AI guides you through 7 phases - from vision to live product
-            </p>
-          </div>
-
-          {/* Input Card */}
-          <div className="space-y-6">
-            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
-              <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
-                Describe your project
-              </label>
-              <textarea
-                value={currentInput}
-                onChange={(e) => setCurrentInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Example: A budget tracker that categorizes expenses automatically"
-                className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
-                rows={3}
-                disabled={creating || inspiring}
-              />
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    if (currentInput.trim()) {
-                      onInspireMe(currentInput, setCurrentInput);
-                    }
-                  }}
-                  disabled={!currentInput.trim() || creating || inspiring}
-                  className="btn-secondary"
-                >
-                  {inspiring ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span>Refining...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                        />
-                      </svg>
-                      <span>Refine Idea</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => handleSendMessage()}
-                  disabled={!currentInput.trim() || creating || inspiring}
-                  className="btn-primary"
-                >
-                  {creating ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Creating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 10V3L4 14h7v7l9-11h-7z"
-                        />
-                      </svg>
-                      <span>Generate Roadmap</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Core Proof Statement */}
-            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
-              <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
-                If your project accomplishes ONE thing to prove it works, what
-                is it?
-              </label>
-              <textarea
-                value={coreProof}
-                onChange={(e) => setCoreProof(e.target.value)}
-                placeholder="Example: I log an expense and see my remaining budget update instantly"
-                className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
-                rows={2}
-                disabled={creating || inspiring}
-              />
-              <div className="mt-2 text-xs text-neutral-500">
-                Examples: "Someone creates a task and their teammate gets
-                notified" / "I save a recipe and find it later by ingredient"
-              </div>
-            </div>
-
-            {/* Build Approach Selection */}
-            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
-              <h3 className="text-sm font-medium text-neutral-300 mb-6">
-                A couple more things to personalize your roadmap:
-              </h3>
-
-              {/* Question 1: Build Approach */}
-              <div className="mb-6">
-                <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
-                  1. How do you want to build this?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Code Option */}
-                  <button
-                    onClick={() => setBuildApproach("code")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      buildApproach === "code"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {buildApproach === "code" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">👨‍💻</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Write Code
-                      </div>
-                      <div className="text-xs opacity-80">
-                        Full control, custom features
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Platform Option */}
-                  <button
-                    onClick={() => setBuildApproach("platform")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      buildApproach === "platform"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {buildApproach === "platform" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">🛠️</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Use a Platform
-                      </div>
-                      <div className="text-xs opacity-80">
-                        Faster, Shopify/Wix/Bubble
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Not Sure Option */}
-                  <button
-                    onClick={() => setBuildApproach("auto")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      buildApproach === "auto"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {buildApproach === "auto" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">🤖</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Best for My Project
-                      </div>
-                      <div className="text-xs opacity-80">AI recommends</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Question 2: Project Purpose */}
-              <div>
-                <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
-                  2. Why are you building this?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                  {/* Personal Option */}
-                  <button
-                    onClick={() => setProjectPurpose("personal")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      projectPurpose === "personal"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {projectPurpose === "personal" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">🏠</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">Personal</div>
-                      <div className="text-xs opacity-80">For me/friends</div>
-                    </div>
-                  </button>
-
-                  {/* Business Option */}
-                  <button
-                    onClick={() => setProjectPurpose("business")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      projectPurpose === "business"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {projectPurpose === "business" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">💼</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">Business</div>
-                      <div className="text-xs opacity-80">Make money</div>
-                    </div>
-                  </button>
-
-                  {/* Learning Option */}
-                  <button
-                    onClick={() => setProjectPurpose("learning")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      projectPurpose === "learning"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {projectPurpose === "learning" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">📚</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">Learning</div>
-                      <div className="text-xs opacity-80">Build skills</div>
-                    </div>
-                  </button>
-
-                  {/* Creative Option */}
-                  <button
-                    onClick={() => setProjectPurpose("creative")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      projectPurpose === "creative"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {projectPurpose === "creative" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">🎨</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">Creative</div>
-                      <div className="text-xs opacity-80">Showcase work</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Question 3: Budget Constraints */}
-              <div>
-                <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
-                  3. What are your budget limits?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* $0 Budget Option */}
-                  <button
-                    onClick={() => setBudgetLimit("$0")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      budgetLimit === "$0"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {budgetLimit === "$0" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">🆓</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Strictly $0
-                      </div>
-                      <div className="text-xs opacity-80">Free tools only</div>
-                    </div>
-                  </button>
-
-                  {/* $100/mo Budget Option */}
-                  <button
-                    onClick={() => setBudgetLimit("$100")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      budgetLimit === "$100"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {budgetLimit === "$100" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">💳</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">
-                        Up to $100/mo
-                      </div>
-                      <div className="text-xs opacity-80">Tools & hosting</div>
-                    </div>
-                  </button>
-
-                  {/* $1000+ Budget Option */}
-                  <button
-                    onClick={() => setBudgetLimit("$1000+")}
-                    className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-                      budgetLimit === "$1000+"
-                        ? "bg-gradient-brand border-brand-primary-400 text-white scale-100"
-                        : "bg-neutral-800/30 border-neutral-700/50 text-neutral-300 hover:bg-neutral-700/40 hover:border-neutral-600/70 hover:scale-102"
-                    }`}
-                  >
-                    {budgetLimit === "$1000+" && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-white rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-3 h-3 text-brand-primary-500"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={3}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="text-3xl">💵</div>
-                    <div className="text-center">
-                      <div className="font-semibold text-sm mb-1">$1,000+</div>
-                      <div className="text-xs opacity-80">
-                        Can hire or run ads
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Additional Context (Optional) */}
-            <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-2xl p-6 shadow-lg">
-              <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 block">
-                Anything else we should know? (Optional)
-              </label>
-              <textarea
-                value={additionalContext}
-                onChange={(e) => setAdditionalContext(e.target.value)}
-                placeholder="Example: Already have a logo designed, or working with a team of 2, or must work on mobile..."
-                className="w-full bg-neutral-900/50 border border-neutral-600/50 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-brand-primary-500/50 resize-none"
-                rows={2}
-                disabled={creating || inspiring}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Main workspace with conversation
   return (
     <div className="flex flex-col h-full">
@@ -2569,139 +2018,203 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           {/* Messages Container */}
           {!isEmptyState && (
             <div
-              ref={chatScrollRef}
-              className={`flex-1 overflow-y-auto px-6 py-8 pb-28 ${showVisualization ? "border-r border-neutral-700" : ""}`}
+              className={`flex-1 relative min-h-0 ${showVisualization ? "border-r border-neutral-700" : ""}`}
             >
-              {/* Message list - always visible */}
-              <div className="max-w-4xl mx-auto space-y-6">
-                {messages.map((message) => {
-                  console.log("[Message Render Debug]", {
-                    id: message.id,
-                    type: message.type,
-                    typeCheck: message.type === "ai",
-                    idCheck: message.id !== "streaming",
-                    shouldShowButtons:
-                      message.type === "ai" && message.id !== "streaming",
-                  });
-                  const isMapReady = mapReadyMessageId === message.id;
-                  const isMapPendingFull =
-                    mapPendingFullMessageId === message.id && fullMapPending;
-                  const mapVerseCount =
-                    message.visualBundle?.nodes?.length ?? 0;
+              <div
+                ref={chatScrollRef}
+                className="absolute inset-0 overflow-y-auto px-6 py-8 pb-28"
+              >
+                {/* Message list - always visible */}
+                <div
+                  className="max-w-4xl mx-auto space-y-6"
+                  role="log"
+                  aria-label="Chat messages"
+                >
+                  {messages.map((message) => {
+                    const isMapReady = mapReadyMessageId === message.id;
+                    const isMapPendingFull =
+                      mapPendingFullMessageId === message.id && fullMapPending;
+                    const mapVerseCount =
+                      message.visualBundle?.nodes?.length ?? 0;
 
-                  return (
-                    <div key={message.id}>
-                      {message.type === "user" ? (
-                        <div className="flex justify-end">
-                          <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800 text-white shadow-sm">
-                            {message.content}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {message.content === "Thinking..." ? (
-                            <div className="space-y-3 animate-pulse">
-                              <div className="h-4 bg-neutral-700/50 rounded w-3/4"></div>
-                              <div className="h-4 bg-neutral-700/50 rounded w-full"></div>
-                              <div className="h-4 bg-neutral-700/50 rounded w-5/6"></div>
+                    return (
+                      <div key={message.id}>
+                        {message.type === "user" ? (
+                          <div className="flex justify-end">
+                            <div className="max-w-2xl rounded-2xl px-5 py-3.5 bg-neutral-800/80 border border-white/5 text-white text-[15px] leading-relaxed shadow-sm">
+                              {message.content}
                             </div>
-                          ) : (
-                            <>
-                              <MessageStream
-                                content={message.content}
-                                onVerseClick={handleVerseClick}
-                                onTrace={handleGoDeeper}
-                              />
-                              {/* Icons directly after message - AI messages only, not while streaming */}
-                              {message.type === "ai" &&
-                                message.id !== "streaming" && (
-                                  <div className="max-w-3xl mx-auto px-6 pt-2 flex gap-2">
-                                    <button
-                                      onClick={() =>
-                                        handleTTS(message.id, message.content)
-                                      }
-                                      className={`p-1 rounded-md transition-colors ${
-                                        playingMessageId === message.id
-                                          ? "bg-blue-500/20 text-blue-400"
-                                          : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
-                                      }`}
-                                      title={
-                                        playingMessageId === message.id
-                                          ? "Stop playback"
-                                          : "Read aloud"
-                                      }
-                                    >
-                                      <svg
-                                        className="w-4 h-4"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {message.content === "Thinking..." ? (
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="flex gap-1.5">
+                                    <span
+                                      className="w-2 h-2 rounded-full bg-[#D4AF37]/60 animate-pulse"
+                                      style={{ animationDelay: "0ms" }}
+                                    />
+                                    <span
+                                      className="w-2 h-2 rounded-full bg-[#D4AF37]/60 animate-pulse"
+                                      style={{ animationDelay: "300ms" }}
+                                    />
+                                    <span
+                                      className="w-2 h-2 rounded-full bg-[#D4AF37]/60 animate-pulse"
+                                      style={{ animationDelay: "600ms" }}
+                                    />
+                                  </div>
+                                  <span className="text-sm text-neutral-400 italic">
+                                    Reflecting on Scripture...
+                                  </span>
+                                </div>
+                                <div className="h-4 skeleton rounded w-3/4"></div>
+                                <div className="h-4 skeleton rounded w-full"></div>
+                                <div className="h-4 skeleton rounded w-5/6"></div>
+                              </div>
+                            ) : (
+                              <>
+                                <MessageStream
+                                  content={message.content}
+                                  onVerseClick={handleVerseClick}
+                                  onTrace={handleGoDeeper}
+                                />
+                                {/* Icons directly after message - AI messages only, not while streaming */}
+                                {message.type === "ai" &&
+                                  message.id !== "streaming" && (
+                                    <div className="max-w-3xl mx-auto px-6 pt-2 flex gap-1">
+                                      <button
+                                        onClick={() =>
+                                          handleTTS(message.id, message.content)
+                                        }
+                                        className={`btn-icon-ghost w-9 h-9 transition-colors ${
+                                          playingMessageId === message.id
+                                            ? "bg-blue-500/20 text-blue-400"
+                                            : "text-neutral-500 hover:text-neutral-300"
+                                        }`}
+                                        title={
+                                          playingMessageId === message.id
+                                            ? "Stop playback"
+                                            : "Read aloud"
+                                        }
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d={
-                                            playingMessageId === message.id
-                                              ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M9 10h6v4H9z"
-                                              : "M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                                          }
-                                        />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(
-                                          message.content,
-                                        );
-                                        setCopiedMessageId(message.id);
-                                        setTimeout(
-                                          () =>
-                                            setCopiedMessageId((prev) =>
-                                              prev === message.id ? null : prev,
-                                            ),
-                                          2000,
-                                        );
-                                      }}
-                                      className={`p-1 rounded-md transition-colors ${
-                                        copiedMessageId === message.id
-                                          ? "text-emerald-400 bg-emerald-500/10"
-                                          : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
-                                      }`}
-                                      title={
-                                        copiedMessageId === message.id
-                                          ? "Copied!"
-                                          : "Copy to clipboard"
-                                      }
-                                    >
-                                      <svg
-                                        className="w-4 h-4"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                                        <svg
+                                          className="w-4.5 h-4.5"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d={
+                                              playingMessageId === message.id
+                                                ? "M21 12a9 9 0 11-18 0 9 9 0 0118 0z M9 10h6v4H9z"
+                                                : "M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                                            }
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(
+                                            message.content,
+                                          );
+                                          setCopiedMessageId(message.id);
+                                          setTimeout(
+                                            () =>
+                                              setCopiedMessageId((prev) =>
+                                                prev === message.id
+                                                  ? null
+                                                  : prev,
+                                              ),
+                                            2000,
+                                          );
+                                        }}
+                                        className={`btn-icon-ghost w-9 h-9 transition-colors ${
+                                          copiedMessageId === message.id
+                                            ? "text-emerald-400 bg-emerald-500/10"
+                                            : "text-neutral-500 hover:text-neutral-300"
+                                        }`}
+                                        title={
+                                          copiedMessageId === message.id
+                                            ? "Copied!"
+                                            : "Copy to clipboard"
+                                        }
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d={
-                                            copiedMessageId === message.id
-                                              ? "M5 13l4 4L19 7"
-                                              : "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                                          }
-                                        />
-                                      </svg>
-                                    </button>
-                                    {!message.visualBundle &&
-                                      message.suggestTrace &&
-                                      message.tracePrompt &&
-                                      onTrace && (
+                                        <svg
+                                          className="w-4.5 h-4.5"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d={
+                                              copiedMessageId === message.id
+                                                ? "M5 13l4 4L19 7"
+                                                : "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                                            }
+                                          />
+                                        </svg>
+                                      </button>
+                                      {!message.visualBundle &&
+                                        message.suggestTrace &&
+                                        message.tracePrompt &&
+                                        onTrace && (
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              onClick={() =>
+                                                onTrace(message.tracePrompt!)
+                                              }
+                                              className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+                                            >
+                                              <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                                                />
+                                              </svg>
+                                              View Map
+                                            </button>
+                                            {typeof message.connectionCount ===
+                                              "number" && (
+                                              <span className="text-xs text-neutral-500">
+                                                {message.connectionCount}{" "}
+                                                connection
+                                                {message.connectionCount === 1
+                                                  ? ""
+                                                  : "s"}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      {message.visualBundle && (
                                         <div className="flex items-center gap-2">
                                           <button
-                                            onClick={() =>
-                                              onTrace(message.tracePrompt!)
-                                            }
-                                            className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+                                            onClick={() => {
+                                              if (onShowVisualization) {
+                                                onShowVisualization(
+                                                  message.visualBundle!,
+                                                );
+                                                resetHighlights();
+                                              }
+                                            }}
+                                            className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                                              isMapReady
+                                                ? "text-emerald-200 bg-emerald-500/10 ring-1 ring-emerald-400/40 animate-subtle-pulse"
+                                                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
+                                            }`}
                                           >
                                             <svg
                                               className="w-4 h-4"
@@ -2716,135 +2229,114 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                                 d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
                                               />
                                             </svg>
-                                            View Map
+                                            {isMapPendingFull
+                                              ? "Loading full map"
+                                              : "View Map"}
                                           </button>
-                                          {typeof message.connectionCount ===
-                                            "number" && (
-                                            <span className="text-[11px] text-neutral-500">
-                                              {message.connectionCount}{" "}
-                                              connection
-                                              {message.connectionCount === 1
-                                                ? ""
-                                                : "s"}
-                                            </span>
-                                          )}
+                                          <span
+                                            className={`text-xs ${
+                                              isMapReady
+                                                ? "text-emerald-200/90"
+                                                : "text-neutral-500"
+                                            }`}
+                                          >
+                                            {isMapPendingFull
+                                              ? "Richer connections loading"
+                                              : "Map ready"}{" "}
+                                            - {mapVerseCount} verse
+                                            {mapVerseCount === 1 ? "" : "s"}
+                                          </span>
                                         </div>
                                       )}
-                                    {message.visualBundle && (
-                                      <div className="flex items-center gap-2">
-                                        <button
-                                          onClick={() => {
-                                            if (onShowVisualization) {
-                                              onShowVisualization(
-                                                message.visualBundle!,
-                                              );
-                                              resetHighlights();
-                                            }
-                                          }}
-                                          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
-                                            isMapReady
-                                              ? "text-emerald-200 bg-emerald-500/10 ring-1 ring-emerald-400/40 animate-pulse"
-                                              : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/60"
-                                          }`}
-                                        >
-                                          <svg
-                                            className="w-4 h-4"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                          >
-                                            <path
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              strokeWidth={2}
-                                              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                                            />
-                                          </svg>
-                                          {isMapPendingFull
-                                            ? "Loading full map"
-                                            : "View Map"}
-                                        </button>
-                                        <span
-                                          className={`text-[11px] ${
-                                            isMapReady
-                                              ? "text-emerald-200/90"
-                                              : "text-neutral-500"
-                                          }`}
-                                        >
-                                          {isMapPendingFull
-                                            ? "Richer connections loading"
-                                            : "Map ready"}{" "}
-                                          - {mapVerseCount} verse
-                                          {mapVerseCount === 1 ? "" : "s"}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                                    </div>
+                                  )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
 
-                {/* Streaming message (renders progressively as content arrives) */}
-                {streamingMessage &&
-                  streamingMessage.content &&
-                  !streamingMessage.isComplete && (
-                    <div className="space-y-2">
-                      <MessageStream
-                        content={streamingMessage.content}
-                        onVerseClick={handleVerseClick}
-                        onTrace={handleGoDeeper}
-                      />
-                      {mapPrepActive && (
-                        <div className="inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-[11px] text-cyan-100/90">
-                          <svg
-                            className="w-3.5 h-3.5 text-cyan-200/90"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                            />
-                          </svg>
-                          <span>Preparing map...</span>
-                          {mapPrepCount !== null && mapPrepCount > 0 && (
-                            <span className="text-cyan-100/70">
-                              ({mapPrepCount} verses found)
-                            </span>
-                          )}
-                        </div>
-                      )}
+                  {/* Streaming message (renders progressively as content arrives) */}
+                  {streamingMessage &&
+                    streamingMessage.content &&
+                    !streamingMessage.isComplete && (
+                      <div className="space-y-2">
+                        <MessageStream
+                          content={streamingMessage.content}
+                          onVerseClick={handleVerseClick}
+                          onTrace={handleGoDeeper}
+                        />
+                        {mapPrepActive && (
+                          <div className="inline-flex items-center gap-2 rounded-md border border-cyan-400/20 bg-cyan-500/10 px-2.5 py-1 text-xs text-cyan-100/90 animate-slideUpFade">
+                            <svg
+                              className="w-3.5 h-3.5 text-cyan-200/90"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                              />
+                            </svg>
+                            <span>Preparing map...</span>
+                            {mapPrepCount !== null && mapPrepCount > 0 && (
+                              <span className="text-cyan-100/70">
+                                ({mapPrepCount} verses found)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  {/* Tool Activity Inline */}
+                  {toolsUsed.length > 0 && (
+                    <div className="ml-[2.625rem]">
+                      <ToolBadges tools={toolsUsed} />
                     </div>
                   )}
 
-                {/* Tool Activity Inline */}
-                {toolsUsed.length > 0 && (
-                  <div className="ml-[2.625rem]">
-                    <ToolBadges tools={toolsUsed} />
-                  </div>
-                )}
+                  {/* Verse search indicator while loading */}
+                  <VerseSearchIndicator
+                    verses={streamingMessage?.searchingVerses || []}
+                    isActive={isStreaming && !streamingMessage?.content}
+                    tracedText={lastUserPromptRef.current || ""}
+                    activeTools={streamingMessage?.activeTools || []}
+                    completedTools={streamingMessage?.completedTools || []}
+                  />
 
-                {/* Verse search indicator while loading */}
-                <VerseSearchIndicator
-                  verses={streamingMessage?.searchingVerses || []}
-                  isActive={isStreaming && !streamingMessage?.content}
-                  tracedText={lastUserPromptRef.current || ""}
-                  activeTools={streamingMessage?.activeTools || []}
-                  completedTools={streamingMessage?.completedTools || []}
-                />
+                  {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
 
-                {/* Removed Plan Approval and Checkpoint Cards - micro-steps execute seamlessly now */}
-
-                <div ref={messagesEndRef} />
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
+              {/* Scroll to bottom button */}
+              {showScrollToBottom && (
+                <button
+                  onClick={scrollToBottom}
+                  className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-10 h-10 rounded-full bg-neutral-800/90 border border-white/10 text-neutral-300 hover:text-white hover:bg-neutral-700/90 shadow-lg backdrop-blur-sm transition-all flex items-center justify-center"
+                  title="Scroll to bottom"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                    />
+                  </svg>
+                </button>
+              )}
             </div>
           )}
 
@@ -2858,8 +2350,8 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         ref={composerRef}
         className={
           isEmptyState
-            ? "flex-1 flex flex-col items-center justify-start px-6 pt-[22vh]"
-            : "sticky bottom-0 px-6 py-4 bg-neutral-950/40 backdrop-blur-sm"
+            ? "flex-1 flex flex-col items-center justify-start px-6 pt-[22vh] golden-cross-bg"
+            : "sticky bottom-0 px-6 py-4 bg-neutral-950/60 backdrop-blur-xl border-t border-white/5"
         }
       >
         <div
@@ -2868,12 +2360,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           }
         >
           {isEmptyState && (
-            <div className="text-center mb-10">
-              <h1 className="text-4xl font-medium text-neutral-100 tracking-tight">
+            <div className="text-center mb-10 relative">
+              <div className="absolute inset-0 -top-16 -bottom-16 bg-[radial-gradient(ellipse_at_center,_#D4AF3712_0%,_transparent_70%)] pointer-events-none" />
+              <h1 className="relative text-4xl font-serif text-neutral-100 tracking-tight">
                 {emptyStateHeading.title}
               </h1>
               {emptyStateHeading.subtitle && (
-                <p className="text-neutral-500 text-base mt-2">
+                <p className="relative text-neutral-500 text-base mt-2">
                   {emptyStateHeading.subtitle}
                 </p>
               )}
@@ -2881,12 +2374,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           )}
           <div className="relative flex gap-2 items-center bg-neutral-800/50 border border-neutral-700/50 rounded-2xl px-4 py-2.5 transition-all shadow-lg focus-within:ring-2 focus-within:ring-brand-primary-500/50 focus-within:border-brand-primary-500/50">
             <button
-              onClick={() => setShowUploadButton(!showUploadButton)}
-              className="btn-icon-ghost w-8 h-8"
-              title="Add options"
+              onClick={() => setTraceModeEnabled((prev) => !prev)}
+              className={`btn-icon-ghost w-8 h-8 transition-all ${traceModeEnabled ? "bg-[#D4AF37]/15 ring-1 ring-[#D4AF37]/30 text-[#D4AF37]" : ""}`}
+              title={traceModeEnabled ? "Trace mode on" : "Trace mode off"}
+              aria-pressed={traceModeEnabled}
             >
               <svg
-                className={`w-5 h-5 transition-transform ${showUploadButton ? "rotate-45" : ""}`}
+                className="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -2895,50 +2389,19 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M12 4v16m8-8H4"
+                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
                 />
               </svg>
             </button>
-
-            {/* Options Menu */}
-            {showUploadButton && (
-              <div className="absolute bottom-full left-0 mb-2 z-10 min-w-[220px] rounded-2xl border border-neutral-700/60 bg-neutral-900/95 shadow-2xl backdrop-blur-sm">
-                <div className="p-2">
-                  <button
-                    onClick={() => {
-                      setTraceModeEnabled((prev) => !prev);
-                      setShowUploadButton(false);
-                    }}
-                    className="w-full rounded-xl px-3 py-2 text-left text-sm text-neutral-200 transition-colors hover:bg-neutral-800/80 flex items-center gap-3"
-                    aria-pressed={traceModeEnabled}
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                      />
-                    </svg>
-                    <span>Trace mode</span>
-                    {traceModeEnabled && (
-                      <span className="ml-auto rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                        On
-                      </span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
+            <label htmlFor="chat-input" className="sr-only">
+              Message input
+            </label>
             <textarea
+              id="chat-input"
+              ref={textareaRef}
               value={currentInput}
               onChange={(e) => setCurrentInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder={getContextualPlaceholder()}
               className="flex-1 bg-transparent text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[40px] max-h-[200px] leading-relaxed"
               rows={1}
@@ -2947,7 +2410,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             />
             {currentInput.length > 1500 && (
               <span
-                className={`text-[10px] font-medium tabular-nums self-end mb-1 mr-1 transition-colors ${
+                className={`text-xs font-medium tabular-nums self-end mb-1 mr-1 transition-colors ${
                   currentInput.length > 4000
                     ? "text-red-400"
                     : currentInput.length > 3000
@@ -2958,30 +2421,46 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                 {currentInput.length.toLocaleString()}
               </span>
             )}
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={!currentInput.trim() || isProcessing}
-              className="btn-icon-ghost text-neutral-300 hover:text-neutral-100"
-              title={isProcessing ? "Sending..." : "Send message"}
-            >
-              {isProcessing ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
+            {isStreaming ? (
+              <button
+                onClick={() => cancelStream()}
+                className="btn-icon-ghost text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                title="Stop generating"
+              >
                 <svg
                   className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
                   viewBox="0 0 24 24"
+                  fill="currentColor"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                  />
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
                 </svg>
-              )}
-            </button>
+              </button>
+            ) : (
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={!currentInput.trim() || isProcessing}
+                className="btn-icon-ghost text-neutral-300 hover:text-neutral-100"
+                title={isProcessing ? "Sending..." : "Send message"}
+              >
+                {isProcessing ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                    />
+                  </svg>
+                )}
+              </button>
+            )}
           </div>
           {bibleStudyMode && isEmptyState && (
             <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -3006,10 +2485,10 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         : "text-slate-300/70 border-slate-500/20 bg-slate-500/5";
                   const label =
                     kind === "ot"
-                      ? "Roots"
+                      ? "Old Testament"
                       : kind === "nt"
-                        ? "Thread"
-                        : "Explore";
+                        ? "New Testament"
+                        : "Surprise Me";
                   const titleText = topic.title || "Pericope";
                   const displayText = topic.displayText;
                   const titleAttr = topic.rangeRef
@@ -3031,7 +2510,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         isProcessing ||
                         isStreaming
                       }
-                      className={`group relative flex items-center gap-2 px-3 py-2 border transition-all duration-300 ${lensClass} bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      className={`group relative flex items-center gap-2 px-3 py-2 border rounded-xl transition-all duration-300 ${lensClass} bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
                       title={titleAttr}
                     >
                       <svg
@@ -3053,7 +2532,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                           d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                         />
                       </svg>
-                      <span className="text-[10px] uppercase tracking-wider font-normal flex-shrink-0">
+                      <span className="text-xs uppercase tracking-wider font-normal flex-shrink-0">
                         {label}
                       </span>
                       <span className="text-xs font-normal text-neutral-300 max-w-[220px] truncate">
@@ -3082,7 +2561,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               <button
                 onClick={resetBibleStudySession}
                 disabled={isProcessing || isStreaming}
-                className="group relative flex items-center gap-2 px-3 py-2 border transition-all duration-300 text-slate-300/70 border-slate-500/20 bg-slate-500/5 bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group relative flex items-center gap-2 px-3 py-2 border rounded-xl transition-all duration-300 text-slate-300/70 border-slate-500/20 bg-slate-500/5 bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Start a new Bible study session"
               >
                 <svg
@@ -3104,11 +2583,11 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                     d="M20 10a8 8 0 00-14-5M4 14a8 8 0 0014 5"
                   />
                 </svg>
-                <span className="text-[10px] uppercase tracking-wider font-normal flex-shrink-0">
-                  Session
+                <span className="text-xs uppercase tracking-wider font-normal flex-shrink-0">
+                  New
                 </span>
                 <span className="text-xs font-normal whitespace-nowrap text-neutral-300">
-                  New
+                  Session
                 </span>
                 <svg
                   className="w-2.5 h-2.5 flex-shrink-0 text-neutral-500 opacity-60"

@@ -86,6 +86,7 @@ export default [
         MouseEvent: "readonly",
         Node: "readonly",
         HTMLElement: "readonly",
+        HTMLTextAreaElement: "readonly",
       },
     },
     plugins: {
