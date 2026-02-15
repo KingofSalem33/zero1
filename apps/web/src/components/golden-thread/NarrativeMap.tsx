@@ -2724,6 +2724,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           flowInstanceRef.current = instance;
           setFlowReady(true);
         }}
+        proOptions={{ hideAttribution: true }}
         className="h-full w-full"
         style={{ width: "100%", height: "100%" }}
       >
