@@ -603,7 +603,7 @@ export function BookmarkPanel({
               {connections.map((connection) => (
                 <div
                   key={connection.id}
-                  className="group relative bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 hover:border-white/10 rounded-lg p-4 transition-all"
+                  className="group relative bg-white/[0.08] hover:bg-white/[0.12] border border-white/5 rounded-lg p-4 transition-all duration-200"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-neutral-500">
@@ -685,7 +685,7 @@ export function BookmarkPanel({
               {maps.map((entry) => (
                 <div
                   key={entry.id}
-                  className="group relative bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 hover:border-white/10 rounded-lg p-4 transition-all"
+                  className="group relative bg-white/[0.08] hover:bg-white/[0.12] border border-white/5 rounded-lg p-4 transition-all duration-200"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-neutral-500">

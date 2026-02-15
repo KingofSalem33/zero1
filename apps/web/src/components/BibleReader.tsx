@@ -1015,7 +1015,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                       className="fixed inset-0 z-40"
                       onClick={() => setShowShortcuts(false)}
                     />
-                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-4 z-40">
+                    <div className="absolute top-full right-0 mt-2 w-56 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-4 z-40">
                       <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
                         Keyboard Shortcuts
                       </h4>

@@ -26,6 +26,38 @@ import { SemanticConnectionModal } from "./SemanticConnectionModal";
 import { ParallelPassagesModal } from "./ParallelPassagesModal";
 import { DiscoveryOverlay } from "./DiscoveryOverlay";
 import { useUserPreferences } from "../../hooks/useUserPreferences";
+import {
+  SaveMapButton,
+  ZoomControls,
+  DiscoverButton,
+  LegendPanel,
+} from "./MapControls";
+import { MapOnboarding } from "./MapOnboarding";
+import {
+  EDGE_STYLES,
+  EDGE_THIN_WIDTH,
+  EDGE_OPACITY_DIM,
+  EDGE_RENDER_TYPE,
+  ELECTRIC_EDGE_COLOR,
+  ANCHOR_EDGE_GLOW,
+  DEFAULT_EDGE_GLOW,
+  EDGE_CLICK_ENABLED,
+  EDGE_HOVER_ENABLED,
+  DISCOVERY_BATCH_SIZE,
+  getEdgeStroke,
+  getDefaultEdgeOpacity,
+  getEdgeAnimationConfig,
+  edgeFlowDelay,
+  resolveConnectionFamily,
+  resolveConnectionChip,
+} from "./narrativeMapConfig";
+import type {
+  ConnectionStyleType,
+  BranchCluster,
+  EdgeData,
+  DiscoveredConnection,
+  ConnectionTopicGroup,
+} from "./narrativeMapConfig";
 import type {
   VisualContextBundle,
   EdgeType,
@@ -36,124 +68,7 @@ import type { GoDeeperPayload } from "../../types/chat";
 
 const __DEV__ = import.meta.env.DEV;
 
-// Connection family metadata (used for modal labels, topic colors, and connection grouping)
-// Edge *rendering* uses a simple 3-style system: white (graph), gold (anchor), shimmer (LLM).
-const EDGE_STYLES = {
-  GREY: {
-    color: "#475569",
-    glowColor: "#94A3B8",
-    label: "Neutral",
-    description: "Layout-only helper edges",
-  },
-  CROSS_REFERENCE: {
-    color: "#22C55E",
-    glowColor: "#86EFAC",
-    label: "Cross-Reference",
-    description: "Canonical cross-references and parallels",
-  },
-  LEXICON: {
-    color: "#F59E0B",
-    glowColor: "#FCD34D",
-    label: "Lexicon",
-    description: "Shared roots or key terms",
-  },
-  ECHO: {
-    color: "#6366F1",
-    glowColor: "#A5B4FC",
-    label: "Echo",
-    description: "Semantic or thematic echoes",
-  },
-  FULFILLMENT: {
-    color: "#06B6D4",
-    glowColor: "#67E8F9",
-    label: "Fulfillment",
-    description: "Prophetic or covenant fulfillment",
-  },
-  PATTERN: {
-    color: "#A78BFA",
-    glowColor: "#C4B5FD",
-    label: "Pattern",
-    description: "Typology, contrast, progression, motif, lineage",
-  },
-} as const;
-
-const NEUTRAL_EDGE_OPACITY = 0.18;
-const EDGE_THIN_WIDTH = 1.1;
-const EDGE_OPACITY_DEFAULT = 0.3;
-const EDGE_OPACITY_ANCHOR = 0.6;
-// Keep non-selected edges faintly visible (helps orientation) instead of disappearing.
-const EDGE_OPACITY_DIM = 0.02;
-const EDGE_OPACITY_SYNTHETIC = 0.12;
-const EDGE_RENDER_TYPE = "simplebezier";
-const ELECTRIC_EDGE_COLOR = "rgba(248, 250, 252, 0.95)";
-const ANCHOR_EDGE_COLOR = "#C5B358"; // Vegas gold
-const ANCHOR_EDGE_GLOW = "#E0C57A";
-const DEFAULT_EDGE_GLOW = "rgba(248, 250, 252, 0.35)";
-const EDGE_CLICK_ENABLED = false;
-const EDGE_HOVER_ENABLED = false;
-// Edge rendering: 3 visual styles matching the legend
-// 1. Grey gradient for synthetic/structural edges
-// 2. Gold for anchor rays (from/to root)
-// 3. White for all other graph connections
-const getEdgeStroke = (
-  styleType: keyof typeof EDGE_STYLES,
-  isSynthetic?: boolean,
-  isAnchorRay?: boolean,
-) => {
-  if (styleType === "GREY" || isSynthetic) {
-    return "url(#edge-gradient-GREY)";
-  }
-  return isAnchorRay ? ANCHOR_EDGE_COLOR : ELECTRIC_EDGE_COLOR;
-};
-
-const getDefaultEdgeOpacity = ({
-  styleType,
-  isSynthetic,
-  isAnchorRay,
-}: {
-  styleType: keyof typeof EDGE_STYLES;
-  isSynthetic?: boolean;
-  isAnchorRay?: boolean;
-}) => {
-  if (styleType === "GREY") return NEUTRAL_EDGE_OPACITY;
-  if (isSynthetic) return EDGE_OPACITY_SYNTHETIC;
-  return isAnchorRay ? EDGE_OPACITY_ANCHOR : EDGE_OPACITY_DEFAULT;
-};
-
-const getEdgeAnimationConfig = (
-  isLLMDiscovered: boolean,
-  _flowDuration: string,
-) =>
-  isLLMDiscovered
-    ? {
-        animationName: "llm-shimmer",
-        animationDuration: "3s",
-        animationIterationCount: "infinite",
-        animationTimingFunction: "linear",
-      }
-    : {
-        // Subtle flowing dash for non-LLM edges (visible only because of dasharray)
-        animationName: "edge-flow",
-        animationDuration: "4s",
-        animationIterationCount: "infinite",
-        animationTimingFunction: "linear",
-      };
-const edgePulseDelay = (id: string) => {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  }
-  return `${hash % 1600}ms`;
-};
-
-const edgeFlowDelay = (id: string, depth?: number) => {
-  if (typeof depth === "number") {
-    return `${depth * 220}ms`;
-  }
-  return edgePulseDelay(id);
-};
-
-type ConnectionStyleType = Exclude<keyof typeof EDGE_STYLES, "GREY">;
+// Constants, edge utilities, types, and connection resolution imported from narrativeMapConfig.ts
 
 const LlmEdge: React.FC<EdgeProps> = ({
   id,
@@ -195,118 +110,6 @@ const LlmEdge: React.FC<EdgeProps> = ({
   );
 };
 
-const resolveConnectionFamily = (
-  edgeType: EdgeType,
-  metadata?: Record<string, unknown>,
-): ConnectionStyleType => {
-  const source = metadata?.source;
-
-  if (edgeType === "DEEPER") return "CROSS_REFERENCE";
-  if (edgeType === "NARRATIVE") return "CROSS_REFERENCE";
-
-  if (edgeType === "ROOTS") {
-    if (source === "semantic_thread") return "ECHO";
-    return "LEXICON";
-  }
-
-  if (edgeType === "ECHOES") return "ECHO";
-  if (edgeType === "ALLUSION") return "ECHO";
-
-  if (edgeType === "PROPHECY" || edgeType === "FULFILLMENT") {
-    return "FULFILLMENT";
-  }
-
-  if (
-    edgeType === "TYPOLOGY" ||
-    edgeType === "CONTRAST" ||
-    edgeType === "PROGRESSION" ||
-    edgeType === "PATTERN" ||
-    edgeType === "GENEALOGY"
-  ) {
-    return "PATTERN";
-  }
-
-  return "CROSS_REFERENCE";
-};
-
-const resolveConnectionChip = (
-  edgeType: EdgeType,
-  metadata?: Record<string, unknown>,
-): string | null => {
-  const source = metadata?.source;
-  const thread = metadata?.thread;
-
-  if (edgeType === "DEEPER") return "Parallel";
-  if (edgeType === "NARRATIVE") return "Context";
-
-  if (edgeType === "ROOTS") {
-    if (source === "semantic_thread") return "Phrase";
-    if (source === "canonical") return "Shared Root";
-    return "Key Term";
-  }
-
-  if (edgeType === "ECHOES") {
-    if (thread === "theological") return "Parallel Teaching";
-    return "Theme";
-  }
-
-  if (edgeType === "ALLUSION") return "Allusion";
-  if (edgeType === "PROPHECY") return "Prophetic";
-  if (edgeType === "FULFILLMENT") return "Fulfillment";
-  if (edgeType === "TYPOLOGY") return "Typology";
-  if (edgeType === "CONTRAST") return "Contrast";
-  if (edgeType === "PROGRESSION") return "Progression";
-  if (edgeType === "PATTERN") return "Motif";
-  if (edgeType === "GENEALOGY") return "Lineage";
-
-  return null;
-};
-
-interface BranchCluster {
-  edgeIds: Set<string>;
-  nodeIds: Set<number>;
-  styleType: keyof typeof EDGE_STYLES;
-  edgeType: EdgeType;
-  pathPreview: string;
-}
-
-interface EdgeData {
-  styleType?: keyof typeof EDGE_STYLES;
-  edgeType?: EdgeType;
-  source?: string;
-  thread?: string;
-  explanation?: string;
-  confidence?: number;
-  isLLMDiscovered?: boolean;
-  isStructural?: boolean;
-  isSynthetic?: boolean;
-  isAnchorRay?: boolean;
-  baseWidth?: number;
-  weight?: number;
-  selectionScore?: number;
-}
-
-interface DiscoveredConnection {
-  from: number;
-  to: number;
-  type: string;
-  explanation: string;
-  confidence: number;
-}
-
-interface ConnectionTopicGroup {
-  styleType: ConnectionStyleType;
-  label: string;
-  displayLabel?: string;
-  labelSource?: "canonical" | "llm";
-  color: string;
-  count: number;
-  chips?: string[];
-  verses: ThreadNode[];
-  verseIds: number[];
-  edgeIds: string[];
-}
-
 /** Non-interactive depth ring background — renders concentric circles at ring radii */
 const DepthRingsNode = React.memo(() => (
   <svg
@@ -339,8 +142,6 @@ const nodeTypes = {
 const edgeTypes = {
   llmEdge: LlmEdge,
 };
-
-const DISCOVERY_BATCH_SIZE = 12;
 
 interface NarrativeMapProps {
   bundle: VisualContextBundle | null;
@@ -2890,43 +2691,12 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         anchorLabel={anchorLabel}
       />
       {bundle && (
-        <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
-          <button
-            onClick={handleSaveMap}
-            disabled={mapSaving || mapSaved}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 backdrop-blur-sm ${
-              mapSaved
-                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/20"
-                : "bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed"
-            }`}
-          >
-            {mapSaved ? (
-              <>
-                <svg
-                  className="w-3.5 h-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Saved
-              </>
-            ) : mapSaving ? (
-              "Saving..."
-            ) : (
-              "Save Map"
-            )}
-          </button>
-          {mapSaveError && (
-            <span className="text-[10px] text-red-400">{mapSaveError}</span>
-          )}
-        </div>
+        <SaveMapButton
+          onSave={handleSaveMap}
+          saving={mapSaving}
+          saved={mapSaved}
+          error={mapSaveError}
+        />
       )}
 
       <ReactFlow
@@ -2994,192 +2764,21 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         />
       )}
 
-      {/* Zoom controls — bottom-right, above legend */}
-      <div className="absolute bottom-16 right-4 z-40 flex flex-col gap-1">
-        <button
-          type="button"
-          onClick={() => flowInstanceRef.current?.zoomIn({ duration: 200 })}
-          className="w-9 h-9 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
-          aria-label="Zoom in"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6v12M6 12h12"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={() => flowInstanceRef.current?.zoomOut({ duration: 200 })}
-          className="w-9 h-9 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
-          aria-label="Zoom out"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 12h12"
-            />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            flowInstanceRef.current?.fitView({ padding: 0.2, duration: 300 })
-          }
-          className="w-9 h-9 rounded-lg bg-neutral-900/80 backdrop-blur-sm border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white transition-all duration-150 flex items-center justify-center"
-          aria-label="Fit to view"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
-            />
-          </svg>
-        </button>
-      </div>
-
-      {/* Discover button — standalone, bottom-left */}
+      <ZoomControls flowInstance={flowInstanceRef} />
       {bundle && (
-        <div className="absolute bottom-4 left-4 z-40">
-          <button
-            type="button"
-            onClick={() => startDiscovery("deep")}
-            disabled={deepCrawlDisabled}
-            title={deepCrawlTitle}
-            className="px-4 py-2 rounded-full text-[12px] font-semibold tracking-wide transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 backdrop-blur-xl shadow-lg flex items-center gap-2"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            {deepCrawlLabel}
-          </button>
-        </div>
+        <DiscoverButton
+          onDiscover={() => startDiscovery("deep")}
+          disabled={deepCrawlDisabled}
+          title={deepCrawlTitle}
+          label={deepCrawlLabel}
+        />
       )}
-
-      {/* Legend — collapsed by default, bottom-right */}
-      <div className="absolute bottom-4 right-4 z-40">
-        {showLegend ? (
-          <div className="bg-neutral-900/80 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl px-3 py-3 w-[200px] transition-all duration-200">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] uppercase tracking-[0.15em] text-white/40">
-                Legend
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLegend(false)}
-                className="w-4 h-4 rounded-full text-white/40 hover:text-white/80 transition-colors flex items-center justify-center"
-                aria-label="Close legend"
-              >
-                <svg
-                  className="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="space-y-1.5 text-[11px] text-white/70">
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-5 h-[2px] rounded-full bg-white/70" />
-                <span>Scripture link</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-block w-5 h-[2px] rounded-full"
-                  style={{ backgroundColor: "#C5B358" }}
-                />
-                <span>Root verse</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-block w-5 h-[2px] rounded-full"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, rgba(248,250,252,0.3), rgba(248,250,252,0.9), rgba(248,250,252,0.3))",
-                  }}
-                />
-                <span>AI-discovered</span>
-              </div>
-            </div>
-            {/* Help hints toggle */}
-            <button
-              type="button"
-              onClick={() => setShowHelpHints((prev) => !prev)}
-              className="mt-2 text-[10px] text-white/30 hover:text-white/60 transition-colors"
-            >
-              {showHelpHints ? "Hide tips" : "Show tips"}
-            </button>
-            {showHelpHints && (
-              <div className="mt-1.5 pt-1.5 border-t border-white/5 space-y-1 text-[10px] text-white/50 leading-snug">
-                <div>Click a verse to explore</div>
-                <div>Hover to spotlight nearby</div>
-                <div>Scroll to zoom, drag to pan</div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowLegend(true)}
-            className="w-10 h-10 rounded-lg bg-neutral-900/60 backdrop-blur-xl border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 transition-all duration-200 flex items-center justify-center shadow-lg"
-            aria-label="Show legend"
-            title="Show legend"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
+      <LegendPanel
+        showLegend={showLegend}
+        setShowLegend={setShowLegend}
+        showHelpHints={showHelpHints}
+        setShowHelpHints={setShowHelpHints}
+      />
 
       {/* Semantic Connection Modal */}
       {clickedConnection && (onTrace || onGoDeeper) && (
@@ -3229,109 +2828,22 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         />
       )}
 
-      {/* First-time map onboarding — 3-step tooltip sequence */}
       {onboardingStep !== null && (
-        <div className="absolute inset-0 z-50 pointer-events-none">
-          {/* Scrim */}
-          <div
-            className="absolute inset-0 bg-black/40 pointer-events-auto"
-            onClick={() => {
+        <MapOnboarding
+          step={onboardingStep}
+          onNext={() => {
+            if (onboardingStep < 2) {
+              setOnboardingStep(onboardingStep + 1);
+            } else {
               setOnboardingStep(null);
               markMapOnboardingComplete();
-            }}
-          />
-          {/* Tooltip card */}
-          <div
-            className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-5"
-            style={{
-              animation: "fade-in 300ms ease-out",
-            }}
-          >
-            {/* Step indicator */}
-            <div className="flex items-center gap-1.5 mb-3">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="h-1 rounded-full transition-all duration-200"
-                  style={{
-                    width: i === onboardingStep ? "16px" : "6px",
-                    backgroundColor:
-                      i === onboardingStep
-                        ? "#D4AF37"
-                        : i < onboardingStep
-                          ? "rgba(212,175,55,0.4)"
-                          : "rgba(255,255,255,0.15)",
-                  }}
-                />
-              ))}
-            </div>
-
-            {/* Step content */}
-            {onboardingStep === 0 && (
-              <>
-                <div className="text-[13px] font-serif font-semibold text-white/90 mb-1.5">
-                  The anchor verse
-                </div>
-                <div className="text-[11px] text-white/60 leading-relaxed">
-                  The large node at the center is your anchor — the verse your
-                  conversation is rooted in. Everything else flows from it.
-                </div>
-              </>
-            )}
-            {onboardingStep === 1 && (
-              <>
-                <div className="text-[13px] font-serif font-semibold text-white/90 mb-1.5">
-                  Connected Scripture
-                </div>
-                <div className="text-[11px] text-white/60 leading-relaxed">
-                  Lines trace real cross-references and shared themes between
-                  passages. Gold lines connect to the anchor. White lines link
-                  related verses.
-                </div>
-              </>
-            )}
-            {onboardingStep === 2 && (
-              <>
-                <div className="text-[13px] font-serif font-semibold text-white/90 mb-1.5">
-                  Explore deeper
-                </div>
-                <div className="text-[11px] text-white/60 leading-relaxed">
-                  Click any verse to see its connections. Use the{" "}
-                  <span className="text-[#D4AF37]">Discover</span> button to let
-                  AI find hidden links across Scripture.
-                </div>
-              </>
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center justify-between mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setOnboardingStep(null);
-                  markMapOnboardingComplete();
-                }}
-                className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
-              >
-                Skip
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onboardingStep < 2) {
-                    setOnboardingStep(onboardingStep + 1);
-                  } else {
-                    setOnboardingStep(null);
-                    markMapOnboardingComplete();
-                  }
-                }}
-                className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 text-[#D4AF37] border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 transition-all duration-150"
-              >
-                {onboardingStep < 2 ? "Next" : "Got it"}
-              </button>
-            </div>
-          </div>
-        </div>
+            }
+          }}
+          onSkip={() => {
+            setOnboardingStep(null);
+            markMapOnboardingComplete();
+          }}
+        />
       )}
     </div>
   );
