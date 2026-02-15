@@ -143,7 +143,7 @@ export function VerseReferencesModal({
   return (
     <div
       ref={tooltipRef}
-      className="absolute z-[70] transform -translate-x-1/2"
+      className="absolute z-[60] transform -translate-x-1/2"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -152,7 +152,7 @@ export function VerseReferencesModal({
       {/* Compact popover card */}
       <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
         {/* Header - Compact */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
           <div>
             <div className="text-xs font-semibold text-[#D4AF37] uppercase tracking-wide">
               Cross-References

@@ -3242,7 +3242,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           />
           {/* Tooltip card */}
           <div
-            className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] bg-neutral-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl p-5"
+            className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-5"
             style={{
               animation: "fade-in 300ms ease-out",
             }}

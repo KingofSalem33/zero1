@@ -321,7 +321,7 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
     return (
       <div
         ref={ref}
-        className="absolute z-[80] transform -translate-x-1/2 transition-all duration-150 ease-out"
+        className="absolute z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out"
         style={{
           top: `${position.top}px`,
           left: `${adjustedLeft}px`,

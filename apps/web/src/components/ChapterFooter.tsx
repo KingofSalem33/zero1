@@ -188,7 +188,7 @@ export function ChapterFooter({
       <div className="max-w-3xl mx-auto px-12 animate-[fadeIn_0.6s_ease-in_0.15s_both]">
         {/* Label */}
         <div className="text-center mb-3">
-          <p className="text-[10px] uppercase tracking-widest text-neutral-600 font-light">
+          <p className="text-[10px] uppercase tracking-widest text-neutral-500 font-light">
             Ways to explore this chapter
           </p>
         </div>
@@ -242,7 +242,7 @@ export function ChapterFooter({
                     }}
                     onMouseEnter={() => setCurrentCardIndex(absoluteIndex)}
                     className={`
-                      group relative flex-shrink-0 flex items-center gap-2 px-3 py-2 border transition-all duration-300 ${lensColor}
+                      group relative flex-shrink-0 flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 ${lensColor}
                       ${
                         isActive
                           ? "bg-opacity-100"
@@ -280,7 +280,7 @@ export function ChapterFooter({
 
                     {/* Title - Smooth reveal */}
                     <span
-                      className={`text-xs font-normal whitespace-nowrap overflow-hidden transition-all duration-500 ease-out ${
+                      className={`text-xs font-normal whitespace-nowrap overflow-hidden transition-all duration-200 ease-out ${
                         isActive
                           ? "text-neutral-300 opacity-100 max-w-[200px] ml-1"
                           : "text-neutral-500 opacity-0 max-w-0 group-hover:opacity-90 group-hover:max-w-[200px] group-hover:ml-1 group-hover:text-neutral-400"
@@ -291,7 +291,7 @@ export function ChapterFooter({
 
                     {/* Explore Arrow - Calm appearance */}
                     <svg
-                      className={`w-2.5 h-2.5 flex-shrink-0 transition-all duration-500 ease-out ${
+                      className={`w-2.5 h-2.5 flex-shrink-0 transition-all duration-200 ease-out ${
                         isActive
                           ? "text-neutral-500 opacity-60 ml-0.5"
                           : "text-neutral-600 opacity-0 -ml-2 group-hover:opacity-40 group-hover:ml-0.5"
@@ -309,7 +309,7 @@ export function ChapterFooter({
                     </svg>
 
                     {/* Tooltip */}
-                    <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-md border border-white/10 bg-neutral-900/95 p-2 text-left text-[11px] text-neutral-200 opacity-0 shadow-xl transition-opacity duration-200 group-hover:opacity-100">
+                    <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-56 -translate-x-1/2 rounded-lg border border-white/5 bg-white/[0.08] backdrop-blur-2xl p-2 text-left text-[11px] text-neutral-200 opacity-0 shadow-2xl transition-opacity duration-200 group-hover:opacity-100">
                       <div className="text-[10px] uppercase tracking-wide text-neutral-400">
                         {lensTooltip.title}
                       </div>
@@ -366,7 +366,7 @@ export function ChapterFooter({
 
         {/* Keyboard Hint - Appears on hover */}
         <div className="text-center mt-2 opacity-0 hover:opacity-100 transition-opacity">
-          <p className="text-[9px] text-neutral-600">
+          <p className="text-[9px] text-neutral-500">
             Hover to preview • Click to explore
           </p>
         </div>

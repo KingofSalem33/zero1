@@ -138,7 +138,7 @@ export function ParallelPassagesModal({
       {/* Modal */}
       <div
         ref={setModalRefs}
-        className="fixed z-50 w-[280px] sm:w-[320px] max-w-[90vw] rounded-lg border border-white/10 bg-neutral-900/95 shadow-xl backdrop-blur"
+        className="fixed z-50 w-[280px] sm:w-[320px] max-w-[90vw] rounded-lg border border-white/5 bg-white/[0.08] backdrop-blur-2xl shadow-2xl"
         style={{
           left: `${adjustedPosition.x}px`,
           top: `${adjustedPosition.y}px`,
@@ -150,7 +150,7 @@ export function ParallelPassagesModal({
         aria-label={`Parallel passages for ${primaryVerse.book_name} ${primaryVerse.chapter}:${primaryVerse.verse}`}
       >
         {/* Header */}
-        <div className="sticky top-0 border-b border-white/10 px-3 py-2 flex items-center justify-between bg-neutral-900/95">
+        <div className="sticky top-0 border-b border-white/5 px-3 py-2 flex items-center justify-between bg-neutral-900/95">
           <div>
             <div className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wide">
               Parallel Accounts
@@ -182,7 +182,7 @@ export function ParallelPassagesModal({
         </div>
 
         {/* Primary Verse */}
-        <div className="px-3 py-2 border-b border-white/10">
+        <div className="px-3 py-2 border-b border-white/5">
           <div className="text-[10px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">
             Primary
           </div>
@@ -223,7 +223,7 @@ export function ParallelPassagesModal({
         </div>
 
         {/* Footer hint */}
-        <div className="px-3 py-2 border-t border-white/10 text-[10px] text-neutral-500">
+        <div className="px-3 py-2 border-t border-white/5 text-[10px] text-neutral-500">
           Click a passage to open. ESC to close.
         </div>
       </div>

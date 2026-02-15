@@ -1865,7 +1865,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       showVisualization &&
       activeBundle && (
         <div className="w-1/2 bg-neutral-900 overflow-hidden flex flex-col transition-all duration-500">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-700">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/50 bg-neutral-900/50">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-neutral-300">
                 {(activeBundle.nodes?.length || 0).toString()} verses connected
@@ -2362,6 +2362,185 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
           {isEmptyState && (
             <div className="text-center mb-10 relative">
               <div className="absolute inset-0 -top-16 -bottom-16 bg-[radial-gradient(ellipse_at_center,_#D4AF3712_0%,_transparent_70%)] pointer-events-none" />
+
+              {/* Illustration — conversation bubbles with golden thread */}
+              <div className="relative flex justify-center mb-6">
+                <svg
+                  viewBox="0 0 200 140"
+                  fill="none"
+                  className="w-48 h-36"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <filter
+                      id="chat-glow"
+                      x="-50%"
+                      y="-50%"
+                      width="200%"
+                      height="200%"
+                    >
+                      <feGaussianBlur stdDeviation="2" result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  </defs>
+
+                  {/* Golden thread connecting the two bubbles */}
+                  <path
+                    d="M78 68 Q100 50 122 62"
+                    stroke="#C5B358"
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                    fill="none"
+                    opacity="0.5"
+                  />
+                  <path
+                    d="M78 68 Q100 85 122 62"
+                    stroke="#525252"
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                    fill="none"
+                    opacity="0.25"
+                  />
+
+                  {/* User speech bubble (left) */}
+                  <g filter="url(#chat-glow)">
+                    <rect
+                      x="28"
+                      y="50"
+                      width="56"
+                      height="36"
+                      rx="8"
+                      fill="#1a1a1a"
+                      stroke="#3f3f3f"
+                      strokeWidth="1"
+                    />
+                    {/* Tail */}
+                    <path
+                      d="M38 86 L34 96 L48 86"
+                      fill="#1a1a1a"
+                      stroke="#3f3f3f"
+                      strokeWidth="1"
+                      strokeLinejoin="round"
+                    />
+                    {/* Text lines */}
+                    <rect
+                      x="38"
+                      y="60"
+                      width="36"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.5"
+                    />
+                    <rect
+                      x="38"
+                      y="67"
+                      width="28"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.35"
+                    />
+                    <rect
+                      x="38"
+                      y="74"
+                      width="18"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.25"
+                    />
+                  </g>
+
+                  {/* AI speech bubble (right) — gold border */}
+                  <g filter="url(#chat-glow)">
+                    <rect
+                      x="116"
+                      y="40"
+                      width="56"
+                      height="44"
+                      rx="8"
+                      fill="#1a1a1a"
+                      stroke="#C5B358"
+                      strokeWidth="1.5"
+                    />
+                    {/* Tail */}
+                    <path
+                      d="M162 84 L166 94 L152 84"
+                      fill="#1a1a1a"
+                      stroke="#C5B358"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    {/* Text lines */}
+                    <rect
+                      x="126"
+                      y="50"
+                      width="36"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.5"
+                    />
+                    <rect
+                      x="126"
+                      y="57"
+                      width="30"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.35"
+                    />
+                    <rect
+                      x="126"
+                      y="64"
+                      width="36"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.5"
+                    />
+                    <rect
+                      x="126"
+                      y="71"
+                      width="22"
+                      height="3"
+                      rx="1"
+                      fill="#C5B358"
+                      opacity="0.3"
+                    />
+                  </g>
+
+                  {/* Accent dots */}
+                  <circle
+                    cx="100"
+                    cy="48"
+                    r="1.5"
+                    fill="#C5B358"
+                    opacity="0.25"
+                  />
+                  <circle
+                    cx="105"
+                    cy="88"
+                    r="1.5"
+                    fill="#525252"
+                    opacity="0.2"
+                  />
+                </svg>
+
+                {/* Subtle radial glow behind illustration */}
+                <div
+                  className="absolute inset-0 -z-10 opacity-30 blur-3xl"
+                  style={{
+                    background:
+                      "radial-gradient(circle, #C5B358 0%, transparent 70%)",
+                  }}
+                />
+              </div>
+
               <h1 className="relative text-4xl font-serif text-neutral-100 tracking-tight">
                 {emptyStateHeading.title}
               </h1>
@@ -2510,7 +2689,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                         isProcessing ||
                         isStreaming
                       }
-                      className={`group relative flex items-center gap-2 px-3 py-2 border rounded-xl transition-all duration-300 ${lensClass} bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      className={`group relative flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 ${lensClass} bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed`}
                       title={titleAttr}
                     >
                       <svg
@@ -2561,7 +2740,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               <button
                 onClick={resetBibleStudySession}
                 disabled={isProcessing || isStreaming}
-                className="group relative flex items-center gap-2 px-3 py-2 border rounded-xl transition-all duration-300 text-slate-300/70 border-slate-500/20 bg-slate-500/5 bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group relative flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 text-slate-300/70 border-slate-500/20 bg-slate-500/5 bg-opacity-50 hover:bg-opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Start a new Bible study session"
               >
                 <svg

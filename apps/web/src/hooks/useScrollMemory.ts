@@ -184,7 +184,6 @@ export function useScrollMemory<T extends HTMLElement = HTMLDivElement>(
 export function useBibleScrollMemory(book: string, chapter: number) {
   return useScrollMemory("bible", [book, chapter], {
     debounceMs: 200,
-    behavior: "auto",
     restoreOnMount: false, // We restore manually after content loads
   });
 }
@@ -196,7 +195,6 @@ export function useBibleScrollMemory(book: string, chapter: number) {
 export function useChatScrollMemory(chatId: string | null) {
   return useScrollMemory("chat", [chatId || "default"], {
     debounceMs: 150,
-    behavior: "auto",
   });
 }
 
@@ -207,6 +205,5 @@ export function useChatScrollMemory(chatId: string | null) {
 export function useLibraryScrollMemory(tab: string) {
   return useScrollMemory("library", [tab], {
     debounceMs: 150,
-    behavior: "auto",
   });
 }

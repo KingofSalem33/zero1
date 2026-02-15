@@ -160,7 +160,7 @@ export default function OnboardingOverlay() {
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[9998]"
+      className="fixed inset-0 z-[80]"
       role="dialog"
       aria-modal="true"
       aria-label={`Onboarding step ${currentStep + 1} of ${STEPS.length}`}
@@ -211,7 +211,7 @@ export default function OnboardingOverlay() {
 
       {/* Tooltip card */}
       <div
-        className={`fixed z-[9999] transition-all duration-300 ease-out ${
+        className={`fixed z-[80] transition-all duration-300 ease-out ${
           isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
         }`}
         style={getTooltipStyle(targetRect, step.position)}

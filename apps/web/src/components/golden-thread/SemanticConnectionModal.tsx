@@ -818,7 +818,7 @@ export function SemanticConnectionModal({
   );
 
   const modalContent = (
-    <div className="fixed inset-0 z-[80]">
+    <div className="fixed inset-0 z-[70]">
       {/* Backdrop to dim the map while the modal is open */}
       <button
         type="button"
@@ -837,7 +837,7 @@ export function SemanticConnectionModal({
         aria-modal="true"
         aria-labelledby="semantic-connection-title"
       >
-        <div className="relative bg-neutral-900/90 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl overflow-hidden max-w-sm">
+        <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
           {/* Drag handle + Close button */}
           <div
             className="flex items-center justify-between px-3 py-2 cursor-grab active:cursor-grabbing select-none border-b border-white/5 bg-neutral-950/40"

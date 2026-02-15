@@ -135,7 +135,7 @@ export const DiscoveryOverlay: React.FC<DiscoveryOverlayProps> = ({
       {/* Centered card */}
       <div className="absolute inset-0 flex items-center justify-center px-6">
         <div
-          className={`w-[400px] max-w-[90vw] rounded-xl border border-white/10 bg-neutral-900/80 shadow-2xl backdrop-blur-xl transition-all duration-500 ease-out ${
+          className={`w-[400px] max-w-[90vw] rounded-lg border border-white/5 bg-white/[0.08] shadow-2xl backdrop-blur-2xl transition-all duration-500 ease-out ${
             visible ? "opacity-100 scale-100" : "opacity-0 scale-[0.97]"
           }`}
         >

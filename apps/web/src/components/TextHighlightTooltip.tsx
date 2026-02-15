@@ -128,7 +128,7 @@ const VerseTooltip = ({
     const fetchVerse = async () => {
       try {
         const response = await fetch(
-          `http://localhost:3001/api/verse/${encodeURIComponent(reference)}`,
+          `${API_URL}/api/verse/${encodeURIComponent(reference)}`,
         );
 
         if (!response.ok) {
@@ -172,7 +172,7 @@ const VerseTooltip = ({
   return (
     <div
       ref={tooltipRef}
-      className="fixed z-[80] transform -translate-x-1/2 transition-all duration-150 ease-out"
+      className="fixed z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -1013,7 +1013,7 @@ export function TextHighlightTooltip({
   return (
     <div
       ref={tooltipRef}
-      className={`absolute z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out ${
+      className={`absolute z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out ${
         isVisible ? "opacity-100" : "opacity-0 -translate-y-2"
       }`}
       style={{

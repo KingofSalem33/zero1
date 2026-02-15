@@ -109,7 +109,7 @@ const HighlightsLibrary: React.FC<HighlightsLibraryProps> = ({
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-24 h-24 rounded-full bg-neutral-800/30 flex items-center justify-center mb-6">
               <svg
-                className="w-12 h-12 text-neutral-600"
+                className="w-12 h-12 text-neutral-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -190,7 +190,7 @@ const HighlightsLibrary: React.FC<HighlightsLibraryProps> = ({
                     className="w-3 h-3 rounded-full border border-neutral-700"
                     style={{ backgroundColor: highlight.color }}
                   />
-                  <span className="text-neutral-600 text-xs">
+                  <span className="text-neutral-500 text-xs">
                     Click to view in Bible
                   </span>
                 </div>

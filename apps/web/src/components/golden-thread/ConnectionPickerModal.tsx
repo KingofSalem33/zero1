@@ -108,7 +108,7 @@ export function ConnectionPickerModal({
   const modalContent = (
     <div
       ref={setModalRefs}
-      className="fixed z-[80] transition-all duration-150 ease-out"
+      className="fixed z-[60] transition-all duration-150 ease-out"
       style={{
         left: `${adjustedPosition.x}px`,
         top: `${adjustedPosition.y}px`,

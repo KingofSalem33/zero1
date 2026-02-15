@@ -205,7 +205,7 @@ export const ChatMessageSkeleton: React.FC<{ isUser?: boolean }> = ({
  * Highlight card skeleton - for library highlights tab
  */
 export const HighlightCardSkeleton: React.FC = () => (
-  <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl p-5">
+  <div className="bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden p-5">
     {/* Header with reference and date */}
     <div className="flex items-start justify-between mb-3">
       <div>
@@ -215,7 +215,7 @@ export const HighlightCardSkeleton: React.FC = () => (
     </div>
 
     {/* Highlighted text block */}
-    <div className="relative mb-3 p-3 rounded-lg border-l-4 border-neutral-600 bg-neutral-800/30">
+    <div className="relative mb-3 p-3 rounded-lg border-l-4 border-neutral-700 bg-neutral-800/20">
       <div className="space-y-2">
         <div className="h-3 w-full skeleton" />
         <div className="h-3 w-full skeleton" />
@@ -235,14 +235,14 @@ export const HighlightCardSkeleton: React.FC = () => (
  * Map list item skeleton - for library maps tab
  */
 export const MapListItemSkeleton: React.FC = () => (
-  <div className="bg-white/[0.03] border border-white/5 rounded-lg p-4">
+  <div className="bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden p-4">
     <div className="flex items-center justify-between mb-2">
       <div className="h-3 w-16 skeleton" />
     </div>
     <div className="h-4 w-32 skeleton mb-1" />
     <div className="h-3 w-40 skeleton mt-1" />
     <div className="mt-3">
-      <div className="h-7 w-24 skeleton rounded bg-blue-500/10" />
+      <div className="h-7 w-24 skeleton rounded bg-[#D4AF37]/10" />
     </div>
   </div>
 );

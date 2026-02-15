@@ -24,6 +24,8 @@ import {
   useSwipeNavigation,
   useKeyboardNavigation,
 } from "../hooks/useSwipeNavigation";
+import { useFocusTrap } from "../hooks/useFocusTrap";
+import { ErrorState } from "./ErrorState";
 
 interface Verse {
   verse: string;
@@ -210,6 +212,15 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   const contentTopRef = useRef<HTMLDivElement>(null);
   const bookSelectorRef = useRef<HTMLDivElement>(null);
   const selectedBookButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Focus trap for book selector dropdown — handles Escape + Tab trapping
+  const bookSelectorFocusTrapRef = useFocusTrap<HTMLDivElement>(
+    showBookSelector,
+    {
+      onEscape: () => setShowBookSelector(false),
+      initialFocus: "input",
+    },
+  );
 
   // Scroll position memory - remembers where user was in each chapter
   const {
@@ -705,6 +716,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
             >
               <button
                 onClick={() => setShowBookSelector(!showBookSelector)}
+                aria-expanded={showBookSelector}
+                aria-haspopup="listbox"
                 className="flex items-center gap-2 px-4 py-2 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-700/50 rounded-lg transition-colors"
               >
                 <svg
@@ -738,9 +751,14 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
               {/* Book Selector Dropdown */}
               {showBookSelector && (
-                <div className="absolute top-full left-0 mt-2 w-80 bg-neutral-900 border-2 border-neutral-700 rounded-lg shadow-2xl z-[9999]">
+                <div
+                  ref={bookSelectorFocusTrapRef}
+                  role="listbox"
+                  aria-label="Select a book"
+                  className="absolute top-full left-0 mt-2 w-80 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl z-40"
+                >
                   {/* Search input */}
-                  <div className="sticky top-0 p-2 bg-neutral-900 border-b border-neutral-800/50 z-10">
+                  <div className="sticky top-0 p-2 bg-neutral-900/95 backdrop-blur-xl border-b border-white/5 z-10">
                     <div className="relative">
                       <svg
                         className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500"
@@ -800,6 +818,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                                 : null
                             }
                             type="button"
+                            role="option"
+                            aria-selected={selectedBook === book}
                             onMouseDown={() => {
                               if (onNavigate) {
                                 onNavigate(book, 1);
@@ -834,6 +854,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                                 : null
                             }
                             type="button"
+                            role="option"
+                            aria-selected={selectedBook === book}
                             onMouseDown={() => {
                               if (onNavigate) {
                                 onNavigate(book, 1);
@@ -990,10 +1012,10 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 {showShortcuts && (
                   <>
                     <div
-                      className="fixed inset-0 z-[70]"
+                      className="fixed inset-0 z-40"
                       onClick={() => setShowShortcuts(false)}
                     />
-                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-4 z-[71]">
+                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-4 z-40">
                       <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
                         Keyboard Shortcuts
                       </h4>
@@ -1189,51 +1211,210 @@ const BibleReader: React.FC<BibleReaderProps> = ({
               />
             </div>
           ) : loadError ? (
-            <div className="text-center py-20 px-6">
-              <svg
-                className="w-12 h-12 mx-auto mb-4 text-neutral-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <p className="text-neutral-400 text-sm mb-1">
-                Could not load {selectedBook}
-              </p>
-              <p className="text-neutral-600 text-xs mb-4">{loadError}</p>
-              <button
-                onClick={() => {
-                  setLoadError(null);
-                  setLoading(true);
-                  const bookFileName = selectedBook.replace(/ /g, "");
-                  fetch(
-                    `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
-                  )
-                    .then((res) => {
-                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                      return res.json();
-                    })
-                    .then((data) => {
-                      setBookData(data);
-                      setLoadError(null);
-                    })
-                    .catch((err) => setLoadError(err.message))
-                    .finally(() => setLoading(false));
-                }}
-                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm rounded-lg transition-colors border border-neutral-700/50"
-              >
-                Try Again
-              </button>
-            </div>
+            <ErrorState
+              title={`Could not load ${selectedBook}`}
+              detail={loadError}
+              onRetry={() => {
+                setLoadError(null);
+                setLoading(true);
+                const bookFileName = selectedBook.replace(/ /g, "");
+                fetch(
+                  `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
+                )
+                  .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json();
+                  })
+                  .then((data) => {
+                    setBookData(data);
+                    setLoadError(null);
+                  })
+                  .catch((err) => setLoadError(err.message))
+                  .finally(() => setLoading(false));
+              }}
+            />
           ) : (
-            <div className="text-center py-20 text-neutral-500">
-              No content available
+            <div className="flex flex-col items-center justify-center py-16 px-6 gap-6">
+              {/* Open book illustration */}
+              <div className="relative">
+                <svg
+                  viewBox="0 0 200 140"
+                  fill="none"
+                  className="w-48 h-36"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <filter
+                      id="book-glow"
+                      x="-50%"
+                      y="-50%"
+                      width="200%"
+                      height="200%"
+                    >
+                      <feGaussianBlur stdDeviation="2" result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
+                  </defs>
+
+                  {/* Left page */}
+                  <g filter="url(#book-glow)">
+                    <path
+                      d="M100 30 L100 115 Q80 110 40 112 L40 28 Q80 25 100 30Z"
+                      fill="#1a1a1a"
+                      stroke="#3f3f3f"
+                      strokeWidth="1"
+                    />
+                    <rect
+                      x="50"
+                      y="42"
+                      width="40"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.4"
+                    />
+                    <rect
+                      x="50"
+                      y="52"
+                      width="38"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.3"
+                    />
+                    <rect
+                      x="50"
+                      y="62"
+                      width="42"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.4"
+                    />
+                    <rect
+                      x="50"
+                      y="72"
+                      width="36"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.3"
+                    />
+                    <rect
+                      x="50"
+                      y="82"
+                      width="40"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.25"
+                    />
+                    <rect
+                      x="50"
+                      y="92"
+                      width="30"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.2"
+                    />
+                  </g>
+
+                  {/* Right page */}
+                  <g filter="url(#book-glow)">
+                    <path
+                      d="M100 30 L100 115 Q120 110 160 112 L160 28 Q120 25 100 30Z"
+                      fill="#1a1a1a"
+                      stroke="#C5B358"
+                      strokeWidth="1.5"
+                    />
+                    <rect
+                      x="110"
+                      y="42"
+                      width="40"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.4"
+                    />
+                    <rect
+                      x="110"
+                      y="52"
+                      width="38"
+                      height="3"
+                      rx="1"
+                      fill="#C5B358"
+                      opacity="0.25"
+                    />
+                    <rect
+                      x="110"
+                      y="62"
+                      width="42"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.3"
+                    />
+                    <rect
+                      x="110"
+                      y="72"
+                      width="36"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.3"
+                    />
+                    <rect
+                      x="110"
+                      y="82"
+                      width="40"
+                      height="3"
+                      rx="1"
+                      fill="#C5B358"
+                      opacity="0.2"
+                    />
+                    <rect
+                      x="110"
+                      y="92"
+                      width="30"
+                      height="3"
+                      rx="1"
+                      fill="#525252"
+                      opacity="0.2"
+                    />
+                  </g>
+
+                  {/* Spine highlight */}
+                  <line
+                    x1="100"
+                    y1="28"
+                    x2="100"
+                    y2="115"
+                    stroke="#C5B358"
+                    strokeWidth="1"
+                    opacity="0.4"
+                  />
+                </svg>
+                <div
+                  className="absolute inset-0 -z-10 opacity-30 blur-3xl"
+                  style={{
+                    background:
+                      "radial-gradient(circle, #C5B358 0%, transparent 70%)",
+                  }}
+                />
+              </div>
+
+              <div className="text-center max-w-sm space-y-2">
+                <h3 className="text-lg font-semibold text-neutral-200">
+                  Select a book to begin
+                </h3>
+                <p className="text-sm text-neutral-400 leading-relaxed">
+                  Choose a book and chapter above to start reading Scripture.
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -1282,7 +1463,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
             onClick={() =>
               bibleScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
             }
-            className="sticky bottom-6 ml-auto mr-6 float-right p-3 bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 rounded-full shadow-lg text-neutral-400 hover:text-white hover:bg-neutral-700/80 transition-all z-30"
+            className="sticky bottom-6 ml-auto mr-6 float-right p-3 bg-neutral-900/90 backdrop-blur-xl border border-white/10 rounded-full shadow-lg text-neutral-400 hover:text-white hover:bg-neutral-700/80 transition-all z-30"
             title="Scroll to top"
           >
             <svg

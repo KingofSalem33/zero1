@@ -10,6 +10,8 @@ import {
 } from "./Skeleton";
 import { useLibraryScrollMemory } from "../hooks/useScrollMemory";
 import { useToast } from "./Toast";
+import { ErrorState } from "./ErrorState";
+import { TabBar } from "./TabBar";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -709,7 +711,7 @@ function EmptyState({
       {onAction && (
         <button
           onClick={onAction}
-          className="group mt-2 px-6 py-3 bg-gradient-to-r from-brand-primary-500/20 to-brand-primary-600/20 hover:from-brand-primary-500/30 hover:to-brand-primary-600/30 border border-brand-primary-500/30 hover:border-brand-primary-400/50 text-brand-primary-200 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2 shadow-lg shadow-brand-primary-500/10 hover:shadow-brand-primary-500/20"
+          className="group mt-2 px-6 py-3 bg-gradient-to-r from-brand-primary-500/20 to-brand-primary-600/20 hover:from-brand-primary-500/30 hover:to-brand-primary-600/30 border border-brand-primary-500/30 hover:border-brand-primary-400/50 text-brand-primary-200 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 shadow-lg shadow-brand-primary-500/10 hover:shadow-brand-primary-500/20"
         >
           <span>{actionLabel}</span>
           <svg
@@ -1055,53 +1057,48 @@ export function LibraryView({
   };
 
   return (
-    <div
-      ref={libraryScrollRef}
-      className="h-screen overflow-y-auto bg-black p-6 md:p-8"
-    >
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-2">
-            <svg
-              className="w-8 h-8 text-brand-primary-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-              />
-            </svg>
-            Library
-          </h1>
-          <p className="text-neutral-400 text-lg">
-            Your saved connections, maps, and highlights in one place.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 mb-6">
-          {(["connections", "maps", "highlights"] as LibraryTab[]).map(
-            (tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                  activeTab === tab
-                    ? "bg-neutral-800/60 backdrop-blur-md border border-amber-300/20 text-neutral-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                    : "bg-neutral-800/40 backdrop-blur-sm border border-amber-200/[0.08] text-neutral-400 hover:bg-neutral-800/50 hover:border-amber-200/[0.12] hover:text-neutral-300"
-                }`}
+    <div ref={libraryScrollRef} className="h-screen overflow-y-auto bg-black">
+      {/* Header chrome — matches Reader bar */}
+      <div className="flex-shrink-0 border-b border-neutral-800/50 bg-neutral-900/50">
+        <div className="max-w-6xl mx-auto px-6 py-4 md:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <svg
+                className="w-6 h-6 text-brand-primary-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                {tab === "connections"
-                  ? `Connections (${connections.length})`
-                  : tab === "maps"
-                    ? `Maps (${maps.length})`
-                    : `Highlights (${highlights.length})`}
-              </button>
-            ),
-          )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                />
+              </svg>
+              <h1 className="text-lg font-semibold text-white">Library</h1>
+            </div>
+            <p className="text-neutral-500 text-sm hidden md:block">
+              Connections, maps, and highlights
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-6 md:px-8 pt-6">
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <TabBar
+            tabs={[
+              {
+                key: "connections",
+                label: `Connections (${connections.length})`,
+              },
+              { key: "maps", label: `Maps (${maps.length})` },
+              { key: "highlights", label: `Highlights (${highlights.length})` },
+            ]}
+            activeTab={activeTab}
+            onTabChange={(key) => setActiveTab(key as LibraryTab)}
+          />
 
           {/* Export button */}
           {((activeTab === "connections" && connections.length > 0) ||
@@ -1133,7 +1130,7 @@ export function LibraryView({
                     className="fixed inset-0 z-40"
                     onClick={() => setShowExportMenu(false)}
                   />
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl z-50 p-1">
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl z-40 p-1">
                     <button
                       onClick={exportAsText}
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/60 rounded-lg transition-colors"
@@ -1196,28 +1193,7 @@ export function LibraryView({
             </div>
           )
         ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
-            <svg
-              className="w-12 h-12 text-red-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-sm text-red-400">{error}</p>
-            <button
-              onClick={loadLibrary}
-              className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg text-sm transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
+          <ErrorState title={error} onRetry={loadLibrary} />
         ) : emptyStateCount[activeTab] === 0 ? (
           <EmptyState
             type={activeTab}
@@ -1362,7 +1338,7 @@ export function LibraryView({
             {sortedMaps.map((entry) => (
               <div
                 key={entry.id}
-                className="group relative bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 hover:border-white/10 rounded-lg p-4 transition-all"
+                className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden p-4 transition-all duration-200 hover:shadow-2xl cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-neutral-500">
@@ -1370,7 +1346,7 @@ export function LibraryView({
                   </span>
                   <button
                     onClick={() => deleteMap(entry.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-all"
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-neutral-500 hover:text-red-300 hover:bg-white/10 transition-all duration-150"
                     aria-label="Delete map"
                   >
                     <svg
@@ -1399,7 +1375,7 @@ export function LibraryView({
                   <button
                     onClick={() => entry.bundle && onOpenMap?.(entry.bundle)}
                     disabled={!entry.bundle}
-                    className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-[#D4AF37]/20 hover:bg-[#D4AF37]/30 text-[#D4AF37] rounded-md text-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Open Map
                   </button>
@@ -1413,7 +1389,7 @@ export function LibraryView({
               <div
                 key={highlight.id}
                 onClick={() => onNavigateToVerse?.()}
-                className="group bg-neutral-900/50 hover:bg-neutral-900/80 border border-neutral-800/50 hover:border-neutral-700/50 rounded-xl p-4 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-brand-primary-500/5 hover:scale-[1.02]"
+                className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden p-4 cursor-pointer transition-all duration-200 hover:shadow-2xl"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
@@ -1463,7 +1439,7 @@ export function LibraryView({
                     className="w-3 h-3 rounded-full border border-neutral-700"
                     style={{ backgroundColor: highlight.color }}
                   />
-                  <span className="text-neutral-600 text-xs">
+                  <span className="text-neutral-500 text-xs">
                     Click to view in Bible
                   </span>
                 </div>

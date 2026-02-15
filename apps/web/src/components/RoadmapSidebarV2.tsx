@@ -209,7 +209,7 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
             <div className="space-y-1">
               {chats.length === 0 ? (
                 <div className="text-center py-8 px-2">
-                  <div className="text-neutral-600 text-sm">No chats yet</div>
+                  <div className="text-neutral-500 text-sm">No chats yet</div>
                 </div>
               ) : (
                 chats.map((chat) => {

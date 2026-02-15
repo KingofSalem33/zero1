@@ -178,7 +178,7 @@ const VerseTooltip = ({
   return (
     <div
       ref={tooltipRef}
-      className="fixed z-[70] transform -translate-x-1/2 transition-all duration-150 ease-out"
+      className="fixed z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out"
       style={{
         top: `${position.top}px`,
 

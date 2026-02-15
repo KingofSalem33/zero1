@@ -87,8 +87,8 @@ function ToastItem({
       onMouseLeave={handleMouseLeave}
       className={`
         flex items-center gap-2 px-4 py-2
-        bg-neutral-900/95 backdrop-blur-sm
-        border border-neutral-800/50
+        bg-neutral-900/90 backdrop-blur-xl
+        border border-white/10
         rounded-lg shadow-lg
         text-sm text-neutral-300
         transition-all duration-150 ease-out

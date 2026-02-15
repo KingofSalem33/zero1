@@ -297,9 +297,9 @@ export function BookmarkPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-3xl max-h-[80vh] bg-neutral-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl flex flex-col">
+      <div className="relative w-full max-w-3xl max-h-[80vh] bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
           <div className="flex items-center gap-2">
             <svg
               className="w-5 h-5 text-blue-400"

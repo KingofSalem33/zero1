@@ -59,7 +59,7 @@ export const VoiceSettings: React.FC = () => {
           />
 
           {/* Settings Panel */}
-          <div className="absolute right-0 top-full mt-2 w-80 bg-neutral-900 border border-neutral-800 rounded-lg shadow-xl z-20 p-4">
+          <div className="absolute right-0 top-full mt-2 w-80 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl z-20 p-4">
             <h3 className="text-sm font-semibold text-white mb-3">
               Voice Preferences
             </h3>
