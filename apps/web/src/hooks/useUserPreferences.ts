@@ -7,6 +7,7 @@ export interface UserPreferences {
   ttsEnabled: boolean;
   hasSeenOnboarding: boolean;
   hasSeenMapOnboarding: boolean;
+  hasSeenHighlightOnboarding: boolean;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -14,6 +15,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   ttsEnabled: true,
   hasSeenOnboarding: false,
   hasSeenMapOnboarding: false,
+  hasSeenHighlightOnboarding: false,
 };
 
 const STORAGE_KEY = "bible-app-user-preferences";
@@ -68,12 +70,17 @@ export function useUserPreferences() {
     setPreferences((prev) => ({ ...prev, hasSeenMapOnboarding: true }));
   };
 
+  const markHighlightOnboardingComplete = () => {
+    setPreferences((prev) => ({ ...prev, hasSeenHighlightOnboarding: true }));
+  };
+
   return {
     preferences,
     updateVoice,
     toggleTTS,
     markOnboardingComplete,
     markMapOnboardingComplete,
+    markHighlightOnboardingComplete,
     setPreferences,
   };
 }

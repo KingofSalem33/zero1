@@ -1,4 +1,5 @@
 import React from "react";
+import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 
 interface MobileBottomNavProps {
   activeView: "reader" | "chat" | "library";
@@ -69,6 +70,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeView,
   onNavigate,
 }) => {
+  const { highlights } = useBibleHighlightsContext();
+  const highlightCount = highlights.length;
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 md:hidden z-50 bg-neutral-900/90 backdrop-blur-xl border-t border-white/10"
@@ -92,7 +95,14 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               {isActive && (
                 <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#D4AF37] rounded-full" />
               )}
-              {tab.icon}
+              <span className="relative">
+                {tab.icon}
+                {tab.view === "library" && highlightCount > 0 && !isActive && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[#D4AF37] text-black text-[8px] font-bold leading-none px-0.5">
+                    {highlightCount > 99 ? "99+" : highlightCount}
+                  </span>
+                )}
+              </span>
               <span className="text-[10px] font-medium tracking-wide">
                 {tab.label}
               </span>

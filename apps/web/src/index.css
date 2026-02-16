@@ -651,3 +651,29 @@ pre code {
     background-color: rgba(255, 255, 255, 0.05);
   }
 }
+
+/* Gold pulse for verse navigation - fades a gold background in then out */
+@keyframes verse-pulse {
+  0% { background-color: transparent; }
+  20% { background-color: rgba(212, 175, 55, 0.18); }
+  100% { background-color: transparent; }
+}
+
+.animate-verse-pulse {
+  animation: verse-pulse 1.5s ease-out;
+  border-radius: 4px;
+}
+
+/* Custom text selection for Bible verse text — gold instead of default blue */
+.bible-verse-text ::selection {
+  background-color: rgba(212, 175, 55, 0.28);
+  color: #fff;
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.3);
+}
+
+.bible-verse-text ::-moz-selection {
+  background-color: rgba(212, 175, 55, 0.28);
+  color: #fff;
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.3);
+}
+

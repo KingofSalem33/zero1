@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
-import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
+import {
+  useBibleHighlightsContext,
+  formatVerseRange,
+} from "../contexts/BibleHighlightsContext";
 import { SemanticConnectionModal } from "./golden-thread/SemanticConnectionModal";
 import {
   LibraryGridSkeleton,
@@ -741,7 +744,8 @@ export function LibraryView({
   onNavigateToVerse,
   onExploreBible,
 }: LibraryViewProps) {
-  const { highlights, removeHighlight } = useBibleHighlightsContext();
+  const { highlights, removeHighlight, updateHighlight } =
+    useBibleHighlightsContext();
   const { toast } = useToast();
   const pendingDeleteTimers = useRef<
     Map<string, ReturnType<typeof setTimeout>>
@@ -834,7 +838,7 @@ export function LibraryView({
       }));
     } else if (activeTab === "highlights") {
       return highlights.map((h) => ({
-        reference: `${h.book} ${h.chapter}:${h.verse}`,
+        reference: `${h.book} ${h.chapter}:${formatVerseRange(h.verses)}`,
         text: h.text,
         color: h.color,
         savedAt: h.createdAt,
@@ -1385,16 +1389,72 @@ export function LibraryView({
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sortedHighlights.map((highlight) => (
-              <HighlightCard
-                key={highlight.id}
-                highlight={highlight}
-                onDelete={removeHighlight}
-                onClick={() => onNavigateToVerse?.()}
-              />
-            ))}
-          </div>
+          <>
+            {/* AI Insights button for highlights */}
+            {highlights.length >= 3 && onGoDeeper && (
+              <div className="mb-4 flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    const sample = highlights.slice(0, 20);
+                    const refs = sample
+                      .map(
+                        (h) =>
+                          `- ${h.book} ${h.chapter}:${formatVerseRange(h.verses)} (${h.color})${h.note ? ` — "${h.note}"` : ""}`,
+                      )
+                      .join("\n");
+                    const prompt = `Analyze my Bible highlights and share insights. Here are my highlighted passages:\n\n${refs}\n\nPlease identify:\n1. Recurring themes or patterns across these highlights\n2. How these passages connect theologically\n3. A short devotional reflection based on what I've been drawn to\n\nKeep the tone scholarly but warm.`;
+                    onGoDeeper({
+                      displayText: `Analyze my ${highlights.length} highlights for patterns and insights`,
+                      prompt,
+                      mode: "exegesis_long",
+                    });
+                  }}
+                  className="px-4 py-2 bg-[#D4AF37]/15 hover:bg-[#D4AF37]/25 border border-[#D4AF37]/20 hover:border-[#D4AF37]/40 text-[#D4AF37] rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    />
+                  </svg>
+                  AI Insights
+                </button>
+                <span className="text-neutral-600 text-[11px]">
+                  Discover themes and patterns in your highlights
+                </span>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sortedHighlights.map((highlight) => (
+                <div
+                  key={highlight.id}
+                  style={{
+                    contentVisibility: "auto",
+                    containIntrinsicSize: "auto 200px",
+                  }}
+                >
+                  <HighlightCard
+                    highlight={highlight}
+                    onDelete={removeHighlight}
+                    onUpdateNote={(id, note) =>
+                      updateHighlight(id, { note: note || undefined })
+                    }
+                    onUpdateColor={(id, color) =>
+                      updateHighlight(id, { color })
+                    }
+                    onClick={() => onNavigateToVerse?.()}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

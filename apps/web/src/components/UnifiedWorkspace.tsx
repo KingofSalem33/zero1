@@ -668,7 +668,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   const activeHighlightedRefs = highlightedRefs;
 
   // TTS state management
-  /* global HTMLAudioElement */
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -696,7 +695,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       stopAudio();
 
       try {
-        /* global URL, Audio */
         const response = await fetch("http://localhost:3001/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

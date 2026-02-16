@@ -21,9 +21,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   content,
   isStreaming = false,
   onCopy,
-   
+
   onRegenerate: _onRegenerate,
-   
+
   onEdit: _onEdit,
   showActions = true,
 }) => {
@@ -32,9 +32,6 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { preferences } = useUserPreferences();
-
-  // Suppress no-undef for browser APIs
-  /* global Audio, URL, alert, HTMLAudioElement */
 
   const handleCopy = async () => {
     if (onCopy) {

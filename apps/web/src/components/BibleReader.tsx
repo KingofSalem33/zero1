@@ -1,4 +1,3 @@
-/* global Range, HTMLButtonElement */
 import React, {
   useState,
   useEffect,
@@ -26,6 +25,8 @@ import {
 } from "../hooks/useSwipeNavigation";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { ErrorState } from "./ErrorState";
+import { useHighlightShortcuts } from "../hooks/useHighlightShortcuts";
+import { HighlightOnboarding } from "./HighlightOnboarding";
 
 interface Verse {
   verse: string;
@@ -400,6 +401,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({
       ) as HTMLElement | null;
       if (verseElement) {
         verseElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Gold pulse to draw eye to the target verse
+        verseElement.classList.add("animate-verse-pulse");
+        verseElement.addEventListener(
+          "animationend",
+          () => verseElement!.classList.remove("animate-verse-pulse"),
+          { once: true },
+        );
       }
       pendingNavigationRef.current = null;
       onVerseNavigationComplete?.();
@@ -584,52 +592,62 @@ const BibleReader: React.FC<BibleReaderProps> = ({
       return;
     }
 
-    // Try multiple approaches to find the verse element
-    let verseElement = null;
-    let verseNum = 0;
+    // Collect all verse numbers within the selection range
+    const verseNums = new Set<number>();
 
-    // Approach 1: Check start container
-    const startContainer = range.startContainer;
-    const startElement =
-      startContainer.nodeType === window.Node.TEXT_NODE
-        ? startContainer.parentElement
-        : (startContainer as HTMLElement);
+    // Find all [data-verse] elements that intersect the range
+    const ancestor = range.commonAncestorContainer;
+    const container =
+      ancestor.nodeType === window.Node.TEXT_NODE
+        ? ancestor.parentElement
+        : (ancestor as HTMLElement);
 
+    if (!container) return;
+
+    // If the ancestor itself is a verse element, just use it
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    verseElement = (startElement as any)?.closest?.("[data-verse]");
-
-    // Approach 2: If not found, check end container
-    if (!verseElement) {
-      const endContainer = range.endContainer;
-      const endElement =
-        endContainer.nodeType === window.Node.TEXT_NODE
-          ? endContainer.parentElement
-          : (endContainer as HTMLElement);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      verseElement = (endElement as any)?.closest?.("[data-verse]");
+    const directVerse = (container as any)?.closest?.("[data-verse]");
+    if (directVerse) {
+      const num = parseInt(directVerse.getAttribute("data-verse") || "0");
+      if (num > 0) verseNums.add(num);
     }
 
-    // Approach 3: If still not found, check common ancestor
-    if (!verseElement) {
-      const container = range.commonAncestorContainer;
-      const element =
-        container.nodeType === window.Node.TEXT_NODE
-          ? container.parentElement
-          : (container as HTMLElement);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      verseElement = (element as any)?.closest?.("[data-verse]");
+    // Also scan all [data-verse] descendants within the range
+    const allVerseEls = container.querySelectorAll("[data-verse]");
+    for (const el of allVerseEls) {
+      if (range.intersectsNode(el)) {
+        const num = parseInt(el.getAttribute("data-verse") || "0");
+        if (num > 0) verseNums.add(num);
+      }
     }
 
-    if (verseElement) {
-      verseNum = parseInt(verseElement.getAttribute("data-verse") || "0");
-    } else {
-      return;
+    // Fallback: check start and end containers
+    if (verseNums.size === 0) {
+      for (const node of [range.startContainer, range.endContainer]) {
+        const el =
+          node.nodeType === window.Node.TEXT_NODE
+            ? node.parentElement
+            : (node as HTMLElement);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const verseEl = (el as any)?.closest?.("[data-verse]");
+        if (verseEl) {
+          const num = parseInt(verseEl.getAttribute("data-verse") || "0");
+          if (num > 0) verseNums.add(num);
+        }
+      }
     }
 
-    if (verseNum > 0) {
-      addHighlight(selectedBook, selectedChapter, verseNum, text, color);
+    if (verseNums.size > 0) {
+      const verses = [...verseNums].sort((a, b) => a - b);
+      addHighlight(selectedBook, selectedChapter, verses, text, color);
     }
   };
+
+  // Keyboard shortcuts: Ctrl+1..5 to highlight selected text
+  useHighlightShortcuts({
+    onHighlight: handleHighlight,
+    enabled: true,
+  });
 
   const handleGoDeeper = (text: string, anchorRef?: string) => {
     // Use the canonical trace handler to show map visualization
@@ -1082,7 +1100,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
               {/* Verses - Optimized Dark Mode Bible Format */}
               <div className="bg-gradient-to-b from-neutral-900/40 to-neutral-950/60 rounded-2xl p-12 border border-neutral-800/30 shadow-2xl">
-                <div className="text-justify text-[#E8E8E8] text-[19px] font-sans font-normal leading-[2.4] tracking-[0.03em]">
+                <div className="bible-verse-text text-justify text-[#E8E8E8] text-[19px] font-sans font-normal leading-[2.4] tracking-[0.03em]">
                   {currentChapter.verses.map((verse) => {
                     const highlight = getHighlightForVerse(
                       selectedBook,
@@ -1482,6 +1500,9 @@ const BibleReader: React.FC<BibleReaderProps> = ({
           </button>
         )}
       </div>
+
+      {/* First-time highlight onboarding hint */}
+      <HighlightOnboarding />
     </div>
   );
 };

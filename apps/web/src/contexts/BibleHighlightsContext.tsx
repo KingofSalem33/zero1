@@ -4,18 +4,60 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  useRef,
 } from "react";
 import { useToast } from "../components/Toast";
+import { useHighlightsSync } from "../hooks/useHighlightsSync";
+import type { HighlightsSyncState } from "../hooks/useHighlightsSync";
 
 export interface BibleHighlight {
   id: string;
   book: string;
   chapter: number;
-  verse: number;
+  verses: number[];
   text: string;
   color: string;
+  note?: string;
   createdAt: string;
+}
+
+export const HIGHLIGHT_COLORS = [
+  { name: "Yellow", value: "#FEF3C7", textColor: "#92400E" },
+  { name: "Green", value: "#D1FAE5", textColor: "#065F46" },
+  { name: "Blue", value: "#DBEAFE", textColor: "#1E40AF" },
+  { name: "Pink", value: "#FCE7F3", textColor: "#9F1239" },
+  { name: "Purple", value: "#EDE9FE", textColor: "#5B21B6" },
+];
+
+/** Format verses array into a display string like "3", "3-5", or "3-5, 8" */
+export function formatVerseRange(verses: number[]): string {
+  if (verses.length === 0) return "";
+  if (verses.length === 1) return String(verses[0]);
+  const sorted = [...verses].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      ranges.push(start === end ? String(start) : `${start}-${end}`);
+      start = sorted[i];
+      end = sorted[i];
+    }
+  }
+  ranges.push(start === end ? String(start) : `${start}-${end}`);
+  return ranges.join(", ");
+}
+
+/** Migrate legacy highlights that used `verse: number` to `verses: number[]` */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function migrateHighlights(data: any[]): BibleHighlight[] {
+  return data.map((h) => {
+    if (Array.isArray(h.verses)) return h as BibleHighlight;
+    // Legacy: single `verse` field → wrap in array
+    const { verse, ...rest } = h;
+    return { ...rest, verses: [verse] } as BibleHighlight;
+  });
 }
 
 interface BibleHighlightsContextType {
@@ -23,10 +65,14 @@ interface BibleHighlightsContextType {
   addHighlight: (
     book: string,
     chapter: number,
-    verse: number,
+    verses: number[],
     text: string,
     color: string,
   ) => BibleHighlight;
+  updateHighlight: (
+    id: string,
+    updates: Partial<Pick<BibleHighlight, "note" | "color">>,
+  ) => void;
   removeHighlight: (id: string) => void;
   getHighlightForVerse: (
     book: string,
@@ -35,6 +81,7 @@ interface BibleHighlightsContextType {
   ) => BibleHighlight | undefined;
   getHighlightsForBook: (book: string) => BibleHighlight[];
   clearAllHighlights: () => void;
+  syncState: HighlightsSyncState;
 }
 
 const BibleHighlightsContext = createContext<
@@ -51,8 +98,6 @@ export function BibleHighlightsProvider({
   const { toast } = useToast();
   // Initialize empty, load async to not block hydration
   const [highlights, setHighlights] = useState<BibleHighlight[]>([]);
-  // Ref to track removed highlights for undo
-  const lastRemovedRef = useRef<BibleHighlight | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage after mount (async, non-blocking)
@@ -62,7 +107,7 @@ export function BibleHighlightsProvider({
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          setHighlights(parsed);
+          setHighlights(migrateHighlights(parsed));
         }
       } catch (error) {
         console.error(
@@ -76,7 +121,6 @@ export function BibleHighlightsProvider({
 
     // Load in next tick to not block hydration
     if (typeof requestIdleCallback !== "undefined") {
-      // eslint-disable-next-line no-undef
       requestIdleCallback(loadHighlights);
     } else {
       setTimeout(loadHighlights, 0);
@@ -89,30 +133,38 @@ export function BibleHighlightsProvider({
     localStorage.setItem(STORAGE_KEY, JSON.stringify(highlights));
   }, [highlights, isLoaded]);
 
+  // Cloud sync — merges with server when authenticated
+  const syncState = useHighlightsSync(highlights, setHighlights, isLoaded);
+
   // Add a new highlight
   const addHighlight = useCallback(
     (
       book: string,
       chapter: number,
-      verse: number,
+      verses: number[],
       text: string,
       color: string,
     ) => {
       const newHighlight: BibleHighlight = {
-        id: `${book}-${chapter}-${verse}-${Date.now()}`,
+        id: crypto.randomUUID(),
         book,
         chapter,
-        verse,
+        verses,
         text,
         color,
         createdAt: new Date().toISOString(),
       };
 
       setHighlights((prev) => {
-        // Remove any existing highlight for this verse
+        // Remove any existing highlight that overlaps with these verses
+        const newSet = new Set(verses);
         const filtered = prev.filter(
           (h) =>
-            !(h.book === book && h.chapter === chapter && h.verse === verse),
+            !(
+              h.book === book &&
+              h.chapter === chapter &&
+              h.verses.some((v) => newSet.has(v))
+            ),
         );
         return [...filtered, newHighlight];
       });
@@ -125,26 +177,33 @@ export function BibleHighlightsProvider({
     [toast],
   );
 
+  // Update a highlight's mutable fields (note, color)
+  const updateHighlight = useCallback(
+    (id: string, updates: Partial<Pick<BibleHighlight, "note" | "color">>) => {
+      setHighlights((prev) =>
+        prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
+      );
+    },
+    [],
+  );
+
   // Remove a highlight
   const removeHighlight = useCallback(
     (id: string) => {
-      // Find the highlight before removing for undo
+      let removedHighlight: BibleHighlight | null = null;
+
       setHighlights((prev) => {
-        const toRemove = prev.find((h) => h.id === id);
-        if (toRemove) {
-          lastRemovedRef.current = toRemove;
-        }
+        removedHighlight = prev.find((h) => h.id === id) || null;
         return prev.filter((h) => h.id !== id);
       });
 
-      // Show toast with undo option
+      // Show toast with undo — captured in closure, not shared ref
       toast("Highlight removed", {
         type: "default",
         duration: 3000,
         onUndo: () => {
-          if (lastRemovedRef.current) {
-            setHighlights((prev) => [...prev, lastRemovedRef.current!]);
-            lastRemovedRef.current = null;
+          if (removedHighlight) {
+            setHighlights((prev) => [...prev, removedHighlight!]);
           }
         },
       });
@@ -152,11 +211,12 @@ export function BibleHighlightsProvider({
     [toast],
   );
 
-  // Get highlight for a specific verse
+  // Get highlight for a specific verse (checks if verse is in any highlight's verses array)
   const getHighlightForVerse = useCallback(
     (book: string, chapter: number, verse: number) => {
       return highlights.find(
-        (h) => h.book === book && h.chapter === chapter && h.verse === verse,
+        (h) =>
+          h.book === book && h.chapter === chapter && h.verses.includes(verse),
       );
     },
     [highlights],
@@ -187,10 +247,12 @@ export function BibleHighlightsProvider({
   const value = {
     highlights,
     addHighlight,
+    updateHighlight,
     removeHighlight,
     getHighlightForVerse,
     getHighlightsForBook,
     clearAllHighlights,
+    syncState,
   };
 
   return (

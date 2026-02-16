@@ -57,6 +57,7 @@ import bookmarksRouter from "./routes/bookmarks";
 import libraryRouter from "./routes/library";
 import verseRouter from "./routes/verse";
 import bibleStudyRouter from "./routes/bible-study";
+import highlightsRouter from "./routes/highlights";
 import { runModel } from "./ai/runModel";
 import { runModelStream } from "./ai/runModelStream"; // Used in /api/chat for streaming when Accept: text/event-stream
 import { selectRelevantTools } from "./ai/tools/selectTools"; // Still used in /api/chat endpoint
@@ -228,6 +229,9 @@ app.use("/api/semantic-connection", optionalAuth, semanticConnectionRouter);
 
 // Mount pericope routes (narrative-level search)
 app.use("/api/pericope", optionalAuth, pericopeRouter);
+
+// Mount highlights routes (cloud sync for Bible highlights)
+app.use("/api/highlights", highlightsRouter);
 
 // Mount connection discovery routes (LLM-discovered theological connections)
 // Use aiLimiter (50/min) instead of apiLimiter (100/15min) for better dev experience

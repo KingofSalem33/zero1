@@ -1,13 +1,12 @@
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-} from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { dispatchVerseNavigation } from "../utils/verseNavigation";
-
-/* global Element, AbortController, Range */
+import { useAIRequest } from "../hooks/useAIRequest";
+import { useRootTranslation } from "../hooks/useRootTranslation";
+import { TooltipShell } from "./tooltip/TooltipShell";
+import { LoadingDots } from "./tooltip/LoadingDots";
+import { RootTranslationPanel } from "./tooltip/RootTranslationPanel";
+import { HIGHLIGHT_COLORS } from "../contexts/BibleHighlightsContext";
+import { hapticTap } from "../utils/haptics";
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string, anchorRef?: string) => void;
@@ -16,7 +15,6 @@ interface TextHighlightTooltipProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onHighlight?: (text: string, color: string, context?: any) => void;
   enableHighlight?: boolean;
-  // Bible context for ROOT translation
   bibleContext?: {
     book: string;
     chapter: number;
@@ -37,250 +35,7 @@ type VerseContext = {
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
-const HIGHLIGHT_COLORS = [
-  { name: "Yellow", value: "#FEF3C7", textColor: "#92400E" },
-  { name: "Green", value: "#D1FAE5", textColor: "#065F46" },
-  { name: "Blue", value: "#DBEAFE", textColor: "#1E40AF" },
-  { name: "Pink", value: "#FCE7F3", textColor: "#9F1239" },
-  { name: "Purple", value: "#EDE9FE", textColor: "#5B21B6" },
-];
-
-const LOST_CONTEXT_MAX_WORDS = 34;
-const LOST_CONTEXT_MAX_SENTENCES = 2;
-
-const splitIntoSentences = (text: string) =>
-  text
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(/(?<=[.!?])\s+/)
-    .filter(Boolean);
-
-const chunkLostContext = (
-  text: string,
-  maxWords: number,
-  maxSentences: number,
-) => {
-  if (!text.trim()) return [];
-  const sentences = splitIntoSentences(text);
-
-  if (sentences.length === 1) {
-    const words = sentences[0].split(/\s+/).filter(Boolean);
-    if (words.length <= maxWords) return [sentences[0]];
-    const chunks: string[] = [];
-    for (let i = 0; i < words.length; i += maxWords) {
-      chunks.push(
-        words
-          .slice(i, i + maxWords)
-          .join(" ")
-          .trim(),
-      );
-    }
-    return chunks;
-  }
-
-  const chunks: string[] = [];
-  let current: string[] = [];
-  let wordCount = 0;
-
-  for (const sentence of sentences) {
-    const sentenceWords = sentence.split(/\s+/).filter(Boolean);
-    const nextCount = wordCount + sentenceWords.length;
-    const exceeds =
-      current.length >= maxSentences ||
-      (nextCount > maxWords && current.length);
-
-    if (exceeds) {
-      chunks.push(current.join(" ").trim());
-      current = [];
-      wordCount = 0;
-    }
-
-    current.push(sentence);
-    wordCount += sentenceWords.length;
-  }
-
-  if (current.length) {
-    chunks.push(current.join(" ").trim());
-  }
-
-  return chunks;
-};
-
-// --- VERSE TOOLTIP ---
-// Shows verse text in a tooltip when clicking a Scripture citation
-const VerseTooltip = ({
-  reference,
-  position,
-  onClose,
-  onTrace,
-}: {
-  reference: string;
-  position: { top: number; left: number };
-  onClose: () => void;
-  onTrace?: (reference: string) => void;
-}) => {
-  const [verseText, setVerseText] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Fetch verse text from API
-    const fetchVerse = async () => {
-      try {
-        const response = await fetch(
-          `${API_URL}/api/verse/${encodeURIComponent(reference)}`,
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch verse");
-        }
-
-        const data = await response.json();
-        setVerseText(data.text);
-        setIsLoading(false);
-      } catch {
-        setVerseText("Could not load verse text");
-        setIsLoading(false);
-      }
-    };
-
-    fetchVerse();
-  }, [reference]);
-
-  // Close on click outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        tooltipRef.current &&
-        !tooltipRef.current.contains(event.target as Node)
-      ) {
-        onClose();
-      }
-    };
-
-    // Small delay to prevent immediate closure on the same click that opened it
-    const timer = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      ref={tooltipRef}
-      className="fixed z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out"
-      style={{
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-      }}
-    >
-      {/* Compact card matching highlight tooltip */}
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
-          aria-label="Close"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-
-        {/* Content */}
-        <div className="p-3 pr-8">
-          {/* Reference header */}
-          <div className="font-bold text-[#D4AF37] text-xs mb-2 uppercase tracking-wide">
-            {reference}
-          </div>
-
-          {/* Verse text */}
-          {isLoading ? (
-            <div className="flex items-center gap-2 py-1.5">
-              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
-              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
-              <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
-              <span className="text-xs text-neutral-400 ml-1 font-medium">
-                Loading
-              </span>
-            </div>
-          ) : (
-            <>
-              <p className="text-[15px] leading-relaxed text-white font-serif italic">
-                {verseText}
-              </p>
-
-              <div className="mt-3 flex items-center gap-2 justify-end">
-                <button
-                  onClick={() => {
-                    dispatchVerseNavigation(reference);
-                    onClose();
-                  }}
-                  className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-300 text-sm font-medium rounded transition-colors"
-                  title="Open in Bible reader"
-                >
-                  View
-                </button>
-                {onTrace && (
-                  <button
-                    onClick={() => {
-                      console.log(
-                        "[VerseTooltip] Trace button clicked, reference:",
-                        reference,
-                      );
-                      onTrace(reference);
-                      onClose();
-                    }}
-                    className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#F0D77F] text-black text-sm font-medium rounded transition-colors"
-                    title="Explore deeper"
-                  >
-                    Trace
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Arrow pointer - always points up to clicked text */}
-      <div
-        className="absolute left-1/2 transform -translate-x-1/2"
-        style={{ top: "0", transform: "translate(-50%, -100%)" }}
-      >
-        {/* Arrow shadow */}
-        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2 translate-y-1">
-          <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-black/20 blur-sm" />
-        </div>
-
-        {/* Main arrow */}
-        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/[0.08]" />
-
-        {/* Arrow border */}
-        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2">
-          <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-b-[9px] border-b-white/10" />
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // --- INTERACTIVE TEXT WITH SCRIPTURE PARSING ---
-// Parses text for Scripture references and makes them clickable gold links
 const InteractiveText = ({
   children,
   onVerseClick,
@@ -289,12 +44,6 @@ const InteractiveText = ({
   onVerseClick?: (reference: string, event: React.MouseEvent) => void;
 }) => {
   if (typeof children === "string") {
-    // Regex catches ALL Scripture references with or without brackets:
-    // - [John 3:16] (with brackets)
-    // - John 3:16 (without brackets)
-    // - 1 Timothy 3:16 (multi-word books)
-    // - Galatians 2:11-14 (verse ranges)
-    // - Song of Solomon 2:1 (long book names)
     const parts = children.split(
       /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g,
     );
@@ -302,23 +51,18 @@ const InteractiveText = ({
     return (
       <span className="text-[13px] leading-relaxed text-neutral-200 font-normal">
         {parts.map((part, i) => {
-          // Check if this part is a Scripture reference
           const scriptureMatch = part.match(
             /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/,
           );
 
           if (scriptureMatch) {
-            // Extract reference (remove brackets if present)
             const reference = scriptureMatch[1];
-
             return (
               <button
                 key={i}
                 className="text-[#D4AF37] font-bold hover:text-[#F0D77F] hover:underline decoration-[#D4AF37] decoration-2 underline-offset-4 transition-all duration-200 mx-0.5 cursor-pointer inline-flex items-center gap-0.5"
                 data-verse-link="true"
-                onClick={(e) => {
-                  onVerseClick?.(reference, e);
-                }}
+                onClick={(e) => onVerseClick?.(reference, e)}
                 title="Click to view verse"
               >
                 {reference}
@@ -337,6 +81,174 @@ const InteractiveText = ({
   );
 };
 
+// --- INLINE VERSE TOOLTIP (for Scripture references in synopsis) ---
+const InlineVerseTooltip = ({
+  reference,
+  position,
+  onClose,
+  onTrace,
+  onGoDeeper,
+}: {
+  reference: string;
+  position: { top: number; left: number };
+  onClose: () => void;
+  onTrace?: (text: string, anchorRef?: string) => void;
+  onGoDeeper?: (reference: string) => void;
+}) => {
+  const [verseText, setVerseText] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchVerse = async () => {
+      try {
+        const response = await fetch(
+          `${API_URL}/api/verse/${encodeURIComponent(reference)}`,
+        );
+        if (!response.ok) throw new Error("Failed to fetch verse");
+        const data = await response.json();
+        setVerseText(data.text);
+      } catch {
+        setVerseText("Could not load verse text");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchVerse();
+  }, [reference]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        tooltipRef.current &&
+        !tooltipRef.current.contains(event.target as Node)
+      ) {
+        onClose();
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={tooltipRef}
+      className="fixed z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out"
+      style={{ top: `${position.top}px`, left: `${position.left}px` }}
+    >
+      <TooltipShell onClose={onClose}>
+        <div className="font-bold text-[#D4AF37] text-xs mb-2 uppercase tracking-wide">
+          {reference}
+        </div>
+        {isLoading ? (
+          <LoadingDots label="Loading" />
+        ) : (
+          <>
+            <p className="text-[15px] leading-relaxed text-white font-serif italic">
+              {verseText}
+            </p>
+            <div className="mt-3 flex items-center gap-2 justify-end">
+              <button
+                onClick={() => {
+                  dispatchVerseNavigation(reference);
+                  onClose();
+                }}
+                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-300 text-sm font-medium rounded transition-colors"
+                title="Open in Bible reader"
+              >
+                View
+              </button>
+              {onTrace && (
+                <button
+                  onClick={() => {
+                    onTrace(reference);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#F0D77F] text-black text-sm font-medium rounded transition-colors"
+                  title="Explore deeper"
+                >
+                  Trace
+                </button>
+              )}
+              {onGoDeeper && (
+                <button
+                  onClick={() => {
+                    onGoDeeper(reference);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-300 text-sm font-medium rounded transition-colors"
+                  title="Ask AI about this passage"
+                >
+                  Go Deeper
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </TooltipShell>
+    </div>
+  );
+};
+
+// --- Verse detection helpers ---
+function getVerseContainerForRange(range: Range): HTMLElement | null {
+  let element =
+    range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentElement
+      : (range.commonAncestorContainer as HTMLElement);
+
+  while (element) {
+    if (element.querySelectorAll?.("[data-verse]").length) return element;
+    element = element.parentElement;
+  }
+  return null;
+}
+
+function getVerseNumbersFromRange(range: Range): number[] {
+  const container = getVerseContainerForRange(range);
+  if (!container) return [];
+
+  const verses = new Set<number>();
+  const verseElements = container.querySelectorAll<HTMLElement>("[data-verse]");
+
+  verseElements.forEach((el) => {
+    try {
+      if (range.intersectsNode(el)) {
+        const num = parseInt(el.getAttribute("data-verse") || "0", 10);
+        if (num > 0) verses.add(num);
+      }
+    } catch {
+      // Ignore nodes that cannot be intersected.
+    }
+  });
+
+  return Array.from(verses).sort((a, b) => a - b);
+}
+
+function detectVerseElement(range: Range): HTMLElement | null {
+  // Try start container, end container, then common ancestor
+  for (const container of [
+    range.startContainer,
+    range.endContainer,
+    range.commonAncestorContainer,
+  ]) {
+    const element =
+      container.nodeType === Node.TEXT_NODE
+        ? container.parentElement
+        : (container as HTMLElement);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const verseEl = (element as any)?.closest?.("[data-verse]");
+    if (verseEl) return verseEl;
+  }
+  return null;
+}
+
+// --- MAIN COMPONENT ---
 export function TextHighlightTooltip({
   onGoDeeper,
   onNavigateToChat,
@@ -344,113 +256,40 @@ export function TextHighlightTooltip({
   enableHighlight = false,
   bibleContext,
 }: TextHighlightTooltipProps) {
+  // Core tooltip state
   const [selectedText, setSelectedText] = useState("");
   const [position, setPosition] = useState<Position | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<"synopsis" | "root">("synopsis");
+
+  // Synopsis state
   const [description, setDescription] = useState("");
   const [verseReference, setVerseReference] = useState<string | null>(null);
   const [isLoadingDescription, setIsLoadingDescription] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-  const [highlightSuccess, setHighlightSuccess] = useState(false);
-  const [viewMode, setViewMode] = useState<"synopsis" | "root">("synopsis");
-  const [rootTranslation, setRootTranslation] = useState("");
-  const [rootLanguage, setRootLanguage] = useState<string>("");
-  const [isLoadingRoot, setIsLoadingRoot] = useState(false);
-  const [rootWords, setRootWords] = useState<
-    Array<{
-      english: string;
-      original: string;
-      strongs: string | null;
-      definition: string;
-    }>
-  >([]);
-  const [lostContext, setLostContext] = useState("");
-  const [lostContextPage, setLostContextPage] = useState(0);
-  const [selectedRootWordIndex, setSelectedRootWordIndex] = useState<
-    number | null
-  >(null);
-  const [detectedVerseContext, setDetectedVerseContext] = useState<
-    | {
-        book: string;
-        chapter: number;
-        verses: number[];
-      }
-    | undefined
-  >(undefined);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const lostContextTouchStartRef = useRef<number | null>(null);
 
+  // Highlight state
+  const [highlightSuccess, setHighlightSuccess] = useState(false);
+  const [detectedVerseContext, setDetectedVerseContext] = useState<
+    VerseContext | undefined
+  >(undefined);
+
+  // Refs
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const selectionRangeRef = useRef<Range | null>(null);
 
-  // State for verse tooltip
+  // Verse tooltip for Scripture references in synopsis
   const [verseTooltipData, setVerseTooltipData] = useState<{
     reference: string;
     position: { top: number; left: number };
   } | null>(null);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const isStreamingRef = useRef(false);
-
-  const lostContextChunks = useMemo(
-    () =>
-      chunkLostContext(
-        lostContext,
-        LOST_CONTEXT_MAX_WORDS,
-        LOST_CONTEXT_MAX_SENTENCES,
-      ),
-    [lostContext],
-  );
-  const lostContextTotal = lostContextChunks.length;
-  const lostContextCurrent = lostContextChunks[lostContextPage] || lostContext;
-  const canPrevLostContext = lostContextPage > 0;
-  const canNextLostContext = lostContextPage < lostContextTotal - 1;
-
-  useEffect(() => {
-    setLostContextPage(0);
-  }, [lostContext]);
-
-  const getVerseContainerForRange = (range: Range): HTMLElement | null => {
-    let element =
-      range.commonAncestorContainer.nodeType === Node.TEXT_NODE
-        ? range.commonAncestorContainer.parentElement
-        : (range.commonAncestorContainer as HTMLElement);
-
-    while (element) {
-      if (element.querySelectorAll?.("[data-verse]").length) {
-        return element;
-      }
-      element = element.parentElement;
-    }
-
-    return null;
-  };
-
-  const getVerseNumbersFromRange = (range: Range): number[] => {
-    const container = getVerseContainerForRange(range);
-    if (!container) return [];
-
-    const verses = new Set<number>();
-    const verseElements =
-      container.querySelectorAll<HTMLElement>("[data-verse]");
-
-    verseElements.forEach((el) => {
-      try {
-        if (range.intersectsNode(el)) {
-          const num = parseInt(el.getAttribute("data-verse") || "0", 10);
-          if (num > 0) verses.add(num);
-        }
-      } catch {
-        // Ignore nodes that cannot be intersected.
-      }
-    });
-
-    return Array.from(verses).sort((a, b) => a - b);
-  };
+  // Shared hooks
+  const synopsisRequest = useAIRequest();
+  const root = useRootTranslation();
 
   const closeTooltip = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    isStreamingRef.current = false;
+    synopsisRequest.abort();
+    root.reset();
     selectionRangeRef.current = null;
     setIsVisible(false);
     setTimeout(() => {
@@ -461,242 +300,87 @@ export function TextHighlightTooltip({
       setIsLoadingDescription(false);
       setHighlightSuccess(false);
       setViewMode("synopsis");
-      setRootTranslation("");
-      setRootLanguage("");
-      setIsLoadingRoot(false);
-      setRootWords([]);
-      setLostContext("");
-      setLostContextPage(0);
-      setSelectedRootWordIndex(null);
       setDetectedVerseContext(undefined);
     }, 150);
-  }, []);
+  }, [synopsisRequest, root]);
 
   const generateAISynopsis = useCallback(
     async (text: string, verseContext?: VerseContext) => {
-      try {
-        // Create new abort controller for this request
-        abortControllerRef.current = new AbortController();
-        isStreamingRef.current = true;
+      const requestBody: Record<string, unknown> = {
+        text,
+        maxWords: 34,
+      };
 
-        const requestBody: {
-          text: string;
-          maxWords: number;
-          book?: string;
-          chapter?: number;
-          verse?: number;
-          verses?: number[];
-        } = {
-          text,
-          maxWords: 34,
-        };
-
-        const normalizedVerses = verseContext?.verses
-          ? Array.from(
-              new Set(
-                verseContext.verses.filter(
-                  (num) => Number.isFinite(num) && num > 0,
-                ),
+      const normalizedVerses = verseContext?.verses
+        ? Array.from(
+            new Set(
+              verseContext.verses.filter(
+                (num) => Number.isFinite(num) && num > 0,
               ),
-            ).sort((a, b) => a - b)
-          : [];
+            ),
+          ).sort((a, b) => a - b)
+        : [];
 
-        if (verseContext?.book && verseContext.chapter) {
-          requestBody.book = verseContext.book;
-          requestBody.chapter = verseContext.chapter;
-        }
+      if (verseContext?.book && verseContext.chapter) {
+        requestBody.book = verseContext.book;
+        requestBody.chapter = verseContext.chapter;
+      }
 
-        if (normalizedVerses.length === 1) {
-          requestBody.verse = normalizedVerses[0];
-        } else if (normalizedVerses.length > 1) {
-          requestBody.verses = normalizedVerses;
-        }
+      if (normalizedVerses.length === 1) {
+        requestBody.verse = normalizedVerses[0];
+      } else if (normalizedVerses.length > 1) {
+        requestBody.verses = normalizedVerses;
+      }
 
-        const response = await fetch(`${API_URL}/api/synopsis`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) {
-          await response.text();
-          const errorMessage =
-            response.status === 429
-              ? "Highlight insight unavailable (quota exceeded)."
-              : `Failed to generate synopsis (${response.status}).`;
+      await synopsisRequest.execute({
+        endpoint: "/api/synopsis",
+        body: requestBody,
+        onSuccess: (data) => {
+          const reference =
+            (data?.verse as { reference?: string })?.reference ||
+            (data?.verses as { reference?: string })?.reference ||
+            null;
+          setVerseReference(reference);
+          setDescription(
+            (data.synopsis as string) || "Unable to generate synopsis.",
+          );
           setIsLoadingDescription(false);
-          setDescription(errorMessage);
+        },
+        onError: (message) => {
+          setDescription(message);
           setVerseReference(null);
-          isStreamingRef.current = false;
-          abortControllerRef.current = null;
-          return;
-        }
-
-        const data = await response.json();
-        const reference =
-          data?.verse?.reference || data?.verses?.reference || null;
-        setVerseReference(reference);
-        const fullSynopsis = data.synopsis || "Unable to generate synopsis.";
-
-        // Check if we were cancelled
-        if (!isStreamingRef.current) {
-          return;
-        }
-
-        // Show synopsis immediately - no streaming animation
-        setIsLoadingDescription(false);
-        setDescription(fullSynopsis);
-
-        isStreamingRef.current = false;
-        abortControllerRef.current = null;
-      } catch (error: unknown) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        setDescription(
-          'Highlight insight unavailable right now. Click "Trace" to continue.',
-        );
-        setVerseReference(null);
-        setIsLoadingDescription(false);
-        isStreamingRef.current = false;
-        abortControllerRef.current = null;
-      }
+          setIsLoadingDescription(false);
+        },
+      });
     },
-    [],
+    [synopsisRequest],
   );
 
-  const generateRootTranslation = useCallback(
-    async (text: string) => {
-      try {
-        setIsLoadingRoot(true);
-        setRootTranslation("");
-        setRootLanguage("");
-        setRootWords([]);
-        setLostContext("");
-
-        // Create new abort controller for this request
-        abortControllerRef.current = new AbortController();
-        isStreamingRef.current = true;
-
-        const verseNumbers = detectedVerseContext?.verses;
-        const requestBody = {
-          selectedText: text,
-          maxWords: 140,
-          book: detectedVerseContext?.book || bibleContext?.book,
-          chapter: detectedVerseContext?.chapter || bibleContext?.chapter,
-          verse: !verseNumbers?.length ? bibleContext?.verse : undefined,
-          verses: verseNumbers?.length ? verseNumbers : undefined,
-        };
-
-        console.log("[Root Translation] Sending request:", requestBody);
-
-        const response = await fetch(`${API_URL}/api/root-translation`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) {
-          await response.text();
-          const errorMessage =
-            response.status === 429
-              ? "Root translation unavailable (quota exceeded)."
-              : `Failed to generate translation (${response.status}).`;
-          setIsLoadingRoot(false);
-          setRootTranslation(errorMessage);
-          isStreamingRef.current = false;
-          abortControllerRef.current = null;
-          return;
-        }
-
-        const data = await response.json();
-        const language = data.language || "";
-        const words = Array.isArray(data.words) ? data.words : [];
-        const analysis =
-          data.lostContext ||
-          data.translation ||
-          "Unable to generate translation.";
-
-        setRootLanguage(language);
-
-        console.log("[ROOT] Word mapping count:", words.length);
-        console.log("[ROOT] Lost context:", analysis);
-
-        // Check if we were cancelled before starting to stream
-        if (!isStreamingRef.current) {
-          return;
-        }
-
-        setIsLoadingRoot(false);
-
-        // Check if cancelled
-        if (!isStreamingRef.current) {
-          return;
-        }
-
-        // Show all content immediately - no streaming animation
-        setRootWords(words);
-        setLostContext(analysis);
-        setRootTranslation(analysis); // Keep for fallback
-        isStreamingRef.current = false;
-        abortControllerRef.current = null;
-      } catch (error: unknown) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        setRootTranslation("Root translation unavailable right now.");
-        setIsLoadingRoot(false);
-        isStreamingRef.current = false;
-        abortControllerRef.current = null;
-      }
-    },
-    [detectedVerseContext, bibleContext],
-  );
-
+  // Text selection handler
   useEffect(() => {
     const handleMouseUp = async (e: MouseEvent) => {
-      // Don't interfere with verse citation clicks
       const target = e.target as HTMLElement;
-      if (target && target.closest('button[data-verse-link="true"]')) {
-        console.log("[TextHighlight] Ignoring verse citation click");
-        return;
-      }
-
-      // Ignore clicks inside the tooltip itself
+      if (target && target.closest('button[data-verse-link="true"]')) return;
       if (
         tooltipRef.current &&
         target instanceof Element &&
         tooltipRef.current.contains(target)
-      ) {
-        console.log("[TextHighlight] Ignoring click inside tooltip");
+      )
         return;
-      }
 
       const selection = window.getSelection();
       const text = selection?.toString().trim();
-
-      console.log("[TextHighlight] Mouse up, selected text:", text);
 
       if (text && text.length > 0) {
         const range = selection?.getRangeAt(0);
         const rect = range?.getBoundingClientRect();
 
-        console.log("[TextHighlight] Showing tooltip for:", text);
-
         if (rect && range) {
-          // Store the selection range for later use
           selectionRangeRef.current = range.cloneRange();
 
           let nextVerseContext: VerseContext | undefined;
-
-          // Detect verse numbers from the selection (supports multi-verse)
           setDetectedVerseContext(undefined);
+
           try {
             const verseNumbers = getVerseNumbersFromRange(range);
 
@@ -707,44 +391,13 @@ export function TextHighlightTooltip({
                 verses: verseNumbers,
               };
             } else {
-              let verseElement = null;
-
-              // Try multiple approaches to find the verse element (same as BibleReader does)
-              const startContainer = range.startContainer;
-              const startElement =
-                startContainer.nodeType === Node.TEXT_NODE
-                  ? startContainer.parentElement
-                  : (startContainer as HTMLElement);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              verseElement = (startElement as any)?.closest?.("[data-verse]");
-
-              if (!verseElement) {
-                const endContainer = range.endContainer;
-                const endElement =
-                  endContainer.nodeType === Node.TEXT_NODE
-                    ? endContainer.parentElement
-                    : (endContainer as HTMLElement);
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                verseElement = (endElement as any)?.closest?.("[data-verse]");
-              }
-
-              if (!verseElement) {
-                const container = range.commonAncestorContainer;
-                const element =
-                  container.nodeType === Node.TEXT_NODE
-                    ? container.parentElement
-                    : (container as HTMLElement);
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                verseElement = (element as any)?.closest?.("[data-verse]");
-              }
-
+              const verseElement = detectVerseElement(range);
               if (verseElement && bibleContext) {
                 const verseNum = parseInt(
                   verseElement.getAttribute("data-verse") || "0",
                   10,
                 );
                 if (verseNum > 0) {
-                  // Combine verse from DOM with book/chapter from context
                   nextVerseContext = {
                     book: bibleContext.book,
                     chapter: bibleContext.chapter,
@@ -753,47 +406,34 @@ export function TextHighlightTooltip({
                 }
               }
             }
-          } catch (err) {
-            console.log("[TextHighlight] Could not detect verse:", err);
+          } catch {
+            // Could not detect verse
           }
 
-          if (nextVerseContext) {
-            setDetectedVerseContext(nextVerseContext);
-            console.log("[TextHighlight] Detected verse context:", {
-              book: nextVerseContext.book,
-              chapter: nextVerseContext.chapter,
-              verses: nextVerseContext.verses,
-            });
-          }
+          if (nextVerseContext) setDetectedVerseContext(nextVerseContext);
 
-          // Cancel any ongoing streaming
-          if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            abortControllerRef.current = null;
-          }
-          isStreamingRef.current = false;
+          // Cancel any ongoing requests
+          synopsisRequest.abort();
+          root.reset();
 
-          // Reset all state for new selection
+          // Reset state for new selection
           setSelectedText(text);
           setDescription("");
           setVerseReference(null);
           setIsLoadingDescription(true);
           setIsVisible(false);
+          setViewMode("synopsis");
 
-          // Position tooltip directly below the highlighted text
+          // Position tooltip
           const spacing = 12;
-          const tooltipEstimatedWidth = 384; // max-w-sm = 24rem = 384px
+          const tooltipEstimatedWidth = 384;
 
-          // Find the scrolling container (has overflow-y-auto class)
           const scrollContainer = range.startContainer.parentElement?.closest?.(
             ".overflow-y-auto",
           ) as HTMLElement;
 
           if (scrollContainer) {
             const containerRect = scrollContainer.getBoundingClientRect();
-
-            // Calculate position relative to the scrolling container
-            // rect.bottom is viewport-relative, so we subtract containerRect.top and add scrollTop
             const tooltipEstimatedHeight = 200;
             const belowTop =
               rect.bottom -
@@ -807,21 +447,18 @@ export function TextHighlightTooltip({
               spacing -
               tooltipEstimatedHeight;
 
-            // Flip above if not enough room below the selection in the viewport
             const roomBelow = containerRect.bottom - rect.bottom;
             const top =
               roomBelow < tooltipEstimatedHeight + spacing * 2
                 ? Math.max(scrollContainer.scrollTop + 8, aboveTop)
                 : belowTop;
 
-            // Center horizontally on the selection, relative to container
             let left =
               rect.left -
               containerRect.left +
               scrollContainer.scrollLeft +
               rect.width / 2;
 
-            // Keep tooltip within container horizontally
             const containerWidth = containerRect.width;
             const rightEdge = left + tooltipEstimatedWidth / 2;
             const leftEdge = left - tooltipEstimatedWidth / 2;
@@ -832,31 +469,24 @@ export function TextHighlightTooltip({
               left = tooltipEstimatedWidth / 2 + 16;
             }
 
-            setPosition({
-              top,
-              left,
-            });
+            setPosition({ top, left });
           }
 
           setTimeout(() => setIsVisible(true), 10);
           await generateAISynopsis(text, nextVerseContext);
         }
       } else {
-        // Only close if not clicking inside the tooltip
         const clickedElement = document.activeElement;
         const isClickInsideTooltip =
           tooltipRef.current &&
           clickedElement &&
           tooltipRef.current.contains(clickedElement);
 
-        if (!isClickInsideTooltip) {
-          closeTooltip();
-        }
+        if (!isClickInsideTooltip) closeTooltip();
       }
     };
 
     const handleMouseDown = (e: MouseEvent) => {
-      // Close tooltip if clicking outside
       const target = e.target;
       if (
         tooltipRef.current &&
@@ -873,66 +503,27 @@ export function TextHighlightTooltip({
     return () => {
       document.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("mousedown", handleMouseDown);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      isStreamingRef.current = false;
     };
-  }, [closeTooltip, generateAISynopsis, bibleContext]);
+  }, [closeTooltip, generateAISynopsis, bibleContext, synopsisRequest, root]);
 
   const handleHighlight = (color?: string) => {
-    console.log("[TextHighlight] handleHighlight called", {
-      selectedText,
-      hasOnHighlight: !!onHighlight,
-      color,
-      hasStoredRange: !!selectionRangeRef.current,
-    });
+    if (!selectedText || !onHighlight) return;
 
-    if (!selectedText || !onHighlight) {
-      console.warn("[TextHighlight] Cannot highlight:", {
-        hasSelectedText: !!selectedText,
-        hasOnHighlight: !!onHighlight,
-      });
-      return;
-    }
-
-    // Use default yellow color if no color specified
     const highlightColor = color || HIGHLIGHT_COLORS[0].value;
-
-    // Try to use stored range, but fall back to current selection if needed
     let range = selectionRangeRef.current;
 
-    // If no stored range or it's invalid, try to get current selection
     if (!range) {
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         range = selection.getRangeAt(0);
-
-        console.log(
-          "[TextHighlight] Using current selection range as fallback",
-        );
       }
     }
+    if (!range) return;
 
-    if (!range) {
-      console.error("[TextHighlight] No range available for highlighting");
-      return;
-    }
-
-    console.log("[TextHighlight] Calling onHighlight with:", {
-      text: selectedText,
-      color: highlightColor,
-      hasRange: !!range,
-    });
-
-    // Pass the range as context
-    onHighlight(selectedText, highlightColor, {
-      range: range,
-    });
-
+    onHighlight(selectedText, highlightColor, { range });
+    hapticTap();
     setHighlightSuccess(true);
 
-    // Auto-close after highlighting
     setTimeout(() => {
       closeTooltip();
       window.getSelection()?.removeAllRanges();
@@ -940,75 +531,51 @@ export function TextHighlightTooltip({
   };
 
   const handleGoDeeper = () => {
-    if (selectedText) {
-      // Build anchor reference from detected verse context (e.g., "John 3:16")
-      let anchorRef: string | undefined;
-      if (
-        detectedVerseContext?.book &&
-        detectedVerseContext.chapter &&
-        detectedVerseContext.verses?.length
-      ) {
-        anchorRef = `${detectedVerseContext.book} ${detectedVerseContext.chapter}:${detectedVerseContext.verses[0]}`;
-      }
-      onGoDeeper(selectedText, anchorRef);
-      closeTooltip();
-      window.getSelection()?.removeAllRanges();
+    if (!selectedText) return;
+    let anchorRef: string | undefined;
+    if (
+      detectedVerseContext?.book &&
+      detectedVerseContext.chapter &&
+      detectedVerseContext.verses?.length
+    ) {
+      anchorRef = `${detectedVerseContext.book} ${detectedVerseContext.chapter}:${detectedVerseContext.verses[0]}`;
     }
+    onGoDeeper(selectedText, anchorRef);
+    closeTooltip();
+    window.getSelection()?.removeAllRanges();
   };
 
   const handleRootTranslation = async () => {
-    if (selectedText) {
-      // Reset state and show loading BEFORE switching views
-      setRootWords([]);
-      setLostContext("");
-      setLostContextPage(0);
-      setSelectedRootWordIndex(null);
-      setIsLoadingRoot(true);
-      // Switch to root view only after loading state is set
-      setViewMode("root");
-      await generateRootTranslation(selectedText);
-    }
+    if (!selectedText) return;
+    setViewMode("root");
+    const verseNumbers = detectedVerseContext?.verses;
+    await root.generate(selectedText, {
+      book: detectedVerseContext?.book || bibleContext?.book,
+      chapter: detectedVerseContext?.chapter || bibleContext?.chapter,
+      verse: !verseNumbers?.length ? bibleContext?.verse : undefined,
+      verses: verseNumbers?.length ? verseNumbers : undefined,
+    });
   };
 
   const handleBackToSynopsis = () => {
-    // Cancel any ongoing root translation
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    isStreamingRef.current = false;
+    root.reset();
     setViewMode("synopsis");
-    setRootTranslation("");
-    setRootLanguage("");
-    setIsLoadingRoot(false);
-    setRootWords([]);
-    setLostContext("");
-    setLostContextPage(0);
-    setSelectedRootWordIndex(null);
   };
 
   const handleVerseClick = (reference: string, event: React.MouseEvent) => {
     event.preventDefault();
-
-    // Get click position for tooltip
     const rect = (event.target as HTMLElement).getBoundingClientRect();
-
-    // Position below the clicked reference
     const spacing = 12;
-    const top = rect.bottom + spacing;
-    const left = rect.left + rect.width / 2;
-
     setVerseTooltipData({
       reference,
       position: {
-        top,
-        left,
+        top: rect.bottom + spacing,
+        left: rect.left + rect.width / 2,
       },
     });
   };
 
-  if (!position || !selectedText) {
-    return null;
-  }
+  if (!position || !selectedText) return null;
 
   return (
     <div
@@ -1021,88 +588,40 @@ export function TextHighlightTooltip({
         left: `${position.left}px`,
       }}
     >
-      {/* Compact, dynamic card */}
-      <div className="relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden max-w-sm">
-        {/* Close button */}
-        <button
-          onClick={closeTooltip}
-          className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-white/10 transition-all duration-150 z-10"
-          aria-label="Close"
-        >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      <TooltipShell onClose={closeTooltip}>
+        <div className="relative overflow-hidden">
+          {/* Synopsis view */}
+          <div
+            className={`transition-all duration-200 ease-out ${
+              viewMode === "synopsis"
+                ? "opacity-100 translate-x-0"
+                : "opacity-0 -translate-x-4 absolute inset-0 pointer-events-none"
+            }`}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+            {viewMode === "synopsis" && (
+              <>
+                {isLoadingDescription ? (
+                  <LoadingDots label="Analyzing" />
+                ) : (
+                  <div className="space-y-2">
+                    {verseReference && (
+                      <div className="font-bold text-[#D4AF37] text-xs uppercase tracking-wide">
+                        {verseReference}
+                      </div>
+                    )}
+                    <InteractiveText onVerseClick={handleVerseClick}>
+                      {description}
+                    </InteractiveText>
 
-        {/* Content */}
-        <div className="p-3 pr-8">
-          {viewMode === "synopsis" ? (
-            <>
-              {/* Synopsis View */}
-              {isLoadingDescription ? (
-                <div className="flex items-center gap-2 py-1.5">
-                  <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
-                  <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
-                  <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
-                  <span className="text-xs text-neutral-400 ml-1 font-medium">
-                    Analyzing
-                  </span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {verseReference && (
-                    <div className="font-bold text-[#D4AF37] text-xs uppercase tracking-wide">
-                      {verseReference}
-                    </div>
-                  )}
-                  <InteractiveText onVerseClick={handleVerseClick}>
-                    {description}
-                  </InteractiveText>
-                  {description && isStreamingRef.current && (
-                    <span className="inline-block w-1 h-3 ml-0.5 bg-[#D4AF37] animate-pulse" />
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleGoDeeper}
-                      className="group px-3 py-1.5 bg-[#D4AF37]/20 hover:bg-[#D4AF37]/30 text-[#D4AF37] hover:text-[#E5C158] text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
-                    >
-                      <span>Trace</span>
-                      <svg
-                        className="w-3 h-3 transition-transform group-hover:translate-x-0.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 5l7 7-7 7"
-                        />
-                      </svg>
-                    </button>
-
-                    {/* ROOT Button */}
-                    {enableHighlight && (
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={handleRootTranslation}
-                        className="group px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
-                        title="See original Hebrew/Greek translation"
+                        onClick={handleGoDeeper}
+                        className="group px-3 py-1.5 bg-[#D4AF37]/20 hover:bg-[#D4AF37]/30 text-[#D4AF37] hover:text-[#E5C158] text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
                       >
+                        <span>Trace</span>
                         <svg
-                          className="w-3.5 h-3.5"
+                          className="w-3 h-3 transition-transform group-hover:translate-x-0.5"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1111,53 +630,17 @@ export function TextHighlightTooltip({
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+                            d="M9 5l7 7-7 7"
                           />
                         </svg>
-                        <span>ROOT</span>
                       </button>
-                    )}
 
-                    {/* Highlight Button */}
-                    {enableHighlight && (
-                      <button
-                        onClick={() => handleHighlight()}
-                        disabled={highlightSuccess}
-                        className={`group px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
-                          highlightSuccess
-                            ? "bg-[#D4AF37]/20 text-[#D4AF37] cursor-default"
-                            : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
-                        }`}
-                        title={
-                          highlightSuccess
-                            ? "Saved to highlights"
-                            : "Save to highlights"
-                        }
-                      >
-                        {highlightSuccess ? (
-                          <>
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path d="M17.75 7L14 3.25l-10 10V17h3.75l10-10zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29c-.39-.39-1.02-.39-1.41 0L15 2.25 18.75 6l1.96-1.96z" />
-                            </svg>
-                            <svg
-                              className="w-2.5 h-2.5 absolute ml-0.5 mt-0.5"
-                              fill="none"
-                              stroke="white"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={3}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          </>
-                        ) : (
+                      {enableHighlight && (
+                        <button
+                          onClick={handleRootTranslation}
+                          className="group px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
+                          title="See original Hebrew/Greek translation"
+                        >
                           <svg
                             className="w-3.5 h-3.5"
                             fill="none"
@@ -1168,264 +651,80 @@ export function TextHighlightTooltip({
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={2}
-                              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                              d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
                             />
                           </svg>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Root Translation View */}
-              <div className="space-y-3">
-                {/* Back button */}
-                <button
-                  onClick={handleBackToSynopsis}
-                  className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
-                >
-                  <svg
-                    className="w-3 h-3"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                  <span>Back to synopsis</span>
-                </button>
+                          <span>ROOT</span>
+                        </button>
+                      )}
 
-                {isLoadingRoot ? (
-                  <div className="flex items-center gap-2 py-1.5">
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:150ms]" />
-                    <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse [animation-delay:300ms]" />
-                    <span className="text-xs text-neutral-400 ml-1 font-medium">
-                      Translating from original {rootLanguage || "Hebrew/Greek"}
-                      ...
-                    </span>
-                  </div>
-                ) : rootWords.length > 0 || lostContext ? (
-                  <div className="space-y-3">
-                    {rootWords.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap gap-x-1.5 gap-y-1 text-[13px] text-neutral-200 leading-relaxed">
-                          {rootWords.map((word, index) => {
-                            const isSelected = selectedRootWordIndex === index;
-                            const isClickable = Boolean(word.strongs);
-                            const label = word.english;
-                            const originalLabel = word.original
-                              ? `(${word.original})`
-                              : "";
-
-                            return (
-                              <span
-                                key={`${word.english}-${word.strongs || index}`}
-                                className="whitespace-nowrap"
-                              >
-                                <span className="text-neutral-200">
-                                  {label}
-                                </span>{" "}
-                                {isClickable ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setSelectedRootWordIndex(index)
-                                    }
-                                    className={`inline-flex items-center gap-1 font-semibold transition-colors ${
-                                      isSelected
-                                        ? "text-[#F0D77F]"
-                                        : "text-[#D4AF37] hover:text-[#F0D77F]"
-                                    }`}
-                                    title={`Strong's ${word.strongs}`}
-                                  >
-                                    <span>{originalLabel}</span>
-                                  </button>
-                                ) : (
-                                  originalLabel && (
-                                    <span className="text-neutral-400">
-                                      {originalLabel}
-                                    </span>
-                                  )
-                                )}
-                              </span>
-                            );
-                          })}
-                        </div>
-
-                        {selectedRootWordIndex !== null &&
-                          rootWords[selectedRootWordIndex] && (
-                            <div className="rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] leading-relaxed text-neutral-200">
-                              <div className="flex items-center gap-2 text-[11px] text-neutral-400 uppercase tracking-wide">
-                                <span>Strong's</span>
-                                <span>
-                                  {rootWords[selectedRootWordIndex].strongs}
-                                </span>
-                              </div>
-                              <p className="mt-1 text-neutral-200">
-                                {rootWords[selectedRootWordIndex].definition ||
-                                  "Definition unavailable."}
-                              </p>
-                            </div>
-                          )}
-                      </div>
-                    )}
-
-                    {lostContext && (
-                      <div className="pt-2 border-t border-white/5">
-                        <h4 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-                          Lost in translation
-                        </h4>
-                        <div
-                          className="space-y-2 text-[12px] leading-relaxed text-neutral-200"
-                          onTouchStart={(event) => {
-                            lostContextTouchStartRef.current =
-                              event.touches[0]?.clientX ?? null;
-                          }}
-                          onTouchEnd={(event) => {
-                            const startX = lostContextTouchStartRef.current;
-                            if (startX === null) return;
-                            const endX = event.changedTouches[0]?.clientX;
-                            if (endX === undefined) return;
-                            const delta = startX - endX;
-                            if (Math.abs(delta) < 40) return;
-                            if (delta > 0 && canNextLostContext) {
-                              setLostContextPage((page) =>
-                                Math.min(page + 1, lostContextTotal - 1),
-                              );
-                            } else if (delta < 0 && canPrevLostContext) {
-                              setLostContextPage((page) =>
-                                Math.max(page - 1, 0),
-                              );
-                            }
-                          }}
-                        >
-                          <p>{lostContextCurrent}</p>
-                        </div>
-                        {lostContextTotal > 1 && (
-                          <div className="flex items-center justify-between pt-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setLostContextPage((page) =>
-                                  Math.max(page - 1, 0),
-                                )
-                              }
-                              disabled={!canPrevLostContext}
-                              className={`p-1 transition-colors ${
-                                canPrevLostContext
-                                  ? "text-neutral-400 hover:text-neutral-200"
-                                  : "text-neutral-700 cursor-not-allowed"
-                              }`}
-                              aria-label="Previous"
+                      {enableHighlight &&
+                        (highlightSuccess ? (
+                          <span className="flex items-center gap-1 px-2 py-1 text-xs text-[#D4AF37]">
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
                             >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M15 19l-7-7 7-7"
-                                />
-                              </svg>
-                            </button>
-
-                            <span className="text-[10px] text-neutral-500">
-                              {lostContextPage + 1}/{lostContextTotal}
-                            </span>
-
-                            <div className="flex items-center gap-2">
-                              {canNextLostContext && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setLostContextPage((page) =>
-                                      Math.min(page + 1, lostContextTotal - 1),
-                                    )
-                                  }
-                                  className="text-[11px] text-[#D4AF37] hover:text-[#F0D77F] transition-colors"
-                                >
-                                  Read more
-                                </button>
-                              )}
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                            Saved
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1 ml-auto">
+                            {HIGHLIGHT_COLORS.map((c) => (
                               <button
-                                type="button"
-                                onClick={() =>
-                                  setLostContextPage((page) =>
-                                    Math.min(page + 1, lostContextTotal - 1),
-                                  )
-                                }
-                                disabled={!canNextLostContext}
-                                className={`p-1 transition-colors ${
-                                  canNextLostContext
-                                    ? "text-neutral-400 hover:text-neutral-200"
-                                    : "text-neutral-700 cursor-not-allowed"
-                                }`}
-                                aria-label="Next"
-                              >
-                                <svg
-                                  className="w-3.5 h-3.5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 5l7 7-7 7"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
+                                key={c.value}
+                                onClick={() => handleHighlight(c.value)}
+                                className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white/40 transition-all duration-150 hover:scale-110"
+                                style={{ backgroundColor: c.value }}
+                                title={`Highlight ${c.name}`}
+                                aria-label={`Highlight with ${c.name}`}
+                              />
+                            ))}
                           </div>
-                        )}
-                      </div>
-                    )}
+                        ))}
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-[13px] leading-relaxed text-neutral-200 font-normal break-words">
-                    {rootTranslation}
-                  </p>
                 )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+              </>
+            )}
+          </div>
 
-      {/* Arrow pointer - pointing up to highlighted text */}
-      <div
-        className="absolute left-1/2 transform -translate-x-1/2"
-        style={{ top: "0", transform: "translate(-50%, -100%)" }}
-      >
-        {/* Arrow shadow */}
-        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2 translate-y-1">
-          <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-black/20 blur-sm" />
+          {/* Root translation view */}
+          <div
+            className={`transition-all duration-200 ease-out ${
+              viewMode === "root"
+                ? "opacity-100 translate-x-0"
+                : "opacity-0 translate-x-4 absolute inset-0 pointer-events-none"
+            }`}
+          >
+            {viewMode === "root" && (
+              <RootTranslationPanel
+                isLoading={root.isLoading}
+                language={root.language}
+                words={root.words}
+                lostContext={root.lostContext}
+                fallbackText={root.fallbackText}
+                selectedWordIndex={root.selectedWordIndex}
+                onSelectWord={root.setSelectedWordIndex}
+                onBack={handleBackToSynopsis}
+                backLabel="Back to synopsis"
+              />
+            )}
+          </div>
         </div>
-        {/* Main arrow */}
-        <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-white/[0.08]" />
-        {/* Arrow border */}
-        <div className="absolute left-1/2 bottom-0 transform -translate-x-1/2">
-          <div className="w-0 h-0 border-l-[9px] border-l-transparent border-r-[9px] border-r-transparent border-b-[9px] border-b-white/10" />
-        </div>
-      </div>
+      </TooltipShell>
 
       {/* Verse tooltip for Scripture references in synopsis */}
       {verseTooltipData && (
-        <VerseTooltip
+        <InlineVerseTooltip
           reference={verseTooltipData.reference}
           position={verseTooltipData.position}
           onClose={() => setVerseTooltipData(null)}

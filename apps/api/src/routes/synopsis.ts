@@ -97,8 +97,27 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       },
     )) as RunModelResult;
 
-    // Extract the synopsis from the response
-    const synopsis = result.text || "Unable to generate synopsis.";
+    // Extract the synopsis and enforce word count at sentence boundary
+    let synopsis = result.text || "Unable to generate synopsis.";
+    const words = synopsis.split(/\s+/);
+    if (words.length > maxWords) {
+      // Truncate at the last sentence-ending punctuation within the limit
+      const truncated = words.slice(0, maxWords).join(" ");
+      const lastSentenceEnd = Math.max(
+        truncated.lastIndexOf(". "),
+        truncated.lastIndexOf("."),
+        truncated.lastIndexOf("? "),
+        truncated.lastIndexOf("! "),
+      );
+      if (lastSentenceEnd > truncated.length * 0.4) {
+        // Cut at sentence boundary if it preserves at least 40% of content
+        synopsis = truncated.substring(0, lastSentenceEnd + 1).trim();
+      } else {
+        // Otherwise hard-truncate at word limit
+        synopsis = truncated.trim();
+        if (!synopsis.endsWith(".")) synopsis += ".";
+      }
+    }
 
     // Log token usage for telemetry
     const tokenUsage = extractTokenUsage(
