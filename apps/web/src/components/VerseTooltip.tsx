@@ -4,8 +4,7 @@ import { useRootTranslation } from "../hooks/useRootTranslation";
 import { TooltipShell } from "./tooltip/TooltipShell";
 import { LoadingDots } from "./tooltip/LoadingDots";
 import { RootTranslationPanel } from "./tooltip/RootTranslationPanel";
-
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+import { fetchVerseText } from "../utils/verseCache";
 
 interface VerseTooltipProps {
   reference: string;
@@ -53,24 +52,24 @@ const VerseTooltip = React.forwardRef<HTMLDivElement, VerseTooltipProps>(
     // Fetch verse text
     useEffect(() => {
       const controller = new AbortController();
+      let cancelled = false;
       const fetchVerse = async () => {
         try {
-          const response = await fetch(
-            `${API_URL}/api/verse/${encodeURIComponent(reference)}`,
-            { signal: controller.signal },
-          );
-          if (!response.ok) throw new Error("Failed to fetch verse");
-          const data = await response.json();
-          setVerseText(data.text);
+          const text = await fetchVerseText(reference, controller.signal);
+          if (cancelled) return;
+          setVerseText(text || "Could not load verse text");
         } catch (error: unknown) {
           if (error instanceof Error && error.name === "AbortError") return;
-          setVerseText("Could not load verse text");
+          if (!cancelled) setVerseText("Could not load verse text");
         } finally {
-          setIsLoading(false);
+          if (!cancelled) setIsLoading(false);
         }
       };
       fetchVerse();
-      return () => controller.abort();
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
     }, [reference]);
 
     // Close on click outside

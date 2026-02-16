@@ -9,10 +9,11 @@ import React, {
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
 import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { ChapterFooter } from "./ChapterFooter";
-import { VerseReferencesModal } from "./VerseReferencesModal";
-import VerseTooltip from "./VerseTooltip";
+import { VerseExplorationPanel } from "./VerseExplorationPanel";
 import { BibleChapterSkeleton } from "./Skeleton";
 import { useBibleScrollMemory } from "../hooks/useScrollMemory";
+import { calcPopoverPosition } from "../utils/tooltipPosition";
+import { hapticTap } from "../utils/haptics";
 import type { VisualContextBundle } from "../types/goldenThread";
 import {
   getStoredMapSession,
@@ -175,20 +176,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   const bookFilterRef = useRef<HTMLInputElement>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [selectedVerseForModal, setSelectedVerseForModal] = useState<{
-    book: string;
-    chapter: number;
-    verse: number;
-    position: { top: number; left: number };
-  } | null>(null);
-  const [selectedVerseTooltip, setSelectedVerseTooltip] = useState<{
+  const [selectedVerseForPanel, setSelectedVerseForPanel] = useState<{
     reference: string;
     position: { top: number; left: number };
   } | null>(null);
   const [lastMapSession, setLastMapSession] = useState<StoredMapSession | null>(
     () => getStoredMapSession(),
   );
-  const verseTooltipRef = useRef<HTMLDivElement>(null);
   const pendingNavigationRef = useRef<{
     book: string;
     chapter: number;
@@ -660,40 +654,17 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     verseNumber: number,
     event: React.MouseEvent,
   ) => {
-    // Get click position for popover
+    hapticTap();
     const rect = (event.target as HTMLElement).getBoundingClientRect();
-
-    // Position below the verse number
-    const spacing = 12;
-
-    // Find the scrolling container (has overflow-y-auto class)
     const scrollContainer = (event.target as HTMLElement).closest(
       ".overflow-y-auto",
     ) as HTMLElement;
 
     if (scrollContainer) {
-      const containerRect = scrollContainer.getBoundingClientRect();
-
-      // Calculate position relative to the scrolling container
-      // rect.bottom is viewport-relative, so we subtract containerRect.top and add scrollTop
-      const top =
-        rect.bottom - containerRect.top + scrollContainer.scrollTop + spacing;
-
-      // Center horizontally on the verse number, relative to container
-      const left =
-        rect.left -
-        containerRect.left +
-        scrollContainer.scrollLeft +
-        rect.width / 2;
-
-      setSelectedVerseForModal({
-        book: selectedBook,
-        chapter: selectedChapter,
-        verse: verseNumber,
-        position: {
-          top,
-          left,
-        },
+      const position = calcPopoverPosition(rect, scrollContainer);
+      setSelectedVerseForPanel({
+        reference: `${selectedBook} ${selectedChapter}:${verseNumber}`,
+        position,
       });
     }
   };
@@ -706,13 +677,6 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
     // Navigate to chat with this verse as context
     onNavigateToChat(prompt);
-  };
-
-  const handleVerseTooltipRequest = (
-    reference: string,
-    position: { top: number; left: number },
-  ) => {
-    setSelectedVerseTooltip({ reference, position });
   };
 
   const handleOpenMapSession = useCallback(() => {
@@ -1127,11 +1091,24 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                           className={`inline ${isFirstVerseOfParagraph ? "ml-8" : ""}`}
                         >
                           <sup
-                            className="relative text-brand-primary-400 hover:text-[#D4AF37] font-semibold text-[11px] mr-1.5 opacity-60 hover:opacity-100 cursor-pointer hover:underline transition-all before:absolute before:inset-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-11 before:h-11 before:content-[''] md:before:hidden"
+                            className="relative text-brand-primary-400 hover:text-[#D4AF37] font-semibold text-[11px] mr-1.5 opacity-75 hover:opacity-100 cursor-pointer underline decoration-[#D4AF37]/20 hover:decoration-[#D4AF37]/60 underline-offset-2 active:scale-90 transition-all before:absolute before:inset-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-11 before:h-11 before:content-[''] md:before:hidden"
                             data-verse-number={verse.verse}
+                            role="button"
+                            tabIndex={0}
+                            aria-haspopup="dialog"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleVerseNumberClick(parseInt(verse.verse), e);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleVerseNumberClick(
+                                  parseInt(verse.verse),
+                                  e as unknown as React.MouseEvent,
+                                );
+                              }
                             }}
                             title="View cross-references"
                           >
@@ -1450,26 +1427,12 @@ const BibleReader: React.FC<BibleReaderProps> = ({
           }}
         />
 
-        {/* Verse References Popover - inside scrolling container */}
-        {selectedVerseForModal && (
-          <VerseReferencesModal
-            book={selectedVerseForModal.book}
-            chapter={selectedVerseForModal.chapter}
-            verse={selectedVerseForModal.verse}
-            position={selectedVerseForModal.position}
-            onClose={() => setSelectedVerseForModal(null)}
-            onRequestVerseTooltip={handleVerseTooltipRequest}
-            verseTooltipRef={verseTooltipRef}
-          />
-        )}
-
-        {/* Verse Tooltip - inside scrolling container */}
-        {selectedVerseTooltip && (
-          <VerseTooltip
-            ref={verseTooltipRef}
-            reference={selectedVerseTooltip.reference}
-            position={selectedVerseTooltip.position}
-            onClose={() => setSelectedVerseTooltip(null)}
+        {/* Verse Exploration Panel - unified cross-refs + verse view */}
+        {selectedVerseForPanel && (
+          <VerseExplorationPanel
+            reference={selectedVerseForPanel.reference}
+            position={selectedVerseForPanel.position}
+            onClose={() => setSelectedVerseForPanel(null)}
             onTrace={(ref) => onTrace?.(ref)}
             onGoDeeper={handleExploreDeeper}
           />

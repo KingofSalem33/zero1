@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { calcPopoverPosition } from "../utils/tooltipPosition";
+import { hapticTap } from "../utils/haptics";
+import {
+  fetchCrossReferences as cachedFetchCrossRefs,
+  fetchVerseText,
+} from "../utils/verseCache";
 
 interface VerseRef {
   book: string;
@@ -19,7 +25,109 @@ interface VerseReferencesModalProps {
   verseTooltipRef?: React.RefObject<HTMLDivElement>;
 }
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+// OT books (Genesis–Malachi) for testament detection
+const OT_BOOKS = new Set([
+  "Genesis",
+  "Exodus",
+  "Leviticus",
+  "Numbers",
+  "Deuteronomy",
+  "Joshua",
+  "Judges",
+  "Ruth",
+  "1 Samuel",
+  "2 Samuel",
+  "1 Kings",
+  "2 Kings",
+  "1 Chronicles",
+  "2 Chronicles",
+  "Ezra",
+  "Nehemiah",
+  "Esther",
+  "Job",
+  "Psalms",
+  "Proverbs",
+  "Ecclesiastes",
+  "Song of Solomon",
+  "Isaiah",
+  "Jeremiah",
+  "Lamentations",
+  "Ezekiel",
+  "Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadiah",
+  "Jonah",
+  "Micah",
+  "Nahum",
+  "Habakkuk",
+  "Zephaniah",
+  "Haggai",
+  "Zechariah",
+  "Malachi",
+]);
+
+// Gospel/synoptic books
+const GOSPELS = new Set(["Matthew", "Mark", "Luke", "John"]);
+
+// Prophetic OT books
+const PROPHETS = new Set([
+  "Isaiah",
+  "Jeremiah",
+  "Lamentations",
+  "Ezekiel",
+  "Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadiah",
+  "Jonah",
+  "Micah",
+  "Nahum",
+  "Habakkuk",
+  "Zephaniah",
+  "Haggai",
+  "Zechariah",
+  "Malachi",
+]);
+
+type RefType = "parallel" | "prophecy" | "thematic";
+
+function classifyReference(sourceBook: string, targetBook: string): RefType {
+  const sourceIsOT = OT_BOOKS.has(sourceBook);
+  const targetIsOT = OT_BOOKS.has(targetBook);
+
+  // Gospel → Gospel = parallel account
+  if (
+    GOSPELS.has(sourceBook) &&
+    GOSPELS.has(targetBook) &&
+    sourceBook !== targetBook
+  ) {
+    return "parallel";
+  }
+
+  // OT prophet → NT or NT → OT prophet = prophecy-fulfillment
+  if (
+    (sourceIsOT && !targetIsOT && PROPHETS.has(sourceBook)) ||
+    (!sourceIsOT && targetIsOT && PROPHETS.has(targetBook))
+  ) {
+    return "prophecy";
+  }
+
+  // Same book = parallel/related
+  if (sourceBook === targetBook) {
+    return "parallel";
+  }
+
+  return "thematic";
+}
+
+const REF_TYPE_LABELS: Record<RefType, string> = {
+  parallel: "Parallel",
+  prophecy: "Prophecy",
+  thematic: "Thematic",
+};
 
 export function VerseReferencesModal({
   book,
@@ -33,44 +141,90 @@ export function VerseReferencesModal({
   const [crossReferences, setCrossReferences] = useState<VerseRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [versePreviews, setVersePreviews] = useState<Record<string, string>>(
+    {},
+  );
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const reference = `${book} ${chapter}:${verse}`;
 
+  // Trigger entrance animation on mount
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setIsVisible(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   // Fetch cross-references on mount
   useEffect(() => {
+    const controller = new AbortController();
+    let minLoadTimer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
     const fetchCrossReferences = async () => {
       setLoading(true);
       setError(null);
+      const startTime = Date.now();
 
       try {
-        const response = await fetch(
-          `${API_URL}/api/verse/${encodeURIComponent(reference)}/cross-references`,
-        );
+        const refs = await cachedFetchCrossRefs(reference, controller.signal);
+        if (cancelled) return;
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch cross-references");
-        }
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.max(0, 300 - elapsed);
 
-        const data = await response.json();
-        console.log(
-          "[VerseReferencesModal] Loaded cross-references:",
-          data.crossReferences,
-        );
-        setCrossReferences(data.crossReferences || []);
-      } catch (err) {
-        console.error(
-          "[VerseReferencesModal] Error fetching cross-references:",
-          err,
-        );
+        // Ensure loading state is visible long enough to avoid a flash
+        minLoadTimer = setTimeout(() => {
+          setCrossReferences(refs);
+          setLoading(false);
+        }, remaining);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        if (err instanceof Error && err.name === "AbortError") return;
         setError("Could not load references");
-      } finally {
         setLoading(false);
       }
     };
 
     fetchCrossReferences();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(minLoadTimer);
+    };
   }, [reference]);
+
+  // Batch-fetch verse text previews after cross-refs load
+  useEffect(() => {
+    if (crossReferences.length === 0) return;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    // Fetch up to 10 previews in parallel
+    const toFetch = crossReferences.slice(0, 10);
+    const promises = toFetch.map(async (ref) => {
+      const refStr = `${ref.book} ${ref.chapter}:${ref.verse}`;
+      const text = await fetchVerseText(refStr, controller.signal);
+      return [refStr, text || ""] as const;
+    });
+
+    Promise.allSettled(promises).then((results) => {
+      if (cancelled) return;
+      const previews: Record<string, string> = {};
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const [key, text] = result.value;
+          if (text) previews[key] = text;
+        }
+      }
+      setVersePreviews(previews);
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [crossReferences]);
 
   // Close on click outside (but not when clicking on the verse tooltip)
   useEffect(() => {
@@ -99,54 +253,36 @@ export function VerseReferencesModal({
 
   const handleReferenceClick = (ref: VerseRef, event: React.MouseEvent) => {
     event.stopPropagation();
+    hapticTap();
     const refString = `${ref.book} ${ref.chapter}:${ref.verse}`;
-    console.log("[VerseReferencesModal] Clicked reference:", refString);
 
     const rect = (event.target as HTMLElement).getBoundingClientRect();
-
-    // Find the main scrolling container (not the modal's internal scroll area)
-    // The main container has classes: relative, flex-1, overflow-y-auto
     const scrollContainer = (event.target as HTMLElement).closest(
       ".relative.flex-1.overflow-y-auto",
     ) as HTMLElement;
 
     if (scrollContainer && onRequestVerseTooltip) {
-      const containerRect = scrollContainer.getBoundingClientRect();
-
-      // Position below the clicked reference, relative to scrolling container
-      // We need to add scrollTop because position: absolute is relative to the container's full content area (0,0 at the very top),
-      // not just the visible viewport
-      const spacing = 12;
-      const top =
-        rect.bottom - containerRect.top + scrollContainer.scrollTop + spacing;
-
-      // Center horizontally on the reference, relative to container
-      const left =
-        rect.left -
-        containerRect.left +
-        scrollContainer.scrollLeft +
-        rect.width / 2;
-
-      console.log("[VerseReferencesModal] Position calculation:", {
-        "rect.bottom": rect.bottom,
-        "containerRect.top": containerRect.top,
-        "scrollContainer.scrollTop": scrollContainer.scrollTop,
-        spacing,
-        "calculated top": top,
-        "calculated left": left,
-      });
-
-      onRequestVerseTooltip(refString, { top, left });
+      const position = calcPopoverPosition(rect, scrollContainer);
+      onRequestVerseTooltip(refString, position);
     }
   };
+
+  // Ensure modal doesn't go off-screen horizontally
+  const modalWidth = 384; // max-w-sm = 24rem = 384px
+  const edgePadding = 16;
+  const minLeft = modalWidth / 2 + edgePadding;
+  const containerWidth =
+    tooltipRef.current?.offsetParent?.clientWidth || window.innerWidth;
+  const maxLeft = containerWidth - modalWidth / 2 - edgePadding;
+  const adjustedLeft = Math.min(Math.max(position.left, minLeft), maxLeft);
 
   return (
     <div
       ref={tooltipRef}
-      className="absolute z-[60] transform -translate-x-1/2"
+      className={`absolute z-[60] transform -translate-x-1/2 transition-all duration-150 ease-out ${isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}
       style={{
         top: `${position.top}px`,
-        left: `${position.left}px`,
+        left: `${adjustedLeft}px`,
       }}
     >
       {/* Compact popover card */}
@@ -200,22 +336,71 @@ export function VerseReferencesModal({
               No cross-references found
             </div>
           ) : (
-            <div className="space-y-0.5">
-              {crossReferences.map((ref, index) => {
-                const refString = `${ref.book} ${ref.chapter}:${ref.verse}`;
+            <div role="list" aria-label={`Cross references for ${reference}`}>
+              {(() => {
+                // Group references by type
+                const grouped = new Map<RefType, VerseRef[]>();
+                for (const ref of crossReferences) {
+                  const type = classifyReference(book, ref.book);
+                  if (!grouped.has(type)) grouped.set(type, []);
+                  grouped.get(type)!.push(ref);
+                }
 
-                return (
+                // Render order: parallel, prophecy, thematic
+                const order: RefType[] = ["parallel", "prophecy", "thematic"];
+                const sections = order.filter((t) => grouped.has(t));
+
+                return sections.map((type) => (
                   <div
-                    key={index}
-                    onClick={(e) => handleReferenceClick(ref, e)}
-                    className="px-1 py-0.5 cursor-pointer group"
+                    key={type}
+                    className={sections.length > 1 ? "mb-2 last:mb-0" : ""}
                   >
-                    <span className="text-xs font-normal text-[#D4AF37]/70 group-hover:text-[#D4AF37] transition-colors">
-                      {refString}
-                    </span>
+                    {sections.length > 1 && (
+                      <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-medium px-1 mb-1">
+                        {REF_TYPE_LABELS[type]}
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      {grouped.get(type)!.map((ref, index) => {
+                        const refString = `${ref.book} ${ref.chapter}:${ref.verse}`;
+                        const preview = versePreviews[refString];
+
+                        return (
+                          <div
+                            key={`${type}-${index}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => handleReferenceClick(ref, e)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                handleReferenceClick(
+                                  ref,
+                                  e as unknown as React.MouseEvent,
+                                );
+                              }
+                            }}
+                            className="px-1 py-1 cursor-pointer group border-l-2 border-[#D4AF37]/15 hover:border-[#D4AF37]/40 pl-2 transition-all rounded-r-sm hover:bg-white/[0.03]"
+                          >
+                            <span className="text-xs font-medium text-[#D4AF37]/70 group-hover:text-[#D4AF37] transition-colors">
+                              {refString}
+                            </span>
+                            {preview ? (
+                              <p className="text-[11px] leading-relaxed text-neutral-500 group-hover:text-neutral-400 font-serif italic mt-0.5 line-clamp-2 transition-colors">
+                                {preview}
+                              </p>
+                            ) : (
+                              <div className="mt-1 space-y-1">
+                                <div className="h-2.5 w-3/4 rounded bg-white/5 animate-pulse" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                );
-              })}
+                ));
+              })()}
             </div>
           )}
         </div>
