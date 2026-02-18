@@ -9,6 +9,7 @@ import { MessageStream } from "./golden-thread/MessageStream";
 import { ToolBadges } from "./ToolBadges";
 import { VerseSearchIndicator } from "./VerseSearchIndicator";
 import { TextHighlightTooltip } from "./TextHighlightTooltip";
+import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { BookmarkPanel } from "./BookmarkPanel";
 import { useChatStream } from "../hooks/useChatStream";
 import { NarrativeMap } from "./golden-thread/NarrativeMap";
@@ -179,6 +180,15 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
   >([]);
   const [showBookmarkPanel, setShowBookmarkPanel] = useState(false);
   const [traceModeEnabled, setTraceModeEnabled] = useState(false);
+
+  // Highlights — allow saving chat text to the library
+  const { addHighlight } = useBibleHighlightsContext();
+  const handleChatHighlight = useCallback(
+    (text: string, color: string) => {
+      addHighlight("Chat", 0, [], text, color, "chat");
+    },
+    [addHighlight],
+  );
 
   // Completion modal state
   // Removed micro-step state variables - no longer using cards UI
@@ -2788,7 +2798,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       {/* Step Completion Modal */}
 
       {/* Text Highlight Tooltip */}
-      <TextHighlightTooltip onGoDeeper={handleGoDeeper} userId="anonymous" />
+      <TextHighlightTooltip
+        onGoDeeper={handleGoDeeper}
+        userId="anonymous"
+        onHighlight={handleChatHighlight}
+        enableHighlight={true}
+      />
 
       {/* Bookmark Panel */}
       {showBookmarkPanel && (

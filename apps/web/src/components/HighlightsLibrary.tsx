@@ -94,10 +94,9 @@ const HighlightsLibrary: React.FC<HighlightsLibraryProps> = ({
 
   const handleCardClick = useCallback(
     (h: BibleHighlight) => {
-      if (onNavigateToVerse) {
-        const ref = `${h.book} ${h.chapter}:${formatVerseRange(h.verses)}`;
-        onNavigateToVerse(ref);
-      }
+      if (h.source === "chat" || !onNavigateToVerse) return;
+      const ref = `${h.book} ${h.chapter}:${formatVerseRange(h.verses)}`;
+      onNavigateToVerse(ref);
     },
     [onNavigateToVerse],
   );
@@ -141,7 +140,10 @@ const HighlightsLibrary: React.FC<HighlightsLibraryProps> = ({
       } else {
         content = data
           .map((h) => {
-            const ref = `${h.book} ${h.chapter}:${formatVerseRange(h.verses)}`;
+            const ref =
+              h.source === "chat"
+                ? "Saved from Chat"
+                : `${h.book} ${h.chapter}:${formatVerseRange(h.verses)}`;
             let line = `${ref}\n"${h.text}"`;
             if (h.note) line += `\nNote: ${h.note}`;
             return line;

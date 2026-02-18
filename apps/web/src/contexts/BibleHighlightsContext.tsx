@@ -17,6 +17,7 @@ export interface BibleHighlight {
   text: string;
   color: string;
   note?: string;
+  source?: "bible" | "chat";
   createdAt: string;
 }
 
@@ -68,6 +69,7 @@ interface BibleHighlightsContextType {
     verses: number[],
     text: string,
     color: string,
+    source?: "bible" | "chat",
   ) => BibleHighlight;
   updateHighlight: (
     id: string,
@@ -144,6 +146,7 @@ export function BibleHighlightsProvider({
       verses: number[],
       text: string,
       color: string,
+      source?: "bible" | "chat",
     ) => {
       const newHighlight: BibleHighlight = {
         id: crypto.randomUUID(),
@@ -152,10 +155,14 @@ export function BibleHighlightsProvider({
         verses,
         text,
         color,
+        source,
         createdAt: new Date().toISOString(),
       };
 
       setHighlights((prev) => {
+        // Skip overlap detection for chat highlights (no verse overlap possible)
+        if (source === "chat") return [...prev, newHighlight];
+
         // Remove any existing highlight that overlaps with these verses
         const newSet = new Set(verses);
         const filtered = prev.filter(
@@ -169,8 +176,10 @@ export function BibleHighlightsProvider({
         return [...filtered, newHighlight];
       });
 
-      // Subtle confirmation
-      toast("Verse highlighted", { type: "success", duration: 1500 });
+      toast(source === "chat" ? "Saved to highlights" : "Verse highlighted", {
+        type: "success",
+        duration: 1500,
+      });
 
       return newHighlight;
     },

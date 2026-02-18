@@ -6,7 +6,8 @@ import { TooltipShell } from "./tooltip/TooltipShell";
 import { LoadingDots } from "./tooltip/LoadingDots";
 import { RootTranslationPanel } from "./tooltip/RootTranslationPanel";
 import { HIGHLIGHT_COLORS } from "../contexts/BibleHighlightsContext";
-import { hapticTap, hapticSuccess, hapticMedium } from "../utils/haptics";
+import { hapticSuccess, hapticMedium } from "../utils/haptics";
+import { ShareSheet } from "./ShareSheet";
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string, anchorRef?: string) => void;
@@ -523,13 +524,13 @@ export function TextHighlightTooltip({
     if (!range) return;
 
     onHighlight(selectedText, highlightColor, { range });
-    hapticTap();
+    hapticSuccess();
     setHighlightSuccess(true);
 
     setTimeout(() => {
       closeTooltip();
       window.getSelection()?.removeAllRanges();
-    }, 800);
+    }, 1200);
   };
 
   const handleGoDeeper = () => {
@@ -596,17 +597,11 @@ export function TextHighlightTooltip({
     }
   }, [formatVerseForCopy]);
 
-  const handleShare = useCallback(async () => {
-    const text = formatVerseForCopy();
-    if (navigator.share) {
-      hapticMedium();
-      try {
-        await navigator.share({ text });
-      } catch {
-        // User cancelled share
-      }
-    }
-  }, [formatVerseForCopy]);
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const handleShare = useCallback(() => {
+    hapticMedium();
+    setShowShareSheet(true);
+  }, []);
 
   const handleVerseClick = (reference: string, event: React.MouseEvent) => {
     event.preventDefault();
@@ -646,7 +641,43 @@ export function TextHighlightTooltip({
           >
             {viewMode === "synopsis" && (
               <>
-                {isLoadingDescription ? (
+                {highlightSuccess ? (
+                  /* ── Full-width highlight success state ── */
+                  <div className="flex flex-col items-center justify-center py-3 animate-[fadeScale_300ms_ease-out]">
+                    <div className="w-10 h-10 rounded-full bg-[#D4AF37]/20 flex items-center justify-center mb-2">
+                      <svg
+                        className="w-5 h-5 text-[#D4AF37]"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2.5}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                          className="animate-[drawCheck_400ms_ease-out_150ms_both]"
+                          style={{ strokeDasharray: 24, strokeDashoffset: 24 }}
+                        />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold text-[#D4AF37]">
+                      Saved to Library
+                    </span>
+                    <span className="text-[11px] text-neutral-500 mt-0.5">
+                      View in Highlights tab
+                    </span>
+                    <style>{`
+                      @keyframes fadeScale {
+                        from { opacity: 0; transform: scale(0.9); }
+                        to { opacity: 1; transform: scale(1); }
+                      }
+                      @keyframes drawCheck {
+                        to { stroke-dashoffset: 0; }
+                      }
+                    `}</style>
+                  </div>
+                ) : isLoadingDescription ? (
                   <LoadingDots label="Analyzing" />
                 ) : (
                   <div className="space-y-2">
@@ -719,30 +750,28 @@ export function TextHighlightTooltip({
                         <span>{copySuccess ? "Copied" : "Copy"}</span>
                       </button>
 
-                      {/* Share button (mobile only, when Web Share API available) */}
-                      {typeof navigator !== "undefined" && navigator.share && (
-                        <button
-                          onClick={handleShare}
-                          className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 md:hidden"
-                          title="Share verse"
+                      {/* Share button */}
+                      <button
+                        onClick={handleShare}
+                        className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
+                        title="Share verse"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                            />
-                          </svg>
-                        </button>
-                      )}
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                          />
+                        </svg>
+                      </button>
 
-                      {enableHighlight && (
+                      {enableHighlight && bibleContext && (
                         <button
                           onClick={handleRootTranslation}
                           className="group px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
@@ -765,38 +794,20 @@ export function TextHighlightTooltip({
                         </button>
                       )}
 
-                      {enableHighlight &&
-                        (highlightSuccess ? (
-                          <span className="flex items-center gap-1 px-2 py-1 text-xs text-[#D4AF37]">
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                            Saved
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1 ml-auto">
-                            {HIGHLIGHT_COLORS.map((c) => (
-                              <button
-                                key={c.value}
-                                onClick={() => handleHighlight(c.value)}
-                                className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white/40 transition-all duration-150 hover:scale-110"
-                                style={{ backgroundColor: c.value }}
-                                title={`Highlight ${c.name}`}
-                                aria-label={`Highlight with ${c.name}`}
-                              />
-                            ))}
-                          </div>
-                        ))}
+                      {enableHighlight && (
+                        <div className="flex items-center gap-1 ml-auto">
+                          {HIGHLIGHT_COLORS.map((c) => (
+                            <button
+                              key={c.value}
+                              onClick={() => handleHighlight(c.value)}
+                              className="w-5 h-5 rounded-full border-2 border-transparent hover:border-white/40 transition-all duration-150 hover:scale-110"
+                              style={{ backgroundColor: c.value }}
+                              title={`Highlight ${c.name}`}
+                              aria-label={`Highlight with ${c.name}`}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -839,6 +850,14 @@ export function TextHighlightTooltip({
           onGoDeeper={onNavigateToChat}
         />
       )}
+
+      {/* Share sheet */}
+      <ShareSheet
+        isOpen={showShareSheet}
+        onClose={() => setShowShareSheet(false)}
+        text={formatVerseForCopy()}
+        reference={verseReference || undefined}
+      />
     </div>
   );
 }

@@ -4,8 +4,9 @@ import {
   HIGHLIGHT_COLORS,
   type BibleHighlight,
 } from "../contexts/BibleHighlightsContext";
-import { shareHighlightImage } from "../utils/generateHighlightImage";
+import { generateHighlightImage } from "../utils/generateHighlightImage";
 import { hapticMedium, hapticTap, hapticDelete } from "../utils/haptics";
+import { ShareSheet } from "./ShareSheet";
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -34,6 +35,8 @@ export function HighlightCard({
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState(highlight.note || "");
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [shareImageBlob, setShareImageBlob] = useState<Blob | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const hasNote = Boolean(highlight.note);
@@ -63,15 +66,16 @@ export function HighlightCard({
       }}
       tabIndex={0}
       role="button"
-      aria-label={`Highlight: ${highlight.book} ${highlight.chapter}:${formatVerseRange(highlight.verses)}`}
+      aria-label={`Highlight: ${highlight.source === "chat" ? "Chat insight" : `${highlight.book} ${highlight.chapter}:${formatVerseRange(highlight.verses)}`}`}
       className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden p-4 cursor-pointer transition-all duration-200 hover:bg-white/[0.12] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40 focus:ring-offset-2 focus:ring-offset-black"
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <h3 className="text-brand-primary-300 font-semibold text-sm mb-0.5">
-            {highlight.book} {highlight.chapter}:
-            {formatVerseRange(highlight.verses)}
+            {highlight.source === "chat"
+              ? "Saved from Chat"
+              : `${highlight.book} ${highlight.chapter}:${formatVerseRange(highlight.verses)}`}
           </h3>
           <p className="text-neutral-500 text-xs">
             {formatDate(highlight.createdAt)}
@@ -107,10 +111,12 @@ export function HighlightCard({
           </button>
           {/* Share as image */}
           <button
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
               hapticMedium();
-              shareHighlightImage(highlight);
+              const blob = await generateHighlightImage(highlight);
+              setShareImageBlob(blob);
+              setShowShareSheet(true);
             }}
             className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-neutral-800/50 rounded-lg text-neutral-400 hover:text-neutral-200"
             title="Share as image"
@@ -261,10 +267,28 @@ export function HighlightCard({
           </div>
         ) : (
           <span className="text-neutral-500 text-xs">
-            Click to view in Bible
+            {highlight.source === "chat"
+              ? "From chat"
+              : "Click to view in Bible"}
           </span>
         )}
       </div>
+
+      <ShareSheet
+        isOpen={showShareSheet}
+        onClose={() => setShowShareSheet(false)}
+        text={
+          highlight.source === "chat"
+            ? `"${highlight.text}"`
+            : `"${highlight.text}"\n— ${highlight.book} ${highlight.chapter}:${formatVerseRange(highlight.verses)}`
+        }
+        imageBlob={shareImageBlob}
+        reference={
+          highlight.source === "chat"
+            ? undefined
+            : `${highlight.book} ${highlight.chapter}:${formatVerseRange(highlight.verses)}`
+        }
+      />
     </article>
   );
 }
