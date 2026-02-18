@@ -13,7 +13,7 @@ import { VerseExplorationPanel } from "./VerseExplorationPanel";
 import { BibleChapterSkeleton } from "./Skeleton";
 import { useBibleScrollMemory } from "../hooks/useScrollMemory";
 import { calcPopoverPosition } from "../utils/tooltipPosition";
-import { hapticTap } from "../utils/haptics";
+import { hapticTap, hapticNav, hapticBookmark } from "../utils/haptics";
 import type { VisualContextBundle } from "../types/goldenThread";
 import {
   getStoredMapSession,
@@ -28,6 +28,23 @@ import { useFocusTrap } from "../hooks/useFocusTrap";
 import { ErrorState } from "./ErrorState";
 import { useHighlightShortcuts } from "../hooks/useHighlightShortcuts";
 import { HighlightOnboarding } from "./HighlightOnboarding";
+import { BIBLE_BOOKS, parseVerseReference } from "../utils/bibleReference";
+import { getBook, isBookCached } from "../hooks/useBibleBookCache";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
+import { useReadingProgress } from "../hooks/useReadingProgress";
+import { useBibleBookmarks } from "../contexts/BibleBookmarksContext";
+import { BibleSearchDialog } from "./BibleSearchDialog";
+import { MobileBookSelector } from "./MobileBookSelector";
+import { JumpToReferenceDialog } from "./JumpToReferenceDialog";
+import { useBibleNotes } from "../hooks/useBibleNotes";
+import {
+  useUserPreferences,
+  READER_FONT_SIZES,
+  type ReaderFontSize,
+} from "../hooks/useUserPreferences";
+
+// Stores last known verse count per "Book:Chapter" for skeleton accuracy
+const verseCountCache = new Map<string, number>();
 
 interface Verse {
   verse: string;
@@ -43,76 +60,6 @@ interface Book {
   book: string;
   chapters: Chapter[];
 }
-
-// List of all 66 books in order
-const BIBLE_BOOKS = [
-  "Genesis",
-  "Exodus",
-  "Leviticus",
-  "Numbers",
-  "Deuteronomy",
-  "Joshua",
-  "Judges",
-  "Ruth",
-  "1 Samuel",
-  "2 Samuel",
-  "1 Kings",
-  "2 Kings",
-  "1 Chronicles",
-  "2 Chronicles",
-  "Ezra",
-  "Nehemiah",
-  "Esther",
-  "Job",
-  "Psalms",
-  "Proverbs",
-  "Ecclesiastes",
-  "Song of Solomon",
-  "Isaiah",
-  "Jeremiah",
-  "Lamentations",
-  "Ezekiel",
-  "Daniel",
-  "Hosea",
-  "Joel",
-  "Amos",
-  "Obadiah",
-  "Jonah",
-  "Micah",
-  "Nahum",
-  "Habakkuk",
-  "Zephaniah",
-  "Haggai",
-  "Zechariah",
-  "Malachi",
-  "Matthew",
-  "Mark",
-  "Luke",
-  "John",
-  "Acts",
-  "Romans",
-  "1 Corinthians",
-  "2 Corinthians",
-  "Galatians",
-  "Ephesians",
-  "Philippians",
-  "Colossians",
-  "1 Thessalonians",
-  "2 Thessalonians",
-  "1 Timothy",
-  "2 Timothy",
-  "Titus",
-  "Philemon",
-  "Hebrews",
-  "James",
-  "1 Peter",
-  "2 Peter",
-  "1 John",
-  "2 John",
-  "3 John",
-  "Jude",
-  "Revelation",
-];
 
 interface BibleReaderProps {
   book?: string;
@@ -160,22 +107,14 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     }
   }, [chapterProp]);
 
-  // Wrapper setters: if onNavigate is provided, use it (URL routing); otherwise set internal state
-  const setSelectedBook = useCallback((book: string) => {
-    setSelectedBookInternal(book);
-  }, []);
-
-  const setSelectedChapter = useCallback((chapter: number) => {
-    setSelectedChapterInternal(chapter);
-  }, []);
   const [bookData, setBookData] = useState<Book | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showBookSelector, setShowBookSelector] = useState<boolean>(false);
   const [bookFilter, setBookFilter] = useState<string>("");
   const bookFilterRef = useRef<HTMLInputElement>(null);
-  const [showShortcuts, setShowShortcuts] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const [selectedVerseForPanel, setSelectedVerseForPanel] = useState<{
     reference: string;
     position: { top: number; left: number };
@@ -190,6 +129,25 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   } | null>(null);
 
   const { addHighlight, getHighlightForVerse } = useBibleHighlightsContext();
+  const {
+    isBookmarked: isVerseBookmarked,
+    addBookmark,
+    removeBookmark,
+    getBookmark,
+  } = useBibleBookmarks();
+  const { hasNote: verseHasNote } = useBibleNotes();
+  const isOnline = useOnlineStatus();
+  const { updateProgress, getLastChapter } = useReadingProgress();
+  const { preferences, setReaderFontSize, addRecentBook } =
+    useUserPreferences();
+  const fontConfig = READER_FONT_SIZES[preferences.readerFontSize];
+
+  const cycleFontSize = useCallback(() => {
+    const order: ReaderFontSize[] = ["compact", "default", "large"];
+    const currentIndex = order.indexOf(preferences.readerFontSize);
+    const nextIndex = (currentIndex + 1) % order.length;
+    setReaderFontSize(order[nextIndex]);
+  }, [preferences.readerFontSize, setReaderFontSize]);
 
   // Filtered book lists for the book selector search
   const filteredOTBooks = useMemo(() => {
@@ -224,34 +182,54 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     restoreNow: restoreBibleScroll,
   } = useBibleScrollMemory(selectedBook, selectedChapter);
 
-  // Track if we need to restore scroll (ref-based to avoid re-render flash)
-  const needsScrollRestore = useRef(true);
-  const hasRestoredOnce = useRef(false);
-  // Track if we're doing explicit navigation (prev/next) vs returning to a chapter
-  const isExplicitNavigation = useRef(false);
+  // Scroll intent: 'restore' = return to saved position, 'top' = explicit nav, 'verse' = jump to verse, null = already handled
+  type ScrollIntent = "restore" | "top" | "verse" | null;
+  const scrollIntent = useRef<ScrollIntent>("restore");
+  // Search dialog
+  const [showSearch, setShowSearch] = useState(false);
+  // Jump-to-reference dialog
+  const [showJumpTo, setShowJumpTo] = useState(false);
 
-  // Fade transition state for smooth chapter changes
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  // Load book data from GitHub
+  // Mobile detection for bottom sheet book selector
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 640 : false,
+  );
   useEffect(() => {
-    const loadBook = async () => {
-      setLoading(true);
-      setLoadError(null);
-      needsScrollRestore.current = true;
-      try {
-        const bookFileName = selectedBook.replace(/ /g, "");
-        const response = await fetch(
-          `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
-        );
-        if (!response.ok) {
-          throw new Error(
-            `Failed to load ${selectedBook} (${response.status})`,
-          );
+    const mq = window.matchMedia("(max-width: 639px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mq.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Transition state for smooth chapter changes: null = visible, "next"/"prev" = fading out with direction
+  const [transitionDir, setTransitionDir] = useState<"next" | "prev" | null>(
+    null,
+  );
+
+  // Load book data (uses in-memory cache to avoid re-fetching)
+  useEffect(() => {
+    const abortController = new AbortController();
+    setLoading(true);
+    setLoadError(null);
+    scrollIntent.current = scrollIntent.current === "top" ? "top" : "restore";
+
+    getBook(selectedBook, abortController.signal)
+      .then((data) => {
+        if (!abortController.signal.aborted) {
+          setBookData(data);
+          // Cache verse counts for skeleton accuracy
+          for (const ch of data.chapters) {
+            verseCountCache.set(`${data.book}:${ch.chapter}`, ch.verses.length);
+          }
         }
-        const data = await response.json();
-        setBookData(data);
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (
+          abortController.signal.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        )
+          return;
         console.error("[BibleReader] Failed to load book:", err);
         setLoadError(
           err instanceof Error
@@ -259,53 +237,70 @@ const BibleReader: React.FC<BibleReaderProps> = ({
             : "Could not load this book. Check your connection and try again.",
         );
         setBookData(null);
-      } finally {
-        setLoading(false);
-      }
-    };
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) {
+          setLoading(false);
+        }
+      });
 
-    loadBook();
+    return () => abortController.abort();
   }, [selectedBook]);
 
   // Restore scroll position after content loads (useLayoutEffect runs before paint)
   useLayoutEffect(() => {
-    if (!loading && bookData && bibleScrollRef.current) {
-      // Handle scroll positioning, then show
-      if (needsScrollRestore.current) {
-        if (isExplicitNavigation.current) {
-          // Explicit navigation (prev/next) - go to top
-          bibleScrollRef.current.scrollTop = 0;
-          isExplicitNavigation.current = false;
-        } else {
-          // Returning to a chapter - restore saved position
-          restoreBibleScroll();
-        }
-        needsScrollRestore.current = false;
-        hasRestoredOnce.current = true;
-        // Force visibility update on the DOM element directly
-        bibleScrollRef.current.style.visibility = "visible";
+    if (
+      !loading &&
+      bookData &&
+      bibleScrollRef.current &&
+      scrollIntent.current
+    ) {
+      const intent = scrollIntent.current;
+      scrollIntent.current = null;
+      if (intent === "top") {
+        bibleScrollRef.current.scrollTop = 0;
+      } else if (intent === "restore") {
+        restoreBibleScroll();
       }
     }
   }, [loading, bookData, restoreBibleScroll, bibleScrollRef]);
 
-  // Save Bible position to localStorage when it changes
+  // Save Bible position to localStorage (debounced to avoid thrashing during rapid nav)
   useEffect(() => {
-    localStorage.setItem("lastBibleBook", selectedBook);
+    const timer = setTimeout(() => {
+      localStorage.setItem("lastBibleBook", selectedBook);
+      localStorage.setItem("lastBibleChapter", String(selectedChapter));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [selectedBook, selectedChapter]);
+
+  // Track recent books + reading progress
+  useEffect(() => {
+    addRecentBook(selectedBook);
   }, [selectedBook]);
 
   useEffect(() => {
-    localStorage.setItem("lastBibleChapter", String(selectedChapter));
-  }, [selectedChapter]);
+    updateProgress(selectedBook, selectedChapter);
+  }, [selectedBook, selectedChapter]);
 
-  // Show scroll-to-top button after scrolling 2 screens
+  // Show scroll-to-top button + track reading progress
   useEffect(() => {
     const el = bibleScrollRef.current;
     if (!el) return;
+    let rafId = 0;
     const handleScroll = () => {
-      setShowScrollTop(el.scrollTop > el.clientHeight * 2);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        setShowScrollTop(el.scrollTop > el.clientHeight * 2);
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        setScrollProgress(maxScroll > 0 ? el.scrollTop / maxScroll : 0);
+      });
     };
     el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+      cancelAnimationFrame(rafId);
+    };
   }, [bibleScrollRef]);
 
   useEffect(() => {
@@ -327,50 +322,16 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     (ch) => ch.chapter === String(selectedChapter),
   );
 
-  const resolveBookName = (rawBook: string) => {
-    const normalized = rawBook.trim().replace(/\s+/g, " ");
-    const key = normalized.toLowerCase();
-    const aliasMap: Record<string, string> = {
-      psalm: "Psalms",
-      psalms: "Psalms",
-      "song of songs": "Song of Solomon",
-      "song of solomon": "Song of Solomon",
-      canticles: "Song of Solomon",
-      revelations: "Revelation",
-    };
-    if (aliasMap[key]) return aliasMap[key];
-    const direct = BIBLE_BOOKS.find((book) => book.toLowerCase() === key);
-    if (direct) return direct;
-    const romanKey = key
-      .replace(/^i\s+/, "1 ")
-      .replace(/^ii\s+/, "2 ")
-      .replace(/^iii\s+/, "3 ");
-    return BIBLE_BOOKS.find((book) => book.toLowerCase() === romanKey) || null;
-  };
-
-  const parseReference = (reference: string) => {
-    const cleaned = reference.trim().replace(/\s+/g, " ");
-    const match = cleaned.match(/^(.+?)\s+(\d+):(\d+)(?:-\d+)?$/);
-    if (!match) return null;
-    const bookRaw = match[1];
-    const chapter = Number.parseInt(match[2], 10);
-    const verse = Number.parseInt(match[3], 10);
-    if (!Number.isFinite(chapter) || !Number.isFinite(verse)) return null;
-    const book = resolveBookName(bookRaw);
-    if (!book) return null;
-    return { book, chapter, verse };
-  };
-
   useEffect(() => {
     if (!pendingVerseReference) return;
-    const parsed = parseReference(pendingVerseReference);
+    const parsed = parseVerseReference(pendingVerseReference);
     if (!parsed) {
       onVerseNavigationComplete?.();
       return;
     }
     pendingNavigationRef.current = parsed;
-    setSelectedBook(parsed.book);
-    setSelectedChapter(parsed.chapter);
+    setSelectedBookInternal(parsed.book);
+    setSelectedChapterInternal(parsed.chapter);
   }, [pendingVerseReference, onVerseNavigationComplete]);
 
   useEffect(() => {
@@ -462,21 +423,19 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     };
   }, [showBookSelector]);
 
-  // Smooth chapter navigation with fade transition
+  // Smooth chapter navigation with directional fade transition
   const navigateWithTransition = useCallback(
-    (navigate: () => void) => {
-      setIsTransitioning(true);
-      // Mark as explicit navigation so we scroll to top instead of restoring
-      isExplicitNavigation.current = true;
+    (navigate: () => void, direction: "next" | "prev") => {
+      hapticNav();
+      setTransitionDir(direction);
+      scrollIntent.current = "top";
       // Wait for fade out, then navigate
       setTimeout(() => {
         navigate();
-        // Scroll to top immediately after navigation
         if (bibleScrollRef.current) {
           bibleScrollRef.current.scrollTop = 0;
         }
-        // Fade back in after a brief moment
-        setTimeout(() => setIsTransitioning(false), 50);
+        setTimeout(() => setTransitionDir(null), 50);
       }, 150);
     },
     [bibleScrollRef],
@@ -492,7 +451,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
         if (onNavigate) {
           onNavigate(selectedBook, selectedChapter - 1);
         } else {
-          setSelectedChapter(selectedChapter - 1);
+          setSelectedChapterInternal(selectedChapter - 1);
         }
       } else {
         const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
@@ -501,20 +460,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({
           if (onNavigate) {
             onNavigate(prevBook, 1);
           } else {
-            setSelectedBook(prevBook);
-            setSelectedChapter(1);
+            setSelectedBookInternal(prevBook);
+            setSelectedChapterInternal(1);
           }
         }
       }
-    });
-  }, [
-    selectedBook,
-    selectedChapter,
-    navigateWithTransition,
-    onNavigate,
-    setSelectedBook,
-    setSelectedChapter,
-  ]);
+    }, "prev");
+  }, [selectedBook, selectedChapter, navigateWithTransition, onNavigate]);
 
   const handleNextChapter = useCallback(() => {
     const canGoNext =
@@ -527,7 +479,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
         if (onNavigate) {
           onNavigate(selectedBook, selectedChapter + 1);
         } else {
-          setSelectedChapter(selectedChapter + 1);
+          setSelectedChapterInternal(selectedChapter + 1);
         }
       } else {
         const currentBookIndex = BIBLE_BOOKS.indexOf(selectedBook);
@@ -536,33 +488,85 @@ const BibleReader: React.FC<BibleReaderProps> = ({
           if (onNavigate) {
             onNavigate(nextBook, 1);
           } else {
-            setSelectedBook(nextBook);
-            setSelectedChapter(1);
+            setSelectedBookInternal(nextBook);
+            setSelectedChapterInternal(1);
           }
         }
       }
-    });
+    }, "next");
   }, [
     bookData,
     selectedBook,
     selectedChapter,
     navigateWithTransition,
     onNavigate,
-    setSelectedBook,
-    setSelectedChapter,
+  ]);
+
+  // Ctrl+K to open search, Ctrl+G to jump to reference, Ctrl+B to bookmark topmost visible verse
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "g") {
+        e.preventDefault();
+        setShowJumpTo(true);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault();
+        // Find the topmost visible verse in the scroll container
+        const container = bibleScrollRef.current;
+        if (!container) return;
+        const verseEls =
+          container.querySelectorAll<HTMLElement>("[data-verse]");
+        const containerRect = container.getBoundingClientRect();
+        let topVerse: number | null = null;
+        for (const el of verseEls) {
+          const rect = el.getBoundingClientRect();
+          if (
+            rect.top >= containerRect.top - 20 &&
+            rect.top < containerRect.bottom
+          ) {
+            topVerse = parseInt(el.getAttribute("data-verse") || "0");
+            break;
+          }
+        }
+        if (!topVerse || topVerse < 1) return;
+        hapticBookmark();
+        if (isVerseBookmarked(selectedBook, selectedChapter, topVerse)) {
+          const existing = getBookmark(selectedBook, selectedChapter, topVerse);
+          if (existing) removeBookmark(existing.id);
+        } else {
+          addBookmark(selectedBook, selectedChapter, topVerse);
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    selectedBook,
+    selectedChapter,
+    bibleScrollRef,
+    isVerseBookmarked,
+    addBookmark,
+    removeBookmark,
+    getBookmark,
   ]);
 
   // Keyboard arrow navigation (← → for prev/next chapter)
   useKeyboardNavigation({
     onPrevious: handlePreviousChapter,
     onNext: handleNextChapter,
-    enabled: !showBookSelector, // Disable when book selector is open
+    enabled: !showBookSelector && !showSearch,
   });
 
   // Swipe navigation for mobile (swipe left = next, swipe right = prev)
+  const [swipeProgress, setSwipeProgress] = useState(0);
   const swipeRef = useSwipeNavigation<HTMLDivElement>({
     onSwipeLeft: handleNextChapter,
     onSwipeRight: handlePreviousChapter,
+    onSwipeProgress: setSwipeProgress,
     threshold: 80,
     maxTime: 400,
   });
@@ -687,9 +691,9 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   return (
     <div className="h-full flex flex-col bg-black">
       {/* Header with Navigation */}
-      <div className="flex-shrink-0 border-b border-neutral-800/50 bg-neutral-900/50">
-        <div className="max-w-4xl mx-auto px-6 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex-shrink-0 border-b border-white/10 bg-neutral-900/50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-2.5">
+          <div className="flex items-center justify-between gap-2">
             {/* Book Selector */}
             <div
               className="relative"
@@ -700,24 +704,11 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 onClick={() => setShowBookSelector(!showBookSelector)}
                 aria-expanded={showBookSelector}
                 aria-haspopup="listbox"
-                className="flex items-center gap-2 px-4 py-2 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-700/50 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-neutral-800/60 rounded-lg transition-colors"
               >
-                <svg
-                  className="w-5 h-5 text-brand-primary-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
                 <span className="font-semibold text-white">{selectedBook}</span>
                 <svg
-                  className="w-4 h-4 text-neutral-400"
+                  className="w-3.5 h-3.5 text-neutral-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -731,13 +722,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 </svg>
               </button>
 
-              {/* Book Selector Dropdown */}
-              {showBookSelector && (
+              {/* Book Selector Dropdown (desktop only — mobile uses bottom sheet) */}
+              {showBookSelector && !isMobile && (
                 <div
                   ref={bookSelectorFocusTrapRef}
                   role="listbox"
                   aria-label="Select a book"
-                  className="absolute top-full left-0 mt-2 w-80 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl z-40"
+                  className="absolute top-full left-0 mt-2 w-80 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl z-60"
                 >
                   {/* Search input */}
                   <div className="sticky top-0 p-2 bg-neutral-900/95 backdrop-blur-xl border-b border-white/5 z-10">
@@ -773,8 +764,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                               if (onNavigate) {
                                 onNavigate(book, 1);
                               } else {
-                                setSelectedBook(book);
-                                setSelectedChapter(1);
+                                setSelectedBookInternal(book);
+                                setSelectedChapterInternal(1);
                               }
                               setShowBookSelector(false);
                             }
@@ -786,40 +777,95 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                     </div>
                   </div>
                   <div className="max-h-80 overflow-y-auto p-2 pointer-events-auto">
+                    {/* Recent books section */}
+                    {!bookFilter && preferences.recentBooks.length > 1 && (
+                      <>
+                        <div className="text-xs font-semibold text-brand-primary-400/70 uppercase tracking-wider px-3 py-2">
+                          Recent
+                        </div>
+                        {preferences.recentBooks.map((book) => {
+                          const lastCh = getLastChapter(book);
+                          const resumeChapter = lastCh || 1;
+                          return (
+                            <button
+                              key={`recent-${book}`}
+                              type="button"
+                              role="option"
+                              aria-selected={selectedBook === book}
+                              onMouseDown={() => {
+                                if (onNavigate) {
+                                  onNavigate(book, resumeChapter);
+                                } else {
+                                  setSelectedBookInternal(book);
+                                  setSelectedChapterInternal(resumeChapter);
+                                }
+                                setShowBookSelector(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer flex items-center justify-between ${
+                                selectedBook === book
+                                  ? "bg-brand-primary-500/20 text-brand-primary-300"
+                                  : "hover:bg-neutral-800 text-neutral-300"
+                              }`}
+                            >
+                              <span>{book}</span>
+                              {lastCh &&
+                                lastCh > 1 &&
+                                selectedBook !== book && (
+                                  <span className="text-[10px] text-neutral-500">
+                                    Ch. {lastCh}
+                                  </span>
+                                )}
+                            </button>
+                          );
+                        })}
+                        <div className="border-b border-white/5 my-2" />
+                      </>
+                    )}
                     {filteredOTBooks.length > 0 && (
                       <>
                         <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-3 py-2">
                           Old Testament
                         </div>
-                        {filteredOTBooks.map((book) => (
-                          <button
-                            key={book}
-                            ref={
-                              selectedBook === book
-                                ? selectedBookButtonRef
-                                : null
-                            }
-                            type="button"
-                            role="option"
-                            aria-selected={selectedBook === book}
-                            onMouseDown={() => {
-                              if (onNavigate) {
-                                onNavigate(book, 1);
-                              } else {
-                                setSelectedBook(book);
-                                setSelectedChapter(1);
+                        {filteredOTBooks.map((book) => {
+                          const lastCh = getLastChapter(book);
+                          const resumeChapter = lastCh || 1;
+                          return (
+                            <button
+                              key={book}
+                              ref={
+                                selectedBook === book
+                                  ? selectedBookButtonRef
+                                  : null
                               }
-                              setShowBookSelector(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer ${
-                              selectedBook === book
-                                ? "bg-brand-primary-500/20 text-brand-primary-300"
-                                : "hover:bg-neutral-800 text-neutral-300"
-                            }`}
-                          >
-                            {book}
-                          </button>
-                        ))}
+                              type="button"
+                              role="option"
+                              aria-selected={selectedBook === book}
+                              onMouseDown={() => {
+                                if (onNavigate) {
+                                  onNavigate(book, resumeChapter);
+                                } else {
+                                  setSelectedBookInternal(book);
+                                  setSelectedChapterInternal(resumeChapter);
+                                }
+                                setShowBookSelector(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer flex items-center justify-between ${
+                                selectedBook === book
+                                  ? "bg-brand-primary-500/20 text-brand-primary-300"
+                                  : "hover:bg-neutral-800 text-neutral-300"
+                              }`}
+                            >
+                              <span>{book}</span>
+                              {lastCh &&
+                                lastCh > 1 &&
+                                selectedBook !== book && (
+                                  <span className="text-[10px] text-neutral-500">
+                                    Ch. {lastCh}
+                                  </span>
+                                )}
+                            </button>
+                          );
+                        })}
                       </>
                     )}
                     {filteredNTBooks.length > 0 && (
@@ -827,35 +873,46 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                         <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wider px-3 py-2 mt-2">
                           New Testament
                         </div>
-                        {filteredNTBooks.map((book) => (
-                          <button
-                            key={book}
-                            ref={
-                              selectedBook === book
-                                ? selectedBookButtonRef
-                                : null
-                            }
-                            type="button"
-                            role="option"
-                            aria-selected={selectedBook === book}
-                            onMouseDown={() => {
-                              if (onNavigate) {
-                                onNavigate(book, 1);
-                              } else {
-                                setSelectedBook(book);
-                                setSelectedChapter(1);
+                        {filteredNTBooks.map((book) => {
+                          const lastCh = getLastChapter(book);
+                          const resumeChapter = lastCh || 1;
+                          return (
+                            <button
+                              key={book}
+                              ref={
+                                selectedBook === book
+                                  ? selectedBookButtonRef
+                                  : null
                               }
-                              setShowBookSelector(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer ${
-                              selectedBook === book
-                                ? "bg-brand-primary-500/20 text-brand-primary-300"
-                                : "hover:bg-neutral-800 text-neutral-300"
-                            }`}
-                          >
-                            {book}
-                          </button>
-                        ))}
+                              type="button"
+                              role="option"
+                              aria-selected={selectedBook === book}
+                              onMouseDown={() => {
+                                if (onNavigate) {
+                                  onNavigate(book, resumeChapter);
+                                } else {
+                                  setSelectedBookInternal(book);
+                                  setSelectedChapterInternal(resumeChapter);
+                                }
+                                setShowBookSelector(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-md transition-colors cursor-pointer flex items-center justify-between ${
+                                selectedBook === book
+                                  ? "bg-brand-primary-500/20 text-brand-primary-300"
+                                  : "hover:bg-neutral-800 text-neutral-300"
+                              }`}
+                            >
+                              <span>{book}</span>
+                              {lastCh &&
+                                lastCh > 1 &&
+                                selectedBook !== book && (
+                                  <span className="text-[10px] text-neutral-500">
+                                    Ch. {lastCh}
+                                  </span>
+                                )}
+                            </button>
+                          );
+                        })}
                       </>
                     )}
                     {filteredOTBooks.length === 0 &&
@@ -869,46 +926,32 @@ const BibleReader: React.FC<BibleReaderProps> = ({
               )}
             </div>
 
-            {/* Chapter Navigation */}
-            <div className="flex flex-wrap items-center justify-end gap-3">
+            {/* Chapter Navigation + Actions */}
+            <div className="flex items-center gap-1">
               {lastMapSession && onOpenMap && (
                 <button
                   type="button"
                   onClick={handleOpenMapSession}
                   title={`Map: ${lastMapSession.anchorLabel} (${lastMapSession.verseCount} verses)`}
-                  className="group flex items-center gap-2 px-3 py-1.5 rounded-full border border-neutral-700/60 bg-neutral-900/40 hover:bg-neutral-800/70 text-[11px] text-neutral-200 transition-all shadow-sm"
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 mr-1 rounded-full border border-white/10 bg-neutral-900/40 hover:bg-neutral-800/70 text-[11px] text-neutral-300 transition-colors"
                 >
-                  <svg
-                    className="w-3.5 h-3.5 text-neutral-300 group-hover:text-white transition-colors"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                  <span className="text-neutral-400">Map:</span>
-                  <span className="max-w-[160px] truncate text-white font-semibold">
+                  <span className="text-neutral-500">Map:</span>
+                  <span className="max-w-[120px] truncate text-white font-medium">
                     {lastMapSession.anchorLabel}
-                  </span>
-                  <span className="text-neutral-400">
-                    ({lastMapSession.verseCount} verses)
                   </span>
                 </button>
               )}
+
               <button
                 onClick={handlePreviousChapter}
                 disabled={
                   selectedBook === BIBLE_BOOKS[0] && selectedChapter === 1
                 }
-                className="p-2 hover:bg-neutral-800 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
+                aria-label="Previous chapter"
+                className="p-1.5 hover:bg-neutral-800/60 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <svg
-                  className="w-5 h-5 text-neutral-300"
+                  className="w-4 h-4 text-neutral-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -922,8 +965,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 </svg>
               </button>
 
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-neutral-400">Chapter</span>
+              <div className="flex items-center gap-1.5 px-1">
                 <input
                   type="number"
                   min="1"
@@ -937,13 +979,13 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                     if (onNavigate) {
                       onNavigate(selectedBook, newChapter);
                     } else {
-                      setSelectedChapter(newChapter);
+                      setSelectedChapterInternal(newChapter);
                     }
                   }}
-                  className="w-16 px-3 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-white text-center input-glow input-depth"
+                  className="w-12 px-2 py-1 bg-neutral-800/40 border border-white/5 rounded-md text-white text-sm text-center focus:outline-none focus:border-white/20"
                 />
-                <span className="text-sm text-neutral-500">
-                  of {bookData?.chapters.length || "..."}
+                <span className="text-xs text-neutral-600">
+                  / {bookData?.chapters.length || "..."}
                 </span>
               </div>
 
@@ -953,10 +995,11 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                   selectedBook === BIBLE_BOOKS[BIBLE_BOOKS.length - 1] &&
                   selectedChapter === (bookData?.chapters.length || 1)
                 }
-                className="p-2 hover:bg-neutral-800 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
+                aria-label="Next chapter"
+                className="p-1.5 hover:bg-neutral-800/60 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <svg
-                  className="w-5 h-5 text-neutral-300"
+                  className="w-4 h-4 text-neutral-400"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -970,61 +1013,83 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 </svg>
               </button>
 
-              {/* Keyboard shortcuts hint */}
-              <div className="relative hidden md:block">
-                <button
-                  onClick={() => setShowShortcuts((s) => !s)}
-                  className="p-2 hover:bg-neutral-800 rounded-lg transition-all text-neutral-500 hover:text-neutral-300"
-                  title="Keyboard shortcuts"
+              <div className="w-px h-4 bg-white/5 mx-1 hidden sm:block" />
+
+              {/* Search */}
+              <button
+                onClick={() => setShowSearch(true)}
+                className="p-1.5 hover:bg-neutral-800/60 rounded-md transition-colors text-neutral-500 hover:text-neutral-300"
+                title="Search (Ctrl+K)"
+                aria-label="Search the Bible (Ctrl+K)"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </button>
-                {showShortcuts && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowShortcuts(false)}
-                    />
-                    <div className="absolute top-full right-0 mt-2 w-56 bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl p-4 z-40">
-                      <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">
-                        Keyboard Shortcuts
-                      </h4>
-                      <div className="space-y-2">
-                        {[
-                          ["←  →", "Previous / Next chapter"],
-                          ["Esc", "Close popups"],
-                          ["Enter", "Select book (when filtered to one)"],
-                        ].map(([key, desc]) => (
-                          <div key={key} className="flex items-center gap-3">
-                            <kbd className="px-1.5 py-0.5 bg-neutral-800 border border-neutral-700 rounded text-[10px] font-mono text-neutral-300 min-w-[2.5rem] text-center">
-                              {key}
-                            </kbd>
-                            <span className="text-xs text-neutral-400">
-                              {desc}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </button>
+
+              {/* Font size */}
+              <button
+                onClick={cycleFontSize}
+                className="p-1.5 hover:bg-neutral-800/60 rounded-md transition-colors text-neutral-500 hover:text-neutral-300 text-xs font-semibold"
+                title={`Font size: ${preferences.readerFontSize}`}
+                aria-label={`Font size: ${preferences.readerFontSize}`}
+              >
+                <span
+                  className={
+                    preferences.readerFontSize === "compact"
+                      ? "text-[10px]"
+                      : preferences.readerFontSize === "large"
+                        ? "text-sm"
+                        : "text-xs"
+                  }
+                >
+                  A
+                </span>
+                <span
+                  className={
+                    preferences.readerFontSize === "large"
+                      ? "text-[10px]"
+                      : preferences.readerFontSize === "compact"
+                        ? "text-sm"
+                        : "text-xs"
+                  }
+                >
+                  A
+                </span>
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Screen reader announcement for chapter changes */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {!loading && bookData
+          ? `${selectedBook} chapter ${selectedChapter}`
+          : ""}
+      </div>
+
+      {/* Offline indicator */}
+      {!isOnline && (
+        <div className="flex-shrink-0 px-4 py-2 bg-amber-900/30 border-b border-amber-500/20 text-center">
+          <span className="text-xs text-amber-300/90">
+            You&rsquo;re offline
+            {isBookCached(selectedBook)
+              ? ` — reading ${selectedBook} from cache`
+              : " — this book may not be available"}
+          </span>
+        </div>
+      )}
 
       {/* Bible Text Content - starts invisible, shown after scroll restore */}
       <div
@@ -1037,18 +1102,58 @@ const BibleReader: React.FC<BibleReaderProps> = ({
             node;
         }}
         className="relative flex-1 overflow-y-auto"
-        style={{ visibility: hasRestoredOnce.current ? "visible" : "hidden" }}
       >
+        {/* Swipe edge glow indicators */}
+        {swipeProgress !== 0 && (
+          <div
+            className="sticky top-0 left-0 right-0 h-full z-20 pointer-events-none"
+            style={{ position: "absolute", inset: 0 }}
+          >
+            {/* Right edge glow (swiping right → previous chapter) */}
+            {swipeProgress > 0 && (
+              <div
+                className="absolute top-0 right-0 w-12 h-full"
+                style={{
+                  background: `linear-gradient(to left, rgba(212,175,55,${swipeProgress * 0.25}), transparent)`,
+                }}
+              />
+            )}
+            {/* Left edge glow (swiping left → next chapter) */}
+            {swipeProgress < 0 && (
+              <div
+                className="absolute top-0 left-0 w-12 h-full"
+                style={{
+                  background: `linear-gradient(to right, rgba(212,175,55,${Math.abs(swipeProgress) * 0.25}), transparent)`,
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Reading progress bar */}
         <div
-          className={`max-w-4xl mx-auto px-8 py-12 transition-opacity duration-150 ${
-            isTransitioning ? "opacity-0" : "opacity-100"
+          className="sticky top-0 left-0 right-0 h-0.5 z-10 pointer-events-none"
+          style={{
+            background:
+              scrollProgress > 0
+                ? `linear-gradient(to right, #D4AF37 ${scrollProgress * 100}%, transparent ${scrollProgress * 100}%)`
+                : "transparent",
+          }}
+        />
+        <div
+          className={`max-w-4xl mx-auto px-8 py-12 transition-all duration-150 ease-out ${
+            transitionDir
+              ? `opacity-0 ${transitionDir === "next" ? "-translate-x-3" : "translate-x-3"}`
+              : "opacity-100 translate-x-0"
           }`}
         >
           {loading ? (
             <BibleChapterSkeleton
               bookName={selectedBook}
               chapterNumber={selectedChapter}
-              verseCount={24}
+              verseCount={
+                verseCountCache.get(`${selectedBook}:${selectedChapter}`) || 24
+              }
             />
           ) : currentChapter ? (
             <div className="space-y-8" ref={contentTopRef}>
@@ -1063,8 +1168,14 @@ const BibleReader: React.FC<BibleReaderProps> = ({
               </div>
 
               {/* Verses - Optimized Dark Mode Bible Format */}
-              <div className="bg-gradient-to-b from-neutral-900/40 to-neutral-950/60 rounded-2xl p-12 border border-neutral-800/30 shadow-2xl">
-                <div className="bible-verse-text text-justify text-[#E8E8E8] text-[19px] font-sans font-normal leading-[2.4] tracking-[0.03em]">
+              <div className="bg-gradient-to-b from-neutral-900/40 to-neutral-950/60 rounded-2xl p-12 border border-white/5 shadow-2xl">
+                <div
+                  className="bible-verse-text text-justify text-[#E8E8E8] font-sans font-normal tracking-[0.03em]"
+                  style={{
+                    fontSize: `${fontConfig.fontSize}px`,
+                    lineHeight: fontConfig.lineHeight,
+                  }}
+                >
                   {currentChapter.verses.map((verse) => {
                     const highlight = getHighlightForVerse(
                       selectedBook,
@@ -1074,12 +1185,29 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
                     // Start new paragraph every 4 verses for natural flow (simulating KJV paragraph breaks)
                     const verseNum = parseInt(verse.verse);
+                    const verseHasBookmark = isVerseBookmarked(
+                      selectedBook,
+                      selectedChapter,
+                      verseNum,
+                    );
+                    const verseHasNoteIndicator = verseHasNote(
+                      selectedBook,
+                      selectedChapter,
+                      verseNum,
+                    );
                     const isNewParagraph =
                       verseNum === 1 || (verseNum % 4 === 1 && verseNum > 1);
                     const isFirstVerseOfParagraph = isNewParagraph;
 
+                    // Stagger delay: 20ms per verse, capped at 600ms
+                    const staggerDelay = Math.min(verseNum * 20, 600);
+
                     return (
-                      <span key={verse.verse}>
+                      <span
+                        key={verse.verse}
+                        className="animate-verse-enter"
+                        style={{ animationDelay: `${staggerDelay}ms` }}
+                      >
                         {isNewParagraph && verseNum > 1 && (
                           <>
                             <br />
@@ -1113,6 +1241,30 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                             title="View cross-references"
                           >
                             {verse.verse}
+                            {verseHasBookmark && (
+                              <svg
+                                className="inline w-2.5 h-2.5 ml-0.5 text-[#D4AF37]"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                              </svg>
+                            )}
+                            {verseHasNoteIndicator && (
+                              <svg
+                                className="inline w-2.5 h-2.5 ml-0.5 text-[#D4AF37]/70"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                strokeWidth={2.5}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                            )}
                           </sup>
                           <span
                             className="hover:bg-neutral-800/30 transition-colors cursor-text px-0.5 rounded-sm"
@@ -1143,7 +1295,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                   disabled={
                     selectedBook === BIBLE_BOOKS[0] && selectedChapter === 1
                   }
-                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/50 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm active:scale-95"
+                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-white/10 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm active:scale-95"
                   title="Previous Chapter"
                 >
                   <svg
@@ -1162,7 +1314,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                 </button>
 
                 {/* Chapter Indicator */}
-                <div className="px-4 py-2 bg-neutral-900/90 border border-neutral-700/50 rounded-full backdrop-blur-sm">
+                <div className="px-4 py-2 bg-neutral-900/90 border border-white/10 rounded-full backdrop-blur-sm">
                   <span className="text-sm font-medium text-neutral-300">
                     {selectedBook} {selectedChapter}
                   </span>
@@ -1175,7 +1327,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
                     selectedBook === BIBLE_BOOKS[BIBLE_BOOKS.length - 1] &&
                     selectedChapter === (bookData?.chapters.length || 1)
                   }
-                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/50 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm active:scale-95"
+                  className="group p-4 bg-neutral-900/90 hover:bg-neutral-800 border border-white/10 rounded-full shadow-2xl transition-all disabled:opacity-30 disabled:cursor-not-allowed backdrop-blur-sm active:scale-95"
                   title="Next Chapter"
                 >
                   <svg
@@ -1212,19 +1364,16 @@ const BibleReader: React.FC<BibleReaderProps> = ({
               onRetry={() => {
                 setLoadError(null);
                 setLoading(true);
-                const bookFileName = selectedBook.replace(/ /g, "");
-                fetch(
-                  `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${bookFileName}.json`,
-                )
-                  .then((res) => {
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return res.json();
-                  })
+                getBook(selectedBook)
                   .then((data) => {
                     setBookData(data);
                     setLoadError(null);
                   })
-                  .catch((err) => setLoadError(err.message))
+                  .catch((err) =>
+                    setLoadError(
+                      err instanceof Error ? err.message : String(err),
+                    ),
+                  )
                   .finally(() => setLoading(false));
               }}
             />
@@ -1466,6 +1615,61 @@ const BibleReader: React.FC<BibleReaderProps> = ({
 
       {/* First-time highlight onboarding hint */}
       <HighlightOnboarding />
+
+      {/* Mobile book selector bottom sheet */}
+      {isMobile && (
+        <MobileBookSelector
+          isOpen={showBookSelector}
+          onClose={() => setShowBookSelector(false)}
+          selectedBook={selectedBook}
+          selectedChapter={selectedChapter}
+          recentBooks={preferences.recentBooks}
+          getLastChapter={getLastChapter}
+          onSelect={(book, chapter) => {
+            if (onNavigate) {
+              onNavigate(book, chapter);
+            } else {
+              setSelectedBookInternal(book);
+              setSelectedChapterInternal(chapter);
+            }
+            setShowBookSelector(false);
+          }}
+        />
+      )}
+
+      {/* Jump-to-reference dialog */}
+      <JumpToReferenceDialog
+        isOpen={showJumpTo}
+        onClose={() => setShowJumpTo(false)}
+        onNavigate={(book, chapter, verse) => {
+          if (onNavigate) {
+            onNavigate(book, chapter);
+          } else {
+            setSelectedBookInternal(book);
+            setSelectedChapterInternal(chapter);
+          }
+          if (verse) {
+            pendingNavigationRef.current = { book, chapter, verse };
+          }
+        }}
+      />
+
+      {/* Search dialog */}
+      <BibleSearchDialog
+        isOpen={showSearch}
+        onClose={() => setShowSearch(false)}
+        currentBook={selectedBook}
+        onNavigate={(book, chapter, verse) => {
+          if (onNavigate) {
+            onNavigate(book, chapter);
+          } else {
+            setSelectedBookInternal(book);
+            setSelectedChapterInternal(chapter);
+          }
+          // Set pending verse navigation after book/chapter loads
+          pendingNavigationRef.current = { book, chapter, verse };
+        }}
+      />
     </div>
   );
 };

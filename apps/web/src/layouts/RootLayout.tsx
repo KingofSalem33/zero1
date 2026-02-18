@@ -6,6 +6,7 @@ import MobileBottomNav from "../components/MobileBottomNav";
 import MobileHeader from "../components/MobileHeader";
 import { useAuth } from "../contexts/AuthContext";
 import { BibleHighlightsProvider } from "../contexts/BibleHighlightsContext";
+import { BibleBookmarksProvider } from "../contexts/BibleBookmarksContext";
 import { ToastProvider } from "../components/Toast";
 import { NarrativeMap } from "../components/golden-thread/NarrativeMap";
 import { useFocusTrap } from "../hooks/useFocusTrap";
@@ -361,134 +362,136 @@ export default function RootLayout() {
   return (
     <ToastProvider>
       <BibleHighlightsProvider>
-        <AppProvider
-          value={{
-            chats,
-            setChats,
-            currentChatId,
-            setCurrentChatId,
-            currentMessages,
-            setCurrentMessages,
-            handleTrace,
-            handleGoDeeper,
-            handleShowVisualization,
-            handleNewChat,
-            handleSelectChat,
-            bibleStudyMode,
-            setBibleStudyMode,
-            toolsUsed,
-            setToolsUsed,
-          }}
-        >
-          <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
-            <div className="flex">
-              {/* Left Sidebar */}
-              <RoadmapSidebarV2
-                project={null}
-                onOpenFileManager={() => {}}
-                onOpenMemoryManager={() => {}}
-                onAskAI={() => {}}
-                currentChatId={currentChatId || undefined}
-                chats={chats}
-                onNewChat={handleNewChat}
-                onSelectChat={handleSelectChat}
-                showBible={activeView === "reader"}
-                onToggleBible={() => handleNavigateView("reader")}
-                onEnterBibleStudy={() => handleNavigateView("chat")}
-                onOpenLibrary={() => handleNavigateView("library")}
-                isCollapsed={sidebarCollapsed}
-                onToggleCollapse={setSidebarCollapsed}
-                activeView={activeView}
-              />
+        <BibleBookmarksProvider>
+          <AppProvider
+            value={{
+              chats,
+              setChats,
+              currentChatId,
+              setCurrentChatId,
+              currentMessages,
+              setCurrentMessages,
+              handleTrace,
+              handleGoDeeper,
+              handleShowVisualization,
+              handleNewChat,
+              handleSelectChat,
+              bibleStudyMode,
+              setBibleStudyMode,
+              toolsUsed,
+              setToolsUsed,
+            }}
+          >
+            <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
+              <div className="flex">
+                {/* Left Sidebar */}
+                <RoadmapSidebarV2
+                  project={null}
+                  onOpenFileManager={() => {}}
+                  onOpenMemoryManager={() => {}}
+                  onAskAI={() => {}}
+                  currentChatId={currentChatId || undefined}
+                  chats={chats}
+                  onNewChat={handleNewChat}
+                  onSelectChat={handleSelectChat}
+                  showBible={activeView === "reader"}
+                  onToggleBible={() => handleNavigateView("reader")}
+                  onEnterBibleStudy={() => handleNavigateView("chat")}
+                  onOpenLibrary={() => handleNavigateView("library")}
+                  isCollapsed={sidebarCollapsed}
+                  onToggleCollapse={setSidebarCollapsed}
+                  activeView={activeView}
+                />
 
-              {/* Mobile Header */}
-              <MobileHeader
-                title={viewTitle}
-                onMenuToggle={() => setSidebarCollapsed(false)}
-              />
+                {/* Mobile Header */}
+                <MobileHeader
+                  title={viewTitle}
+                  onMenuToggle={() => setSidebarCollapsed(false)}
+                />
 
-              {/* Main Workspace */}
-              <main
-                className={`flex-1 h-screen overflow-hidden relative transition-all duration-300 pt-12 md:pt-0 pb-16 md:pb-0 ${
-                  sidebarCollapsed ? "md:ml-16" : "md:ml-64"
-                }`}
-              >
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center min-h-screen">
-                      <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
-                    </div>
-                  }
+                {/* Main Workspace */}
+                <main
+                  className={`flex-1 h-screen overflow-hidden relative transition-all duration-300 pt-12 md:pt-0 pb-16 md:pb-0 ${
+                    sidebarCollapsed ? "md:ml-16" : "md:ml-64"
+                  }`}
                 >
-                  <Outlet />
-                </Suspense>
-              </main>
+                  <Suspense
+                    fallback={
+                      <div className="flex items-center justify-center min-h-screen">
+                        <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
+                      </div>
+                    }
+                  >
+                    <Outlet />
+                  </Suspense>
+                </main>
 
-              {/* Mobile Bottom Navigation */}
-              <MobileBottomNav
-                activeView={activeView}
-                onNavigate={handleNavigateView}
-              />
-            </div>
+                {/* Mobile Bottom Navigation */}
+                <MobileBottomNav
+                  activeView={activeView}
+                  onNavigate={handleNavigateView}
+                />
+              </div>
 
-            {/* Onboarding - only on reader view */}
-            {activeView === "reader" && <OnboardingOverlay />}
+              {/* Onboarding - only on reader view */}
+              {activeView === "reader" && <OnboardingOverlay />}
 
-            {/* Trace Visualization Modal */}
-            {showVisualization && (
-              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                <div
-                  ref={visualizationRef}
-                  className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="visualization-title"
-                >
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-neutral-950/40 backdrop-blur-sm">
-                    <span
-                      id="visualization-title"
-                      className="text-[11px] font-normal text-neutral-500"
-                    >
-                      {visualBundle?.nodes?.length
-                        ? `${visualBundle.nodes.length} verses`
-                        : ""}
-                    </span>
-                    <button
-                      onClick={() => setShowVisualization(false)}
-                      className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 text-neutral-500 hover:text-neutral-300 transition-all duration-150 flex items-center justify-center"
-                      title="Close"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+              {/* Trace Visualization Modal */}
+              {showVisualization && (
+                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                  <div
+                    ref={visualizationRef}
+                    className="w-[90vw] h-[90vh] bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="visualization-title"
+                  >
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-neutral-950/40 backdrop-blur-sm">
+                      <span
+                        id="visualization-title"
+                        className="text-[11px] font-normal text-neutral-500"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden relative">
-                    <NarrativeMap
-                      bundle={visualBundle}
-                      highlightedRefs={[]}
-                      onTrace={handleTrace}
-                      onGoDeeper={handleGoDeeper}
-                      userId="anonymous"
-                      tracedText={tracedText}
-                      preloadAnchorRef={traceAnchorRef}
-                    />
+                        {visualBundle?.nodes?.length
+                          ? `${visualBundle.nodes.length} verses`
+                          : ""}
+                      </span>
+                      <button
+                        onClick={() => setShowVisualization(false)}
+                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 text-neutral-500 hover:text-neutral-300 transition-all duration-150 flex items-center justify-center"
+                        title="Close"
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden relative">
+                      <NarrativeMap
+                        bundle={visualBundle}
+                        highlightedRefs={[]}
+                        onTrace={handleTrace}
+                        onGoDeeper={handleGoDeeper}
+                        userId="anonymous"
+                        tracedText={tracedText}
+                        preloadAnchorRef={traceAnchorRef}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </AppProvider>
+              )}
+            </div>
+          </AppProvider>
+        </BibleBookmarksProvider>
       </BibleHighlightsProvider>
     </ToastProvider>
   );

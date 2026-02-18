@@ -6,7 +6,7 @@ import { TooltipShell } from "./tooltip/TooltipShell";
 import { LoadingDots } from "./tooltip/LoadingDots";
 import { RootTranslationPanel } from "./tooltip/RootTranslationPanel";
 import { HIGHLIGHT_COLORS } from "../contexts/BibleHighlightsContext";
-import { hapticTap } from "../utils/haptics";
+import { hapticTap, hapticSuccess, hapticMedium } from "../utils/haptics";
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string, anchorRef?: string) => void;
@@ -269,6 +269,7 @@ export function TextHighlightTooltip({
 
   // Highlight state
   const [highlightSuccess, setHighlightSuccess] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
   const [detectedVerseContext, setDetectedVerseContext] = useState<
     VerseContext | undefined
   >(undefined);
@@ -299,6 +300,7 @@ export function TextHighlightTooltip({
       setVerseReference(null);
       setIsLoadingDescription(false);
       setHighlightSuccess(false);
+      setCopySuccess(false);
       setViewMode("synopsis");
       setDetectedVerseContext(undefined);
     }, 150);
@@ -562,6 +564,50 @@ export function TextHighlightTooltip({
     setViewMode("synopsis");
   };
 
+  const formatVerseForCopy = useCallback(() => {
+    const ref =
+      verseReference ||
+      (detectedVerseContext
+        ? `${detectedVerseContext.book} ${detectedVerseContext.chapter}:${detectedVerseContext.verses.join("-")}`
+        : null);
+    return ref ? `"${selectedText}" \u2014 ${ref} (KJV)` : selectedText;
+  }, [selectedText, verseReference, detectedVerseContext]);
+
+  const handleCopy = useCallback(async () => {
+    const text = formatVerseForCopy();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      hapticSuccess();
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopySuccess(true);
+      hapticSuccess();
+      setTimeout(() => setCopySuccess(false), 2000);
+    }
+  }, [formatVerseForCopy]);
+
+  const handleShare = useCallback(async () => {
+    const text = formatVerseForCopy();
+    if (navigator.share) {
+      hapticMedium();
+      try {
+        await navigator.share({ text });
+      } catch {
+        // User cancelled share
+      }
+    }
+  }, [formatVerseForCopy]);
+
   const handleVerseClick = (reference: string, event: React.MouseEvent) => {
     event.preventDefault();
     const rect = (event.target as HTMLElement).getBoundingClientRect();
@@ -634,6 +680,67 @@ export function TextHighlightTooltip({
                           />
                         </svg>
                       </button>
+
+                      {/* Copy button */}
+                      <button
+                        onClick={handleCopy}
+                        className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5"
+                        title="Copy verse with reference"
+                      >
+                        {copySuccess ? (
+                          <svg
+                            className="w-3.5 h-3.5 text-green-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            />
+                          </svg>
+                        )}
+                        <span>{copySuccess ? "Copied" : "Copy"}</span>
+                      </button>
+
+                      {/* Share button (mobile only, when Web Share API available) */}
+                      {typeof navigator !== "undefined" && navigator.share && (
+                        <button
+                          onClick={handleShare}
+                          className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 md:hidden"
+                          title="Share verse"
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                            />
+                          </svg>
+                        </button>
+                      )}
 
                       {enableHighlight && (
                         <button

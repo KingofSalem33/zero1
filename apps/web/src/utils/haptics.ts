@@ -27,3 +27,18 @@ export function hapticSuccess(): void {
 export function hapticDelete(): void {
   vibrate([15, 30, 15]);
 }
+
+/** Navigation — chapter change, swipe nav */
+export function hapticNav(): void {
+  vibrate(15);
+}
+
+/** Bookmark toggle — slightly longer than tap for deliberate feel */
+export function hapticBookmark(): void {
+  vibrate([8, 20, 8]);
+}
+
+/** Error / validation fail — short double pulse */
+export function hapticError(): void {
+  vibrate([30, 50, 30]);
+}

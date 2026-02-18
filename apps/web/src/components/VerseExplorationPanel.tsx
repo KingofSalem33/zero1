@@ -9,7 +9,7 @@ import { dispatchVerseNavigation } from "../utils/verseNavigation";
 import { useRootTranslation } from "../hooks/useRootTranslation";
 import { RootTranslationPanel } from "./tooltip/RootTranslationPanel";
 import { LoadingDots } from "./tooltip/LoadingDots";
-import { hapticTap } from "../utils/haptics";
+import { hapticTap, hapticBookmark, hapticSuccess } from "../utils/haptics";
 import {
   fetchCrossReferences as cachedFetchCrossRefs,
   fetchVerseText,
@@ -22,6 +22,9 @@ import {
   type StrongsWord,
   type StrongsLexiconEntry,
 } from "../utils/strongsConcordance";
+import { useBibleBookmarks } from "../contexts/BibleBookmarksContext";
+import { parseVerseReference } from "../utils/bibleReference";
+import { useBibleNotes } from "../hooks/useBibleNotes";
 
 // --- Reference type classification (reused from VerseReferencesModal) ---
 
@@ -147,6 +150,53 @@ export function VerseExplorationPanel({
     { reference: initialReference },
   ]);
   const currentRef = breadcrumbs[breadcrumbs.length - 1].reference;
+
+  // Bookmarks
+  const { addBookmark, removeBookmark, isBookmarked, getBookmark } =
+    useBibleBookmarks();
+  const parsedRef = useMemo(
+    () => parseVerseReference(currentRef),
+    [currentRef],
+  );
+  const bookmarked = parsedRef
+    ? isBookmarked(parsedRef.book, parsedRef.chapter, parsedRef.verse)
+    : false;
+
+  const toggleBookmark = useCallback(() => {
+    if (!parsedRef) return;
+    hapticBookmark();
+    if (bookmarked) {
+      const existing = getBookmark(
+        parsedRef.book,
+        parsedRef.chapter,
+        parsedRef.verse,
+      );
+      if (existing) removeBookmark(existing.id);
+    } else {
+      addBookmark(parsedRef.book, parsedRef.chapter, parsedRef.verse);
+    }
+  }, [parsedRef, bookmarked, addBookmark, removeBookmark, getBookmark]);
+
+  // Notes
+  const { getNote, setNote } = useBibleNotes();
+  const [showNoteEditor, setShowNoteEditor] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const currentNote = parsedRef
+    ? getNote(parsedRef.book, parsedRef.chapter, parsedRef.verse)
+    : undefined;
+
+  // Sync note text when reference changes
+  useEffect(() => {
+    setNoteText(currentNote?.text || "");
+    setShowNoteEditor(false);
+  }, [currentRef]);
+
+  const saveNote = useCallback(() => {
+    if (!parsedRef) return;
+    setNote(parsedRef.book, parsedRef.chapter, parsedRef.verse, noteText);
+    hapticSuccess();
+    setShowNoteEditor(false);
+  }, [parsedRef, noteText, setNote]);
 
   // Verse text state
   const [verseText, setVerseText] = useState("");
@@ -678,6 +728,60 @@ export function VerseExplorationPanel({
                         </svg>
                         <span>View</span>
                       </button>
+                      {/* Bookmark toggle */}
+                      <button
+                        onClick={toggleBookmark}
+                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
+                          bookmarked
+                            ? "bg-[#D4AF37]/20 text-[#D4AF37]"
+                            : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
+                        }`}
+                        title={
+                          bookmarked ? "Remove bookmark" : "Bookmark this verse"
+                        }
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill={bookmarked ? "currentColor" : "none"}
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                          />
+                        </svg>
+                      </button>
+                      {/* Note toggle */}
+                      <button
+                        onClick={() => {
+                          setShowNoteEditor((s) => !s);
+                          if (!showNoteEditor)
+                            setNoteText(currentNote?.text || "");
+                        }}
+                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5 ${
+                          currentNote
+                            ? "bg-[#D4AF37]/20 text-[#D4AF37]"
+                            : "bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-neutral-200"
+                        }`}
+                        title={currentNote ? "Edit note" : "Add note"}
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                      </button>
                       {onTrace && (
                         <button
                           onClick={() => {
@@ -749,6 +853,34 @@ export function VerseExplorationPanel({
                         <span>ROOT</span>
                       </button>
                     </div>
+
+                    {/* Note editor */}
+                    {showNoteEditor && (
+                      <div className="mt-3 rounded-md border border-white/10 bg-white/5 p-2">
+                        <textarea
+                          value={noteText}
+                          onChange={(e) => setNoteText(e.target.value)}
+                          placeholder="Write a note about this verse..."
+                          className="w-full bg-transparent text-sm text-neutral-200 placeholder-neutral-500 resize-none focus:outline-none"
+                          rows={3}
+                          autoFocus
+                        />
+                        <div className="flex items-center justify-end gap-2 mt-1.5">
+                          <button
+                            onClick={() => setShowNoteEditor(false)}
+                            className="px-2 py-1 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={saveNote}
+                            className="px-2.5 py-1 text-[11px] font-medium bg-[#D4AF37]/20 text-[#D4AF37] hover:bg-[#D4AF37]/30 rounded transition-colors"
+                          >
+                            {currentNote ? "Update" : "Save"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

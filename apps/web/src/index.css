@@ -664,6 +664,16 @@ pre code {
   border-radius: 4px;
 }
 
+/* Subtle verse entrance animation — fade + slight rise */
+@keyframes verse-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-verse-enter {
+  animation: verse-enter 0.3s ease-out both;
+}
+
 /* Custom text selection for Bible verse text — gold instead of default blue */
 .bible-verse-text ::selection {
   background-color: rgba(212, 175, 55, 0.28);

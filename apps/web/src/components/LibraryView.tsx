@@ -16,6 +16,8 @@ import { useToast } from "./Toast";
 import { ErrorState } from "./ErrorState";
 import { TabBar } from "./TabBar";
 import { HighlightCard } from "./HighlightCard";
+import { useBibleBookmarks } from "../contexts/BibleBookmarksContext";
+import { useBibleNotes } from "../hooks/useBibleNotes";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -68,7 +70,7 @@ interface LibraryViewProps {
   onExploreBible?: () => void;
 }
 
-type LibraryTab = "connections" | "maps" | "highlights";
+type LibraryTab = "connections" | "maps" | "highlights" | "bookmarks" | "notes";
 type SemanticConnectionType = Parameters<
   typeof SemanticConnectionModal
 >[0]["connectionType"];
@@ -155,10 +157,18 @@ function EmptyState({
   type,
   onAction,
 }: {
-  type: "connections" | "maps" | "highlights";
+  type: LibraryTab;
   onAction?: () => void;
 }) {
-  const content = {
+  const content: Record<
+    LibraryTab,
+    {
+      title: string;
+      description: string;
+      actionLabel: string;
+      illustration: React.ReactNode;
+    }
+  > = {
     connections: {
       title: "Your saved connections will appear here",
       description:
@@ -680,6 +690,166 @@ function EmptyState({
         </svg>
       ),
     },
+    bookmarks: {
+      title: "No bookmarks yet",
+      description:
+        "Tap any verse number while reading, then tap the bookmark icon to save it. Your marked verses appear here for quick access.",
+      actionLabel: "Read Bible",
+      illustration: (
+        <svg
+          viewBox="0 0 200 160"
+          fill="none"
+          className="w-48 h-40"
+          aria-hidden="true"
+        >
+          <defs>
+            <filter id="bk-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          {/* Bookmark ribbon */}
+          <g filter="url(#bk-glow)">
+            <path
+              d="M80 35 L80 115 L100 100 L120 115 L120 35 Z"
+              fill="#1a1a1a"
+              stroke="#C5B358"
+              strokeWidth="1.5"
+            />
+            <rect
+              x="88"
+              y="50"
+              width="24"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.5"
+            />
+            <rect
+              x="90"
+              y="58"
+              width="20"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.35"
+            />
+            <rect
+              x="88"
+              y="66"
+              width="24"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.25"
+            />
+            <rect
+              x="92"
+              y="74"
+              width="16"
+              height="3"
+              rx="1"
+              fill="#C5B358"
+              opacity="0.3"
+            />
+          </g>
+          <circle cx="70" cy="125" r="1.5" fill="#C5B358" opacity="0.2" />
+          <circle cx="130" cy="125" r="1.5" fill="#525252" opacity="0.2" />
+        </svg>
+      ),
+    },
+    notes: {
+      title: "No notes yet",
+      description:
+        "Tap a verse number and use the pencil icon to add personal notes. Your reflections and study notes are saved here.",
+      actionLabel: "Read Bible",
+      illustration: (
+        <svg
+          viewBox="0 0 200 160"
+          fill="none"
+          className="w-48 h-40"
+          aria-hidden="true"
+        >
+          <defs>
+            <filter id="note-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          {/* Notepad */}
+          <g filter="url(#note-glow)">
+            <rect
+              x="60"
+              y="30"
+              width="80"
+              height="100"
+              rx="4"
+              fill="#1a1a1a"
+              stroke="#3f3f3f"
+              strokeWidth="1"
+            />
+            <rect
+              x="70"
+              y="45"
+              width="60"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.5"
+            />
+            <rect
+              x="70"
+              y="55"
+              width="50"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.35"
+            />
+            <rect
+              x="70"
+              y="65"
+              width="55"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.25"
+            />
+            <rect
+              x="70"
+              y="75"
+              width="45"
+              height="3"
+              rx="1"
+              fill="#525252"
+              opacity="0.2"
+            />
+          </g>
+          {/* Pencil */}
+          <g transform="translate(135, 55) rotate(30)" opacity="0.7">
+            <rect x="0" y="0" width="5" height="40" rx="1" fill="#C5B358" />
+            <polygon points="0,40 5,40 2.5,48" fill="#C5B358" opacity="0.8" />
+            <rect
+              x="0.5"
+              y="0"
+              width="4"
+              height="4"
+              rx="0.5"
+              fill="#FDE68A"
+              opacity="0.6"
+            />
+          </g>
+          <circle cx="55" cy="140" r="1.5" fill="#C5B358" opacity="0.2" />
+          <circle cx="145" cy="140" r="1.5" fill="#525252" opacity="0.2" />
+        </svg>
+      ),
+    },
   };
 
   const { title, description, actionLabel, illustration } = content[type];
@@ -696,7 +866,7 @@ function EmptyState({
             background:
               type === "connections"
                 ? "radial-gradient(circle, #D97706 0%, transparent 70%)"
-                : type === "maps"
+                : type === "maps" || type === "bookmarks" || type === "notes"
                   ? "radial-gradient(circle, #C5B358 0%, transparent 70%)"
                   : "radial-gradient(circle, #FBBF24 0%, transparent 70%)",
           }}
@@ -746,6 +916,9 @@ export function LibraryView({
 }: LibraryViewProps) {
   const { highlights, removeHighlight, updateHighlight } =
     useBibleHighlightsContext();
+  const { bookmarks, removeBookmark } = useBibleBookmarks();
+  const { allNotes, setNote } = useBibleNotes();
+  const notes = allNotes();
   const { toast } = useToast();
   const pendingDeleteTimers = useRef<
     Map<string, ReturnType<typeof setTimeout>>
@@ -1055,10 +1228,12 @@ export function LibraryView({
     return activeConnectedVersesPreview.map((verse) => verse.id);
   }, [activeConnection, activeConnectedVersesPreview]);
 
-  const emptyStateCount = {
+  const emptyStateCount: Record<LibraryTab, number> = {
     connections: connections.length,
     maps: maps.length,
     highlights: highlights.length,
+    bookmarks: bookmarks.length,
+    notes: notes.length,
   };
 
   return (
@@ -1100,6 +1275,8 @@ export function LibraryView({
               },
               { key: "maps", label: `Maps (${maps.length})` },
               { key: "highlights", label: `Highlights (${highlights.length})` },
+              { key: "bookmarks", label: `Bookmarks (${bookmarks.length})` },
+              { key: "notes", label: `Notes (${notes.length})` },
             ]}
             activeTab={activeTab}
             onTabChange={(key) => setActiveTab(key as LibraryTab)}
@@ -1455,6 +1632,141 @@ export function LibraryView({
               ))}
             </div>
           </>
+        )}
+
+        {/* Bookmarks tab */}
+        {activeTab === "bookmarks" && bookmarks.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {bookmarks.map((bookmark) => {
+              const ref = bookmark.verse
+                ? `${bookmark.book} ${bookmark.chapter}:${bookmark.verse}`
+                : `${bookmark.book} ${bookmark.chapter}`;
+              return (
+                <div
+                  key={bookmark.id}
+                  className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden transition-all duration-200 hover:shadow-2xl cursor-pointer p-4"
+                  onClick={() => {
+                    if (bookmark.verse) {
+                      onNavigateToVerse?.(
+                        `${bookmark.book} ${bookmark.chapter}:${bookmark.verse}`,
+                      );
+                    } else {
+                      onNavigateToVerse?.();
+                    }
+                  }}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeBookmark(bookmark.id);
+                    }}
+                    className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-red-300 hover:bg-white/10 transition-all duration-150 z-10 opacity-0 group-hover:opacity-100"
+                    aria-label="Remove bookmark"
+                    type="button"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg
+                      className="w-4 h-4 text-[#D4AF37]"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                    <span className="font-bold text-[#D4AF37] text-sm">
+                      {ref}
+                    </span>
+                  </div>
+                  {bookmark.note && (
+                    <p className="text-sm text-neutral-300 line-clamp-2">
+                      {bookmark.note}
+                    </p>
+                  )}
+                  <div className="text-xs text-neutral-500 mt-2">
+                    {new Date(bookmark.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Notes tab */}
+        {activeTab === "notes" && notes.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {notes.map((note) => {
+              const [book, chapter, verse] = note.key.split(":");
+              const ref = `${book} ${chapter}:${verse}`;
+              return (
+                <div
+                  key={note.key}
+                  className="group relative bg-white/[0.08] backdrop-blur-2xl border border-white/5 rounded-lg shadow-2xl overflow-hidden transition-all duration-200 hover:shadow-2xl cursor-pointer p-4"
+                  onClick={() => onNavigateToVerse?.(ref)}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNote(book, parseInt(chapter), parseInt(verse), "");
+                    }}
+                    className="absolute top-2 right-2 p-1 rounded-md text-neutral-500 hover:text-red-300 hover:bg-white/10 transition-all duration-150 z-10 opacity-0 group-hover:opacity-100"
+                    aria-label="Delete note"
+                    type="button"
+                  >
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg
+                      className="w-4 h-4 text-[#D4AF37]/70"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                    <span className="font-bold text-[#D4AF37] text-sm">
+                      {ref}
+                    </span>
+                  </div>
+                  <p className="text-sm text-neutral-300 line-clamp-3">
+                    {note.text}
+                  </p>
+                  <div className="text-xs text-neutral-500 mt-2">
+                    {new Date(note.updatedAt).toLocaleDateString()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

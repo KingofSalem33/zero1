@@ -9,6 +9,8 @@ interface SwipeConfig {
   onSwipeLeft?: () => void;
   /** Callback when user swipes right (previous) */
   onSwipeRight?: () => void;
+  /** Called during swipe with progress (-1 to 1, negative = left, positive = right) */
+  onSwipeProgress?: (progress: number) => void;
   /** Whether swipe is enabled. Default: true */
   enabled?: boolean;
 }
@@ -25,6 +27,7 @@ export function useSwipeNavigation<T extends HTMLElement = HTMLDivElement>(
     maxTime = 300,
     onSwipeLeft,
     onSwipeRight,
+    onSwipeProgress,
     enabled = true,
   } = config;
 
@@ -47,6 +50,21 @@ export function useSwipeNavigation<T extends HTMLElement = HTMLDivElement>(
     [enabled],
   );
 
+  const handleTouchMove = useCallback(
+    (e: globalThis.TouchEvent) => {
+      if (!enabled || !touchStart.current || !onSwipeProgress) return;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - touchStart.current.x;
+      const deltaY = touch.clientY - touchStart.current.y;
+      // Only report horizontal movement
+      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        const progress = Math.max(-1, Math.min(1, deltaX / threshold));
+        onSwipeProgress(progress);
+      }
+    },
+    [enabled, threshold, onSwipeProgress],
+  );
+
   const handleTouchEnd = useCallback(
     (e: globalThis.TouchEvent) => {
       if (!enabled || !touchStart.current) return;
@@ -58,6 +76,7 @@ export function useSwipeNavigation<T extends HTMLElement = HTMLDivElement>(
 
       // Reset
       touchStart.current = null;
+      onSwipeProgress?.(0);
 
       // Don't swipe if user has an active text selection
       const selection = window.getSelection();
@@ -78,7 +97,7 @@ export function useSwipeNavigation<T extends HTMLElement = HTMLDivElement>(
         onSwipeLeft();
       }
     },
-    [enabled, threshold, maxTime, onSwipeLeft, onSwipeRight],
+    [enabled, threshold, maxTime, onSwipeLeft, onSwipeRight, onSwipeProgress],
   );
 
   useEffect(() => {
@@ -86,13 +105,15 @@ export function useSwipeNavigation<T extends HTMLElement = HTMLDivElement>(
     if (!element || !enabled) return;
 
     element.addEventListener("touchstart", handleTouchStart, { passive: true });
+    element.addEventListener("touchmove", handleTouchMove, { passive: true });
     element.addEventListener("touchend", handleTouchEnd, { passive: true });
 
     return () => {
       element.removeEventListener("touchstart", handleTouchStart);
+      element.removeEventListener("touchmove", handleTouchMove);
       element.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [enabled, handleTouchStart, handleTouchEnd]);
+  }, [enabled, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   return containerRef;
 }

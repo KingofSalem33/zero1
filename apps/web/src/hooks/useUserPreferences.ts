@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 export type VoiceOption = "onyx" | "nova";
+export type ReaderFontSize = "compact" | "default" | "large";
 
 export interface UserPreferences {
   voice: VoiceOption;
@@ -8,6 +9,8 @@ export interface UserPreferences {
   hasSeenOnboarding: boolean;
   hasSeenMapOnboarding: boolean;
   hasSeenHighlightOnboarding: boolean;
+  readerFontSize: ReaderFontSize;
+  recentBooks: string[];
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = {
@@ -16,6 +19,17 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   hasSeenOnboarding: false,
   hasSeenMapOnboarding: false,
   hasSeenHighlightOnboarding: false,
+  readerFontSize: "default",
+  recentBooks: [],
+};
+
+export const READER_FONT_SIZES: Record<
+  ReaderFontSize,
+  { fontSize: number; lineHeight: number }
+> = {
+  compact: { fontSize: 17, lineHeight: 2.2 },
+  default: { fontSize: 19, lineHeight: 2.4 },
+  large: { fontSize: 22, lineHeight: 2.6 },
 };
 
 const STORAGE_KEY = "bible-app-user-preferences";
@@ -74,6 +88,17 @@ export function useUserPreferences() {
     setPreferences((prev) => ({ ...prev, hasSeenHighlightOnboarding: true }));
   };
 
+  const setReaderFontSize = (size: ReaderFontSize) => {
+    setPreferences((prev) => ({ ...prev, readerFontSize: size }));
+  };
+
+  const addRecentBook = (book: string) => {
+    setPreferences((prev) => {
+      const filtered = prev.recentBooks.filter((b) => b !== book);
+      return { ...prev, recentBooks: [book, ...filtered].slice(0, 5) };
+    });
+  };
+
   return {
     preferences,
     updateVoice,
@@ -81,6 +106,8 @@ export function useUserPreferences() {
     markOnboardingComplete,
     markMapOnboardingComplete,
     markHighlightOnboardingComplete,
+    setReaderFontSize,
+    addRecentBook,
     setPreferences,
   };
 }
