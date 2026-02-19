@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 
 interface Chat {
   id: string;
@@ -41,9 +40,6 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
   onToggleCollapse,
   activeView = "reader",
 }) => {
-  const { highlights } = useBibleHighlightsContext();
-  const highlightCount = highlights.length;
-
   const [showRecentChats, setShowRecentChats] = useState(() => {
     const saved = localStorage.getItem("showRecentChats");
     return saved !== "false"; // Default to true
@@ -178,11 +174,6 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               />
             </svg>
             <span className="text-sm font-medium">Library</span>
-            {highlightCount > 0 && activeView !== "library" && (
-              <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[#D4AF37]/20 text-[#D4AF37] text-[10px] font-bold leading-none px-1">
-                {highlightCount > 99 ? "99+" : highlightCount}
-              </span>
-            )}
           </button>
         </div>
 

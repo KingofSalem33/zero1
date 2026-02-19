@@ -1757,22 +1757,13 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
     }
     setRandomTopicLoading(kind);
     try {
-      if (onGoDeeper) {
-        onGoDeeper({
-          displayText,
-          prompt: promptText,
-          mode: "go_deeper_short",
-        });
-      } else {
-        await handleSendMessage({ displayText, promptText });
-      }
+      // Always send directly — pericopes are only shown in the empty chat state,
+      // so we're already on the chat page and should handle the message locally.
+      await handleSendMessage({ displayText, promptText });
     } catch (error) {
       console.error("[UnifiedWorkspace] Random pericope failed:", error);
-      setRandomTopicLoading(null);
     } finally {
-      if (!onGoDeeper) {
-        setRandomTopicLoading(null);
-      }
+      setRandomTopicLoading(null);
     }
   };
 

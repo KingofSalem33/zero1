@@ -93,9 +93,17 @@ export class InMemoryVerseRepository implements IVerseRepository {
 
   private normalizeBookName(bookName: string): string {
     const lower = bookName.toLowerCase().trim();
+    // Direct abbreviation match (e.g., "mt", "gn")
     if (ABBREV_TO_INDEX[lower] !== undefined) return lower;
+    // Exact full-name match (e.g., "matthew", "genesis")
     for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
       if (fullName.toLowerCase() === lower) return abbrev;
+    }
+    // Prefix match on full names (e.g., "matt" -> "Matthew" -> "mt")
+    if (lower.length >= 3) {
+      for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+        if (fullName.toLowerCase().startsWith(lower)) return abbrev;
+      }
     }
     return lower;
   }

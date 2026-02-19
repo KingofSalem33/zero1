@@ -70,6 +70,10 @@ interface BibleReaderProps {
   onOpenMap?: (bundle: VisualContextBundle) => void;
   pendingVerseReference?: string | null;
   onVerseNavigationComplete?: () => void;
+  /** URL the user navigated from (e.g. chat) — shows a back button */
+  cameFrom?: string | null;
+  /** Called when user clicks the back button */
+  onGoBack?: () => void;
 }
 
 const BibleReader: React.FC<BibleReaderProps> = ({
@@ -81,6 +85,8 @@ const BibleReader: React.FC<BibleReaderProps> = ({
   onOpenMap,
   pendingVerseReference,
   onVerseNavigationComplete,
+  cameFrom,
+  onGoBack,
 }) => {
   // Use URL-controlled book/chapter if provided, otherwise fall back to localStorage
   const [selectedBook, setSelectedBookInternal] = useState<string>(() => {
@@ -384,6 +390,47 @@ const BibleReader: React.FC<BibleReaderProps> = ({
     selectedChapter,
     clearBibleScroll,
   ]);
+
+  // Highlight the departure verse when returning to the reader after using "Back"
+  useEffect(() => {
+    if (pendingVerseReference) return; // skip if navigating to a specific verse
+    const raw = sessionStorage.getItem("readerDeparture");
+    if (!raw) return;
+    try {
+      const departure = JSON.parse(raw) as {
+        book: string;
+        chapter: number;
+        verse: string;
+      };
+      if (
+        departure.book !== selectedBook ||
+        departure.chapter !== selectedChapter
+      )
+        return;
+      if (!currentChapter) return;
+      // Clear so it only fires once
+      sessionStorage.removeItem("readerDeparture");
+      const verseNum = departure.verse;
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const verseEl = document.querySelector(
+            `[data-verse="${verseNum}"]`,
+          ) as HTMLElement | null;
+          if (verseEl) {
+            verseEl.scrollIntoView({ behavior: "smooth", block: "center" });
+            verseEl.classList.add("animate-verse-pulse");
+            verseEl.addEventListener(
+              "animationend",
+              () => verseEl.classList.remove("animate-verse-pulse"),
+              { once: true },
+            );
+          }
+        });
+      });
+    } catch {
+      sessionStorage.removeItem("readerDeparture");
+    }
+  }, [currentChapter, selectedBook, selectedChapter, pendingVerseReference]);
 
   // Reset filter and focus input when dropdown opens; scroll to selected book
   useEffect(() => {
@@ -694,6 +741,30 @@ const BibleReader: React.FC<BibleReaderProps> = ({
       <div className="flex-shrink-0 border-b border-white/10 bg-neutral-900/50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex items-center justify-between gap-2">
+            {/* Back button — shown when navigated from another view */}
+            {cameFrom && onGoBack && (
+              <button
+                onClick={onGoBack}
+                className="flex items-center gap-1 px-2 py-1.5 -ml-1 mr-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800/60 transition-colors"
+                title="Go back"
+                aria-label="Go back to previous page"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                  />
+                </svg>
+                <span className="text-xs hidden sm:inline">Back</span>
+              </button>
+            )}
             {/* Book Selector */}
             <div
               className="relative"

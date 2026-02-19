@@ -160,7 +160,18 @@ export function resolveBookName(rawBook: string): string | null {
     .replace(/^i\s+/, "1 ")
     .replace(/^ii\s+/, "2 ")
     .replace(/^iii\s+/, "3 ");
-  return BIBLE_BOOKS.find((book) => book.toLowerCase() === romanKey) || null;
+  const romanMatch = BIBLE_BOOKS.find(
+    (book) => book.toLowerCase() === romanKey,
+  );
+  if (romanMatch) return romanMatch;
+  // Prefix match for abbreviations: "Matt" → "Matthew", "Rev" → "Revelation"
+  if (key.length >= 3) {
+    const prefixMatch = BIBLE_BOOKS.find((book) =>
+      book.toLowerCase().startsWith(key),
+    );
+    if (prefixMatch) return prefixMatch;
+  }
+  return null;
 }
 
 /** Resolve a URL-encoded book name (hyphens instead of spaces) */

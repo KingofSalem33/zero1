@@ -1,4 +1,4 @@
-import React, { lazy } from "react";
+import React, { lazy, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAppContext } from "../contexts/AppContext";
 import { resolveBookFromUrl, bookToUrlParam } from "../utils/bibleReference";
@@ -23,28 +23,64 @@ export default function ReaderRoute() {
     ? `${book} ${chapter}:${verseFromHash}`
     : null;
 
-  const handleNavigate = (newBook: string, newChapter: number) => {
-    navigate(`/read/${bookToUrlParam(newBook)}/${newChapter}`, {
-      replace: false,
-    });
-  };
+  // Extract "came from" location passed via router state (from verse navigation)
+  const cameFrom: string | null =
+    (location.state as { cameFrom?: string })?.cameFrom ?? null;
 
-  const handleNavigateToChat = (prompt: GoDeeperPayload | string) => {
-    if (typeof prompt === "string") {
-      navigate("/chat", {
-        state: { prompt: { type: "text", content: prompt } },
+  const handleNavigate = useCallback(
+    (newBook: string, newChapter: number) => {
+      navigate(`/read/${bookToUrlParam(newBook)}/${newChapter}`, {
+        replace: false,
       });
-    } else {
-      navigate("/chat", { state: { prompt } });
-    }
-  };
+    },
+    [navigate],
+  );
 
-  // Clear hash after verse navigation completes
-  const handleVerseNavigationComplete = () => {
-    if (location.hash) {
-      navigate(`/read/${bookToUrlParam(book)}/${chapter}`, { replace: true });
+  const handleNavigateToChat = useCallback(
+    (prompt: GoDeeperPayload | string) => {
+      if (typeof prompt === "string") {
+        navigate("/chat", {
+          state: { prompt: { type: "text", content: prompt } },
+        });
+      } else {
+        navigate("/chat", { state: { prompt } });
+      }
+    },
+    [navigate],
+  );
+
+  // Clear hash after verse navigation completes — preserve cameFrom in state
+  const handleVerseNavigationComplete = useCallback(() => {
+    const current = window.location.pathname;
+    navigate(current, {
+      replace: true,
+      state: cameFrom ? { cameFrom } : undefined,
+    });
+  }, [navigate, cameFrom]);
+
+  // Go back to the page the user came from
+  const handleGoBack = useCallback(() => {
+    if (cameFrom) {
+      // Find the first verse visible in the viewport to highlight on return
+      const verseElements = document.querySelectorAll("[data-verse]");
+      let firstVisibleVerse: string | null = null;
+      for (const el of verseElements) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top >= 0 && rect.top < window.innerHeight * 0.6) {
+          firstVisibleVerse = el.getAttribute("data-verse");
+          break;
+        }
+      }
+      // Save departure position so returning later can highlight it
+      if (firstVisibleVerse) {
+        sessionStorage.setItem(
+          "readerDeparture",
+          JSON.stringify({ book, chapter, verse: firstVisibleVerse }),
+        );
+      }
+      navigate(cameFrom);
     }
-  };
+  }, [cameFrom, navigate, book, chapter]);
 
   return (
     <BibleReader
@@ -56,6 +92,8 @@ export default function ReaderRoute() {
       onOpenMap={handleShowVisualization}
       pendingVerseReference={pendingVerse}
       onVerseNavigationComplete={handleVerseNavigationComplete}
+      cameFrom={cameFrom}
+      onGoBack={handleGoBack}
     />
   );
 }

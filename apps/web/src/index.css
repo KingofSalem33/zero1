@@ -652,15 +652,16 @@ pre code {
   }
 }
 
-/* Gold pulse for verse navigation - fades a gold background in then out */
+/* Gold pulse for verse navigation - prominent gold glow that fades over 3s */
 @keyframes verse-pulse {
-  0% { background-color: transparent; }
-  20% { background-color: rgba(212, 175, 55, 0.18); }
-  100% { background-color: transparent; }
+  0% { background-color: transparent; box-shadow: none; }
+  8% { background-color: rgba(212, 175, 55, 0.30); box-shadow: 0 0 12px rgba(212, 175, 55, 0.15); }
+  40% { background-color: rgba(212, 175, 55, 0.18); box-shadow: 0 0 6px rgba(212, 175, 55, 0.08); }
+  100% { background-color: transparent; box-shadow: none; }
 }
 
 .animate-verse-pulse {
-  animation: verse-pulse 1.5s ease-out;
+  animation: verse-pulse 3s ease-out;
   border-radius: 4px;
 }
 

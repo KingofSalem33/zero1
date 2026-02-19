@@ -312,18 +312,26 @@ export default function RootLayout() {
     [chats, currentMessages, currentChatId, navigate],
   );
 
-  // Verse navigation listener — navigate to reader route
+  // Verse navigation listener — navigate to reader route, passing current location for back button
   useEffect(() => {
     return addVerseNavigationListener((reference) => {
       const parsed = parseVerseReference(reference);
       if (parsed) {
         setBibleStudyMode(false);
         navigate(
-          `/read/${bookToUrlParam(parsed.book)}/${parsed.chapter}#${parsed.verse}`,
+          {
+            pathname: `/read/${bookToUrlParam(parsed.book)}/${parsed.chapter}`,
+            hash: `#${parsed.verse}`,
+          },
+          {
+            state: {
+              cameFrom: location.pathname + location.search + location.hash,
+            },
+          },
         );
       }
     });
-  }, [navigate]);
+  }, [navigate, location]);
 
   // Navigation handlers for sidebar and mobile nav
   const handleNavigateView = useCallback(

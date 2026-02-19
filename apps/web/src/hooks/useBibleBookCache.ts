@@ -26,11 +26,8 @@ function buildUrl(bookName: string): string {
   return `https://raw.githubusercontent.com/aruljohn/Bible-kjv/master/${fileName}.json`;
 }
 
-async function fetchBook(
-  bookName: string,
-  signal?: AbortSignal,
-): Promise<CachedBook> {
-  const response = await fetch(buildUrl(bookName), { signal });
+async function fetchBook(bookName: string): Promise<CachedBook> {
+  const response = await fetch(buildUrl(bookName));
   if (!response.ok) {
     throw new Error(`Failed to load ${bookName} (${response.status})`);
   }
@@ -42,10 +39,16 @@ async function fetchBook(
 /**
  * Get a book, returning from cache if available.
  * Deduplicates concurrent requests for the same book.
+ *
+ * NOTE: The shared inflight promise intentionally does NOT use an AbortSignal.
+ * React StrictMode double-mounts components — if the first mount's signal is
+ * passed into the shared promise and then aborted during cleanup, the second
+ * mount reuses the same (now-aborting) promise and gets an empty result.
+ * Callers can still check their own signal after awaiting.
  */
 export async function getBook(
   bookName: string,
-  signal?: AbortSignal,
+  _signal?: AbortSignal,
 ): Promise<CachedBook> {
   const cached = bookCache.get(bookName);
   if (cached) return cached;
@@ -53,7 +56,7 @@ export async function getBook(
   const inflight = inflightRequests.get(bookName);
   if (inflight) return inflight;
 
-  const promise = fetchBook(bookName, signal).finally(() => {
+  const promise = fetchBook(bookName).finally(() => {
     inflightRequests.delete(bookName);
   });
   inflightRequests.set(bookName, promise);
