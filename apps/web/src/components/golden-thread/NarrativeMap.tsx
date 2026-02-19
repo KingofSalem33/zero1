@@ -51,6 +51,7 @@ import {
   resolveConnectionFamily,
   resolveConnectionChip,
 } from "./narrativeMapConfig";
+import { authFetch } from "../../lib/authFetch";
 import type {
   ConnectionStyleType,
   BranchCluster,
@@ -148,7 +149,6 @@ interface NarrativeMapProps {
   highlightedRefs: string[]; // ["John 3:16", "Romans 5:8"]
   onTrace?: (prompt: string) => void;
   onGoDeeper?: (prompt: GoDeeperPayload) => void;
-  userId?: string;
   tracedText?: string;
   /** Verse reference known at trace-time (before bundle loads), e.g. "John 3:16" */
   preloadAnchorRef?: string;
@@ -259,7 +259,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
   highlightedRefs,
   onTrace,
   onGoDeeper,
-  userId = "anonymous",
   tracedText,
   preloadAnchorRef,
 }) => {
@@ -336,11 +335,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       setMapSaving(true);
       setMapSaveError(null);
 
-      const bundleResponse = await fetch(`${API_URL}/api/library/bundles`, {
+      const bundleResponse = await authFetch(`${API_URL}/api/library/bundles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId,
           bundle,
         }),
       });
@@ -356,11 +354,10 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       }
 
       const title = resolveAnchorRef();
-      const mapResponse = await fetch(`${API_URL}/api/library/maps`, {
+      const mapResponse = await authFetch(`${API_URL}/api/library/maps`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId,
           bundleId,
           title,
         }),
@@ -379,7 +376,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     } finally {
       setMapSaving(false);
     }
-  }, [bundle, mapSaving, mapSaved, resolveAnchorRef, userId, toast]);
+  }, [bundle, mapSaving, mapSaved, resolveAnchorRef, toast]);
   const autoDiscoveryRunRef = useRef(false);
 
   // Semantic connection modal state
@@ -2805,7 +2802,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           connectionTopics={clickedConnection.connectionTopics}
           onSelectTopic={handleSelectConnectionTopic}
           visualBundle={bundle || undefined}
-          userId={userId}
           maxVisibleVerses={6}
         />
       )}

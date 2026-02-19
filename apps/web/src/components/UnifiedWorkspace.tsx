@@ -1905,7 +1905,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
               highlightedRefs={activeHighlightedRefs}
               onTrace={handleGoDeeper}
               onGoDeeper={onGoDeeper}
-              userId="anonymous"
               tracedText={lastUserPromptRef.current || ""}
             />
           </div>
@@ -2791,7 +2790,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       {/* Text Highlight Tooltip */}
       <TextHighlightTooltip
         onGoDeeper={handleGoDeeper}
-        userId="anonymous"
         onHighlight={handleChatHighlight}
         enableHighlight={true}
       />
@@ -2799,7 +2797,6 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       {/* Bookmark Panel */}
       {showBookmarkPanel && (
         <BookmarkPanel
-          userId="anonymous"
           onClose={() => setShowBookmarkPanel(false)}
           onGoDeeper={onGoDeeper}
           onOpenMap={onShowVisualization}

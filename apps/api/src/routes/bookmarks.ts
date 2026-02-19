@@ -1,13 +1,11 @@
 import { Router } from "express";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
-import fs from "fs/promises";
-import path from "path";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
+import { supabase } from "../db";
 
 const router = Router();
 
-// Bookmark interface
 interface Bookmark {
   id: string;
   text: string;
@@ -15,66 +13,57 @@ interface Bookmark {
   userId: string;
 }
 
-// Path to bookmarks storage file
-const BOOKMARKS_FILE = path.join(process.cwd(), "data", "bookmarks.json");
-
-// Ensure data directory exists
-async function ensureDataDir() {
-  const dataDir = path.join(process.cwd(), "data");
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
+interface BookmarkRow {
+  id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
 }
 
-// Load bookmarks from file
-async function loadBookmarks(): Promise<Bookmark[]> {
-  try {
-    await ensureDataDir();
-    const data = await fs.readFile(BOOKMARKS_FILE, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    // File doesn't exist yet or is empty
-    return [];
-  }
-}
-
-// Save bookmarks to file
-async function saveBookmarks(bookmarks: Bookmark[]): Promise<void> {
-  await ensureDataDir();
-  await fs.writeFile(BOOKMARKS_FILE, JSON.stringify(bookmarks, null, 2));
-}
-
-// Validation schema for creating bookmark
 const createBookmarkSchema = z.object({
   text: z.string().min(1).max(5000),
-  userId: z.string().optional().default("anonymous"),
 });
 
-// GET /api/bookmarks - Get all bookmarks for a user
+const mapBookmarkRow = (row: BookmarkRow): Bookmark => ({
+  id: row.id,
+  text: row.text,
+  createdAt: row.created_at,
+  userId: row.user_id,
+});
+
+// GET /api/bookmarks - Get all bookmarks for the authenticated user
 router.get("/", readOnlyLimiter, async (req, res) => {
   try {
     const profiler = getProfiler();
     profiler?.setPipeline("bookmarks_list");
     profiler?.markHandlerStart();
 
-    const userId = (req.query.userId as string) || "anonymous";
-    const bookmarks = await profileTime(
-      "bookmarks.loadBookmarks",
-      () => loadBookmarks(),
-      { file: "routes/bookmarks.ts", fn: "loadBookmarks" },
+    const userId = req.userId!;
+    const { data, error } = await profileTime(
+      "bookmarks.select",
+      () =>
+        supabase
+          .from("bookmarks")
+          .select("id,user_id,text,created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+      { file: "routes/bookmarks.ts", fn: "supabase.from(bookmarks).select" },
     );
 
-    // Filter by user and sort by date (newest first)
-    const userBookmarks = bookmarks
-      .filter((b) => b.userId === userId)
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+    if (error) {
+      console.error("Get bookmarks error:", error);
+      return res.status(500).json({
+        error: {
+          message: "Failed to get bookmarks",
+          type: "internal_server_error",
+          code: "get_bookmarks_failed",
+        },
+      });
+    }
 
-    return res.json({ bookmarks: userBookmarks });
+    return res.json({
+      bookmarks: (data || []).map((row) => mapBookmarkRow(row as BookmarkRow)),
+    });
   } catch (error) {
     console.error("Get bookmarks error:", error);
     return res.status(500).json({
@@ -87,31 +76,48 @@ router.get("/", readOnlyLimiter, async (req, res) => {
   }
 });
 
-// POST /api/bookmarks - Create a new bookmark
+// POST /api/bookmarks - Create a new bookmark for the authenticated user
 router.post("/", readOnlyLimiter, async (req, res) => {
   try {
     const profiler = getProfiler();
     profiler?.setPipeline("bookmarks_create");
     profiler?.markHandlerStart();
 
-    const { text, userId } = await profileTime(
+    const { text } = await profileTime(
       "bookmarks.zod_parse",
       () => createBookmarkSchema.parse(req.body),
       { file: "routes/bookmarks.ts", fn: "createBookmarkSchema.parse" },
     );
+    const userId = req.userId!;
+    const normalizedText = text.trim();
 
-    const bookmarks = await profileTime(
-      "bookmarks.loadBookmarks",
-      () => loadBookmarks(),
-      { file: "routes/bookmarks.ts", fn: "loadBookmarks" },
+    const { data: existing, error: lookupError } = await profileTime(
+      "bookmarks.duplicate_lookup",
+      () =>
+        supabase
+          .from("bookmarks")
+          .select("id,user_id,text,created_at")
+          .eq("user_id", userId)
+          .eq("text", normalizedText)
+          .maybeSingle(),
+      {
+        file: "routes/bookmarks.ts",
+        fn: "supabase.from(bookmarks).maybeSingle",
+      },
     );
 
-    // Check for duplicate (same text for same user)
-    const duplicate = bookmarks.find(
-      (b) => b.userId === userId && b.text.trim() === text.trim(),
-    );
+    if (lookupError) {
+      console.error("Bookmark duplicate check error:", lookupError);
+      return res.status(500).json({
+        error: {
+          message: "Failed to create bookmark",
+          type: "internal_server_error",
+          code: "create_bookmark_failed",
+        },
+      });
+    }
 
-    if (duplicate) {
+    if (existing) {
       return res.status(400).json({
         error: {
           message: "This text is already bookmarked",
@@ -121,22 +127,37 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       });
     }
 
-    // Create new bookmark
-    const newBookmark: Bookmark = {
-      id: `bm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      text,
-      userId,
-      createdAt: new Date().toISOString(),
-    };
+    const newBookmarkId = `bm_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    const createdAt = new Date().toISOString();
 
-    bookmarks.push(newBookmark);
-    await profileTime(
-      "bookmarks.saveBookmarks",
-      () => saveBookmarks(bookmarks),
-      { file: "routes/bookmarks.ts", fn: "saveBookmarks" },
+    const { data: inserted, error: insertError } = await profileTime(
+      "bookmarks.insert",
+      () =>
+        supabase
+          .from("bookmarks")
+          .insert({
+            id: newBookmarkId,
+            user_id: userId,
+            text: normalizedText,
+            created_at: createdAt,
+          })
+          .select("id,user_id,text,created_at")
+          .single(),
+      { file: "routes/bookmarks.ts", fn: "supabase.from(bookmarks).insert" },
     );
 
-    return res.status(201).json({ bookmark: newBookmark });
+    if (insertError || !inserted) {
+      console.error("Create bookmark error:", insertError);
+      return res.status(500).json({
+        error: {
+          message: "Failed to create bookmark",
+          type: "internal_server_error",
+          code: "create_bookmark_failed",
+        },
+      });
+    }
+
+    return res.status(201).json({ bookmark: mapBookmarkRow(inserted) });
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Bookmark validation error:", error.errors);
@@ -169,20 +190,33 @@ router.delete("/:id", readOnlyLimiter, async (req, res) => {
     profiler?.markHandlerStart();
 
     const { id } = req.params;
-    const userId = (req.query.userId as string) || "anonymous";
+    const userId = req.userId!;
 
-    const bookmarks = await profileTime(
-      "bookmarks.loadBookmarks",
-      () => loadBookmarks(),
-      { file: "routes/bookmarks.ts", fn: "loadBookmarks" },
+    const { data, error } = await profileTime(
+      "bookmarks.delete",
+      () =>
+        supabase
+          .from("bookmarks")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", userId)
+          .select("id")
+          .maybeSingle(),
+      { file: "routes/bookmarks.ts", fn: "supabase.from(bookmarks).delete" },
     );
 
-    // Find bookmark
-    const bookmarkIndex = bookmarks.findIndex(
-      (b) => b.id === id && b.userId === userId,
-    );
+    if (error) {
+      console.error("Delete bookmark error:", error);
+      return res.status(500).json({
+        error: {
+          message: "Failed to delete bookmark",
+          type: "internal_server_error",
+          code: "delete_bookmark_failed",
+        },
+      });
+    }
 
-    if (bookmarkIndex === -1) {
+    if (!data) {
       return res.status(404).json({
         error: {
           message: "Bookmark not found",
@@ -191,14 +225,6 @@ router.delete("/:id", readOnlyLimiter, async (req, res) => {
         },
       });
     }
-
-    // Remove bookmark
-    bookmarks.splice(bookmarkIndex, 1);
-    await profileTime(
-      "bookmarks.saveBookmarks",
-      () => saveBookmarks(bookmarks),
-      { file: "routes/bookmarks.ts", fn: "saveBookmarks" },
-    );
 
     return res.json({ ok: true, message: "Bookmark deleted successfully" });
   } catch (error) {

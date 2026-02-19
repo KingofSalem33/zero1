@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
 import { SemanticConnectionModal } from "./golden-thread/SemanticConnectionModal";
+import { authFetch } from "../lib/authFetch";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -47,7 +48,6 @@ interface LibraryMap {
 }
 
 interface BookmarkPanelProps {
-  userId?: string;
   onClose: () => void;
   onGoDeeper?: (payload: GoDeeperPayload) => void;
   onOpenMap?: (bundle: VisualContextBundle) => void;
@@ -99,7 +99,6 @@ const getConnectionVerseList = (connection: LibraryConnection) => {
 };
 
 export function BookmarkPanel({
-  userId = "anonymous",
   onClose,
   onGoDeeper,
   onOpenMap,
@@ -114,7 +113,7 @@ export function BookmarkPanel({
 
   useEffect(() => {
     void loadLibrary();
-  }, [userId]);
+  }, []);
 
   const loadLibrary = async () => {
     try {
@@ -122,14 +121,8 @@ export function BookmarkPanel({
       setError(null);
 
       const [connectionsResponse, mapsResponse] = await Promise.all([
-        fetch(
-          `${API_URL}/api/library/connections?userId=${encodeURIComponent(
-            userId,
-          )}`,
-        ),
-        fetch(
-          `${API_URL}/api/library/maps?userId=${encodeURIComponent(userId)}`,
-        ),
+        authFetch(`${API_URL}/api/library/connections`),
+        authFetch(`${API_URL}/api/library/maps`),
       ]);
 
       if (!connectionsResponse.ok || !mapsResponse.ok) {
@@ -176,10 +169,8 @@ export function BookmarkPanel({
 
   const deleteConnection = async (id: string) => {
     try {
-      const response = await fetch(
-        `${API_URL}/api/library/connections/${id}?userId=${encodeURIComponent(
-          userId,
-        )}`,
+      const response = await authFetch(
+        `${API_URL}/api/library/connections/${id}`,
         { method: "DELETE" },
       );
 
@@ -196,10 +187,9 @@ export function BookmarkPanel({
 
   const deleteMap = async (id: string) => {
     try {
-      const response = await fetch(
-        `${API_URL}/api/library/maps/${id}?userId=${encodeURIComponent(userId)}`,
-        { method: "DELETE" },
-      );
+      const response = await authFetch(`${API_URL}/api/library/maps/${id}`, {
+        method: "DELETE",
+      });
 
       if (!response.ok) {
         throw new Error("Failed to delete map");
@@ -267,10 +257,8 @@ export function BookmarkPanel({
     note: string,
     tags: string[],
   ) => {
-    const response = await fetch(
-      `${API_URL}/api/library/connections/${id}?userId=${encodeURIComponent(
-        userId,
-      )}`,
+    const response = await authFetch(
+      `${API_URL}/api/library/connections/${id}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -752,7 +740,6 @@ export function BookmarkPanel({
           connectedVersesPreview={activeConnectedVersesPreview}
           connectionTopics={undefined}
           visualBundle={activeConnection.bundle}
-          userId={userId}
           presetSynopsis={activeConnection.synopsis}
           libraryEntry={{
             id: activeConnection.id,

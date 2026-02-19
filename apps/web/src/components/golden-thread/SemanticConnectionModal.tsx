@@ -14,6 +14,7 @@ import {
   buildGoDeeperPrompt,
 } from "../../prompts/semanticConnection";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { authFetch } from "../../lib/authFetch";
 
 const __DEV__ = import.meta.env.DEV;
 
@@ -73,7 +74,6 @@ interface SemanticConnectionModalProps {
   }>;
   onSelectTopic?: (styleType: ConnectionFamily) => void;
   visualBundle?: import("../../types/goldenThread").VisualContextBundle; // Pre-built map data
-  userId?: string;
   presetSynopsis?: string;
   libraryEntry?: {
     id: string;
@@ -144,7 +144,6 @@ export function SemanticConnectionModal({
   connectionTopics,
   onSelectTopic,
   visualBundle,
-  userId = "anonymous",
   presetSynopsis,
   libraryEntry,
   onUpdateLibraryEntry,
@@ -612,11 +611,10 @@ export function SemanticConnectionModal({
       setSaving(true);
       setSaveError(null);
 
-      const bundleResponse = await fetch(`${API_URL}/api/library/bundles`, {
+      const bundleResponse = await authFetch(`${API_URL}/api/library/bundles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId,
           bundle: visualBundle,
         }),
       });
@@ -647,13 +645,12 @@ export function SemanticConnectionModal({
                   verse !== undefined,
               )
           : Array.from(verseById.values());
-      const connectionResponse = await fetch(
+      const connectionResponse = await authFetch(
         `${API_URL}/api/library/connections`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            userId,
             bundleId,
             fromVerse,
             toVerse,
@@ -695,10 +692,8 @@ export function SemanticConnectionModal({
       if (onUpdateLibraryEntry) {
         await onUpdateLibraryEntry(libraryEntry.id, note, nextTags);
       } else {
-        const response = await fetch(
-          `${API_URL}/api/library/connections/${libraryEntry.id}?userId=${encodeURIComponent(
-            userId,
-          )}`,
+        const response = await authFetch(
+          `${API_URL}/api/library/connections/${libraryEntry.id}`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },

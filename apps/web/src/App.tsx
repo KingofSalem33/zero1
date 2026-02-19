@@ -93,7 +93,7 @@ function App() {
 
     // Load in next tick to not block hydration
     if (typeof requestIdleCallback !== "undefined") {
-      // eslint-disable-next-line no-undef
+       
       requestIdleCallback(() => {
         loadChatHistory();
         loadSidebarState();
@@ -447,7 +447,6 @@ function App() {
                   />
                 ) : viewMode === "library" ? (
                   <LibraryView
-                    userId="anonymous"
                     onGoDeeper={handleGoDeeper}
                     onOpenMap={handleShowVisualization}
                     onNavigateToVerse={handleNavigateToVerse}
@@ -538,7 +537,6 @@ function App() {
                     highlightedRefs={[]}
                     onTrace={handleTrace}
                     onGoDeeper={handleGoDeeper}
-                    userId="anonymous"
                     tracedText={tracedText}
                   />
                 </div>

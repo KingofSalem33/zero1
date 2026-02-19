@@ -18,6 +18,7 @@ import { TabBar } from "./TabBar";
 import { HighlightCard } from "./HighlightCard";
 import { useBibleBookmarks } from "../contexts/BibleBookmarksContext";
 import { useBibleNotes } from "../hooks/useBibleNotes";
+import { authFetch } from "../lib/authFetch";
 
 const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
 
@@ -63,7 +64,6 @@ interface LibraryMap {
 }
 
 interface LibraryViewProps {
-  userId?: string;
   onGoDeeper?: (payload: GoDeeperPayload) => void;
   onOpenMap?: (bundle: VisualContextBundle) => void;
   onNavigateToVerse?: (reference?: string) => void;
@@ -908,7 +908,6 @@ function EmptyState({
 }
 
 export function LibraryView({
-  userId = "anonymous",
   onGoDeeper,
   onOpenMap,
   onNavigateToVerse,
@@ -937,7 +936,7 @@ export function LibraryView({
 
   useEffect(() => {
     void loadLibrary();
-  }, [userId]);
+  }, []);
 
   const loadLibrary = async () => {
     try {
@@ -945,14 +944,8 @@ export function LibraryView({
       setError(null);
 
       const [connectionsResponse, mapsResponse] = await Promise.all([
-        fetch(
-          `${API_URL}/api/library/connections?userId=${encodeURIComponent(
-            userId,
-          )}`,
-        ),
-        fetch(
-          `${API_URL}/api/library/maps?userId=${encodeURIComponent(userId)}`,
-        ),
+        authFetch(`${API_URL}/api/library/connections`),
+        authFetch(`${API_URL}/api/library/maps`),
       ]);
 
       if (!connectionsResponse.ok || !mapsResponse.ok) {
@@ -1085,8 +1078,8 @@ export function LibraryView({
     const timer = setTimeout(async () => {
       pendingDeleteTimers.current.delete(id);
       try {
-        const response = await fetch(
-          `${API_URL}/api/library/connections/${id}?userId=${encodeURIComponent(userId)}`,
+        const response = await authFetch(
+          `${API_URL}/api/library/connections/${id}`,
           { method: "DELETE" },
         );
         if (!response.ok) throw new Error("Failed to delete connection");
@@ -1117,10 +1110,9 @@ export function LibraryView({
     const timer = setTimeout(async () => {
       pendingDeleteTimers.current.delete(id);
       try {
-        const response = await fetch(
-          `${API_URL}/api/library/maps/${id}?userId=${encodeURIComponent(userId)}`,
-          { method: "DELETE" },
-        );
+        const response = await authFetch(`${API_URL}/api/library/maps/${id}`, {
+          method: "DELETE",
+        });
         if (!response.ok) throw new Error("Failed to delete map");
       } catch (err) {
         console.error("Error deleting map:", err);
@@ -1173,10 +1165,8 @@ export function LibraryView({
     note: string,
     tags: string[],
   ) => {
-    const response = await fetch(
-      `${API_URL}/api/library/connections/${id}?userId=${encodeURIComponent(
-        userId,
-      )}`,
+    const response = await authFetch(
+      `${API_URL}/api/library/connections/${id}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1786,7 +1776,6 @@ export function LibraryView({
           connectedVersesPreview={activeConnectedVersesPreview}
           connectionTopics={undefined}
           visualBundle={activeConnection.bundle}
-          userId={userId}
           presetSynopsis={activeConnection.synopsis}
           libraryEntry={{
             id: activeConnection.id,

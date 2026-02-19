@@ -34,7 +34,6 @@ export default function LibraryRoute() {
 
   return (
     <LibraryView
-      userId="anonymous"
       onGoDeeper={handleGoDeeper}
       onOpenMap={handleShowVisualization}
       onNavigateToVerse={handleNavigateToVerse}

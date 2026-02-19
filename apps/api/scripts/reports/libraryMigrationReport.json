@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-02-19T12:21:41.838Z",
+  "mode": "apply",
+  "source": {
+    "bookmarks": {
+      "sourceRows": 0,
+      "validRows": 0,
+      "skippedRows": 0,
+      "upsertedRows": 0
+    },
+    "bundles": {
+      "sourceRows": 8,
+      "validRows": 0,
+      "skippedRows": 8,
+      "upsertedRows": 0
+    },
+    "connections": {
+      "sourceRows": 0,
+      "validRows": 0,
+      "skippedRows": 0,
+      "upsertedRows": 0
+    },
+    "maps": {
+      "sourceRows": 0,
+      "validRows": 0,
+      "skippedRows": 0,
+      "upsertedRows": 0
+    }
+  },
+  "tableCounts": {
+    "bookmarks": 0,
+    "library_bundles": 0,
+    "library_connections": 0,
+    "library_maps": 0
+  }
+}

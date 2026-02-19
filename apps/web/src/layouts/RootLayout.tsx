@@ -489,7 +489,6 @@ export default function RootLayout() {
                         highlightedRefs={[]}
                         onTrace={handleTrace}
                         onGoDeeper={handleGoDeeper}
-                        userId="anonymous"
                         tracedText={tracedText}
                         preloadAnchorRef={traceAnchorRef}
                       />

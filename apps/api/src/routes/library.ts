@@ -1,10 +1,9 @@
 import { Router } from "express";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
-import fs from "fs/promises";
-import path from "path";
 import crypto from "crypto";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
+import { supabase } from "../db";
 
 const router = Router();
 
@@ -51,32 +50,51 @@ interface MapRecord {
   updatedAt: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const BUNDLES_FILE = path.join(DATA_DIR, "library_bundles.json");
-const CONNECTIONS_FILE = path.join(DATA_DIR, "library_connections.json");
-const MAPS_FILE = path.join(DATA_DIR, "library_maps.json");
-
-async function ensureDataDir() {
-  try {
-    await fs.access(DATA_DIR);
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-  }
+interface LibraryBundleRow {
+  id: string;
+  user_id: string;
+  bundle_hash: string;
+  bundle: unknown;
+  anchor_ref: string | null;
+  verse_count: number;
+  edge_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
-async function loadJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    await ensureDataDir();
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+interface LibraryConnectionRow {
+  id: string;
+  user_id: string;
+  bundle_id: string;
+  from_verse: { id: number; reference: string; text: string };
+  to_verse: { id: number; reference: string; text: string };
+  connection_type: string;
+  similarity: number;
+  synopsis: string;
+  explanation: string | null;
+  connected_verse_ids: number[] | null;
+  connected_verses: Array<{
+    id: number;
+    reference: string;
+    text: string;
+  }> | null;
+  go_deeper_prompt: string;
+  map_session: unknown;
+  note: string | null;
+  tags: string[] | null;
+  created_at: string;
+  updated_at: string;
 }
 
-async function saveJsonFile<T>(filePath: string, data: T): Promise<void> {
-  await ensureDataDir();
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+interface LibraryMapRow {
+  id: string;
+  user_id: string;
+  bundle_id: string;
+  title: string | null;
+  note: string | null;
+  tags: string[] | null;
+  created_at: string;
+  updated_at: string;
 }
 
 const bundleSchema = z
@@ -90,11 +108,9 @@ const bundleSchema = z
 
 const createBundleSchema = z.object({
   bundle: bundleSchema,
-  userId: z.string().optional().default("anonymous"),
 });
 
 const createConnectionSchema = z.object({
-  userId: z.string().optional().default("anonymous"),
   bundleId: z.string(),
   fromVerse: z.object({
     id: z.number(),
@@ -130,7 +146,6 @@ const updateConnectionSchema = z.object({
 });
 
 const createMapSchema = z.object({
-  userId: z.string().optional().default("anonymous"),
   bundleId: z.string(),
   title: z.string().optional(),
 });
@@ -153,57 +168,122 @@ const resolveAnchorRef = (bundle: any) => {
   return `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
 };
 
+const mapBundleRow = (row: LibraryBundleRow): BundleRecord => ({
+  id: row.id,
+  userId: row.user_id,
+  bundleHash: row.bundle_hash,
+  bundle: row.bundle,
+  anchorRef: row.anchor_ref || undefined,
+  verseCount: row.verse_count,
+  edgeCount: row.edge_count,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapConnectionRow = (row: LibraryConnectionRow): ConnectionRecord => ({
+  id: row.id,
+  userId: row.user_id,
+  bundleId: row.bundle_id,
+  fromVerse: row.from_verse,
+  toVerse: row.to_verse,
+  connectionType: row.connection_type,
+  similarity: row.similarity,
+  synopsis: row.synopsis,
+  explanation: row.explanation || undefined,
+  connectedVerseIds: row.connected_verse_ids || undefined,
+  connectedVerses: row.connected_verses || undefined,
+  goDeeperPrompt: row.go_deeper_prompt,
+  mapSession: row.map_session,
+  note: row.note || undefined,
+  tags: row.tags || [],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapMapRow = (row: LibraryMapRow): MapRecord => ({
+  id: row.id,
+  userId: row.user_id,
+  bundleId: row.bundle_id,
+  title: row.title || undefined,
+  note: row.note || undefined,
+  tags: row.tags || [],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 router.post("/bundles", readOnlyLimiter, async (req, res) => {
   try {
     const profiler = getProfiler();
     profiler?.setPipeline("library_bundle_create");
     profiler?.markHandlerStart();
 
-    const { bundle, userId } = await profileTime(
+    const { bundle } = await profileTime(
       "library.bundle.parse",
       () => createBundleSchema.parse(req.body),
       { file: "routes/library.ts", fn: "createBundleSchema.parse" },
     );
-
-    const bundles = await profileTime(
-      "library.bundle.load",
-      () => loadJsonFile<BundleRecord[]>(BUNDLES_FILE, []),
-      { file: "routes/library.ts", fn: "loadJsonFile" },
-    );
+    const userId = req.userId!;
 
     const bundleHash = computeBundleHash(bundle);
-    const existing = bundles.find(
-      (entry) => entry.userId === userId && entry.bundleHash === bundleHash,
+    const { data: existing, error: lookupError } = await profileTime(
+      "library.bundle.lookup_existing",
+      () =>
+        supabase
+          .from("library_bundles")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("bundle_hash", bundleHash)
+          .maybeSingle(),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_bundles).maybeSingle",
+      },
     );
 
-    if (existing) {
+    if (lookupError) {
+      console.error("Bundle lookup error:", lookupError);
+      return res.status(500).json({ error: "Failed to save bundle" });
+    }
+
+    if (existing?.id) {
       return res.json({ bundleId: existing.id, existing: true });
     }
 
     const now = new Date().toISOString();
-    const nodes = Array.isArray(bundle.nodes) ? bundle.nodes : [];
-    const edges = Array.isArray(bundle.edges) ? bundle.edges : [];
+    const nodes = Array.isArray((bundle as { nodes?: unknown[] }).nodes)
+      ? (bundle as { nodes: unknown[] }).nodes
+      : [];
+    const edges = Array.isArray((bundle as { edges?: unknown[] }).edges)
+      ? (bundle as { edges: unknown[] }).edges
+      : [];
+    const newBundleId = `bundle_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-    const newBundle: BundleRecord = {
-      id: `bundle_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      userId,
-      bundleHash,
-      bundle,
-      anchorRef: resolveAnchorRef(bundle),
-      verseCount: nodes.length,
-      edgeCount: edges.length,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    bundles.push(newBundle);
-    await profileTime(
-      "library.bundle.save",
-      () => saveJsonFile(BUNDLES_FILE, bundles),
-      { file: "routes/library.ts", fn: "saveJsonFile" },
+    const { error: insertError } = await profileTime(
+      "library.bundle.insert",
+      () =>
+        supabase.from("library_bundles").insert({
+          id: newBundleId,
+          user_id: userId,
+          bundle_hash: bundleHash,
+          bundle,
+          anchor_ref: resolveAnchorRef(bundle),
+          verse_count: nodes.length,
+          edge_count: edges.length,
+          created_at: now,
+          updated_at: now,
+        }),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_bundles).insert",
+      },
     );
 
-    return res.status(201).json({ bundleId: newBundle.id, existing: false });
+    if (insertError) {
+      console.error("Create bundle error:", insertError);
+      return res.status(500).json({ error: "Failed to save bundle" });
+    }
+
+    return res.status(201).json({ bundleId: newBundleId, existing: false });
   } catch (error) {
     console.error("Create bundle error:", error);
     return res.status(500).json({ error: "Failed to save bundle" });
@@ -216,35 +296,76 @@ router.get("/connections", readOnlyLimiter, async (req, res) => {
     profiler?.setPipeline("library_connections_list");
     profiler?.markHandlerStart();
 
-    const userId = (req.query.userId as string) || "anonymous";
+    const userId = req.userId!;
+    const { data: connectionRows, error: connectionError } = await profileTime(
+      "library.connections.select",
+      () =>
+        supabase
+          .from("library_connections")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_connections).select",
+      },
+    );
 
-    const [connections, bundles] = await Promise.all([
-      loadJsonFile<ConnectionRecord[]>(CONNECTIONS_FILE, []),
-      loadJsonFile<BundleRecord[]>(BUNDLES_FILE, []),
-    ]);
+    if (connectionError) {
+      console.error("List connections error:", connectionError);
+      return res.status(500).json({ error: "Failed to load connections" });
+    }
 
-    const bundleLookup = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+    const connections = (connectionRows || []).map((row) =>
+      mapConnectionRow(row as LibraryConnectionRow),
+    );
 
-    const userConnections = connections
-      .filter((entry) => entry.userId === userId)
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      .map((entry) => {
-        const bundle = bundleLookup.get(entry.bundleId);
-        return {
-          ...entry,
-          bundle: bundle?.bundle,
-          bundleMeta: bundle
-            ? {
-                anchorRef: bundle.anchorRef,
-                verseCount: bundle.verseCount,
-                edgeCount: bundle.edgeCount,
-              }
-            : undefined,
-        };
-      });
+    const bundleIds = Array.from(
+      new Set(connections.map((entry) => entry.bundleId).filter(Boolean)),
+    );
+    const bundleLookup = new Map<string, BundleRecord>();
+
+    if (bundleIds.length > 0) {
+      const { data: bundleRows, error: bundleError } = await profileTime(
+        "library.connections.bundle_lookup",
+        () =>
+          supabase
+            .from("library_bundles")
+            .select("*")
+            .eq("user_id", userId)
+            .in("id", bundleIds),
+        {
+          file: "routes/library.ts",
+          fn: "supabase.from(library_bundles).in",
+        },
+      );
+
+      if (bundleError) {
+        console.error("List connection bundle lookup error:", bundleError);
+        return res.status(500).json({ error: "Failed to load connections" });
+      }
+
+      (bundleRows || [])
+        .map((row) => mapBundleRow(row as LibraryBundleRow))
+        .forEach((bundle) => {
+          bundleLookup.set(bundle.id, bundle);
+        });
+    }
+
+    const userConnections = connections.map((entry) => {
+      const bundle = bundleLookup.get(entry.bundleId);
+      return {
+        ...entry,
+        bundle: bundle?.bundle,
+        bundleMeta: bundle
+          ? {
+              anchorRef: bundle.anchorRef,
+              verseCount: bundle.verseCount,
+              edgeCount: bundle.edgeCount,
+            }
+          : undefined,
+      };
+    });
 
     return res.json({ connections: userConnections });
   } catch (error) {
@@ -264,45 +385,84 @@ router.post("/connections", readOnlyLimiter, async (req, res) => {
       () => createConnectionSchema.parse(req.body),
       { file: "routes/library.ts", fn: "createConnectionSchema.parse" },
     );
+    const userId = req.userId!;
 
-    const connections = await profileTime(
-      "library.connection.load",
-      () => loadJsonFile<ConnectionRecord[]>(CONNECTIONS_FILE, []),
-      { file: "routes/library.ts", fn: "loadJsonFile" },
+    const { data: candidates, error: candidateError } = await profileTime(
+      "library.connection.duplicate_lookup",
+      () =>
+        supabase
+          .from("library_connections")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("bundle_id", payload.bundleId)
+          .eq("connection_type", payload.connectionType),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_connections).duplicate_lookup",
+      },
     );
 
-    const duplicate = connections.find(
-      (entry) =>
-        entry.userId === payload.userId &&
-        entry.bundleId === payload.bundleId &&
-        entry.connectionType === payload.connectionType &&
-        entry.fromVerse.id === payload.fromVerse.id &&
-        entry.toVerse.id === payload.toVerse.id,
-    );
+    if (candidateError) {
+      console.error("Create connection duplicate check error:", candidateError);
+      return res.status(500).json({ error: "Failed to save connection" });
+    }
+
+    const duplicate = (candidates || [])
+      .map((row) => mapConnectionRow(row as LibraryConnectionRow))
+      .find(
+        (entry) =>
+          entry.fromVerse.id === payload.fromVerse.id &&
+          entry.toVerse.id === payload.toVerse.id,
+      );
 
     if (duplicate) {
       return res.json({ connection: duplicate, existing: true });
     }
 
     const now = new Date().toISOString();
-    const newConnection: ConnectionRecord = {
-      id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      ...payload,
-      mapSession: payload.mapSession ?? null,
-      createdAt: now,
-      updatedAt: now,
-      note: "",
-      tags: [],
-    };
+    const newConnectionId = `conn_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-    connections.push(newConnection);
-    await profileTime(
-      "library.connection.save",
-      () => saveJsonFile(CONNECTIONS_FILE, connections),
-      { file: "routes/library.ts", fn: "saveJsonFile" },
+    const { data: inserted, error: insertError } = await profileTime(
+      "library.connection.insert",
+      () =>
+        supabase
+          .from("library_connections")
+          .insert({
+            id: newConnectionId,
+            user_id: userId,
+            bundle_id: payload.bundleId,
+            from_verse: payload.fromVerse,
+            to_verse: payload.toVerse,
+            connection_type: payload.connectionType,
+            similarity: payload.similarity,
+            synopsis: payload.synopsis,
+            explanation: payload.explanation || null,
+            connected_verse_ids: payload.connectedVerseIds || null,
+            connected_verses: payload.connectedVerses || null,
+            go_deeper_prompt: payload.goDeeperPrompt,
+            map_session: payload.mapSession ?? null,
+            note: "",
+            tags: [],
+            created_at: now,
+            updated_at: now,
+          })
+          .select("*")
+          .single(),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_connections).insert",
+      },
     );
 
-    return res.status(201).json({ connection: newConnection, existing: false });
+    if (insertError || !inserted) {
+      console.error("Create connection error:", insertError);
+      return res.status(500).json({ error: "Failed to save connection" });
+    }
+
+    return res.status(201).json({
+      connection: mapConnectionRow(inserted as LibraryConnectionRow),
+      existing: false,
+    });
   } catch (error) {
     console.error("Create connection error:", error);
     return res.status(500).json({ error: "Failed to save connection" });
@@ -315,35 +475,42 @@ router.patch("/connections/:id", readOnlyLimiter, async (req, res) => {
     profiler?.setPipeline("library_connections_update");
     profiler?.markHandlerStart();
 
-    const userId = (req.query.userId as string) || "anonymous";
+    const userId = req.userId!;
     const { id } = req.params;
     const updates = await updateConnectionSchema.parseAsync(req.body);
 
-    const connections = await loadJsonFile<ConnectionRecord[]>(
-      CONNECTIONS_FILE,
-      [],
+    const { data, error } = await profileTime(
+      "library.connection.update",
+      () =>
+        supabase
+          .from("library_connections")
+          .update({
+            note: updates.note,
+            tags: updates.tags,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id)
+          .eq("user_id", userId)
+          .select("*")
+          .maybeSingle(),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_connections).update",
+      },
     );
 
-    const index = connections.findIndex(
-      (entry) => entry.id === id && entry.userId === userId,
-    );
+    if (error) {
+      console.error("Update connection error:", error);
+      return res.status(500).json({ error: "Failed to update connection" });
+    }
 
-    if (index === -1) {
+    if (!data) {
       return res.status(404).json({ error: "Connection not found" });
     }
 
-    const existing = connections[index];
-    const updated: ConnectionRecord = {
-      ...existing,
-      note: updates.note ?? existing.note,
-      tags: updates.tags ?? existing.tags,
-      updatedAt: new Date().toISOString(),
-    };
-
-    connections[index] = updated;
-    await saveJsonFile(CONNECTIONS_FILE, connections);
-
-    return res.json({ connection: updated });
+    return res.json({
+      connection: mapConnectionRow(data as LibraryConnectionRow),
+    });
   } catch (error) {
     console.error("Update connection error:", error);
     return res.status(500).json({ error: "Failed to update connection" });
@@ -356,23 +523,33 @@ router.delete("/connections/:id", readOnlyLimiter, async (req, res) => {
     profiler?.setPipeline("library_connections_delete");
     profiler?.markHandlerStart();
 
-    const userId = (req.query.userId as string) || "anonymous";
+    const userId = req.userId!;
     const { id } = req.params;
 
-    const connections = await loadJsonFile<ConnectionRecord[]>(
-      CONNECTIONS_FILE,
-      [],
+    const { data, error } = await profileTime(
+      "library.connection.delete",
+      () =>
+        supabase
+          .from("library_connections")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", userId)
+          .select("id")
+          .maybeSingle(),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_connections).delete",
+      },
     );
 
-    const index = connections.findIndex(
-      (entry) => entry.id === id && entry.userId === userId,
-    );
-    if (index === -1) {
-      return res.status(404).json({ error: "Connection not found" });
+    if (error) {
+      console.error("Delete connection error:", error);
+      return res.status(500).json({ error: "Failed to delete connection" });
     }
 
-    connections.splice(index, 1);
-    await saveJsonFile(CONNECTIONS_FILE, connections);
+    if (!data) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
 
     return res.json({ ok: true });
   } catch (error) {
@@ -387,34 +564,67 @@ router.get("/maps", readOnlyLimiter, async (req, res) => {
     profiler?.setPipeline("library_maps_list");
     profiler?.markHandlerStart();
 
-    const userId = (req.query.userId as string) || "anonymous";
-    const [maps, bundles] = await Promise.all([
-      loadJsonFile<MapRecord[]>(MAPS_FILE, []),
-      loadJsonFile<BundleRecord[]>(BUNDLES_FILE, []),
-    ]);
+    const userId = req.userId!;
+    const { data: mapRows, error: mapError } = await profileTime(
+      "library.maps.select",
+      () =>
+        supabase
+          .from("library_maps")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false }),
+      { file: "routes/library.ts", fn: "supabase.from(library_maps).select" },
+    );
 
-    const bundleLookup = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+    if (mapError) {
+      console.error("List maps error:", mapError);
+      return res.status(500).json({ error: "Failed to load maps" });
+    }
 
-    const userMaps = maps
-      .filter((entry) => entry.userId === userId)
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      .map((entry) => {
-        const bundle = bundleLookup.get(entry.bundleId);
-        return {
-          ...entry,
-          bundle: bundle?.bundle,
-          bundleMeta: bundle
-            ? {
-                anchorRef: bundle.anchorRef,
-                verseCount: bundle.verseCount,
-                edgeCount: bundle.edgeCount,
-              }
-            : undefined,
-        };
-      });
+    const maps = (mapRows || []).map((row) => mapMapRow(row as LibraryMapRow));
+    const bundleIds = Array.from(
+      new Set(maps.map((entry) => entry.bundleId).filter(Boolean)),
+    );
+    const bundleLookup = new Map<string, BundleRecord>();
+
+    if (bundleIds.length > 0) {
+      const { data: bundleRows, error: bundleError } = await profileTime(
+        "library.maps.bundle_lookup",
+        () =>
+          supabase
+            .from("library_bundles")
+            .select("*")
+            .eq("user_id", userId)
+            .in("id", bundleIds),
+        { file: "routes/library.ts", fn: "supabase.from(library_bundles).in" },
+      );
+
+      if (bundleError) {
+        console.error("List maps bundle lookup error:", bundleError);
+        return res.status(500).json({ error: "Failed to load maps" });
+      }
+
+      (bundleRows || [])
+        .map((row) => mapBundleRow(row as LibraryBundleRow))
+        .forEach((bundle) => {
+          bundleLookup.set(bundle.id, bundle);
+        });
+    }
+
+    const userMaps = maps.map((entry) => {
+      const bundle = bundleLookup.get(entry.bundleId);
+      return {
+        ...entry,
+        bundle: bundle?.bundle,
+        bundleMeta: bundle
+          ? {
+              anchorRef: bundle.anchorRef,
+              verseCount: bundle.verseCount,
+              edgeCount: bundle.edgeCount,
+            }
+          : undefined,
+      };
+    });
 
     return res.json({ maps: userMaps });
   } catch (error) {
@@ -434,33 +644,66 @@ router.post("/maps", readOnlyLimiter, async (req, res) => {
       () => createMapSchema.parse(req.body),
       { file: "routes/library.ts", fn: "createMapSchema.parse" },
     );
+    const userId = req.userId!;
 
-    const maps = await loadJsonFile<MapRecord[]>(MAPS_FILE, []);
-    const duplicate = maps.find(
-      (entry) =>
-        entry.userId === payload.userId && entry.bundleId === payload.bundleId,
+    const { data: existing, error: lookupError } = await profileTime(
+      "library.map.lookup_existing",
+      () =>
+        supabase
+          .from("library_maps")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("bundle_id", payload.bundleId)
+          .maybeSingle(),
+      {
+        file: "routes/library.ts",
+        fn: "supabase.from(library_maps).maybeSingle",
+      },
     );
 
-    if (duplicate) {
-      return res.json({ map: duplicate, existing: true });
+    if (lookupError) {
+      console.error("Create map duplicate check error:", lookupError);
+      return res.status(500).json({ error: "Failed to save map" });
+    }
+
+    if (existing) {
+      return res.json({
+        map: mapMapRow(existing as LibraryMapRow),
+        existing: true,
+      });
     }
 
     const now = new Date().toISOString();
-    const newMap: MapRecord = {
-      id: `map_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      userId: payload.userId,
-      bundleId: payload.bundleId,
-      title: payload.title,
-      note: "",
-      tags: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+    const newMapId = `map_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const { data: inserted, error: insertError } = await profileTime(
+      "library.map.insert",
+      () =>
+        supabase
+          .from("library_maps")
+          .insert({
+            id: newMapId,
+            user_id: userId,
+            bundle_id: payload.bundleId,
+            title: payload.title || null,
+            note: "",
+            tags: [],
+            created_at: now,
+            updated_at: now,
+          })
+          .select("*")
+          .single(),
+      { file: "routes/library.ts", fn: "supabase.from(library_maps).insert" },
+    );
 
-    maps.push(newMap);
-    await saveJsonFile(MAPS_FILE, maps);
+    if (insertError || !inserted) {
+      console.error("Create map error:", insertError);
+      return res.status(500).json({ error: "Failed to save map" });
+    }
 
-    return res.status(201).json({ map: newMap, existing: false });
+    return res.status(201).json({
+      map: mapMapRow(inserted as LibraryMapRow),
+      existing: false,
+    });
   } catch (error) {
     console.error("Create map error:", error);
     return res.status(500).json({ error: "Failed to save map" });
@@ -469,31 +712,38 @@ router.post("/maps", readOnlyLimiter, async (req, res) => {
 
 router.patch("/maps/:id", readOnlyLimiter, async (req, res) => {
   try {
-    const userId = (req.query.userId as string) || "anonymous";
+    const userId = req.userId!;
     const { id } = req.params;
     const updates = await updateMapSchema.parseAsync(req.body);
 
-    const maps = await loadJsonFile<MapRecord[]>(MAPS_FILE, []);
-    const index = maps.findIndex(
-      (entry) => entry.id === id && entry.userId === userId,
+    const { data, error } = await profileTime(
+      "library.map.update",
+      () =>
+        supabase
+          .from("library_maps")
+          .update({
+            title: updates.title,
+            note: updates.note,
+            tags: updates.tags,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", id)
+          .eq("user_id", userId)
+          .select("*")
+          .maybeSingle(),
+      { file: "routes/library.ts", fn: "supabase.from(library_maps).update" },
     );
-    if (index === -1) {
+
+    if (error) {
+      console.error("Update map error:", error);
+      return res.status(500).json({ error: "Failed to update map" });
+    }
+
+    if (!data) {
       return res.status(404).json({ error: "Map not found" });
     }
 
-    const existing = maps[index];
-    const updated: MapRecord = {
-      ...existing,
-      title: updates.title ?? existing.title,
-      note: updates.note ?? existing.note,
-      tags: updates.tags ?? existing.tags,
-      updatedAt: new Date().toISOString(),
-    };
-
-    maps[index] = updated;
-    await saveJsonFile(MAPS_FILE, maps);
-
-    return res.json({ map: updated });
+    return res.json({ map: mapMapRow(data as LibraryMapRow) });
   } catch (error) {
     console.error("Update map error:", error);
     return res.status(500).json({ error: "Failed to update map" });
@@ -502,19 +752,30 @@ router.patch("/maps/:id", readOnlyLimiter, async (req, res) => {
 
 router.delete("/maps/:id", readOnlyLimiter, async (req, res) => {
   try {
-    const userId = (req.query.userId as string) || "anonymous";
+    const userId = req.userId!;
     const { id } = req.params;
 
-    const maps = await loadJsonFile<MapRecord[]>(MAPS_FILE, []);
-    const index = maps.findIndex(
-      (entry) => entry.id === id && entry.userId === userId,
+    const { data, error } = await profileTime(
+      "library.map.delete",
+      () =>
+        supabase
+          .from("library_maps")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", userId)
+          .select("id")
+          .maybeSingle(),
+      { file: "routes/library.ts", fn: "supabase.from(library_maps).delete" },
     );
-    if (index === -1) {
-      return res.status(404).json({ error: "Map not found" });
+
+    if (error) {
+      console.error("Delete map error:", error);
+      return res.status(500).json({ error: "Failed to delete map" });
     }
 
-    maps.splice(index, 1);
-    await saveJsonFile(MAPS_FILE, maps);
+    if (!data) {
+      return res.status(404).json({ error: "Map not found" });
+    }
 
     return res.json({ ok: true });
   } catch (error) {

@@ -87,7 +87,7 @@ import {
   type FeedbackSignal,
 } from "./feedback";
 import { destroyCache } from "./infrastructure/cache/cacheInstance";
-import { optionalAuth } from "./middleware/auth";
+import { optionalAuth, requireAuth } from "./middleware/auth";
 import { checkConnectionHealth } from "./db";
 import {
   apiLimiter,
@@ -215,8 +215,8 @@ app.use("/api/synopsis", optionalAuth, synopsisRouter);
 app.use("/api/root-translation", optionalAuth, rootTranslationRouter);
 
 // Mount bookmark routes
-app.use("/api/bookmarks", optionalAuth, bookmarksRouter);
-app.use("/api/library", optionalAuth, libraryRouter);
+app.use("/api/bookmarks", requireAuth, bookmarksRouter);
+app.use("/api/library", requireAuth, libraryRouter);
 
 // Mount verse routes (fetch individual verses by reference)
 app.use("/api/verse", optionalAuth, verseRouter);

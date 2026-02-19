@@ -19,7 +19,9 @@
     "checkpoint:test": "ts-node scripts/test-checkpoints.ts",
     "populate:analytics": "ts-node scripts/populateVerseAnalytics.ts",
     "populate:structures": "ts-node scripts/populateLiteraryStructures.ts",
-    "build:structures": "ts-node scripts/buildLiteraryStructures.ts"
+    "build:structures": "ts-node scripts/buildLiteraryStructures.ts",
+    "migrate:library:dry-run": "ts-node scripts/migrateJsonLibraryToSupabase.ts",
+    "migrate:library:apply": "ts-node scripts/migrateJsonLibraryToSupabase.ts --apply"
   },
   "keywords": [],
   "author": "",
