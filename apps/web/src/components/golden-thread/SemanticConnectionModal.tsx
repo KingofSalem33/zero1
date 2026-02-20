@@ -1,10 +1,11 @@
-import React, {
+﻿import React, {
   useState,
   useEffect,
   useRef,
   useMemo,
   useCallback,
 } from "react";
+import { WEB_ENV } from "../../lib/env";
 import { createPortal } from "react-dom";
 import VerseTooltip from "../VerseTooltip";
 import type { GoDeeperPayload } from "../../types/chat";
@@ -89,7 +90,7 @@ interface SemanticConnectionModalProps {
   maxVisibleVerses?: number;
 }
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 const CONNECTION_LABELS: Record<ConnectionFamily, string> = {
   CROSS_REFERENCE: "Cross-Reference",
@@ -994,7 +995,7 @@ export function SemanticConnectionModal({
               )}
             </div>
 
-            {/* Topic Navigator – Dots + Arrow */}
+            {/* Topic Navigator â€“ Dots + Arrow */}
             {totalTopics > 1 && (
               <div className="mb-3 flex items-center gap-2.5">
                 <span className="text-[9px] text-white/30 tracking-wide">
@@ -1161,3 +1162,7 @@ export function SemanticConnectionModal({
 
   return createPortal(modalContent, document.body);
 }
+
+
+
+

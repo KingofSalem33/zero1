@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useEffect,
   useState,
   useCallback,
@@ -6,6 +6,7 @@ import React, {
   useLayoutEffect,
   useMemo,
 } from "react";
+import { WEB_ENV } from "../../lib/env";
 import {
   ReactFlow,
   Background,
@@ -111,7 +112,7 @@ const LlmEdge: React.FC<EdgeProps> = ({
   );
 };
 
-/** Non-interactive depth ring background — renders concentric circles at ring radii */
+/** Non-interactive depth ring background â€” renders concentric circles at ring radii */
 const DepthRingsNode = React.memo(() => (
   <svg
     width={1680}
@@ -154,7 +155,7 @@ interface NarrativeMapProps {
   preloadAnchorRef?: string;
 }
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 const makeReferenceKey = (node: ThreadNode) => {
   const book = (node.book_name || node.book_abbrev || "")
@@ -274,7 +275,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     new Set(),
   );
   const [initialExpansionDone, setInitialExpansionDone] = useState(false);
-  // 🌟 GOLDEN THREAD: Track hovered anchor ray for glow emphasis
+  // ðŸŒŸ GOLDEN THREAD: Track hovered anchor ray for glow emphasis
   const [hoveredAnchorRay, setHoveredAnchorRay] = useState<string | null>(null);
   const [discoveryProgress, setDiscoveryProgress] = useState<{
     phase: "selecting" | "analyzing" | "connecting" | "complete";
@@ -1415,7 +1416,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         edgeSet.add(edgeKey);
       });
 
-    // PHASE 2: Add synthetic hierarchy edges (parent → child via parentId)
+    // PHASE 2: Add synthetic hierarchy edges (parent â†’ child via parentId)
     // These ensure all visible nodes stay connected in the tree layout
     visibleNodes.forEach((node) => {
       if (node.parentId && visibleNodeIds.has(node.parentId)) {
@@ -1510,7 +1511,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
 
       if (__DEV__)
         console.log(
-          `[Layout] ✅ Force-directed layout complete: ${reactFlowNodes.length} nodes positioned`,
+          `[Layout] âœ… Force-directed layout complete: ${reactFlowNodes.length} nodes positioned`,
         );
     } else {
       // LEGACY: Dagre + Radial layout
@@ -1539,7 +1540,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const anchorCandidates = reactFlowNodes.filter((n) => n.data.isAnchor);
       if (anchorCandidates.length > 1) {
         console.error(
-          `[Layout DEBUG] ⚠️ MULTIPLE ANCHORS DETECTED:`,
+          `[Layout DEBUG] âš ï¸ MULTIPLE ANCHORS DETECTED:`,
           anchorCandidates.map((n) => ({
             id: n.id,
             verse: `${n.data.verse.book_abbrev} ${n.data.verse.chapter}:${n.data.verse.verse}`,
@@ -1682,7 +1683,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     positionMap.forEach((nodeIds, position) => {
       if (nodeIds.length > 1) {
         console.error(
-          `[Layout DEBUG] ⚠️ POSITION CONFLICT at ${position}:`,
+          `[Layout DEBUG] âš ï¸ POSITION CONFLICT at ${position}:`,
           nodeIds,
         );
       }
@@ -1927,9 +1928,6 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           console.log(
             `[LLM Discovery] Analyzing ${coreVerses.length} core verses`,
           );
-
-        const API_URL =
-          import.meta.env?.VITE_API_URL || "http://localhost:3001";
         const response = await fetch(`${API_URL}/api/discover-connections`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2511,7 +2509,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
         style: {
           ...node.style,
           opacity: undefined,
-          // 🌟 GOLDEN THREAD: Remove GOLD glow when exiting focus
+          // ðŸŒŸ GOLDEN THREAD: Remove GOLD glow when exiting focus
           boxShadow: undefined,
           borderColor: undefined,
           borderWidth: undefined,
@@ -2740,7 +2738,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
             </linearGradient>
           </defs>
         </svg>
-        {/* Depth ring indicators — rendered as a non-interactive node so they pan/zoom with the graph */}
+        {/* Depth ring indicators â€” rendered as a non-interactive node so they pan/zoom with the graph */}
         <Background
           variant="dots"
           color="rgba(255,255,255,0.03)"
@@ -2864,3 +2862,6 @@ export const NarrativeMap = React.memo(
     );
   },
 );
+
+
+

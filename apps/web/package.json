@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@zero1/shared-client": "file:../../packages/shared-client",
     "@sentry/react": "^10.32.1",
     "@supabase/supabase-js": "^2.57.4",
     "@types/d3-force": "^3.0.10",

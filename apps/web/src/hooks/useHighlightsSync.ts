@@ -1,10 +1,11 @@
+﻿import { WEB_ENV } from "../lib/env";
 /**
- * useHighlightsSync — offline-first sync engine for Bible highlights.
+ * useHighlightsSync â€” offline-first sync engine for Bible highlights.
  *
  * Strategy:
  * - localStorage is always the source of truth for immediate reads
  * - When authenticated, syncs to cloud on changes (debounced)
- * - On login, merges cloud → local using last-write-wins
+ * - On login, merges cloud â†’ local using last-write-wins
  * - Tracks `updated_at` per highlight for conflict resolution
  */
 
@@ -12,7 +13,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import type { BibleHighlight } from "../contexts/BibleHighlightsContext";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 const SYNC_DEBOUNCE_MS = 3000;
 const LAST_SYNCED_KEY = "bible_highlights_last_synced";
 
@@ -225,3 +226,5 @@ function mergeServerHighlights(
 
   return Array.from(merged.values());
 }
+
+

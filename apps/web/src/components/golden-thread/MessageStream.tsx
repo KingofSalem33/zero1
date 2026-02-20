@@ -1,6 +1,9 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import { dispatchVerseNavigation } from "../../utils/verseNavigation";
+import { WEB_ENV } from "../../lib/env";
+
+const API_URL = WEB_ENV.API_URL;
 
 // --- 1. MAIN TITLE (H2) ---
 // The exegesis title - large, authoritative, serif
@@ -128,7 +131,7 @@ const VerseTooltip = ({
     const fetchVerse = async () => {
       try {
         const response = await fetch(
-          `http://localhost:3001/api/verse/${encodeURIComponent(reference)}`,
+          `${API_URL}/api/verse/${encodeURIComponent(reference)}`,
         );
 
         if (!response.ok) {

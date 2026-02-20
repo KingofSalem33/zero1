@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../db";
+import { supabase, supabaseAdmin } from "../db";
 import {
   discoverConnections,
   type DiscoveredConnection,
@@ -54,7 +54,7 @@ async function persistConnections(connections: DiscoveredConnection[]) {
     confidence: conn.confidence,
   }));
 
-  const { error } = await supabase.from("llm_connections").upsert(rows, {
+  const { error } = await supabaseAdmin.from("llm_connections").upsert(rows, {
     onConflict: "from_verse_id,to_verse_id,connection_type",
   });
 

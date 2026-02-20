@@ -109,6 +109,10 @@ dist
 dist/
 build/
 out/
+apps/desktop/dist-electron/
+apps/desktop/release/
+apps/desktop/reports/*.json
+!apps/desktop/reports/pilotFeedbackTemplate.json
 
 # Logs
 logs

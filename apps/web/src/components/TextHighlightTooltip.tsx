@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { dispatchVerseNavigation } from "../utils/verseNavigation";
 import { useAIRequest } from "../hooks/useAIRequest";
 import { useRootTranslation } from "../hooks/useRootTranslation";
@@ -8,6 +8,7 @@ import { RootTranslationPanel } from "./tooltip/RootTranslationPanel";
 import { HIGHLIGHT_COLORS } from "../contexts/BibleHighlightsContext";
 import { hapticSuccess, hapticMedium } from "../utils/haptics";
 import { ShareSheet } from "./ShareSheet";
+import { WEB_ENV } from "../lib/env";
 
 interface TextHighlightTooltipProps {
   onGoDeeper: (text: string, anchorRef?: string) => void;
@@ -34,7 +35,7 @@ type VerseContext = {
   verses: number[];
 };
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 // --- INTERACTIVE TEXT WITH SCRIPTURE PARSING ---
 const InteractiveText = ({
@@ -642,7 +643,7 @@ export function TextHighlightTooltip({
             {viewMode === "synopsis" && (
               <>
                 {highlightSuccess ? (
-                  /* ── Full-width highlight success state ── */
+                  /* â”€â”€ Full-width highlight success state â”€â”€ */
                   <div className="flex flex-col items-center justify-center py-3 animate-[fadeScale_300ms_ease-out]">
                     <div className="w-10 h-10 rounded-full bg-[#D4AF37]/20 flex items-center justify-center mb-2">
                       <svg
@@ -861,3 +862,5 @@ export function TextHighlightTooltip({
     </div>
   );
 }
+
+

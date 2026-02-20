@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
+import { WEB_ENV } from "../lib/env";
 
 interface Card {
   lens:
@@ -26,7 +27,7 @@ interface ChapterFooterProps {
   onCardTap: (prompt: string) => void;
 }
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 // Subtle, scholarly color distinctions aligned with map colors
 const LENS_COLORS = {
@@ -58,7 +59,7 @@ const LENS_TOOLTIPS = {
   },
   TYPOLOGY: {
     title: "Similar Story",
-    items: ["Typology — events or people that mirror each other"],
+    items: ["Typology â€” events or people that mirror each other"],
   },
   THREAD: {
     title: "Threads",
@@ -119,7 +120,7 @@ export function ChapterFooter({
             return;
           } else {
             console.log(
-              `[Footer] Cache outdated (v${cachedData._version || "1.0"} → v${REQUIRED_VERSION}), fetching fresh...`,
+              `[Footer] Cache outdated (v${cachedData._version || "1.0"} â†’ v${REQUIRED_VERSION}), fetching fresh...`,
             );
             localStorage.removeItem(cacheKey);
           }
@@ -367,10 +368,12 @@ export function ChapterFooter({
         {/* Keyboard Hint - Appears on hover */}
         <div className="text-center mt-2 opacity-0 hover:opacity-100 transition-opacity">
           <p className="text-[9px] text-neutral-500">
-            Hover to preview • Click to explore
+            Hover to preview â€¢ Click to explore
           </p>
         </div>
       </div>
     </div>
   );
 }
+
+

@@ -3,7 +3,7 @@ import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import crypto from "crypto";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
-import { supabase } from "../db";
+import { createUserSupabaseClient } from "../db";
 
 const router = Router();
 
@@ -223,6 +223,7 @@ router.post("/bundles", readOnlyLimiter, async (req, res) => {
       { file: "routes/library.ts", fn: "createBundleSchema.parse" },
     );
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
 
     const bundleHash = computeBundleHash(bundle);
     const { data: existing, error: lookupError } = await profileTime(
@@ -297,6 +298,7 @@ router.get("/connections", readOnlyLimiter, async (req, res) => {
     profiler?.markHandlerStart();
 
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { data: connectionRows, error: connectionError } = await profileTime(
       "library.connections.select",
       () =>
@@ -386,6 +388,7 @@ router.post("/connections", readOnlyLimiter, async (req, res) => {
       { file: "routes/library.ts", fn: "createConnectionSchema.parse" },
     );
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
 
     const { data: candidates, error: candidateError } = await profileTime(
       "library.connection.duplicate_lookup",
@@ -476,6 +479,7 @@ router.patch("/connections/:id", readOnlyLimiter, async (req, res) => {
     profiler?.markHandlerStart();
 
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { id } = req.params;
     const updates = await updateConnectionSchema.parseAsync(req.body);
 
@@ -524,6 +528,7 @@ router.delete("/connections/:id", readOnlyLimiter, async (req, res) => {
     profiler?.markHandlerStart();
 
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { id } = req.params;
 
     const { data, error } = await profileTime(
@@ -565,6 +570,7 @@ router.get("/maps", readOnlyLimiter, async (req, res) => {
     profiler?.markHandlerStart();
 
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { data: mapRows, error: mapError } = await profileTime(
       "library.maps.select",
       () =>
@@ -645,6 +651,7 @@ router.post("/maps", readOnlyLimiter, async (req, res) => {
       { file: "routes/library.ts", fn: "createMapSchema.parse" },
     );
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
 
     const { data: existing, error: lookupError } = await profileTime(
       "library.map.lookup_existing",
@@ -713,6 +720,7 @@ router.post("/maps", readOnlyLimiter, async (req, res) => {
 router.patch("/maps/:id", readOnlyLimiter, async (req, res) => {
   try {
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { id } = req.params;
     const updates = await updateMapSchema.parseAsync(req.body);
 
@@ -753,6 +761,7 @@ router.patch("/maps/:id", readOnlyLimiter, async (req, res) => {
 router.delete("/maps/:id", readOnlyLimiter, async (req, res) => {
   try {
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { id } = req.params;
 
     const { data, error } = await profileTime(

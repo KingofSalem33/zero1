@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-02-19T12:21:41.838Z",
+  "generatedAt": "2026-02-19T22:04:35.651Z",
   "mode": "apply",
   "source": {
     "bookmarks": {
@@ -10,9 +10,9 @@
     },
     "bundles": {
       "sourceRows": 8,
-      "validRows": 0,
-      "skippedRows": 8,
-      "upsertedRows": 0
+      "validRows": 8,
+      "skippedRows": 0,
+      "upsertedRows": 8
     },
     "connections": {
       "sourceRows": 0,
@@ -29,7 +29,7 @@
   },
   "tableCounts": {
     "bookmarks": 0,
-    "library_bundles": 0,
+    "library_bundles": 8,
     "library_connections": 0,
     "library_maps": 0
   }

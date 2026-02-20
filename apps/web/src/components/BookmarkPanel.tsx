@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
 import { SemanticConnectionModal } from "./golden-thread/SemanticConnectionModal";
 import { authFetch } from "../lib/authFetch";
+import { WEB_ENV } from "../lib/env";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 type BundleMeta = {
   anchorRef?: string;
@@ -618,13 +619,13 @@ export function BookmarkPanel({
                     </button>
                   </div>
                   <div className="text-sm text-white font-medium">
-                    {connection.fromVerse.reference} →{" "}
+                    {connection.fromVerse.reference} â†’{" "}
                     {connection.toVerse.reference}
                   </div>
                   <div className="text-xs text-neutral-400 mt-1">
                     {connection.connectionType}
                     {connection.bundleMeta?.anchorRef
-                      ? ` • ${connection.bundleMeta.anchorRef}`
+                      ? ` â€¢ ${connection.bundleMeta.anchorRef}`
                       : ""}
                   </div>
                   <p className="text-sm text-neutral-200 leading-relaxed mt-4">
@@ -703,7 +704,7 @@ export function BookmarkPanel({
                     {entry.title || entry.bundleMeta?.anchorRef || "Saved Map"}
                   </div>
                   <div className="text-xs text-neutral-400 mt-1">
-                    {entry.bundleMeta?.verseCount ?? 0} verses •{" "}
+                    {entry.bundleMeta?.verseCount ?? 0} verses â€¢{" "}
                     {entry.bundleMeta?.edgeCount ?? 0} connections
                   </div>
                   <div className="mt-4 flex gap-2">
@@ -764,3 +765,5 @@ export function BookmarkPanel({
     </div>
   );
 }
+
+

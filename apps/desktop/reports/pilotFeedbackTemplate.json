@@ -1,0 +1,34 @@
+{
+  "pilotUserId": "pilot-user-01",
+  "sessionDate": "2026-02-20",
+  "installerVersion": "0.1.0",
+  "platform": "windows-11",
+  "completedFlows": {
+    "installLaunch": false,
+    "emailPasswordSignIn": false,
+    "magicLinkSignIn": false,
+    "bookmarksSync": false,
+    "highlightsSync": false,
+    "libraryConnectionsSync": false,
+    "chatRequest": false,
+    "mapTrace": false,
+    "autoUpdateCheck": false
+  },
+  "issues": [
+    {
+      "severity": "low|medium|high",
+      "area": "install|auth|sync|chat|map|update|other",
+      "summary": "",
+      "reproSteps": "",
+      "screenshotPath": ""
+    }
+  ],
+  "rating": {
+    "stability": 0,
+    "performance": 0,
+    "uxClarity": 0
+  },
+  "freeformFeedback": "",
+  "diagnosticsLogAttached": false,
+  "diagnosticsLogPath": ""
+}

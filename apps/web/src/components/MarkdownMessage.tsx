@@ -7,6 +7,9 @@ import rehypeHighlight from "rehype-highlight";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github-dark.css";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { WEB_ENV } from "../lib/env";
+
+const API_URL = WEB_ENV.API_URL;
 
 interface MarkdownMessageProps {
   content: string;
@@ -63,7 +66,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
           : content;
 
       // Call OpenAI TTS API via our backend
-      const response = await fetch("http://localhost:3001/api/tts", {
+      const response = await fetch(`${API_URL}/api/tts`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

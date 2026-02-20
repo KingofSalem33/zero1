@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Suspense } from "react";
+﻿import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import "../App.css";
 import RoadmapSidebarV2 from "../components/RoadmapSidebarV2";
@@ -17,8 +17,9 @@ import type { Chat } from "../contexts/AppContext";
 import type { VisualContextBundle } from "../types/goldenThread";
 import type { GoDeeperPayload } from "../types/chat";
 import OnboardingOverlay from "../components/onboarding/OnboardingOverlay";
+import { WEB_ENV } from "../lib/env";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 const MAX_SAVED_CHATS = 50;
 
 export default function RootLayout() {
@@ -312,7 +313,7 @@ export default function RootLayout() {
     [chats, currentMessages, currentChatId, navigate],
   );
 
-  // Verse navigation listener — navigate to reader route, passing current location for back button
+  // Verse navigation listener â€” navigate to reader route, passing current location for back button
   useEffect(() => {
     return addVerseNavigationListener((reference) => {
       const parsed = parseVerseReference(reference);
@@ -503,3 +504,5 @@ export default function RootLayout() {
     </ToastProvider>
   );
 }
+
+

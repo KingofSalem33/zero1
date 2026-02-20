@@ -4,7 +4,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
-import { supabase } from "../db";
+import { supabaseAuth } from "../db";
 
 // Extend Express Request to include userId
 
@@ -13,6 +13,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
+      accessToken?: string;
       user?: {
         id: string;
         email?: string;
@@ -48,7 +49,7 @@ export async function requireAuth(
     const {
       data: { user },
       error,
-    } = await supabase.auth.getUser(token);
+    } = await supabaseAuth.auth.getUser(token);
 
     if (error || !user) {
       res.status(401).json({
@@ -60,6 +61,7 @@ export async function requireAuth(
 
     // Attach user info to request
     req.userId = user.id;
+    req.accessToken = token;
     req.user = {
       id: user.id,
       email: user.email,
@@ -99,11 +101,12 @@ export async function optionalAuth(
     // Try to verify token
     const {
       data: { user },
-    } = await supabase.auth.getUser(token);
+    } = await supabaseAuth.auth.getUser(token);
 
     // If valid, attach user info
     if (user) {
       req.userId = user.id;
+      req.accessToken = token;
       req.user = {
         id: user.id,
         email: user.email,

@@ -9,7 +9,7 @@ const envPaths = [
 ];
 for (const envPath of envPaths) {
   dotenv.config({ path: envPath });
-  if (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) {
+  if (process.env.SUPABASE_URL) {
     break;
   }
 }
@@ -151,32 +151,27 @@ function combineAndDedupeUrls(
 }
 
 const app = express();
+const allowedCorsOrigins = new Set(ENV.CORS_ALLOWED_ORIGINS);
 
 app.use(profilerMiddleware);
 app.use(helmet());
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:5175",
-      "http://localhost:5176",
-      "http://localhost:5177",
-      "http://localhost:5178",
-      "http://localhost:5179",
-      "http://localhost:5180",
-      "http://localhost:5181",
-      "http://localhost:5182",
-      "http://localhost:5183",
-      "http://localhost:5184",
-      "http://localhost:5185",
-      "http://localhost:5186",
-      "http://localhost:5187",
-      "http://localhost:5188",
-      "http://localhost:5189",
-      "http://localhost:5190",
-      "http://localhost:4173",
-    ],
+    origin: (origin, callback) => {
+      // Allow non-browser requests (curl, server-to-server).
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const normalizedOrigin = origin.replace(/\/+$/, "");
+      if (allowedCorsOrigins.has(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
   }),
 );
 app.use(morgan("combined"));

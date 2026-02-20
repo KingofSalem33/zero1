@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense, useCallback } from "react";
+﻿import React, { useState, useEffect, lazy, Suspense, useCallback } from "react";
 import "./App.css";
 import RoadmapSidebarV2 from "./components/RoadmapSidebarV2";
 import { useAuth } from "./contexts/AuthContext";
@@ -11,13 +11,14 @@ import { addVerseNavigationListener } from "./utils/verseNavigation";
 import { useFocusTrap } from "./hooks/useFocusTrap";
 import MobileBottomNav from "./components/MobileBottomNav";
 import MobileHeader from "./components/MobileHeader";
+import { WEB_ENV } from "./lib/env";
 
 // Lazy load heavy components for code splitting
 const UnifiedWorkspace = lazy(() => import("./components/UnifiedWorkspace"));
 const BibleReader = lazy(() => import("./components/BibleReader"));
 const LibraryView = lazy(() => import("./components/LibraryView"));
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 interface Chat {
   id: string;
@@ -160,7 +161,7 @@ function App() {
 
       const bundle: VisualContextBundle = await response.json();
       console.log(
-        "[App] ✅ Received trace bundle:",
+        "[App] âœ… Received trace bundle:",
         bundle.nodes.length,
         "nodes",
       );
@@ -550,3 +551,5 @@ function App() {
 }
 
 export default App;
+
+

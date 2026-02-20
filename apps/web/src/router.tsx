@@ -3,6 +3,7 @@ import RootLayout from "./layouts/RootLayout";
 import ReaderRoute from "./routes/ReaderRoute";
 import ChatRoute from "./routes/ChatRoute";
 import LibraryRoute from "./routes/LibraryRoute";
+import SharedProbeRoute from "./routes/SharedProbeRoute";
 
 // Default redirect: use last position from localStorage or Matthew 1
 function getDefaultReaderPath() {
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
       {
         path: "library",
         element: <LibraryRoute />,
+      },
+      {
+        path: "ops/shared-probe",
+        element: <SharedProbeRoute />,
       },
       {
         path: "*",

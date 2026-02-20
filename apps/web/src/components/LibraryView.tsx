@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+﻿import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
 import {
   useBibleHighlightsContext,
   formatVerseRange,
 } from "../contexts/BibleHighlightsContext";
+import { WEB_ENV } from "../lib/env";
 import { SemanticConnectionModal } from "./golden-thread/SemanticConnectionModal";
 import {
   LibraryGridSkeleton,
@@ -20,7 +21,7 @@ import { useBibleBookmarks } from "../contexts/BibleBookmarksContext";
 import { useBibleNotes } from "../hooks/useBibleNotes";
 import { authFetch } from "../lib/authFetch";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 type BundleMeta = {
   anchorRef?: string;
@@ -209,7 +210,7 @@ function EmptyState({
             opacity="0.3"
           />
 
-          {/* Left verse node — rounded rect */}
+          {/* Left verse node â€” rounded rect */}
           <g filter="url(#conn-glow)">
             <rect
               x="30"
@@ -241,7 +242,7 @@ function EmptyState({
             />
           </g>
 
-          {/* Right verse node — rounded rect */}
+          {/* Right verse node â€” rounded rect */}
           <g filter="url(#conn-glow)">
             <rect
               x="128"
@@ -322,7 +323,7 @@ function EmptyState({
             </filter>
           </defs>
 
-          {/* Bezier edges — gold for anchor rays, white for others */}
+          {/* Bezier edges â€” gold for anchor rays, white for others */}
           <path
             d="M100 75 Q72 58 55 48"
             stroke="#C5B358"
@@ -372,7 +373,7 @@ function EmptyState({
             opacity="0.2"
           />
 
-          {/* Anchor node — larger, gold border */}
+          {/* Anchor node â€” larger, gold border */}
           <g filter="url(#map-glow)">
             <rect
               x="75"
@@ -404,7 +405,7 @@ function EmptyState({
             />
           </g>
 
-          {/* Leaf nodes — smaller, neutral borders, rounded rects */}
+          {/* Leaf nodes â€” smaller, neutral borders, rounded rects */}
           <g>
             <rect
               x="34"
@@ -1026,7 +1027,7 @@ export function LibraryView({
     if (activeTab === "connections") {
       (data as ReturnType<typeof getExportData>).forEach(
         (item: Record<string, unknown>, i: number) => {
-          text += `${i + 1}. [${item.type}] ${item.fromVerse} → ${item.toVerse}\n`;
+          text += `${i + 1}. [${item.type}] ${item.fromVerse} â†’ ${item.toVerse}\n`;
           if (item.synopsis) text += `   ${item.synopsis}\n`;
           if (item.note) text += `   Note: ${item.note}\n`;
           text += "\n";
@@ -1228,7 +1229,7 @@ export function LibraryView({
 
   return (
     <div ref={libraryScrollRef} className="h-screen overflow-y-auto bg-black">
-      {/* Header chrome — matches Reader bar */}
+      {/* Header chrome â€” matches Reader bar */}
       <div className="flex-shrink-0 border-b border-neutral-800/50 bg-neutral-900/50">
         <div className="max-w-6xl mx-auto px-6 py-4 md:px-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1540,7 +1541,7 @@ export function LibraryView({
                   {entry.title || entry.bundleMeta?.anchorRef || "Saved Map"}
                 </div>
                 <div className="text-xs text-neutral-400 mt-1">
-                  {entry.bundleMeta?.verseCount ?? 0} verses •{" "}
+                  {entry.bundleMeta?.verseCount ?? 0} verses â€¢{" "}
                   {entry.bundleMeta?.edgeCount ?? 0} connections
                 </div>
                 <div className="mt-4 flex gap-2">
@@ -1566,7 +1567,7 @@ export function LibraryView({
                     const refs = sample
                       .map(
                         (h) =>
-                          `- ${h.book} ${h.chapter}:${formatVerseRange(h.verses)} (${h.color})${h.note ? ` — "${h.note}"` : ""}`,
+                          `- ${h.book} ${h.chapter}:${formatVerseRange(h.verses)} (${h.color})${h.note ? ` â€” "${h.note}"` : ""}`,
                       )
                       .join("\n");
                     const prompt = `Analyze my Bible highlights and share insights. Here are my highlighted passages:\n\n${refs}\n\nPlease identify:\n1. Recurring themes or patterns across these highlights\n2. How these passages connect theologically\n3. A short devotional reflection based on what I've been drawn to\n\nKeep the tone scholarly but warm.`;
@@ -1802,3 +1803,7 @@ export function LibraryView({
 }
 
 export default LibraryView;
+
+
+
+

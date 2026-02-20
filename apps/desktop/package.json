@@ -1,0 +1,94 @@
+{
+  "name": "desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Zero1 desktop client",
+  "author": "Zero1",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --port 5174",
+    "dev:main": "tsc -p tsconfig.electron.json --watch",
+    "dev:electron": "wait-on tcp:5174 file:dist-electron/main.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5174 electron dist-electron/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.electron.json && tsc --noEmit -p tsconfig.node.json",
+    "build": "npm run typecheck && npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p tsconfig.electron.json",
+    "start": "electron dist-electron/main.js",
+    "test:auth-session": "vitest run tests/auth-session-hardening.test.ts",
+    "phase1:smoke": "node scripts/runDesktopSmokeSuite.js",
+    "phase1:gate": "node scripts/runPilotReleaseGate.js",
+    "phase1:smoke:credentialed": "node scripts/runCredentialedPilotSmoke.js",
+    "phase1:manual-validation": "node scripts/runPhase13ManualValidation.js",
+    "phase1:cohort": "node scripts/runPilotCohortSessions.js",
+    "phase1:feedback:wizard": "node scripts/runPilotFeedbackWizard.js",
+    "phase1:feedback-triage": "node scripts/runPilotFeedbackTriage.js",
+    "phase1:exit-check": "node scripts/runPhase1ExitCheck.js",
+    "phase1:signoff": "node scripts/runPilotSignoff.js",
+    "rollback:rehearsal": "node scripts/runRollbackRehearsal.js",
+    "pack:win": "npm run build && electron-builder --win --dir --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:win:publish": "npm run build && electron-builder --win --publish always",
+    "dist": "npm run build && electron-builder --publish never"
+  },
+  "dependencies": {
+    "@zero1/shared-client": "file:../../packages/shared-client",
+    "@supabase/supabase-js": "^2.58.0",
+    "electron-updater": "^6.3.9",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "30.0.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.2",
+    "vitest": "^2.1.9",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.zero1.desktop",
+    "productName": "Zero1",
+    "artifactName": "zero1-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "KingofSalem33",
+        "repo": "zero1",
+        "releaseType": "draft"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "artifactName": "zero1-setup-${version}-${arch}.${ext}"
+    }
+  }
+}

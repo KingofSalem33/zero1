@@ -1,25 +1,61 @@
-import { createClient, PostgrestError } from "@supabase/supabase-js";
+import {
+  createClient,
+  PostgrestError,
+} from "@supabase/supabase-js";
 import { ENV } from "./env";
 import pino from "pino";
 
 const logger = pino({ name: "db" });
 
-const supabaseKey = ENV.SUPABASE_SERVICE_KEY || ENV.SUPABASE_ANON_KEY;
+const supabaseAdminKey = ENV.SUPABASE_SERVICE_KEY;
+const supabaseAnonKey = ENV.SUPABASE_ANON_KEY;
 
-// Create Supabase client
-export const supabase = createClient(ENV.SUPABASE_URL, supabaseKey, {
+const BASE_CLIENT_OPTIONS = {
   auth: {
     persistSession: false, // Server-side doesn't need session persistence
   },
   db: {
     schema: "public",
   },
+};
+
+// Privileged client - use only for server-side trusted operations
+export const supabaseAdmin = createClient(ENV.SUPABASE_URL, supabaseAdminKey, {
+  ...BASE_CLIENT_OPTIONS,
   global: {
     headers: {
-      "X-Client-Info": "zero1-api",
+      "X-Client-Info": "zero1-api-admin",
     },
   },
 });
+
+// Auth verification client (anon key)
+export const supabaseAuth = createClient(ENV.SUPABASE_URL, supabaseAnonKey, {
+  ...BASE_CLIENT_OPTIONS,
+  global: {
+    headers: {
+      "X-Client-Info": "zero1-api-auth",
+    },
+  },
+});
+
+// User-scoped client - applies user JWT so RLS policies are enforced
+export function createUserSupabaseClient(
+  accessToken: string,
+) {
+  return createClient(ENV.SUPABASE_URL, supabaseAnonKey, {
+    ...BASE_CLIENT_OPTIONS,
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Client-Info": "zero1-api-user",
+      },
+    },
+  });
+}
+
+// Backward-compatible export while routes migrate to explicit clients.
+export const supabase = supabaseAdmin;
 
 // Database types (will be auto-generated later)
 export type Database = {

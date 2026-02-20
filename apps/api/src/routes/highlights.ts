@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { readOnlyLimiter } from "../middleware/rateLimit";
-import { supabase } from "../db";
+import { createUserSupabaseClient } from "../db";
 import { z } from "zod";
 
 const router = Router();
@@ -27,6 +27,7 @@ const syncSchema = z.object({
 router.get("/", requireAuth, readOnlyLimiter, async (req, res) => {
   try {
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const since = req.query.since as string | undefined;
 
     let query = supabase
@@ -69,6 +70,7 @@ router.get("/", requireAuth, readOnlyLimiter, async (req, res) => {
 router.post("/sync", requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { highlights: clientHighlights } = syncSchema.parse(req.body);
 
     // 1. Fetch all server highlights (including soft-deleted for merge)
@@ -188,6 +190,7 @@ router.post("/sync", requireAuth, async (req, res) => {
 router.put("/:id", requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { id } = req.params;
 
     const updateSchema = z.object({
@@ -234,6 +237,7 @@ router.put("/:id", requireAuth, async (req, res) => {
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const userId = req.userId!;
+    const supabase = createUserSupabaseClient(req.accessToken!);
     const { id } = req.params;
 
     const { error } = await supabase

@@ -3,10 +3,11 @@
  * Client-side Supabase instance for authentication and database operations
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseBrowserClient } from "@zero1/shared-client";
+import { WEB_ENV } from "./env";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabaseUrl = WEB_ENV.SUPABASE_URL;
+const supabaseAnonKey = WEB_ENV.SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
@@ -14,10 +15,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-});
+export const supabase = createSupabaseBrowserClient(
+  supabaseUrl,
+  supabaseAnonKey,
+);

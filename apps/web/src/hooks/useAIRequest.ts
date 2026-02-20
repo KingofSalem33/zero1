@@ -1,11 +1,12 @@
+﻿import { WEB_ENV } from "../lib/env";
 /**
- * useAIRequest — manages abort controller lifecycle for AI API calls.
+ * useAIRequest â€” manages abort controller lifecycle for AI API calls.
  * Automatically aborts in-flight requests when a new one starts or on unmount.
  */
 
 import { useRef, useCallback, useEffect } from "react";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 interface AIRequestOptions {
   /** API endpoint path (e.g., "/api/synopsis") */
@@ -83,3 +84,5 @@ export function useAIRequest() {
 
   return { execute, abort };
 }
+
+

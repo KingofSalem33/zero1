@@ -1,8 +1,9 @@
+﻿import { WEB_ENV } from "../lib/env";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { VisualContextBundle } from "../types/goldenThread";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 export interface ToolCallEvent {
   tool: string;
@@ -380,3 +381,5 @@ export function useChatStream(
     reset,
   };
 }
+
+

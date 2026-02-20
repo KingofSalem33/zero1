@@ -1,4 +1,5 @@
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+﻿import { WEB_ENV } from "../lib/env";
+const API_URL = WEB_ENV.API_URL;
 
 interface CacheEntry<T> {
   value: T;
@@ -95,3 +96,5 @@ export async function fetchCrossReferences(
     return [];
   }
 }
+
+

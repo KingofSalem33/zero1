@@ -18,7 +18,7 @@ import {
   findMultipleAnchorVerses,
   searchVersesByQuery,
 } from "./semanticSearch";
-import { supabase } from "../db";
+import { supabase, supabaseAdmin } from "../db";
 import { ENV } from "../env";
 import type {
   ParallelPassage,
@@ -260,7 +260,7 @@ const persistDiscoveredConnections = async (
     confidence: conn.confidence,
   }));
 
-  const { error } = await supabase.from("llm_connections").upsert(rows, {
+  const { error } = await supabaseAdmin.from("llm_connections").upsert(rows, {
     onConflict: "from_verse_id,to_verse_id,connection_type",
   });
   if (error) {

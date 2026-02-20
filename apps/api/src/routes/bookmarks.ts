@@ -2,7 +2,7 @@ import { Router } from "express";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
-import { supabase } from "../db";
+import { createUserSupabaseClient } from "../db";
 
 const router = Router();
 
@@ -39,10 +39,11 @@ router.get("/", readOnlyLimiter, async (req, res) => {
     profiler?.markHandlerStart();
 
     const userId = req.userId!;
+    const userSupabase = createUserSupabaseClient(req.accessToken!);
     const { data, error } = await profileTime(
       "bookmarks.select",
       () =>
-        supabase
+        userSupabase
           .from("bookmarks")
           .select("id,user_id,text,created_at")
           .eq("user_id", userId)
@@ -89,12 +90,13 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       { file: "routes/bookmarks.ts", fn: "createBookmarkSchema.parse" },
     );
     const userId = req.userId!;
+    const userSupabase = createUserSupabaseClient(req.accessToken!);
     const normalizedText = text.trim();
 
     const { data: existing, error: lookupError } = await profileTime(
       "bookmarks.duplicate_lookup",
       () =>
-        supabase
+        userSupabase
           .from("bookmarks")
           .select("id,user_id,text,created_at")
           .eq("user_id", userId)
@@ -133,7 +135,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const { data: inserted, error: insertError } = await profileTime(
       "bookmarks.insert",
       () =>
-        supabase
+        userSupabase
           .from("bookmarks")
           .insert({
             id: newBookmarkId,
@@ -191,11 +193,12 @@ router.delete("/:id", readOnlyLimiter, async (req, res) => {
 
     const { id } = req.params;
     const userId = req.userId!;
+    const userSupabase = createUserSupabaseClient(req.accessToken!);
 
     const { data, error } = await profileTime(
       "bookmarks.delete",
       () =>
-        supabase
+        userSupabase
           .from("bookmarks")
           .delete()
           .eq("id", id)

@@ -24,7 +24,8 @@
     "migrate:library:apply": "ts-node scripts/migrateJsonLibraryToSupabase.ts --apply",
     "readiness:check": "node scripts/runReadinessChecks.js",
     "phase0:exit:check": "node scripts/runPhase0ExitValidation.js",
-    "rls:verify": "node scripts/verifyRlsIsolation.js"
+    "rls:verify": "node scripts/verifyRlsIsolation.js",
+    "test:regression": "node scripts/runAuthRegressionCoverage.js"
   },
   "keywords": [],
   "author": "",

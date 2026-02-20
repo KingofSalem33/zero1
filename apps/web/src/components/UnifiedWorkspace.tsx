@@ -5,6 +5,7 @@
   useCallback,
   useMemo,
 } from "react";
+import { WEB_ENV } from "../lib/env";
 import { MessageStream } from "./golden-thread/MessageStream";
 import { ToolBadges } from "./ToolBadges";
 import { VerseSearchIndicator } from "./VerseSearchIndicator";
@@ -24,7 +25,7 @@ import type {
   MapConnection,
 } from "../types/chat";
 
-const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001";
+const API_URL = WEB_ENV.API_URL;
 
 const EDGE_TYPE_TO_STYLE: Record<string, string> = {
   DEEPER: "GREY",
@@ -412,7 +413,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             const errorData = await response.json().catch(() => ({}));
             const retryAfter = errorData.retryAfter || "1 minute";
             throw new Error(
-              `⏱️ Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
+              `?? Rate limit exceeded. Please wait ${retryAfter} before trying again.`,
             );
           }
           throw new Error(`HTTP ${response.status}`);
@@ -493,7 +494,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   const refreshData = JSON.parse(data);
                   if (import.meta.env.DEV)
                     console.log(
-                      "🔄 [UnifiedWorkspace] Received refresh request:",
+                      "?? [UnifiedWorkspace] Received refresh request:",
                       refreshData.trigger,
                     );
                   onRefreshProject();
@@ -531,7 +532,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   const artifactData = JSON.parse(data);
                   if (import.meta.env.DEV)
                     console.log(
-                      "🧪 [UnifiedWorkspace] Artifact completions:",
+                      "?? [UnifiedWorkspace] Artifact completions:",
                       artifactData.completed_substeps.length,
                       "substeps",
                     );
@@ -553,14 +554,14 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                   const phaseData = JSON.parse(data);
                   if (import.meta.env.DEV)
                     console.log(
-                      "🔓 [UnifiedWorkspace] Phase unlocked:",
+                      "?? [UnifiedWorkspace] Phase unlocked:",
                       phaseData.phase_id,
                     );
                   // Show celebration for phase unlock
                   const unlockMessage: ChatMessage = {
                     id: (Date.now() + 4).toString(),
                     type: "ai",
-                    content: `🎉 **Phase ${phaseData.phase_id} Unlocked!**\n\n${phaseData.phase_goal}\n\nGreat progress! You've completed the previous phase and unlocked the next one.`,
+                    content: `?? **Phase ${phaseData.phase_id} Unlocked!**\n\n${phaseData.phase_goal}\n\nGreat progress! You've completed the previous phase and unlocked the next one.`,
                     timestamp: new Date(),
                   };
                   setMessages((prev) => [...prev, unlockMessage]);
@@ -705,7 +706,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
       stopAudio();
 
       try {
-        const response = await fetch("http://localhost:3001/api/tts", {
+        const response = await fetch(`${API_URL}/api/tts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2807,3 +2808,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 };
 
 export default UnifiedWorkspace;
+
+
+
+
