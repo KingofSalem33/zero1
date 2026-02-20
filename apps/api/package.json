@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "rimraf dist && tsc",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -21,7 +21,10 @@
     "populate:structures": "ts-node scripts/populateLiteraryStructures.ts",
     "build:structures": "ts-node scripts/buildLiteraryStructures.ts",
     "migrate:library:dry-run": "ts-node scripts/migrateJsonLibraryToSupabase.ts",
-    "migrate:library:apply": "ts-node scripts/migrateJsonLibraryToSupabase.ts --apply"
+    "migrate:library:apply": "ts-node scripts/migrateJsonLibraryToSupabase.ts --apply",
+    "readiness:check": "node scripts/runReadinessChecks.js",
+    "phase0:exit:check": "node scripts/runPhase0ExitValidation.js",
+    "rls:verify": "node scripts/verifyRlsIsolation.js"
   },
   "keywords": [],
   "author": "",
