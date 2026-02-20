@@ -1540,7 +1540,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       const anchorCandidates = reactFlowNodes.filter((n) => n.data.isAnchor);
       if (anchorCandidates.length > 1) {
         console.error(
-          `[Layout DEBUG] âš ï¸ MULTIPLE ANCHORS DETECTED:`,
+          "[Layout DEBUG] MULTIPLE ANCHORS DETECTED:",
           anchorCandidates.map((n) => ({
             id: n.id,
             verse: `${n.data.verse.book_abbrev} ${n.data.verse.chapter}:${n.data.verse.verse}`,
@@ -1683,7 +1683,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
     positionMap.forEach((nodeIds, position) => {
       if (nodeIds.length > 1) {
         console.error(
-          `[Layout DEBUG] âš ï¸ POSITION CONFLICT at ${position}:`,
+          `[Layout DEBUG] POSITION CONFLICT at ${position}:`,
           nodeIds,
         );
       }
@@ -2862,6 +2862,3 @@ export const NarrativeMap = React.memo(
     );
   },
 );
-
-
-

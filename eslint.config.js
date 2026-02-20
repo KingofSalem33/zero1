@@ -7,7 +7,13 @@ import reactRefresh from "eslint-plugin-react-refresh";
 
 export default [
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "**/.next/**", "**/build/**"],
+    ignores: [
+      "**/dist/**",
+      "**/dist-electron/**",
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/build/**",
+    ],
   },
   js.configs.recommended,
   {
@@ -50,6 +56,12 @@ export default [
       "@typescript-eslint/no-explicit-any": "warn",
       "no-console": "off",
       "prefer-const": "error",
+    },
+  },
+  {
+    files: ["apps/api/scripts/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   {
@@ -107,6 +119,58 @@ export default [
         Audio: "readonly",
         HTMLAudioElement: "readonly",
         alert: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": typescript,
+      import: importPlugin,
+      "react-refresh": reactRefresh,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "no-console": "off",
+      "prefer-const": "error",
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["apps/desktop/**/*.{js,ts,tsx}"],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        Buffer: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+        global: "readonly",
+        module: "readonly",
+        require: "readonly",
+        exports: "readonly",
+        NodeJS: "readonly",
+        window: "readonly",
+        document: "readonly",
+        navigator: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
       },
     },
     plugins: {
