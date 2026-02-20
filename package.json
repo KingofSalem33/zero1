@@ -14,7 +14,7 @@
     "build:web": "npm --prefix apps/web run build",
     "lint": "eslint \"apps/**/*.{ts,tsx,js}\"",
     "format": "prettier -w .",
-    "prepare": "husky"
+    "prepare": "husky || echo \"Skipping husky in CI/build environment\""
   },
   "lint-staged": {
     "*.{ts,tsx,js}": [
