@@ -11,10 +11,12 @@
     "dev:api": "npm --prefix apps/api run dev",
     "dev:web": "npm --prefix apps/web run dev",
     "dev:desktop": "npm --prefix apps/desktop run dev",
+    "dev:mobile": "npm --prefix apps/mobile run start",
     "build": "npm run build:api && npm run build:web",
     "build:api": "npm --prefix apps/api run build",
     "build:web": "npm --prefix apps/web run build",
     "build:desktop": "npm --prefix apps/desktop run build",
+    "typecheck:mobile": "npm --prefix apps/mobile run typecheck",
     "lint": "eslint \"apps/**/*.{ts,tsx,js}\"",
     "format": "prettier -w .",
     "prepare": "husky || echo \"Skipping husky in CI/build environment\""

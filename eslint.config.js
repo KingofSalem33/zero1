@@ -192,5 +192,52 @@ export default [
       "react-refresh/only-export-components": "off",
     },
   },
+  {
+    files: ["apps/mobile/**/*.{js,ts,tsx}"],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        global: "readonly",
+        __DEV__: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        FormData: "readonly",
+        Headers: "readonly",
+        Request: "readonly",
+        Response: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": typescript,
+      import: importPlugin,
+      "react-refresh": reactRefresh,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "no-console": "off",
+      "prefer-const": "error",
+      "react-refresh/only-export-components": "off",
+    },
+  },
   prettier,
 ];

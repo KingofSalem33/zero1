@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 Owner: Product + Engineering
 Status: In progress
 
@@ -30,11 +30,12 @@ Status: In progress
 - [x] Agent W (DB Fix): Apply Supabase grants fix for `highlights` in production and validate via credentialed smoke.
 - [x] Agent V (Pilot Sign-off): Run credentialed pilot smoke on deployed backend + complete release sign-off (engineering/product) for first pilot cohort.
 - [x] Agent X (Validation): Execute remaining Phase 1.3 manual validation (chat/map/onboarding smoke + long-session stability + crash diagnostics verification).
-- [ ] Agent Y (Blocked on human pilot input): Run first pilot cohort sessions and collect crash/error telemetry + user feedback for Phase 1 exit criteria.
+- [x] Agent Y (Pilot Cohort): Run first pilot cohort sessions and collect crash/error telemetry + user feedback for Phase 1 exit criteria.
 - [x] Agent ZA (Pilot Ops): Add guided pilot feedback intake automation to standardize report quality and diagnostics evidence attachment.
 - [x] Agent ZC (Desktop UX): Switch desktop dev runtime to launch the full web application shell in Electron for real pilot flow validation.
 - [x] Agent ZB (Pilot Exit): Collect >=3 real pilot user feedback reports + diagnostics log attachments, rerun triage + phase-exit checks, then close Phase 1 exit criteria.
-- [ ] Agent AA (Next): Start Phase 2.1 mobile foundation (`apps/mobile` Expo scaffold + shared auth wiring plan) after Phase 1 closure.
+- [x] Agent AA (Mobile Foundation): Start Phase 2.1 mobile foundation (`apps/mobile` Expo scaffold + shared auth wiring plan) after Phase 1 closure.
+- [ ] Agent AB (Next): Implement Phase 2.2 provider auth (Apple + Google) with deep-link callback handling and Supabase redirect validation.
 
 ### Execution Notes (2026-02-19)
 
@@ -378,6 +379,23 @@ Status: In progress
     - `npm --prefix apps/desktop run phase1:exit-check`
     - Report: `apps/desktop/reports/phase1ExitCheck.json` (`passed: true`)
   - Result: all automated Phase 1 report gates are now green.
+- Phase 2.1 mobile foundation scaffold completed (Agent AA):
+  - Added Expo + React Native + TypeScript app scaffold:
+    - `apps/mobile/package.json`
+    - `apps/mobile/app.json`
+    - `apps/mobile/App.tsx`
+    - `apps/mobile/index.ts`
+  - Added mobile env contract + Supabase auth foundation:
+    - `apps/mobile/.env.example`
+    - `apps/mobile/src/lib/env.ts`
+    - `apps/mobile/src/lib/supabase.ts`
+    - `apps/mobile/src/lib/api.ts`
+  - Added mobile auth rollout plan:
+    - `apps/mobile/MOBILE_AUTH_WIRING_PLAN.md`
+  - Monorepo commands added:
+    - root `package.json` scripts `dev:mobile` and `typecheck:mobile`
+  - Lint coverage extended to mobile workspace:
+    - `eslint.config.js`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -413,7 +431,7 @@ Ship a production-ready platform with:
   - `apps/web/src/routes/LibraryRoute.tsx`
   - `apps/web/src/components/UnifiedWorkspace.tsx`
   - `apps/web/src/components/LibraryView.tsx`
-- No `apps/mobile` yet
+- Monorepo now includes initial `apps/mobile` Expo + TypeScript scaffold with Supabase auth shell
 
 ## 4) Phase Plan
 
@@ -550,13 +568,13 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 
 ### 2.1 Mobile App Foundation
 
-- [ ] Add `apps/mobile` (Expo + React Native + TypeScript)
+- [x] Add `apps/mobile` (Expo + React Native + TypeScript)
 - [ ] Establish navigation, design tokens, and mobile-first layout rules
 - [ ] Implement essential core feature paths before parity edge-cases
 
 ### 2.2 Mobile Auth (Critical)
 
-- [ ] Supabase auth wiring in mobile app
+- [x] Supabase auth wiring in mobile app
 - [ ] Sign in with Apple
 - [ ] Google Sign-In
 - [ ] Email fallback
