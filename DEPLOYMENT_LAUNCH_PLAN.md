@@ -32,6 +32,7 @@ Status: In progress
 - [x] Agent X (Validation): Execute remaining Phase 1.3 manual validation (chat/map/onboarding smoke + long-session stability + crash diagnostics verification).
 - [ ] Agent Y (Blocked on human pilot input): Run first pilot cohort sessions and collect crash/error telemetry + user feedback for Phase 1 exit criteria.
 - [x] Agent ZA (Pilot Ops): Add guided pilot feedback intake automation to standardize report quality and diagnostics evidence attachment.
+- [x] Agent ZC (Desktop UX): Switch desktop dev runtime to launch the full web application shell in Electron for real pilot flow validation.
 - [ ] Agent ZB (Next): Collect >=3 real pilot user feedback reports + diagnostics log attachments, rerun triage + phase-exit checks, then close Phase 1 exit criteria.
 
 ### Execution Notes (2026-02-19)
@@ -357,6 +358,17 @@ Status: In progress
     - `apps/desktop/PILOT_COHORT_RUNBOOK.md`
   - Remaining blocker is unchanged:
     - Need >=3 real pilot feedback files from human pilot sessions.
+- Desktop full-app shell runtime update (2026-02-20):
+  - Attempted direct source import of `apps/web` renderer into `apps/desktop` was rejected due incompatible TypeScript strictness/type surface between workspaces.
+  - Implemented stable fallback: Electron now supports loading a full web client URL via `DESKTOP_WEB_APP_URL`.
+  - Desktop dev flow now launches full app shell automatically:
+    - `apps/desktop/package.json` `dev` now runs web dev (`../web`, port `5173`) + electron main watcher + electron runtime.
+    - `apps/desktop/electron/main.ts` loads `DESKTOP_WEB_APP_URL` when set (before local probe renderer fallback).
+  - Env/docs updated:
+    - `apps/desktop/.env.example` adds `DESKTOP_WEB_APP_URL` guidance.
+  - Electron cache/userData hardening for Windows dev stability:
+    - `apps/desktop/electron/main.ts` now isolates dev `userData` at `%APPDATA%/zero1-desktop-dev` (or `DESKTOP_USER_DATA_DIR` override) and uses a dedicated `sessionData` subdirectory.
+    - Prevents cache/quota lock collisions observed under `%APPDATA%/Electron`.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

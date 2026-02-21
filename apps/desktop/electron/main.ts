@@ -15,7 +15,18 @@ const { autoUpdater } = electronUpdater;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const explicitUserDataDir = (process.env.DESKTOP_USER_DATA_DIR || "").trim();
+if (explicitUserDataDir.length > 0) {
+  app.setPath("userData", explicitUserDataDir);
+} else if (!app.isPackaged) {
+  app.setPath(
+    "userData",
+    path.join(app.getPath("appData"), "zero1-desktop-dev"),
+  );
+}
+app.setPath("sessionData", path.join(app.getPath("userData"), "session-data"));
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+const desktopWebAppUrl = (process.env.DESKTOP_WEB_APP_URL || "").trim();
 const updateChannel = process.env.DESKTOP_UPDATE_CHANNEL || "latest";
 const autoUpdateEnabled = process.env.DESKTOP_AUTO_UPDATE_ENABLED !== "false";
 const updateFeedUrl = process.env.DESKTOP_UPDATE_FEED_URL;
@@ -176,7 +187,12 @@ function createMainWindow(): BrowserWindow {
     window.show();
   });
 
-  if (devServerUrl) {
+  if (desktopWebAppUrl) {
+    void window.loadURL(desktopWebAppUrl);
+    if (devServerUrl) {
+      window.webContents.openDevTools({ mode: "detach" });
+    }
+  } else if (devServerUrl) {
     void window.loadURL(devServerUrl);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
