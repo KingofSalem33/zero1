@@ -1,4 +1,7 @@
-function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
+function parseBoolean(
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean {
   if (value === undefined || value === null || value.trim().length === 0) {
     return defaultValue;
   }
@@ -14,7 +17,7 @@ function parseCsv(value: string | undefined): string[] {
     .filter((origin) => origin.length > 0);
 }
 
-const DEFAULT_DEV_CORS_ORIGINS = [
+const LOCAL_DESKTOP_CORS_ORIGINS = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:5175",
@@ -34,12 +37,24 @@ const DEFAULT_DEV_CORS_ORIGINS = [
   "http://localhost:5189",
   "http://localhost:5190",
   "http://localhost:4173",
+  "null",
 ];
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProduction = nodeEnv === "production";
 const configuredCorsOrigins = parseCsv(process.env.CORS_ALLOWED_ORIGINS);
 const strictEnv = parseBoolean(process.env.STRICT_ENV, isProduction);
+const mergedProductionCorsOrigins = Array.from(
+  new Set([...configuredCorsOrigins, ...LOCAL_DESKTOP_CORS_ORIGINS]),
+);
+const resolvedCorsAllowedOrigins =
+  configuredCorsOrigins.length > 0
+    ? isProduction
+      ? mergedProductionCorsOrigins
+      : configuredCorsOrigins
+    : isProduction
+      ? []
+      : LOCAL_DESKTOP_CORS_ORIGINS;
 
 export const ENV = {
   NODE_ENV: nodeEnv,
@@ -59,12 +74,7 @@ export const ENV = {
   SUPABASE_URL: process.env.SUPABASE_URL || "",
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
   SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY || "",
-  CORS_ALLOWED_ORIGINS:
-    configuredCorsOrigins.length > 0
-      ? configuredCorsOrigins
-      : isProduction
-        ? []
-        : DEFAULT_DEV_CORS_ORIGINS,
+  CORS_ALLOWED_ORIGINS: resolvedCorsAllowedOrigins,
   PERICOPE_SOURCE: process.env.PERICOPE_SOURCE || "SIL_AI",
   DEEPER_VOTE_DEBUG:
     process.env.DEEPER_VOTE_DEBUG === "1" ||
@@ -106,5 +116,11 @@ if (!ENV.SUPABASE_SERVICE_KEY) {
 if (!ENV.IS_PRODUCTION && configuredCorsOrigins.length === 0) {
   console.warn(
     "[WARN] CORS_ALLOWED_ORIGINS not set. Using development localhost defaults.",
+  );
+}
+
+if (ENV.IS_PRODUCTION && configuredCorsOrigins.length > 0) {
+  console.log(
+    "[INFO] CORS allowlist merged with localhost + null origins for desktop/Electron clients.",
   );
 }

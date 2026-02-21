@@ -170,7 +170,8 @@ app.use(
         return;
       }
 
-      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(null, false);
     },
   }),
 );
