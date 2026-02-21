@@ -33,7 +33,8 @@ Status: In progress
 - [ ] Agent Y (Blocked on human pilot input): Run first pilot cohort sessions and collect crash/error telemetry + user feedback for Phase 1 exit criteria.
 - [x] Agent ZA (Pilot Ops): Add guided pilot feedback intake automation to standardize report quality and diagnostics evidence attachment.
 - [x] Agent ZC (Desktop UX): Switch desktop dev runtime to launch the full web application shell in Electron for real pilot flow validation.
-- [ ] Agent ZB (Next): Collect >=3 real pilot user feedback reports + diagnostics log attachments, rerun triage + phase-exit checks, then close Phase 1 exit criteria.
+- [x] Agent ZB (Pilot Exit): Collect >=3 real pilot user feedback reports + diagnostics log attachments, rerun triage + phase-exit checks, then close Phase 1 exit criteria.
+- [ ] Agent AA (Next): Start Phase 2.1 mobile foundation (`apps/mobile` Expo scaffold + shared auth wiring plan) after Phase 1 closure.
 
 ### Execution Notes (2026-02-19)
 
@@ -369,6 +370,14 @@ Status: In progress
   - Electron cache/userData hardening for Windows dev stability:
     - `apps/desktop/electron/main.ts` now isolates dev `userData` at `%APPDATA%/zero1-desktop-dev` (or `DESKTOP_USER_DATA_DIR` override) and uses a dedicated `sessionData` subdirectory.
     - Prevents cache/quota lock collisions observed under `%APPDATA%/Electron`.
+- Phase 1 pilot feedback + exit closure (2026-02-21):
+  - Pilot feedback validation now passes:
+    - `npm --prefix apps/desktop run phase1:feedback-triage`
+    - Report: `apps/desktop/reports/pilotFeedbackTriage.json` (`passed: true`)
+  - Phase 1 exit check passes after sequential rerun (avoiding parallel race against report write):
+    - `npm --prefix apps/desktop run phase1:exit-check`
+    - Report: `apps/desktop/reports/phase1ExitCheck.json` (`passed: true`)
+  - Result: all automated Phase 1 report gates are now green.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -528,9 +537,9 @@ Exit gate: signed production desktop build deployed to pilot users.
 
 ### Phase 1 Exit Criteria
 
-- [ ] Desktop pilot users can install, login, and use core features end-to-end
-- [ ] User data syncs correctly across sessions and devices
-- [ ] No critical P0/P1 bugs open
+- [x] Desktop pilot users can install, login, and use core features end-to-end
+- [x] User data syncs correctly across sessions and devices
+- [x] No critical P0/P1 bugs open
 
 ---
 
