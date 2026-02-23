@@ -36,6 +36,7 @@ Status: In progress
 - [x] Agent ZB (Pilot Exit): Collect >=3 real pilot user feedback reports + diagnostics log attachments, rerun triage + phase-exit checks, then close Phase 1 exit criteria.
 - [x] Agent AA (Mobile Foundation): Start Phase 2.1 mobile foundation (`apps/mobile` Expo scaffold + shared auth wiring plan) after Phase 1 closure.
 - [x] Agent AB (Mobile Auth Code): Implement app-side provider auth plumbing (Apple + Google launch paths) with deep-link callback handling and Supabase session exchange.
+- [x] Agent AD (Mobile Dev Build): Add Expo dev-client + EAS build configuration for reliable native OAuth callback testing.
 - [ ] Agent AC (Next): Complete provider dashboard configuration (Google + Apple when approved) and validate Supabase redirect/auth callbacks end-to-end on device.
 
 ### Execution Notes (2026-02-19)
@@ -412,6 +413,18 @@ Status: In progress
   - Notes:
     - Uses React Native `Linking.openURL` for browser handoff now (no extra SDK dependency required).
     - End-to-end provider validation remains pending external dashboard setup/Apple account approval.
+- Mobile dev-client OAuth testing setup completed (Agent AD):
+  - Installed `expo-dev-client` in `apps/mobile`.
+  - Added Expo dev-client plugin config:
+    - `apps/mobile/app.json`
+  - Added EAS build profiles for development/preview/production:
+    - `apps/mobile/eas.json`
+  - Added mobile scripts:
+    - `npm --prefix apps/mobile run start:dev-client`
+    - `npm --prefix apps/mobile run eas:build:ios:dev`
+    - `npm --prefix apps/mobile run eas:build:ios:preview`
+  - Added test runbook for native OAuth callback validation:
+    - `apps/mobile/DEV_CLIENT_OAUTH_TESTING.md`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

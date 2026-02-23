@@ -193,6 +193,20 @@ export default [
     },
   },
   {
+    files: ["apps/mobile/*.config.js"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
     files: ["apps/mobile/**/*.{js,ts,tsx}"],
     languageOptions: {
       parser: typescriptParser,
@@ -237,6 +251,12 @@ export default [
       "no-console": "off",
       "prefer-const": "error",
       "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["apps/mobile/metro.config.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   prettier,
