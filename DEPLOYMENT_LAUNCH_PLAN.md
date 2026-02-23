@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-21
+Last updated: 2026-02-23
 Owner: Product + Engineering
 Status: In progress
 
@@ -35,7 +35,8 @@ Status: In progress
 - [x] Agent ZC (Desktop UX): Switch desktop dev runtime to launch the full web application shell in Electron for real pilot flow validation.
 - [x] Agent ZB (Pilot Exit): Collect >=3 real pilot user feedback reports + diagnostics log attachments, rerun triage + phase-exit checks, then close Phase 1 exit criteria.
 - [x] Agent AA (Mobile Foundation): Start Phase 2.1 mobile foundation (`apps/mobile` Expo scaffold + shared auth wiring plan) after Phase 1 closure.
-- [ ] Agent AB (Next): Implement Phase 2.2 provider auth (Apple + Google) with deep-link callback handling and Supabase redirect validation.
+- [x] Agent AB (Mobile Auth Code): Implement app-side provider auth plumbing (Apple + Google launch paths) with deep-link callback handling and Supabase session exchange.
+- [ ] Agent AC (Next): Complete provider dashboard configuration (Google + Apple when approved) and validate Supabase redirect/auth callbacks end-to-end on device.
 
 ### Execution Notes (2026-02-19)
 
@@ -396,6 +397,21 @@ Status: In progress
     - root `package.json` scripts `dev:mobile` and `typecheck:mobile`
   - Lint coverage extended to mobile workspace:
     - `eslint.config.js`
+- Phase 2.2 mobile auth code plumbing completed (Agent AB):
+  - Added Supabase OAuth launch flows (Google + Apple) in mobile auth shell:
+    - `apps/mobile/App.tsx`
+  - Added deep-link callback parsing + Supabase session/code exchange helper:
+    - `apps/mobile/src/lib/authRedirect.ts`
+  - Mobile runtime now listens for auth callback URLs and completes session restoration from callback payloads.
+  - Added provider feature flags to mobile env contract:
+    - `EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH`
+    - `EXPO_PUBLIC_ENABLE_APPLE_OAUTH`
+    - Files:
+      - `apps/mobile/src/lib/env.ts`
+      - `apps/mobile/.env.example`
+  - Notes:
+    - Uses React Native `Linking.openURL` for browser handoff now (no extra SDK dependency required).
+    - End-to-end provider validation remains pending external dashboard setup/Apple account approval.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -577,8 +593,8 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 - [x] Supabase auth wiring in mobile app
 - [ ] Sign in with Apple
 - [ ] Google Sign-In
-- [ ] Email fallback
-- [ ] Deep-link callback handling for auth flows
+- [x] Email fallback
+- [x] Deep-link callback handling for auth flows
 
 ### 2.3 Shared Logic Extraction
 

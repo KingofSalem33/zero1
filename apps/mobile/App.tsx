@@ -1,7 +1,8 @@
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,6 +14,10 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { MOBILE_ENV } from "./src/lib/env";
 import { fetchProtectedProbe, type ProtectedProbeResult } from "./src/lib/api";
+import {
+  getOAuthRedirectUrl,
+  handleSupabaseAuthRedirect,
+} from "./src/lib/authRedirect";
 import { supabase } from "./src/lib/supabase";
 
 export default function App() {
@@ -27,6 +32,32 @@ export default function App() {
     null,
   );
   const [probeError, setProbeError] = useState<string | null>(null);
+  const processedAuthUrlsRef = useRef<Set<string>>(new Set());
+
+  async function processAuthRedirect(url: string, source: "initial" | "event") {
+    if (processedAuthUrlsRef.current.has(url)) {
+      return;
+    }
+    processedAuthUrlsRef.current.add(url);
+
+    const outcome = await handleSupabaseAuthRedirect(url);
+    if (outcome.kind === "ignored") {
+      return;
+    }
+    if (outcome.kind === "error") {
+      setAuthError(outcome.message);
+      setAuthInfo(null);
+      return;
+    }
+
+    const sessionUser = outcome.session?.user;
+    setAuthError(null);
+    setAuthInfo(
+      sessionUser
+        ? `Auth callback (${source}) completed for ${sessionUser.email ?? sessionUser.id}.`
+        : `Auth callback (${source}) completed.`,
+    );
+  }
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -41,7 +72,20 @@ export default function App() {
       setUser(nextSession?.user ?? null);
     });
 
-    return () => subscription.unsubscribe();
+    const linkingSubscription = Linking.addEventListener("url", ({ url }) => {
+      void processAuthRedirect(url, "event");
+    });
+
+    void Linking.getInitialURL().then((initialUrl) => {
+      if (initialUrl) {
+        void processAuthRedirect(initialUrl, "initial");
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      linkingSubscription.remove();
+    };
   }, []);
 
   const authLabel = useMemo(() => {
@@ -78,14 +122,54 @@ export default function App() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: emailAddress,
-        options: MOBILE_ENV.MAGIC_LINK_REDIRECT_TO
-          ? { emailRedirectTo: MOBILE_ENV.MAGIC_LINK_REDIRECT_TO }
-          : undefined,
+        options: { emailRedirectTo: getOAuthRedirectUrl() },
       });
       if (error) throw error;
       setAuthInfo("Magic link sent. Check your email.");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startOAuth(provider: "google" | "apple") {
+    const providerEnabled =
+      provider === "google"
+        ? MOBILE_ENV.ENABLE_GOOGLE_OAUTH
+        : MOBILE_ENV.ENABLE_APPLE_OAUTH;
+    if (!providerEnabled) {
+      setAuthError(
+        `${provider} sign-in is disabled in this build. Enable EXPO_PUBLIC_ENABLE_${provider.toUpperCase()}_OAUTH=true after provider setup.`,
+      );
+      setAuthInfo(null);
+      return;
+    }
+
+    setBusy(true);
+    setAuthError(null);
+    setAuthInfo(null);
+    try {
+      const redirectTo = getOAuthRedirectUrl();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) throw error;
+      if (!data?.url) {
+        throw new Error(
+          `Supabase did not return an OAuth URL for ${provider}.`,
+        );
+      }
+
+      setAuthInfo(`Opening ${provider} sign-in...`);
+      await Linking.openURL(data.url);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : String(error));
+      setAuthInfo(null);
     } finally {
       setBusy(false);
     }
@@ -135,10 +219,17 @@ export default function App() {
         <View style={styles.card}>
           <Text style={styles.meta}>API: {MOBILE_ENV.API_URL}</Text>
           <Text style={styles.meta}>Mode: {MOBILE_ENV.MODE}</Text>
+          <Text style={styles.meta}>
+            Auth redirect: {getOAuthRedirectUrl()}
+          </Text>
           <Text style={styles.meta}>{authLabel}</Text>
           <Text style={styles.meta}>
             Session: {session ? "active" : "none"} | Strict env:{" "}
             {String(MOBILE_ENV.STRICT_ENV)}
+          </Text>
+          <Text style={styles.meta}>
+            Google OAuth: {MOBILE_ENV.ENABLE_GOOGLE_OAUTH ? "enabled" : "off"} |
+            Apple OAuth: {MOBILE_ENV.ENABLE_APPLE_OAUTH ? "enabled" : "off"}
           </Text>
         </View>
 
@@ -168,6 +259,22 @@ export default function App() {
             <View style={styles.row}>
               <Pressable
                 disabled={busy}
+                onPress={() => void startOAuth("google")}
+                style={[styles.buttonGoogle, busy && styles.buttonDisabled]}
+              >
+                <Text style={styles.buttonLabel}>Google</Text>
+              </Pressable>
+              <Pressable
+                disabled={busy}
+                onPress={() => void startOAuth("apple")}
+                style={[styles.buttonApple, busy && styles.buttonDisabled]}
+              >
+                <Text style={styles.buttonLabel}>Apple</Text>
+              </Pressable>
+            </View>
+            <View style={styles.row}>
+              <Pressable
+                disabled={busy}
                 onPress={() => void signIn()}
                 style={[styles.button, busy && styles.buttonDisabled]}
               >
@@ -181,6 +288,10 @@ export default function App() {
                 <Text style={styles.buttonLabel}>Magic link</Text>
               </Pressable>
             </View>
+            <Text style={styles.meta}>
+              Email/password + magic link remain available as fallback. OAuth
+              callbacks are handled via deep link `auth/callback`.
+            </Text>
             {authError ? <Text style={styles.error}>{authError}</Text> : null}
             {authInfo ? <Text style={styles.info}>{authInfo}</Text> : null}
           </View>
@@ -276,6 +387,26 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 10,
     backgroundColor: "#334155",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+  },
+  buttonGoogle: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: "#1f2937",
+    borderColor: "#475569",
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+  },
+  buttonApple: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: "#111827",
+    borderColor: "#64748b",
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 11,

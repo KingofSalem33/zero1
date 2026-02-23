@@ -25,6 +25,8 @@ const rawSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const rawSupabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
 const rawMagicLinkRedirectTo =
   process.env.EXPO_PUBLIC_MAGIC_LINK_REDIRECT_TO || "";
+const rawEnableGoogleOAuth = process.env.EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH || "";
+const rawEnableAppleOAuth = process.env.EXPO_PUBLIC_ENABLE_APPLE_OAUTH || "";
 
 const normalizedApiUrl = trimTrailingSlashes(rawApiUrl);
 const normalizedSupabaseUrl = trimTrailingSlashes(rawSupabaseUrl);
@@ -56,4 +58,6 @@ export const MOBILE_ENV = {
   SUPABASE_URL: normalizedSupabaseUrl,
   SUPABASE_ANON_KEY: rawSupabaseAnonKey,
   MAGIC_LINK_REDIRECT_TO: rawMagicLinkRedirectTo,
+  ENABLE_GOOGLE_OAUTH: parseBoolean(rawEnableGoogleOAuth, false),
+  ENABLE_APPLE_OAUTH: parseBoolean(rawEnableAppleOAuth, false),
 };
