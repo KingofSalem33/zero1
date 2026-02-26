@@ -32,6 +32,18 @@ function looksLikeAuthCallback(url: string): boolean {
   return /auth\/callback/i.test(url);
 }
 
+function hasOAuthCallbackParams(
+  params: InstanceType<typeof globalThis.URLSearchParams>,
+): boolean {
+  return Boolean(
+    params.get("code") ||
+      params.get("access_token") ||
+      params.get("refresh_token") ||
+      params.get("error") ||
+      params.get("error_description"),
+  );
+}
+
 export function getOAuthRedirectUrl(): string {
   return MOBILE_ENV.MAGIC_LINK_REDIRECT_TO || "zero1://auth/callback";
 }
@@ -39,11 +51,11 @@ export function getOAuthRedirectUrl(): string {
 export async function handleSupabaseAuthRedirect(
   url: string,
 ): Promise<AuthRedirectOutcome> {
-  if (!looksLikeAuthCallback(url)) {
+  const params = getAllParams(url);
+
+  if (!looksLikeAuthCallback(url) && !hasOAuthCallbackParams(params)) {
     return { kind: "ignored", reason: "URL is not an auth callback." };
   }
-
-  const params = getAllParams(url);
   const errorDescription =
     params.get("error_description") || params.get("error");
   if (errorDescription) {
