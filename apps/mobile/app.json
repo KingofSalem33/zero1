@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Zero1 Mobile",
-    "slug": "zero1-mobile",
+    "slug": "biblelot-sauetm",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.zero1.mobile"
+      "bundleIdentifier": "com.zero1.mobile",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -34,6 +38,7 @@
         "projectId": "3389b803-88f4-4fec-aebb-7eefa88f066a"
       }
     },
-    "plugins": ["expo-dev-client"]
+    "plugins": ["expo-dev-client", "expo-web-browser"],
+    "owner": "cmoney612s-organization"
   }
 }

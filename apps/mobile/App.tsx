@@ -1,5 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as WebBrowser from "expo-web-browser";
 import {
   ActivityIndicator,
   Linking,
@@ -20,6 +21,8 @@ import {
 } from "./src/lib/authRedirect";
 import { supabase } from "./src/lib/supabase";
 
+WebBrowser.maybeCompleteAuthSession();
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -34,7 +37,10 @@ export default function App() {
   const [probeError, setProbeError] = useState<string | null>(null);
   const processedAuthUrlsRef = useRef<Set<string>>(new Set());
 
-  async function processAuthRedirect(url: string, source: "initial" | "event") {
+  async function processAuthRedirect(
+    url: string,
+    source: "initial" | "event" | "authSession",
+  ) {
     if (processedAuthUrlsRef.current.has(url)) {
       return;
     }
@@ -42,6 +48,7 @@ export default function App() {
 
     const outcome = await handleSupabaseAuthRedirect(url);
     if (outcome.kind === "ignored") {
+      setAuthInfo(`Ignored ${source} callback (not an auth redirect).`);
       return;
     }
     if (outcome.kind === "error") {
@@ -166,7 +173,20 @@ export default function App() {
       }
 
       setAuthInfo(`Opening ${provider} sign-in...`);
-      await Linking.openURL(data.url);
+      const authSessionResult = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectTo,
+      );
+
+      if (authSessionResult.type === "success" && authSessionResult.url) {
+        await processAuthRedirect(authSessionResult.url, "authSession");
+      } else if (authSessionResult.type === "cancel") {
+        setAuthInfo(`${provider} sign-in cancelled.`);
+      } else {
+        setAuthInfo(
+          `${provider} sign-in returned: ${authSessionResult.type}. Waiting for callback...`,
+        );
+      }
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : String(error));
       setAuthInfo(null);
