@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-23
+Last updated: 2026-02-26
 Owner: Product + Engineering
 Status: In progress
 
@@ -37,7 +37,8 @@ Status: In progress
 - [x] Agent AA (Mobile Foundation): Start Phase 2.1 mobile foundation (`apps/mobile` Expo scaffold + shared auth wiring plan) after Phase 1 closure.
 - [x] Agent AB (Mobile Auth Code): Implement app-side provider auth plumbing (Apple + Google launch paths) with deep-link callback handling and Supabase session exchange.
 - [x] Agent AD (Mobile Dev Build): Add Expo dev-client + EAS build configuration for reliable native OAuth callback testing.
-- [ ] Agent AC (Next): Complete provider dashboard configuration (Google + Apple when approved) and validate Supabase redirect/auth callbacks end-to-end on device.
+- [x] Agent AC (Provider Config): Complete Google + Apple provider dashboard configuration in Supabase/Apple and verify Supabase callback flow succeeds server-side.
+- [ ] Agent AE (Next): Validate Google + Apple auth callbacks end-to-end on native iOS dev client (`zero1://auth/callback`) and run protected probe after sign-in.
 
 ### Execution Notes (2026-02-19)
 
@@ -425,6 +426,14 @@ Status: In progress
     - `npm --prefix apps/mobile run eas:build:ios:preview`
   - Added test runbook for native OAuth callback validation:
     - `apps/mobile/DEV_CLIENT_OAUTH_TESTING.md`
+- Provider dashboard configuration validated server-side (Agent AC):
+  - Google provider enabled in Supabase with client ID + client secret (provider launch no longer returns `unsupported provider` / `missing OAuth secret`).
+  - Apple provider enabled in Supabase with Apple client secret JWT (accepted by Supabase) and Services ID callback/domain corrected in Apple Developer.
+  - Supabase Auth logs confirm Apple callback completion and user creation:
+    - `provider=apple` login event emitted
+    - `/callback` returned `302`
+    - `user_signedup` event recorded for Apple auth user
+  - Remaining gap is client-side/native callback completion verification in iOS dev client (web preview remains an invalid test target for `zero1://auth/callback`).
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -604,6 +613,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 ### 2.2 Mobile Auth (Critical)
 
 - [x] Supabase auth wiring in mobile app
+- [x] Provider dashboard configuration (Google + Apple) in Supabase/Apple Developer
 - [ ] Sign in with Apple
 - [ ] Google Sign-In
 - [x] Email fallback
