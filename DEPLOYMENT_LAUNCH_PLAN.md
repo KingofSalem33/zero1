@@ -39,7 +39,8 @@ Status: In progress
 - [x] Agent AD (Mobile Dev Build): Add Expo dev-client + EAS build configuration for reliable native OAuth callback testing.
 - [x] Agent AC (Provider Config): Complete Google + Apple provider dashboard configuration in Supabase/Apple and verify Supabase callback flow succeeds server-side.
 - [x] Agent AE (Mobile Auth Validation): Validate Google + Apple auth callbacks end-to-end on native iOS dev client (`zero1://auth/callback`) and run protected probe after sign-in.
-- [ ] Agent AF (Next): Establish mobile navigation + design tokens and replace auth shell-only view with first real feature route.
+- [x] Agent AF (Mobile Shell): Establish mobile navigation + design tokens and replace auth shell-only view with first real feature route.
+- [ ] Agent AG (Next): Expand mobile feature routes beyond library connections (bookmarks/highlights/home actions) and converge on product-grade navigation structure.
 
 ### Execution Notes (2026-02-19)
 
@@ -449,6 +450,16 @@ Status: In progress
     - manifest assets resolution warnings
     - `SafeAreaView` deprecation warning
     - WebCrypto unsupported warning (Supabase PKCE fallback to plain in runtime)
+- Mobile navigation/tokens/first feature route completed (Agent AF):
+  - Replaced auth-shell-only post-login view with an authenticated mobile app shell in `apps/mobile/App.tsx`
+    - bottom-tab navigation (`Home`, `Library`, `Account`)
+    - mobile-first layout and branded tokenized styling
+  - Added shared mobile design tokens:
+    - `apps/mobile/src/theme/tokens.ts`
+  - Added real mobile feature route backed by existing API:
+    - `Library` tab fetches and renders authenticated `/api/library/connections` data
+    - API client normalization added in `apps/mobile/src/lib/api.ts`
+  - Auth shell and provider sign-in flows remain available and integrated with the new shell.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -622,7 +633,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 ### 2.1 Mobile App Foundation
 
 - [x] Add `apps/mobile` (Expo + React Native + TypeScript)
-- [ ] Establish navigation, design tokens, and mobile-first layout rules
+- [x] Establish navigation, design tokens, and mobile-first layout rules
 - [ ] Implement essential core feature paths before parity edge-cases
 
 ### 2.2 Mobile Auth (Critical)
