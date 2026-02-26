@@ -162,6 +162,13 @@ interface HighlightDraftForm {
   note: string;
 }
 
+type AppDetailRoute =
+  | null
+  | { kind: "bookmarkCreate" }
+  | { kind: "bookmarkDetail"; bookmarkId: string }
+  | { kind: "highlightCreate" }
+  | { kind: "highlightDetail"; highlightId: string };
+
 function parseVersesInput(value: string): number[] {
   const numbers = value
     .split(",")
@@ -194,6 +201,7 @@ export default function App() {
   );
   const [probeError, setProbeError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<MobileTabKey>("home");
+  const [appDetailRoute, setAppDetailRoute] = useState<AppDetailRoute>(null);
   const [libraryConnections, setLibraryConnections] = useState<
     LibraryConnectionItem[]
   >([]);
@@ -301,6 +309,7 @@ export default function App() {
   useEffect(() => {
     if (!user) {
       setActiveTab("home");
+      setAppDetailRoute(null);
       setProbeResult(null);
       setProbeError(null);
       setLibraryConnections([]);
@@ -328,11 +337,6 @@ export default function App() {
     return `Signed in as ${user.email ?? user.id}`;
   }, [user]);
 
-  const selectedBookmark = useMemo(
-    () => bookmarks.find((item) => item.id === selectedBookmarkId) ?? null,
-    [bookmarks, selectedBookmarkId],
-  );
-
   const selectedHighlight = useMemo(
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
     [highlights, selectedHighlightId],
@@ -343,6 +347,37 @@ export default function App() {
     setHighlightEditColor(selectedHighlight.color || "#facc15");
     setHighlightEditNote(selectedHighlight.note ?? "");
   }, [selectedHighlight?.id]);
+
+  function navigateToTab(tab: MobileTabKey) {
+    setActiveTab(tab);
+    setAppDetailRoute(null);
+  }
+
+  function openBookmarkCreateRoute() {
+    setBookmarkMutationError(null);
+    setAppDetailRoute({ kind: "bookmarkCreate" });
+  }
+
+  function openBookmarkDetailRoute(bookmarkId: string) {
+    setSelectedBookmarkId(bookmarkId);
+    setBookmarkMutationError(null);
+    setAppDetailRoute({ kind: "bookmarkDetail", bookmarkId });
+  }
+
+  function openHighlightCreateRoute() {
+    setHighlightMutationError(null);
+    setAppDetailRoute({ kind: "highlightCreate" });
+  }
+
+  function openHighlightDetailRoute(highlightId: string) {
+    setSelectedHighlightId(highlightId);
+    setHighlightMutationError(null);
+    setAppDetailRoute({ kind: "highlightDetail", highlightId });
+  }
+
+  function closeDetailRoute() {
+    setAppDetailRoute(null);
+  }
 
   async function withAccessToken<T>(
     fn: (accessToken: string) => Promise<T>,
@@ -569,6 +604,7 @@ export default function App() {
       setBookmarksLoadedAt(new Date().toISOString());
       setBookmarkDraftText("");
       setSelectedBookmarkId(created.id);
+      setAppDetailRoute({ kind: "bookmarkDetail", bookmarkId: created.id });
       await runProbe();
     } catch (error) {
       setBookmarkMutationError(
@@ -592,6 +628,11 @@ export default function App() {
       );
       setBookmarks((current) => current.filter((item) => item.id !== id));
       setSelectedBookmarkId((current) => (current === id ? null : current));
+      setAppDetailRoute((current) =>
+        current?.kind === "bookmarkDetail" && current.bookmarkId === id
+          ? null
+          : current,
+      );
       setBookmarksLoadedAt(new Date().toISOString());
       await runProbe();
     } catch (error) {
@@ -650,6 +691,7 @@ export default function App() {
       setHighlights(nextHighlights);
       setHighlightsLoadedAt(new Date().toISOString());
       setSelectedHighlightId(newItem.id);
+      setAppDetailRoute({ kind: "highlightDetail", highlightId: newItem.id });
       setHighlightCreateDraft((current) => ({
         ...current,
         text: "",
@@ -713,6 +755,11 @@ export default function App() {
       );
       setHighlights((current) => current.filter((item) => item.id !== id));
       setSelectedHighlightId((current) => (current === id ? null : current));
+      setAppDetailRoute((current) =>
+        current?.kind === "highlightDetail" && current.highlightId === id
+          ? null
+          : current,
+      );
       setHighlightsLoadedAt(new Date().toISOString());
       await runProbe();
     } catch (error) {
@@ -832,7 +879,7 @@ export default function App() {
             </Pressable>
             <Pressable
               disabled={busy}
-              onPress={() => setActiveTab("library")}
+              onPress={() => navigateToTab("library")}
               style={[styles.secondaryButton, busy && styles.buttonDisabled]}
             >
               <Text style={styles.secondaryButtonLabel}>Open library</Text>
@@ -841,14 +888,14 @@ export default function App() {
           <View style={styles.row}>
             <Pressable
               disabled={busy}
-              onPress={() => setActiveTab("bookmarks")}
+              onPress={() => navigateToTab("bookmarks")}
               style={[styles.secondaryButton, busy && styles.buttonDisabled]}
             >
               <Text style={styles.secondaryButtonLabel}>Bookmarks</Text>
             </Pressable>
             <Pressable
               disabled={busy}
-              onPress={() => setActiveTab("highlights")}
+              onPress={() => navigateToTab("highlights")}
               style={[styles.secondaryButton, busy && styles.buttonDisabled]}
             >
               <Text style={styles.secondaryButtonLabel}>Highlights</Text>
@@ -922,6 +969,18 @@ export default function App() {
               </Text>
             </Pressable>
           </View>
+          <View style={styles.row}>
+            <Pressable
+              disabled={bookmarkMutationBusy || busy}
+              onPress={openBookmarkCreateRoute}
+              style={[
+                styles.primaryButton,
+                (bookmarkMutationBusy || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.primaryButtonLabel}>New bookmark</Text>
+            </Pressable>
+          </View>
           {bookmarksError ? (
             <Text style={styles.error}>{bookmarksError}</Text>
           ) : null}
@@ -935,85 +994,9 @@ export default function App() {
           ) : null}
         </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Add Bookmark</Text>
-          <Text style={styles.panelSubtitle}>
-            Create a bookmark directly from mobile to validate write paths.
-          </Text>
-          <TextInput
-            multiline
-            placeholder="Paste verse text, note, or reference snippet..."
-            placeholderTextColor={T.colors.textMuted}
-            style={[styles.input, styles.textAreaInput]}
-            value={bookmarkDraftText}
-            onChangeText={setBookmarkDraftText}
-          />
-          <View style={styles.row}>
-            <Pressable
-              disabled={bookmarkMutationBusy || busy}
-              onPress={() => void handleCreateBookmark()}
-              style={[
-                styles.primaryButton,
-                (bookmarkMutationBusy || busy) && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.primaryButtonLabel}>
-                {bookmarkMutationBusy ? "Saving..." : "Save bookmark"}
-              </Text>
-            </Pressable>
-            <Pressable
-              disabled={bookmarkMutationBusy || busy || !bookmarkDraftText}
-              onPress={() => setBookmarkDraftText("")}
-              style={[
-                styles.secondaryButton,
-                (bookmarkMutationBusy || busy || !bookmarkDraftText) &&
-                  styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.secondaryButtonLabel}>Clear</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {selectedBookmark ? (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Bookmark Detail</Text>
-            <Text style={styles.bookmarkText}>{selectedBookmark.text}</Text>
-            {selectedBookmark.createdAt ? (
-              <Text style={styles.caption}>
-                Saved {formatRelativeDate(selectedBookmark.createdAt)}
-              </Text>
-            ) : null}
-            <View style={styles.row}>
-              <Pressable
-                disabled={bookmarkMutationBusy || busy}
-                onPress={() => void handleDeleteBookmark(selectedBookmark.id)}
-                style={[
-                  styles.dangerButton,
-                  (bookmarkMutationBusy || busy) && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.dangerButtonLabel}>
-                  {bookmarkMutationBusy ? "Deleting..." : "Delete"}
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={bookmarkMutationBusy || busy}
-                onPress={() => setSelectedBookmarkId(null)}
-                style={[
-                  styles.secondaryButton,
-                  (bookmarkMutationBusy || busy) && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.secondaryButtonLabel}>Close</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
         <View style={styles.listHintRow}>
           <Text style={styles.caption}>
-            Tap a bookmark to open its detail panel.
+            Tap a bookmark to open its route screen.
           </Text>
         </View>
         <FlatList
@@ -1026,11 +1009,7 @@ export default function App() {
             <BookmarkCard
               item={item}
               selected={item.id === selectedBookmarkId}
-              onPress={() =>
-                setSelectedBookmarkId((current) =>
-                  current === item.id ? null : item.id,
-                )
-              }
+              onPress={() => openBookmarkDetailRoute(item.id)}
             />
           )}
           ListEmptyComponent={
@@ -1043,8 +1022,7 @@ export default function App() {
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>No bookmarks yet</Text>
                 <Text style={styles.emptySubtitle}>
-                  Add your first bookmark above, then refresh or pull down to
-                  sync.
+                  Use New bookmark to create one, then pull down to sync.
                 </Text>
               </View>
             )
@@ -1078,6 +1056,18 @@ export default function App() {
               </Text>
             </Pressable>
           </View>
+          <View style={styles.row}>
+            <Pressable
+              disabled={highlightMutationBusy || busy}
+              onPress={openHighlightCreateRoute}
+              style={[
+                styles.primaryButton,
+                (highlightMutationBusy || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.primaryButtonLabel}>New highlight</Text>
+            </Pressable>
+          </View>
           {highlightsError ? (
             <Text style={styles.error}>{highlightsError}</Text>
           ) : null}
@@ -1091,10 +1081,147 @@ export default function App() {
           ) : null}
         </View>
 
+        <View style={styles.listHintRow}>
+          <Text style={styles.caption}>
+            Tap a highlight to open its route screen.
+          </Text>
+        </View>
+        <FlatList
+          data={highlights}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshing={highlightsLoading}
+          onRefresh={() => void loadHighlights()}
+          renderItem={({ item }) => (
+            <HighlightCard
+              item={item}
+              selected={item.id === selectedHighlightId}
+              onPress={() => openHighlightDetailRoute(item.id)}
+            />
+          )}
+          ListEmptyComponent={
+            highlightsLoading ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator color={T.colors.accent} />
+                <Text style={styles.emptyTitle}>Loading highlights...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No highlights yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Use New highlight to create one, then pull down to sync.
+                </Text>
+              </View>
+            )
+          }
+        />
+      </View>
+    );
+  }
+
+  function renderBookmarkCreateRoute() {
+    return (
+      <ScrollView contentContainerStyle={styles.routeScrollContent}>
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Create Highlight</Text>
+          <Text style={styles.panelTitle}>New Bookmark</Text>
           <Text style={styles.panelSubtitle}>
-            Uses the existing highlight sync endpoint to add a new record.
+            Create a bookmark directly from the mobile app shell.
+          </Text>
+          <TextInput
+            multiline
+            placeholder="Paste verse text, note, or reference snippet..."
+            placeholderTextColor={T.colors.textMuted}
+            style={[styles.input, styles.textAreaInput]}
+            value={bookmarkDraftText}
+            onChangeText={setBookmarkDraftText}
+          />
+          {bookmarkMutationError ? (
+            <Text style={styles.error}>{bookmarkMutationError}</Text>
+          ) : null}
+          <View style={styles.row}>
+            <Pressable
+              disabled={bookmarkMutationBusy || busy}
+              onPress={() => void handleCreateBookmark()}
+              style={[
+                styles.primaryButton,
+                (bookmarkMutationBusy || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.primaryButtonLabel}>
+                {bookmarkMutationBusy ? "Saving..." : "Save bookmark"}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={bookmarkMutationBusy || busy || !bookmarkDraftText}
+              onPress={() => setBookmarkDraftText("")}
+              style={[
+                styles.secondaryButton,
+                (bookmarkMutationBusy || busy || !bookmarkDraftText) &&
+                  styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>Clear</Text>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  function renderBookmarkDetailRoute(bookmarkId: string) {
+    const bookmark = bookmarks.find((item) => item.id === bookmarkId) ?? null;
+    if (!bookmark) {
+      return (
+        <View style={styles.tabScreen}>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Bookmark not found</Text>
+            <Text style={styles.emptySubtitle}>
+              It may have been deleted. Return to the list and refresh.
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView contentContainerStyle={styles.routeScrollContent}>
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Bookmark Detail</Text>
+          <Text style={styles.bookmarkText}>{bookmark.text}</Text>
+          {bookmark.createdAt ? (
+            <Text style={styles.caption}>
+              Saved {formatRelativeDate(bookmark.createdAt)}
+            </Text>
+          ) : null}
+          {bookmarkMutationError ? (
+            <Text style={styles.error}>{bookmarkMutationError}</Text>
+          ) : null}
+          <View style={styles.row}>
+            <Pressable
+              disabled={bookmarkMutationBusy || busy}
+              onPress={() => void handleDeleteBookmark(bookmark.id)}
+              style={[
+                styles.dangerButton,
+                (bookmarkMutationBusy || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.dangerButtonLabel}>
+                {bookmarkMutationBusy ? "Deleting..." : "Delete"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  function renderHighlightCreateRoute() {
+    return (
+      <ScrollView contentContainerStyle={styles.routeScrollContent}>
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>New Highlight</Text>
+          <Text style={styles.panelSubtitle}>
+            Create a highlight using the existing sync endpoint and shared auth.
           </Text>
           <View style={styles.row}>
             <TextInput
@@ -1188,6 +1315,9 @@ export default function App() {
               }))
             }
           />
+          {highlightMutationError ? (
+            <Text style={styles.error}>{highlightMutationError}</Text>
+          ) : null}
           <View style={styles.row}>
             <Pressable
               disabled={highlightMutationBusy || busy}
@@ -1219,97 +1349,96 @@ export default function App() {
             </Pressable>
           </View>
         </View>
-
-        {selectedHighlight ? (
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Highlight Detail</Text>
-            <Text style={styles.meta}>{selectedHighlight.referenceLabel}</Text>
-            <Text style={styles.connectionSynopsis}>
-              {selectedHighlight.text}
-            </Text>
-            <TextInput
-              autoCapitalize="none"
-              placeholder="#facc15"
-              placeholderTextColor={T.colors.textMuted}
-              style={styles.input}
-              value={highlightEditColor}
-              onChangeText={setHighlightEditColor}
-            />
-            <TextInput
-              multiline
-              placeholder="Note"
-              placeholderTextColor={T.colors.textMuted}
-              style={[styles.input, styles.textAreaInputSmall]}
-              value={highlightEditNote}
-              onChangeText={setHighlightEditNote}
-            />
-            <View style={styles.row}>
-              <Pressable
-                disabled={highlightMutationBusy || busy}
-                onPress={() => void handleSaveHighlightEdits()}
-                style={[
-                  styles.primaryButton,
-                  (highlightMutationBusy || busy) && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.primaryButtonLabel}>
-                  {highlightMutationBusy ? "Saving..." : "Save changes"}
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={highlightMutationBusy || busy}
-                onPress={() => void handleDeleteHighlight(selectedHighlight.id)}
-                style={[
-                  styles.dangerButton,
-                  (highlightMutationBusy || busy) && styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.dangerButtonLabel}>Delete</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        <View style={styles.listHintRow}>
-          <Text style={styles.caption}>
-            Tap a highlight to edit color/note or delete it.
-          </Text>
-        </View>
-        <FlatList
-          data={highlights}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshing={highlightsLoading}
-          onRefresh={() => void loadHighlights()}
-          renderItem={({ item }) => (
-            <HighlightCard
-              item={item}
-              selected={item.id === selectedHighlightId}
-              onPress={() =>
-                setSelectedHighlightId((current) =>
-                  current === item.id ? null : item.id,
-                )
-              }
-            />
-          )}
-          ListEmptyComponent={
-            highlightsLoading ? (
-              <View style={styles.emptyState}>
-                <ActivityIndicator color={T.colors.accent} />
-                <Text style={styles.emptyTitle}>Loading highlights...</Text>
-              </View>
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No highlights yet</Text>
-                <Text style={styles.emptySubtitle}>
-                  Create one above, then pull down to confirm sync.
-                </Text>
-              </View>
-            )
-          }
-        />
-      </View>
+      </ScrollView>
     );
+  }
+
+  function renderHighlightDetailRoute(highlightId: string) {
+    const highlight =
+      highlights.find((item) => item.id === highlightId) ?? null;
+    if (!highlight) {
+      return (
+        <View style={styles.tabScreen}>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Highlight not found</Text>
+            <Text style={styles.emptySubtitle}>
+              It may have been deleted. Return to the list and refresh.
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView contentContainerStyle={styles.routeScrollContent}>
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Highlight Detail</Text>
+          <Text style={styles.meta}>{highlight.referenceLabel}</Text>
+          <Text style={styles.connectionSynopsis}>{highlight.text}</Text>
+          <TextInput
+            autoCapitalize="none"
+            placeholder="#facc15"
+            placeholderTextColor={T.colors.textMuted}
+            style={styles.input}
+            value={highlightEditColor}
+            onChangeText={setHighlightEditColor}
+          />
+          <TextInput
+            multiline
+            placeholder="Note"
+            placeholderTextColor={T.colors.textMuted}
+            style={[styles.input, styles.textAreaInputSmall]}
+            value={highlightEditNote}
+            onChangeText={setHighlightEditNote}
+          />
+          {highlightMutationError ? (
+            <Text style={styles.error}>{highlightMutationError}</Text>
+          ) : null}
+          <View style={styles.row}>
+            <Pressable
+              disabled={highlightMutationBusy || busy}
+              onPress={() => void handleSaveHighlightEdits()}
+              style={[
+                styles.primaryButton,
+                (highlightMutationBusy || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.primaryButtonLabel}>
+                {highlightMutationBusy ? "Saving..." : "Save changes"}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={highlightMutationBusy || busy}
+              onPress={() => void handleDeleteHighlight(highlight.id)}
+              style={[
+                styles.dangerButton,
+                (highlightMutationBusy || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.dangerButtonLabel}>Delete</Text>
+            </Pressable>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  function renderDetailRoute() {
+    if (!appDetailRoute) return null;
+
+    if (appDetailRoute.kind === "bookmarkCreate") {
+      return renderBookmarkCreateRoute();
+    }
+    if (appDetailRoute.kind === "bookmarkDetail") {
+      return renderBookmarkDetailRoute(appDetailRoute.bookmarkId);
+    }
+    if (appDetailRoute.kind === "highlightCreate") {
+      return renderHighlightCreateRoute();
+    }
+    if (appDetailRoute.kind === "highlightDetail") {
+      return renderHighlightDetailRoute(appDetailRoute.highlightId);
+    }
+    return null;
   }
 
   function renderLibraryTab() {
@@ -1426,60 +1555,111 @@ export default function App() {
   }
 
   function renderAuthenticatedShell() {
+    const shellSubtitle = appDetailRoute
+      ? appDetailRoute.kind === "bookmarkCreate"
+        ? "New Bookmark"
+        : appDetailRoute.kind === "bookmarkDetail"
+          ? "Bookmark Detail"
+          : appDetailRoute.kind === "highlightCreate"
+            ? "New Highlight"
+            : "Highlight Detail"
+      : activeTab === "home"
+        ? "Home"
+        : activeTab === "library"
+          ? "Library"
+          : activeTab === "bookmarks"
+            ? "Bookmarks"
+            : activeTab === "highlights"
+              ? "Highlights"
+              : "Account";
+
     return (
       <View style={styles.shell}>
         <View style={styles.shellHeader}>
-          <Text style={styles.shellTitle}>Zero1</Text>
-          <Text style={styles.shellSubtitle}>
-            {activeTab === "home"
-              ? "Home"
-              : activeTab === "library"
-                ? "Library"
-                : activeTab === "bookmarks"
-                  ? "Bookmarks"
-                  : activeTab === "highlights"
-                    ? "Highlights"
-                    : "Account"}
-          </Text>
+          <View style={styles.shellHeaderTopRow}>
+            <View style={styles.flex1}>
+              <Text style={styles.shellTitle}>Zero1</Text>
+              <Text style={styles.shellSubtitle}>{shellSubtitle}</Text>
+            </View>
+            {appDetailRoute ? (
+              <Pressable
+                onPress={closeDetailRoute}
+                style={styles.shellBackButton}
+              >
+                <Text style={styles.shellBackButtonLabel}>Back</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.shellBody}>
-          {activeTab === "home" ? renderHomeTab() : null}
-          {activeTab === "library" ? renderLibraryTab() : null}
-          {activeTab === "bookmarks" ? renderBookmarksTab() : null}
-          {activeTab === "highlights" ? renderHighlightsTab() : null}
-          {activeTab === "account" ? renderAccountTab() : null}
+          {appDetailRoute
+            ? renderDetailRoute()
+            : activeTab === "home"
+              ? renderHomeTab()
+              : activeTab === "library"
+                ? renderLibraryTab()
+                : activeTab === "bookmarks"
+                  ? renderBookmarksTab()
+                  : activeTab === "highlights"
+                    ? renderHighlightsTab()
+                    : renderAccountTab()}
         </View>
 
-        <View style={styles.tabBar}>
-          {(
-            [
-              ["home", "Home"],
-              ["library", "Library"],
-              ["bookmarks", "Marks"],
-              ["highlights", "Light"],
-              ["account", "Account"],
-            ] as Array<[MobileTabKey, string]>
-          ).map(([key, label]) => {
-            const isActive = activeTab === key;
-            return (
-              <Pressable
-                key={key}
-                onPress={() => setActiveTab(key)}
-                style={[styles.tabButton, isActive && styles.tabButtonActive]}
-              >
-                <Text
-                  style={[
-                    styles.tabButtonLabel,
-                    isActive && styles.tabButtonLabelActive,
-                  ]}
+        {!appDetailRoute ? (
+          <View style={styles.tabBar}>
+            {(
+              [
+                ["home", "Home"],
+                ["library", "Library"],
+                ["bookmarks", "Marks"],
+                ["highlights", "Light"],
+                ["account", "Account"],
+              ] as Array<[MobileTabKey, string]>
+            ).map(([key, label]) => {
+              const isActive = activeTab === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => navigateToTab(key)}
+                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
                 >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <Text
+                    style={[
+                      styles.tabButtonLabel,
+                      isActive && styles.tabButtonLabelActive,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  function renderAuthFlow() {
+    return (
+      <ScrollView
+        contentContainerStyle={styles.rootScrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.rootFrame}>
+          {renderAuthScreen()}
+          {busy ? <ActivityIndicator color={T.colors.accentStrong} /> : null}
         </View>
+      </ScrollView>
+    );
+  }
+
+  function renderAppFlow() {
+    return (
+      <View style={styles.authenticatedRootFrame}>
+        {renderAuthenticatedShell()}
+        {busy ? <ActivityIndicator color={T.colors.accentStrong} /> : null}
       </View>
     );
   }
@@ -1490,24 +1670,7 @@ export default function App() {
       <View style={styles.appBackground}>
         <View style={styles.backdropBlobA} />
         <View style={styles.backdropBlobB} />
-        {!user ? (
-          <ScrollView
-            contentContainerStyle={styles.rootScrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.rootFrame}>
-              {renderAuthScreen()}
-              {busy ? (
-                <ActivityIndicator color={T.colors.accentStrong} />
-              ) : null}
-            </View>
-          </ScrollView>
-        ) : (
-          <View style={styles.authenticatedRootFrame}>
-            {renderAuthenticatedShell()}
-            {busy ? <ActivityIndicator color={T.colors.accentStrong} /> : null}
-          </View>
-        )}
+        {!user ? renderAuthFlow() : renderAppFlow()}
       </View>
     </SafeAreaView>
   );
@@ -1715,6 +1878,11 @@ const styles = StyleSheet.create({
     padding: T.spacing.lg,
     gap: T.spacing.xs,
   },
+  shellHeaderTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
+  },
   shellTitle: {
     color: T.colors.canvas,
     fontSize: T.typography.title,
@@ -1724,12 +1892,29 @@ const styles = StyleSheet.create({
     color: "#D9CCB5",
     fontSize: T.typography.body,
   },
+  shellBackButton: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: T.spacing.md,
+    paddingVertical: 10,
+  },
+  shellBackButtonLabel: {
+    color: T.colors.canvas,
+    fontWeight: "700",
+    fontSize: T.typography.body,
+  },
   shellBody: {
     minHeight: 520,
   },
   tabContent: {
     gap: T.spacing.md,
     paddingBottom: T.spacing.md,
+  },
+  routeScrollContent: {
+    gap: T.spacing.md,
+    paddingBottom: T.spacing.xl,
   },
   tabScreen: {
     gap: T.spacing.md,
