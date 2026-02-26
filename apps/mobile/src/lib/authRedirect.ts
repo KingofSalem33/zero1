@@ -32,6 +32,40 @@ function looksLikeAuthCallback(url: string): boolean {
   return /auth\/callback/i.test(url);
 }
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function unwrapExpoDevClientRedirect(rawUrl: string): string {
+  let currentUrl = rawUrl;
+
+  // Expo dev client may wrap the real callback URL inside ?url=<encoded-url>.
+  for (let i = 0; i < 3; i += 1) {
+    const params = getAllParams(currentUrl);
+    const nestedUrl = params.get("url");
+    if (!nestedUrl) {
+      break;
+    }
+
+    const decodedOnce = safeDecode(nestedUrl);
+    const decodedTwice = safeDecode(decodedOnce);
+    const candidate = decodedTwice || decodedOnce;
+
+    if (candidate.includes("://")) {
+      currentUrl = candidate;
+      continue;
+    }
+
+    break;
+  }
+
+  return currentUrl;
+}
+
 function hasOAuthCallbackParams(
   params: InstanceType<typeof globalThis.URLSearchParams>,
 ): boolean {
@@ -51,9 +85,13 @@ export function getOAuthRedirectUrl(): string {
 export async function handleSupabaseAuthRedirect(
   url: string,
 ): Promise<AuthRedirectOutcome> {
-  const params = getAllParams(url);
+  const normalizedUrl = unwrapExpoDevClientRedirect(url);
+  const params = getAllParams(normalizedUrl);
 
-  if (!looksLikeAuthCallback(url) && !hasOAuthCallbackParams(params)) {
+  if (
+    !looksLikeAuthCallback(normalizedUrl) &&
+    !hasOAuthCallbackParams(params)
+  ) {
     return { kind: "ignored", reason: "URL is not an auth callback." };
   }
   const errorDescription =
