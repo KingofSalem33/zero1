@@ -17,6 +17,24 @@ interface LibraryConnectionResponse {
   connections: unknown[];
 }
 
+interface BookmarkItemResponse {
+  id?: string;
+  text?: string;
+  createdAt?: string;
+}
+
+interface HighlightItemResponse {
+  id?: string;
+  book?: string;
+  chapter?: number;
+  verses?: number[];
+  text?: string;
+  color?: string;
+  note?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface LibraryConnectionBundleMeta {
   anchorRef?: string;
   verseCount?: number;
@@ -45,6 +63,22 @@ export interface ProtectedProbeResult {
   bookmarksCount: number;
   highlightsCount: number;
   libraryConnectionsCount: number;
+}
+
+export interface MobileBookmarkItem {
+  id: string;
+  text: string;
+  createdAt?: string;
+}
+
+export interface MobileHighlightItem {
+  id: string;
+  referenceLabel: string;
+  text: string;
+  color: string;
+  note?: string;
+  verses: number[];
+  updatedAt?: string;
 }
 
 function normalizeBaseUrl(apiBaseUrl: string): string {
@@ -129,6 +163,46 @@ function normalizeConnection(
   };
 }
 
+function normalizeBookmark(value: unknown, index: number): MobileBookmarkItem {
+  const obj = (asObject(value) ?? {}) as BookmarkItemResponse;
+  return {
+    id: asString(obj.id) ?? `bookmark-${index}`,
+    text: asString(obj.text) ?? "",
+    createdAt: asString(obj.createdAt),
+  };
+}
+
+function normalizeHighlight(
+  value: unknown,
+  index: number,
+): MobileHighlightItem {
+  const obj = (asObject(value) ?? {}) as HighlightItemResponse;
+  const book = asString(obj.book) ?? "Unknown";
+  const chapter = asNumber(obj.chapter) ?? 0;
+  const verses = Array.isArray(obj.verses)
+    ? obj.verses.filter(
+        (entry): entry is number =>
+          typeof entry === "number" && Number.isFinite(entry),
+      )
+    : [];
+  const verseLabel =
+    verses.length > 0
+      ? verses.length === 1
+        ? String(verses[0])
+        : `${verses[0]}-${verses[verses.length - 1]}`
+      : "?";
+
+  return {
+    id: asString(obj.id) ?? `highlight-${index}`,
+    referenceLabel: `${book} ${chapter}:${verseLabel}`,
+    text: asString(obj.text) ?? "",
+    color: asString(obj.color) ?? "#facc15",
+    note: asString(obj.note ?? undefined),
+    verses,
+    updatedAt: asString(obj.updated_at) ?? asString(obj.created_at),
+  };
+}
+
 export async function fetchProtectedProbe({
   apiBaseUrl,
   accessToken,
@@ -172,5 +246,43 @@ export async function fetchLibraryConnections({
 
   return payload.connections.map((entry, index) =>
     normalizeConnection(entry, index),
+  );
+}
+
+export async function fetchBookmarks({
+  apiBaseUrl,
+  accessToken,
+}: ProtectedProbeOptions): Promise<MobileBookmarkItem[]> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await fetchJson<BookmarkResponse>(
+    `${baseUrl}/api/bookmarks`,
+    accessToken,
+  );
+
+  if (!Array.isArray(payload.bookmarks)) {
+    return [];
+  }
+
+  return payload.bookmarks.map((entry, index) =>
+    normalizeBookmark(entry, index),
+  );
+}
+
+export async function fetchHighlights({
+  apiBaseUrl,
+  accessToken,
+}: ProtectedProbeOptions): Promise<MobileHighlightItem[]> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await fetchJson<HighlightResponse>(
+    `${baseUrl}/api/highlights`,
+    accessToken,
+  );
+
+  if (!Array.isArray(payload.highlights)) {
+    return [];
+  }
+
+  return payload.highlights.map((entry, index) =>
+    normalizeHighlight(entry, index),
   );
 }

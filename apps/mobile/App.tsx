@@ -16,7 +16,11 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { MOBILE_ENV } from "./src/lib/env";
 import {
+  fetchBookmarks,
+  fetchHighlights,
   fetchLibraryConnections,
+  type MobileBookmarkItem,
+  type MobileHighlightItem,
   fetchProtectedProbe,
   type LibraryConnectionItem,
   type ProtectedProbeResult,
@@ -76,6 +80,52 @@ function ConnectionCard({ item }: { item: LibraryConnectionItem }) {
   );
 }
 
+function BookmarkCard({ item }: { item: MobileBookmarkItem }) {
+  return (
+    <View style={styles.featureCard}>
+      <Text style={styles.bookmarkText} numberOfLines={4}>
+        {item.text || "Empty bookmark"}
+      </Text>
+      {item.createdAt ? (
+        <Text style={styles.connectionTimestamp}>
+          Saved {formatRelativeDate(item.createdAt)}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function HighlightCard({ item }: { item: MobileHighlightItem }) {
+  return (
+    <View style={styles.featureCard}>
+      <View style={styles.connectionHeaderRow}>
+        <Text style={styles.connectionRoute} numberOfLines={1}>
+          {item.referenceLabel}
+        </Text>
+        <View style={styles.highlightColorBadgeWrap}>
+          <View
+            style={[styles.highlightColorDot, { backgroundColor: item.color }]}
+          />
+          <Text style={styles.highlightColorCode} numberOfLines={1}>
+            {item.color}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.connectionSynopsis} numberOfLines={3}>
+        {item.text || "No highlight text"}
+      </Text>
+      {item.note ? (
+        <Text style={styles.connectionNote}>Note: {item.note}</Text>
+      ) : null}
+      {item.updatedAt ? (
+        <Text style={styles.connectionTimestamp}>
+          Updated {formatRelativeDate(item.updatedAt)}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -95,6 +145,18 @@ export default function App() {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [libraryLoadedAt, setLibraryLoadedAt] = useState<string | null>(null);
+  const [bookmarks, setBookmarks] = useState<MobileBookmarkItem[]>([]);
+  const [bookmarksLoading, setBookmarksLoading] = useState(false);
+  const [bookmarksError, setBookmarksError] = useState<string | null>(null);
+  const [bookmarksLoadedAt, setBookmarksLoadedAt] = useState<string | null>(
+    null,
+  );
+  const [highlights, setHighlights] = useState<MobileHighlightItem[]>([]);
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
+  const [highlightsError, setHighlightsError] = useState<string | null>(null);
+  const [highlightsLoadedAt, setHighlightsLoadedAt] = useState<string | null>(
+    null,
+  );
   const processedAuthUrlsRef = useRef<Set<string>>(new Set());
 
   async function processAuthRedirect(
@@ -163,6 +225,12 @@ export default function App() {
       setLibraryConnections([]);
       setLibraryError(null);
       setLibraryLoadedAt(null);
+      setBookmarks([]);
+      setBookmarksError(null);
+      setBookmarksLoadedAt(null);
+      setHighlights([]);
+      setHighlightsError(null);
+      setHighlightsLoadedAt(null);
       return;
     }
 
@@ -329,8 +397,53 @@ export default function App() {
     }
   }
 
+  async function loadBookmarks() {
+    setBookmarksLoading(true);
+    setBookmarksError(null);
+    try {
+      const items = await withAccessToken((accessToken) =>
+        fetchBookmarks({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+        }),
+      );
+      setBookmarks(items);
+      setBookmarksLoadedAt(new Date().toISOString());
+    } catch (error) {
+      setBookmarksError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBookmarksLoading(false);
+    }
+  }
+
+  async function loadHighlights() {
+    setHighlightsLoading(true);
+    setHighlightsError(null);
+    try {
+      const items = await withAccessToken((accessToken) =>
+        fetchHighlights({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+        }),
+      );
+      setHighlights(items);
+      setHighlightsLoadedAt(new Date().toISOString());
+    } catch (error) {
+      setHighlightsError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setHighlightsLoading(false);
+    }
+  }
+
   async function refreshDashboard() {
-    await Promise.all([runProbe(), loadLibraryConnections()]);
+    await Promise.all([
+      runProbe(),
+      loadLibraryConnections(),
+      loadBookmarks(),
+      loadHighlights(),
+    ]);
   }
 
   function renderAuthScreen() {
@@ -447,6 +560,22 @@ export default function App() {
               <Text style={styles.secondaryButtonLabel}>Open library</Text>
             </Pressable>
           </View>
+          <View style={styles.row}>
+            <Pressable
+              disabled={busy}
+              onPress={() => setActiveTab("bookmarks")}
+              style={[styles.secondaryButton, busy && styles.buttonDisabled]}
+            >
+              <Text style={styles.secondaryButtonLabel}>Bookmarks</Text>
+            </Pressable>
+            <Pressable
+              disabled={busy}
+              onPress={() => setActiveTab("highlights")}
+              style={[styles.secondaryButton, busy && styles.buttonDisabled]}
+            >
+              <Text style={styles.secondaryButtonLabel}>Highlights</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.panel}>
@@ -475,6 +604,12 @@ export default function App() {
           {libraryError ? (
             <Text style={styles.error}>{libraryError}</Text>
           ) : null}
+          {bookmarksError ? (
+            <Text style={styles.error}>{bookmarksError}</Text>
+          ) : null}
+          {highlightsError ? (
+            <Text style={styles.error}>{highlightsError}</Text>
+          ) : null}
           {libraryLoadedAt ? (
             <Text style={styles.caption}>
               Library synced {formatRelativeDate(libraryLoadedAt)}
@@ -482,6 +617,122 @@ export default function App() {
           ) : null}
         </View>
       </ScrollView>
+    );
+  }
+
+  function renderBookmarksTab() {
+    return (
+      <View style={styles.tabScreen}>
+        <View style={styles.panel}>
+          <View style={styles.spaceBetweenRow}>
+            <View style={styles.flex1}>
+              <Text style={styles.panelTitle}>Bookmarks</Text>
+              <Text style={styles.panelSubtitle}>
+                Authenticated mobile list backed by `/api/bookmarks`.
+              </Text>
+            </View>
+            <Pressable
+              disabled={bookmarksLoading || busy}
+              onPress={() => void loadBookmarks()}
+              style={[
+                styles.ghostButton,
+                (bookmarksLoading || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.ghostButtonLabel}>
+                {bookmarksLoading ? "Loading..." : "Refresh"}
+              </Text>
+            </Pressable>
+          </View>
+          {bookmarksError ? (
+            <Text style={styles.error}>{bookmarksError}</Text>
+          ) : null}
+          {bookmarksLoadedAt ? (
+            <Text style={styles.caption}>
+              Last sync {formatRelativeDate(bookmarksLoadedAt)}
+            </Text>
+          ) : null}
+        </View>
+        <FlatList
+          data={bookmarks}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => <BookmarkCard item={item} />}
+          ListEmptyComponent={
+            bookmarksLoading ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator color={T.colors.accent} />
+                <Text style={styles.emptyTitle}>Loading bookmarks...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No bookmarks yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Add bookmarks in your app flows, then refresh this screen.
+                </Text>
+              </View>
+            )
+          }
+        />
+      </View>
+    );
+  }
+
+  function renderHighlightsTab() {
+    return (
+      <View style={styles.tabScreen}>
+        <View style={styles.panel}>
+          <View style={styles.spaceBetweenRow}>
+            <View style={styles.flex1}>
+              <Text style={styles.panelTitle}>Highlights</Text>
+              <Text style={styles.panelSubtitle}>
+                Authenticated mobile list backed by `/api/highlights`.
+              </Text>
+            </View>
+            <Pressable
+              disabled={highlightsLoading || busy}
+              onPress={() => void loadHighlights()}
+              style={[
+                styles.ghostButton,
+                (highlightsLoading || busy) && styles.buttonDisabled,
+              ]}
+            >
+              <Text style={styles.ghostButtonLabel}>
+                {highlightsLoading ? "Loading..." : "Refresh"}
+              </Text>
+            </Pressable>
+          </View>
+          {highlightsError ? (
+            <Text style={styles.error}>{highlightsError}</Text>
+          ) : null}
+          {highlightsLoadedAt ? (
+            <Text style={styles.caption}>
+              Last sync {formatRelativeDate(highlightsLoadedAt)}
+            </Text>
+          ) : null}
+        </View>
+        <FlatList
+          data={highlights}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => <HighlightCard item={item} />}
+          ListEmptyComponent={
+            highlightsLoading ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator color={T.colors.accent} />
+                <Text style={styles.emptyTitle}>Loading highlights...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No highlights yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Create highlights in your existing flows, then refresh here.
+                </Text>
+              </View>
+            )
+          }
+        />
+      </View>
     );
   }
 
@@ -606,13 +857,19 @@ export default function App() {
               ? "Home"
               : activeTab === "library"
                 ? "Library"
-                : "Account"}
+                : activeTab === "bookmarks"
+                  ? "Bookmarks"
+                  : activeTab === "highlights"
+                    ? "Highlights"
+                    : "Account"}
           </Text>
         </View>
 
         <View style={styles.shellBody}>
           {activeTab === "home" ? renderHomeTab() : null}
           {activeTab === "library" ? renderLibraryTab() : null}
+          {activeTab === "bookmarks" ? renderBookmarksTab() : null}
+          {activeTab === "highlights" ? renderHighlightsTab() : null}
           {activeTab === "account" ? renderAccountTab() : null}
         </View>
 
@@ -621,6 +878,8 @@ export default function App() {
             [
               ["home", "Home"],
               ["library", "Library"],
+              ["bookmarks", "Marks"],
+              ["highlights", "Light"],
               ["account", "Account"],
             ] as Array<[MobileTabKey, string]>
           ).map(([key, label]) => {
@@ -964,6 +1223,33 @@ const styles = StyleSheet.create({
     borderRadius: T.radius.pill,
     fontSize: T.typography.caption,
     overflow: "hidden",
+  },
+  bookmarkText: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 20,
+  },
+  highlightColorBadgeWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.xs,
+    backgroundColor: T.colors.canvasMuted,
+    borderRadius: T.radius.pill,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: 4,
+    maxWidth: 132,
+  },
+  highlightColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.12)",
+  },
+  highlightColorCode: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    flexShrink: 1,
   },
   connectionSynopsis: {
     color: T.colors.text,

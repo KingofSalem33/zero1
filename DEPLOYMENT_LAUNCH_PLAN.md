@@ -40,7 +40,8 @@ Status: In progress
 - [x] Agent AC (Provider Config): Complete Google + Apple provider dashboard configuration in Supabase/Apple and verify Supabase callback flow succeeds server-side.
 - [x] Agent AE (Mobile Auth Validation): Validate Google + Apple auth callbacks end-to-end on native iOS dev client (`zero1://auth/callback`) and run protected probe after sign-in.
 - [x] Agent AF (Mobile Shell): Establish mobile navigation + design tokens and replace auth shell-only view with first real feature route.
-- [ ] Agent AG (Next): Expand mobile feature routes beyond library connections (bookmarks/highlights/home actions) and converge on product-grade navigation structure.
+- [x] Agent AG (Mobile Feature Routes): Expand mobile feature routes beyond library connections (bookmarks/highlights/home actions) and converge on product-grade navigation structure.
+- [ ] Agent AH (Next): Add mobile bookmark/highlight interaction flows (detail, refresh UX, and write-path hooks) to move from read-only shell to task-complete mobile usage.
 
 ### Execution Notes (2026-02-19)
 
@@ -460,6 +461,16 @@ Status: In progress
     - `Library` tab fetches and renders authenticated `/api/library/connections` data
     - API client normalization added in `apps/mobile/src/lib/api.ts`
   - Auth shell and provider sign-in flows remain available and integrated with the new shell.
+- Mobile feature-route expansion completed (Agent AG):
+  - Expanded mobile navigation shell in `apps/mobile/App.tsx` with additional authenticated tabs:
+    - `Bookmarks`
+    - `Highlights`
+  - Added mobile API fetch/normalization helpers in `apps/mobile/src/lib/api.ts` for:
+    - authenticated `/api/bookmarks` reads
+    - authenticated `/api/highlights` reads
+  - Added tab-level loading/error/refresh state and home quick actions to jump into the new routes.
+  - Updated mobile tab token model in `apps/mobile/src/theme/tokens.ts` to support the expanded route set.
+  - Result: authenticated mobile shell now exposes core read paths for library connections, bookmarks, and highlights.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
