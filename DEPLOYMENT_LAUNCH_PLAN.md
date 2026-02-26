@@ -41,7 +41,8 @@ Status: In progress
 - [x] Agent AE (Mobile Auth Validation): Validate Google + Apple auth callbacks end-to-end on native iOS dev client (`zero1://auth/callback`) and run protected probe after sign-in.
 - [x] Agent AF (Mobile Shell): Establish mobile navigation + design tokens and replace auth shell-only view with first real feature route.
 - [x] Agent AG (Mobile Feature Routes): Expand mobile feature routes beyond library connections (bookmarks/highlights/home actions) and converge on product-grade navigation structure.
-- [ ] Agent AH (Next): Add mobile bookmark/highlight interaction flows (detail, refresh UX, and write-path hooks) to move from read-only shell to task-complete mobile usage.
+- [x] Agent AH (Mobile Interactions): Add mobile bookmark/highlight interaction flows (detail, refresh UX, and write-path hooks) to move from read-only shell to task-complete mobile usage.
+- [ ] Agent AI (Next): Introduce production mobile navigation stack (auth/app split + routed detail screens) and migrate current inline panels to route-based flows.
 
 ### Execution Notes (2026-02-19)
 
@@ -471,6 +472,21 @@ Status: In progress
   - Added tab-level loading/error/refresh state and home quick actions to jump into the new routes.
   - Updated mobile tab token model in `apps/mobile/src/theme/tokens.ts` to support the expanded route set.
   - Result: authenticated mobile shell now exposes core read paths for library connections, bookmarks, and highlights.
+- Mobile interaction flows completed (Agent AH):
+  - Added mobile write-path helpers in `apps/mobile/src/lib/api.ts` for:
+    - bookmarks create/delete
+    - highlights create (via sync endpoint), update, and delete
+  - Expanded `apps/mobile/App.tsx` bookmark tab from read-only list to interactive flow:
+    - create bookmark form
+    - selectable bookmark detail panel
+    - delete action
+    - pull-to-refresh list sync
+  - Expanded `apps/mobile/App.tsx` highlights tab with task-complete interaction flow:
+    - create highlight form (book/chapter/verses/text/color/note)
+    - selectable highlight detail/edit panel (color + note)
+    - delete action
+    - pull-to-refresh list sync
+  - Home/account shell remains intact while mobile write-path validation now happens inside the authenticated app shell.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

@@ -13,8 +13,21 @@ interface HighlightResponse {
   highlights: unknown[];
 }
 
+interface HighlightSyncResponse {
+  highlights: unknown[];
+  synced_at?: string;
+}
+
 interface LibraryConnectionResponse {
   connections: unknown[];
+}
+
+interface BookmarkCreateResponse {
+  bookmark?: unknown;
+}
+
+interface HighlightUpdateResponse {
+  highlight?: unknown;
 }
 
 interface BookmarkItemResponse {
@@ -73,11 +86,14 @@ export interface MobileBookmarkItem {
 
 export interface MobileHighlightItem {
   id: string;
+  book: string;
+  chapter: number;
   referenceLabel: string;
   text: string;
   color: string;
   note?: string;
   verses: number[];
+  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -85,11 +101,24 @@ function normalizeBaseUrl(apiBaseUrl: string): string {
   return apiBaseUrl.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(url: string, accessToken: string): Promise<T> {
+interface RequestJsonOptions {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  body?: unknown;
+}
+
+async function requestJson<T>(
+  url: string,
+  accessToken: string,
+  options?: RequestJsonOptions,
+): Promise<T> {
+  const hasBody = options?.body !== undefined;
   const response = await fetch(url, {
+    method: options?.method ?? "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
     },
+    ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
   });
 
   if (!response.ok) {
@@ -97,7 +126,15 @@ async function fetchJson<T>(url: string, accessToken: string): Promise<T> {
     throw new Error(`API request failed (${response.status}): ${payload}`);
   }
 
+  if (response.status === 204) {
+    return {} as T;
+  }
+
   return (await response.json()) as T;
+}
+
+async function fetchJson<T>(url: string, accessToken: string): Promise<T> {
+  return requestJson<T>(url, accessToken, { method: "GET" });
 }
 
 function asObject(value: unknown): JsonObject | null {
@@ -194,11 +231,14 @@ function normalizeHighlight(
 
   return {
     id: asString(obj.id) ?? `highlight-${index}`,
+    book,
+    chapter,
     referenceLabel: `${book} ${chapter}:${verseLabel}`,
     text: asString(obj.text) ?? "",
     color: asString(obj.color) ?? "#facc15",
     note: asString(obj.note ?? undefined),
     verses,
+    createdAt: asString(obj.created_at),
     updatedAt: asString(obj.updated_at) ?? asString(obj.created_at),
   };
 }
@@ -284,5 +324,125 @@ export async function fetchHighlights({
 
   return payload.highlights.map((entry, index) =>
     normalizeHighlight(entry, index),
+  );
+}
+
+export async function createBookmark({
+  apiBaseUrl,
+  accessToken,
+  text,
+}: ProtectedProbeOptions & { text: string }): Promise<MobileBookmarkItem> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await requestJson<BookmarkCreateResponse>(
+    `${baseUrl}/api/bookmarks`,
+    accessToken,
+    {
+      method: "POST",
+      body: { text },
+    },
+  );
+
+  return normalizeBookmark(payload.bookmark, 0);
+}
+
+export async function deleteBookmark({
+  apiBaseUrl,
+  accessToken,
+  id,
+}: ProtectedProbeOptions & { id: string }): Promise<void> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  await requestJson<Record<string, unknown>>(
+    `${baseUrl}/api/bookmarks/${encodeURIComponent(id)}`,
+    accessToken,
+    { method: "DELETE" },
+  );
+}
+
+function toHighlightSyncRecord(
+  item: MobileHighlightItem,
+): Record<string, unknown> {
+  return {
+    id: item.id,
+    book: item.book,
+    chapter: item.chapter,
+    verses: item.verses,
+    text: item.text,
+    color: item.color,
+    note: item.note ?? undefined,
+    created_at: item.createdAt,
+    updated_at: item.updatedAt,
+  };
+}
+
+export async function createHighlightViaSync({
+  apiBaseUrl,
+  accessToken,
+  currentHighlights,
+  newHighlight,
+}: ProtectedProbeOptions & {
+  currentHighlights: MobileHighlightItem[];
+  newHighlight: MobileHighlightItem;
+}): Promise<MobileHighlightItem[]> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await requestJson<HighlightSyncResponse>(
+    `${baseUrl}/api/highlights/sync`,
+    accessToken,
+    {
+      method: "POST",
+      body: {
+        highlights: [
+          ...currentHighlights.map((item) => toHighlightSyncRecord(item)),
+          toHighlightSyncRecord(newHighlight),
+        ],
+        last_synced_at: null,
+      },
+    },
+  );
+
+  if (!Array.isArray(payload.highlights)) {
+    return [];
+  }
+  return payload.highlights.map((entry, index) =>
+    normalizeHighlight(entry, index),
+  );
+}
+
+export async function updateHighlight({
+  apiBaseUrl,
+  accessToken,
+  id,
+  updates,
+}: ProtectedProbeOptions & {
+  id: string;
+  updates: {
+    color?: string;
+    note?: string | null;
+    text?: string;
+    verses?: number[];
+  };
+}): Promise<MobileHighlightItem> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await requestJson<HighlightUpdateResponse>(
+    `${baseUrl}/api/highlights/${encodeURIComponent(id)}`,
+    accessToken,
+    {
+      method: "PUT",
+      body: updates,
+    },
+  );
+
+  return normalizeHighlight(payload.highlight, 0);
+}
+
+export async function deleteHighlight({
+  apiBaseUrl,
+  accessToken,
+  id,
+}: ProtectedProbeOptions & { id: string }): Promise<void> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  await requestJson<Record<string, unknown>>(
+    `${baseUrl}/api/highlights/${encodeURIComponent(id)}`,
+    accessToken,
+    { method: "DELETE" },
   );
 }
