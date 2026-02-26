@@ -43,7 +43,8 @@ Status: In progress
 - [x] Agent AG (Mobile Feature Routes): Expand mobile feature routes beyond library connections (bookmarks/highlights/home actions) and converge on product-grade navigation structure.
 - [x] Agent AH (Mobile Interactions): Add mobile bookmark/highlight interaction flows (detail, refresh UX, and write-path hooks) to move from read-only shell to task-complete mobile usage.
 - [x] Agent AI (Mobile Routing Shell): Introduce route-based mobile navigation shell (auth/app split + routed detail screens) and migrate current inline panels to route-based flows.
-- [ ] Agent AJ (Next): Migrate mobile shell to extracted screen modules + React Navigation native stack so route state is no longer managed inside `App.tsx`.
+- [x] Agent AJ (Mobile Navigation Stack): Migrate mobile shell to React Navigation (auth/app split + native stack + bottom tabs) so route state is no longer managed inside `App.tsx`.
+- [ ] Agent AK (Next): Extract remaining mobile screen JSX/state slices from `apps/mobile/App.tsx` into screen modules + hooks (screen props/context) to reduce controller/file size and improve maintainability.
 
 ### Execution Notes (2026-02-19)
 
@@ -493,6 +494,14 @@ Status: In progress
   - Migrated inline bookmark/highlight forms and detail panels out of tab list screens into routed screens with back navigation.
   - Introduced explicit auth/app flow rendering split (`renderAuthFlow` / `renderAppFlow`) to separate unauthenticated and authenticated shells.
   - Tab bar now hides while routed detail/create screens are active, giving mobile flows a stack-style interaction pattern without changing native dependencies.
+- Mobile React Navigation stack completed (Agent AJ):
+  - Added React Navigation dependencies and native entrypoint integration (`react-native-gesture-handler`) for Expo mobile.
+  - Added extracted navigator module:
+    - `apps/mobile/src/navigation/MobileRootNavigator.tsx`
+    - auth/app split using native stack + bottom tabs
+    - detail routes for bookmark/highlight create/detail screens
+  - Removed manual tab/detail route state from `apps/mobile/App.tsx`; navigation is now driven by React Navigation callbacks and stack routes.
+  - Existing mobile screen renderers and write-path flows remain functional while routing is handled by the navigator module.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

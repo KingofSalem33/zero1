@@ -34,8 +34,9 @@ import {
   getOAuthRedirectUrl,
   handleSupabaseAuthRedirect,
 } from "./src/lib/authRedirect";
+import { MobileRootNavigator } from "./src/navigation/MobileRootNavigator";
 import { supabase } from "./src/lib/supabase";
-import { MOBILE_TOKENS, type MobileTabKey } from "./src/theme/tokens";
+import { MOBILE_TOKENS } from "./src/theme/tokens";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -162,13 +163,6 @@ interface HighlightDraftForm {
   note: string;
 }
 
-type AppDetailRoute =
-  | null
-  | { kind: "bookmarkCreate" }
-  | { kind: "bookmarkDetail"; bookmarkId: string }
-  | { kind: "highlightCreate" }
-  | { kind: "highlightDetail"; highlightId: string };
-
 function parseVersesInput(value: string): number[] {
   const numbers = value
     .split(",")
@@ -200,8 +194,6 @@ export default function App() {
     null,
   );
   const [probeError, setProbeError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<MobileTabKey>("home");
-  const [appDetailRoute, setAppDetailRoute] = useState<AppDetailRoute>(null);
   const [libraryConnections, setLibraryConnections] = useState<
     LibraryConnectionItem[]
   >([]);
@@ -308,8 +300,6 @@ export default function App() {
 
   useEffect(() => {
     if (!user) {
-      setActiveTab("home");
-      setAppDetailRoute(null);
       setProbeResult(null);
       setProbeError(null);
       setLibraryConnections([]);
@@ -347,37 +337,6 @@ export default function App() {
     setHighlightEditColor(selectedHighlight.color || "#facc15");
     setHighlightEditNote(selectedHighlight.note ?? "");
   }, [selectedHighlight?.id]);
-
-  function navigateToTab(tab: MobileTabKey) {
-    setActiveTab(tab);
-    setAppDetailRoute(null);
-  }
-
-  function openBookmarkCreateRoute() {
-    setBookmarkMutationError(null);
-    setAppDetailRoute({ kind: "bookmarkCreate" });
-  }
-
-  function openBookmarkDetailRoute(bookmarkId: string) {
-    setSelectedBookmarkId(bookmarkId);
-    setBookmarkMutationError(null);
-    setAppDetailRoute({ kind: "bookmarkDetail", bookmarkId });
-  }
-
-  function openHighlightCreateRoute() {
-    setHighlightMutationError(null);
-    setAppDetailRoute({ kind: "highlightCreate" });
-  }
-
-  function openHighlightDetailRoute(highlightId: string) {
-    setSelectedHighlightId(highlightId);
-    setHighlightMutationError(null);
-    setAppDetailRoute({ kind: "highlightDetail", highlightId });
-  }
-
-  function closeDetailRoute() {
-    setAppDetailRoute(null);
-  }
 
   async function withAccessToken<T>(
     fn: (accessToken: string) => Promise<T>,
@@ -604,7 +563,6 @@ export default function App() {
       setBookmarksLoadedAt(new Date().toISOString());
       setBookmarkDraftText("");
       setSelectedBookmarkId(created.id);
-      setAppDetailRoute({ kind: "bookmarkDetail", bookmarkId: created.id });
       await runProbe();
     } catch (error) {
       setBookmarkMutationError(
@@ -628,11 +586,6 @@ export default function App() {
       );
       setBookmarks((current) => current.filter((item) => item.id !== id));
       setSelectedBookmarkId((current) => (current === id ? null : current));
-      setAppDetailRoute((current) =>
-        current?.kind === "bookmarkDetail" && current.bookmarkId === id
-          ? null
-          : current,
-      );
       setBookmarksLoadedAt(new Date().toISOString());
       await runProbe();
     } catch (error) {
@@ -691,7 +644,6 @@ export default function App() {
       setHighlights(nextHighlights);
       setHighlightsLoadedAt(new Date().toISOString());
       setSelectedHighlightId(newItem.id);
-      setAppDetailRoute({ kind: "highlightDetail", highlightId: newItem.id });
       setHighlightCreateDraft((current) => ({
         ...current,
         text: "",
@@ -755,11 +707,6 @@ export default function App() {
       );
       setHighlights((current) => current.filter((item) => item.id !== id));
       setSelectedHighlightId((current) => (current === id ? null : current));
-      setAppDetailRoute((current) =>
-        current?.kind === "highlightDetail" && current.highlightId === id
-          ? null
-          : current,
-      );
       setHighlightsLoadedAt(new Date().toISOString());
       await runProbe();
     } catch (error) {
@@ -857,7 +804,11 @@ export default function App() {
     );
   }
 
-  function renderHomeTab() {
+  function renderHomeTab(nav: {
+    openLibrary: () => void;
+    openBookmarks: () => void;
+    openHighlights: () => void;
+  }) {
     return (
       <ScrollView contentContainerStyle={styles.tabContent}>
         <View style={styles.heroCard}>
@@ -879,7 +830,7 @@ export default function App() {
             </Pressable>
             <Pressable
               disabled={busy}
-              onPress={() => navigateToTab("library")}
+              onPress={nav.openLibrary}
               style={[styles.secondaryButton, busy && styles.buttonDisabled]}
             >
               <Text style={styles.secondaryButtonLabel}>Open library</Text>
@@ -888,14 +839,14 @@ export default function App() {
           <View style={styles.row}>
             <Pressable
               disabled={busy}
-              onPress={() => navigateToTab("bookmarks")}
+              onPress={nav.openBookmarks}
               style={[styles.secondaryButton, busy && styles.buttonDisabled]}
             >
               <Text style={styles.secondaryButtonLabel}>Bookmarks</Text>
             </Pressable>
             <Pressable
               disabled={busy}
-              onPress={() => navigateToTab("highlights")}
+              onPress={nav.openHighlights}
               style={[styles.secondaryButton, busy && styles.buttonDisabled]}
             >
               <Text style={styles.secondaryButtonLabel}>Highlights</Text>
@@ -945,7 +896,10 @@ export default function App() {
     );
   }
 
-  function renderBookmarksTab() {
+  function renderBookmarksTab(nav: {
+    openCreate: () => void;
+    openDetail: (bookmarkId: string) => void;
+  }) {
     return (
       <View style={styles.tabScreen}>
         <View style={styles.panel}>
@@ -972,7 +926,7 @@ export default function App() {
           <View style={styles.row}>
             <Pressable
               disabled={bookmarkMutationBusy || busy}
-              onPress={openBookmarkCreateRoute}
+              onPress={nav.openCreate}
               style={[
                 styles.primaryButton,
                 (bookmarkMutationBusy || busy) && styles.buttonDisabled,
@@ -1009,7 +963,7 @@ export default function App() {
             <BookmarkCard
               item={item}
               selected={item.id === selectedBookmarkId}
-              onPress={() => openBookmarkDetailRoute(item.id)}
+              onPress={() => nav.openDetail(item.id)}
             />
           )}
           ListEmptyComponent={
@@ -1032,7 +986,10 @@ export default function App() {
     );
   }
 
-  function renderHighlightsTab() {
+  function renderHighlightsTab(nav: {
+    openCreate: () => void;
+    openDetail: (highlightId: string) => void;
+  }) {
     return (
       <View style={styles.tabScreen}>
         <View style={styles.panel}>
@@ -1059,7 +1016,7 @@ export default function App() {
           <View style={styles.row}>
             <Pressable
               disabled={highlightMutationBusy || busy}
-              onPress={openHighlightCreateRoute}
+              onPress={nav.openCreate}
               style={[
                 styles.primaryButton,
                 (highlightMutationBusy || busy) && styles.buttonDisabled,
@@ -1096,7 +1053,7 @@ export default function App() {
             <HighlightCard
               item={item}
               selected={item.id === selectedHighlightId}
-              onPress={() => openHighlightDetailRoute(item.id)}
+              onPress={() => nav.openDetail(item.id)}
             />
           )}
           ListEmptyComponent={
@@ -1423,24 +1380,6 @@ export default function App() {
     );
   }
 
-  function renderDetailRoute() {
-    if (!appDetailRoute) return null;
-
-    if (appDetailRoute.kind === "bookmarkCreate") {
-      return renderBookmarkCreateRoute();
-    }
-    if (appDetailRoute.kind === "bookmarkDetail") {
-      return renderBookmarkDetailRoute(appDetailRoute.bookmarkId);
-    }
-    if (appDetailRoute.kind === "highlightCreate") {
-      return renderHighlightCreateRoute();
-    }
-    if (appDetailRoute.kind === "highlightDetail") {
-      return renderHighlightDetailRoute(appDetailRoute.highlightId);
-    }
-    return null;
-  }
-
   function renderLibraryTab() {
     return (
       <View style={styles.tabScreen}>
@@ -1554,93 +1493,6 @@ export default function App() {
     );
   }
 
-  function renderAuthenticatedShell() {
-    const shellSubtitle = appDetailRoute
-      ? appDetailRoute.kind === "bookmarkCreate"
-        ? "New Bookmark"
-        : appDetailRoute.kind === "bookmarkDetail"
-          ? "Bookmark Detail"
-          : appDetailRoute.kind === "highlightCreate"
-            ? "New Highlight"
-            : "Highlight Detail"
-      : activeTab === "home"
-        ? "Home"
-        : activeTab === "library"
-          ? "Library"
-          : activeTab === "bookmarks"
-            ? "Bookmarks"
-            : activeTab === "highlights"
-              ? "Highlights"
-              : "Account";
-
-    return (
-      <View style={styles.shell}>
-        <View style={styles.shellHeader}>
-          <View style={styles.shellHeaderTopRow}>
-            <View style={styles.flex1}>
-              <Text style={styles.shellTitle}>Zero1</Text>
-              <Text style={styles.shellSubtitle}>{shellSubtitle}</Text>
-            </View>
-            {appDetailRoute ? (
-              <Pressable
-                onPress={closeDetailRoute}
-                style={styles.shellBackButton}
-              >
-                <Text style={styles.shellBackButtonLabel}>Back</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.shellBody}>
-          {appDetailRoute
-            ? renderDetailRoute()
-            : activeTab === "home"
-              ? renderHomeTab()
-              : activeTab === "library"
-                ? renderLibraryTab()
-                : activeTab === "bookmarks"
-                  ? renderBookmarksTab()
-                  : activeTab === "highlights"
-                    ? renderHighlightsTab()
-                    : renderAccountTab()}
-        </View>
-
-        {!appDetailRoute ? (
-          <View style={styles.tabBar}>
-            {(
-              [
-                ["home", "Home"],
-                ["library", "Library"],
-                ["bookmarks", "Marks"],
-                ["highlights", "Light"],
-                ["account", "Account"],
-              ] as Array<[MobileTabKey, string]>
-            ).map(([key, label]) => {
-              const isActive = activeTab === key;
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => navigateToTab(key)}
-                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
-                >
-                  <Text
-                    style={[
-                      styles.tabButtonLabel,
-                      isActive && styles.tabButtonLabelActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-      </View>
-    );
-  }
-
   function renderAuthFlow() {
     return (
       <ScrollView
@@ -1655,22 +1507,30 @@ export default function App() {
     );
   }
 
-  function renderAppFlow() {
-    return (
-      <View style={styles.authenticatedRootFrame}>
-        {renderAuthenticatedShell()}
-        {busy ? <ActivityIndicator color={T.colors.accentStrong} /> : null}
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.appBackground}>
         <View style={styles.backdropBlobA} />
         <View style={styles.backdropBlobB} />
-        {!user ? renderAuthFlow() : renderAppFlow()}
+        <MobileRootNavigator
+          isAuthenticated={Boolean(user)}
+          renderAuth={renderAuthFlow}
+          renderHome={renderHomeTab}
+          renderLibrary={renderLibraryTab}
+          renderBookmarks={renderBookmarksTab}
+          renderHighlights={renderHighlightsTab}
+          renderAccount={renderAccountTab}
+          renderBookmarkCreate={renderBookmarkCreateRoute}
+          renderBookmarkDetail={renderBookmarkDetailRoute}
+          renderHighlightCreate={renderHighlightCreateRoute}
+          renderHighlightDetail={renderHighlightDetailRoute}
+        />
+        {busy ? (
+          <View style={styles.globalBusyOverlay} pointerEvents="none">
+            <ActivityIndicator color={T.colors.accentStrong} />
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -1716,6 +1576,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: T.spacing.lg,
     gap: T.spacing.md,
+  },
+  globalBusyOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
   panel: {
     backgroundColor: T.colors.surfaceRaised,
