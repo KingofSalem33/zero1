@@ -422,10 +422,15 @@ Status: In progress
     - `apps/mobile/eas.json`
   - Added mobile scripts:
     - `npm --prefix apps/mobile run start:dev-client`
+    - `npm --prefix apps/mobile run eas:login`
+    - `npm --prefix apps/mobile run eas:init`
     - `npm --prefix apps/mobile run eas:build:ios:dev`
     - `npm --prefix apps/mobile run eas:build:ios:preview`
   - Added test runbook for native OAuth callback validation:
     - `apps/mobile/DEV_CLIENT_OAUTH_TESTING.md`
+  - Follow-up hardening:
+    - EAS scripts now use `npx eas-cli` (no global EAS CLI install required).
+    - Runbook now includes both Google and Apple native callback test flows.
 - Provider dashboard configuration validated server-side (Agent AC):
   - Google provider enabled in Supabase with client ID + client secret (provider launch no longer returns `unsupported provider` / `missing OAuth secret`).
   - Apple provider enabled in Supabase with Apple client secret JWT (accepted by Supabase) and Services ID callback/domain corrected in Apple Developer.

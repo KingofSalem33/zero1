@@ -17,23 +17,17 @@ Use an Expo development build (dev client) instead.
 
 ## One-time setup
 
-1. Install EAS CLI (if needed)
-
-```bash
-npm i -g eas-cli
-```
-
-2. Login to Expo/EAS
+1. Login to Expo/EAS
 
 ```bash
 cd apps/mobile
-eas login
+npm run eas:login
 ```
 
-3. Link/create the Expo project when prompted
+2. Link/create the Expo project when prompted
 
 ```bash
-eas init
+npm run eas:init
 ```
 
 ## Build iOS dev client (recommended for OAuth testing)
@@ -63,6 +57,14 @@ If Expo needs internet metadata and fails in your environment, remove `--offline
 4. Confirm you return to the app via `zero1://auth/callback`.
 5. App should show `Signed in as ...`
 6. Tap `Run Protected Probe` and confirm success.
+
+## Test flow (Apple)
+
+1. Tap `Apple`.
+2. Complete Apple account sign-in and consent.
+3. Confirm you return to the app via `zero1://auth/callback`.
+4. App should show `Signed in as ...`
+5. Tap `Run Protected Probe` and confirm success.
 
 ## Expected temporary behavior
 
