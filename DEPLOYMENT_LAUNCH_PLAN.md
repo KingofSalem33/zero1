@@ -38,7 +38,7 @@ Status: In progress
 - [x] Agent AB (Mobile Auth Code): Implement app-side provider auth plumbing (Apple + Google launch paths) with deep-link callback handling and Supabase session exchange.
 - [x] Agent AD (Mobile Dev Build): Add Expo dev-client + EAS build configuration for reliable native OAuth callback testing.
 - [x] Agent AC (Provider Config): Complete Google + Apple provider dashboard configuration in Supabase/Apple and verify Supabase callback flow succeeds server-side.
-- [ ] Agent AE (Next): Validate Google + Apple auth callbacks end-to-end on native iOS dev client (`zero1://auth/callback`) and run protected probe after sign-in.
+- [ ] Agent AE (In Progress): Validate Google + Apple auth callbacks end-to-end on native iOS dev client (`zero1://auth/callback`) and run protected probe after sign-in.
 
 ### Execution Notes (2026-02-19)
 
@@ -439,6 +439,12 @@ Status: In progress
     - `/callback` returned `302`
     - `user_signedup` event recorded for Apple auth user
   - Remaining gap is client-side/native callback completion verification in iOS dev client (web preview remains an invalid test target for `zero1://auth/callback`).
+- Native iOS dev-client callback/session validation in progress (Agent AE):
+  - iOS development build installed and connected to Metro in dev-client mode.
+  - Google sign-in returns to app and session state becomes active.
+  - Apple sign-in returns to app and session state becomes active.
+  - Remaining manual confirmation:
+    - Run `Run Protected Probe` after each provider sign-in and confirm no error.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
