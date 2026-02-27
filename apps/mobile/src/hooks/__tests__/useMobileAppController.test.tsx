@@ -191,6 +191,51 @@ describe("useMobileAppController", () => {
     expect(latest?.bookmarkBookGuidance).toContain('Multiple books match "jo"');
   });
 
+  it("saves bookmark after selecting a suggested book from ambiguous input", async () => {
+    (createBookmark as jest.Mock).mockResolvedValue({
+      id: "bm-2",
+      text: "John 3:16",
+      createdAt: "2026-02-27T00:00:00.000Z",
+    });
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "jo",
+        chapter: "3",
+        verse: "16",
+      }));
+    });
+
+    expect(latest?.bookmarkBookGuidance).toContain('Multiple books match "jo"');
+    expect(latest?.bookmarkBookSuggestions.length).toBeGreaterThan(1);
+
+    await act(async () => {
+      latest?.selectBookmarkBookSuggestion("John");
+    });
+
+    expect(latest?.bookmarkDraft.book).toBe("John");
+    expect(latest?.bookmarkBookGuidance).toBeNull();
+
+    await act(async () => {
+      await latest?.handleCreateBookmark();
+    });
+
+    await waitFor(() => {
+      expect(createBookmark).toHaveBeenCalledTimes(1);
+    });
+    expect(createBookmark).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "John 3:16" }),
+    );
+    expect(latest?.bookmarks[0]?.id).toBe("bm-2");
+  });
+
   it("deletes bookmark via controller action", async () => {
     (fetchBookmarks as jest.Mock).mockResolvedValue([
       {

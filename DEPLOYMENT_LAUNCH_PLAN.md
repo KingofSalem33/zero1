@@ -64,7 +64,8 @@ Status: In progress
 - [x] Agent BB (Shared Bible Reference Adoption): Extract `apps/web/src/utils/bibleReference.ts` to consume the new shared Bible book metadata/resolution helpers so web + mobile use one canonical source.
 - [x] Agent BC (Cross-Client Parity Tests): Add cross-client contract tests that assert web/mobile canonical book resolution parity for ambiguous and alias inputs.
 - [x] Agent BD (Mobile Ambiguity Guidance): Surface explicit user-facing validation copy in mobile bookmark UI for ambiguous book prefixes (for example, recommend tap-to-select when multiple books match).
-- [ ] Agent BE (Next): Add mobile bookmark UX smoke coverage for suggestion-tap flows (ambiguous prefix -> selection -> successful save).
+- [x] Agent BE (Mobile Suggestion-Tap Smoke): Add mobile bookmark UX smoke coverage for suggestion-tap flows (ambiguous prefix -> selection -> successful save).
+- [ ] Agent BF (Next): Add lightweight mobile screen-level test coverage for `BookmarkCreateScreen` guidance + suggestion chip rendering to lock UI behavior (beyond controller-only tests).
 
 ### Execution Notes (2026-02-19)
 
@@ -785,6 +786,16 @@ Status: In progress
   - Bookmark create screen now surfaces the guidance copy in a muted callout directly under book/chapter fields:
     - `apps/mobile/src/screens/DetailScreens.tsx`
   - Controller tests expanded to assert ambiguity guidance behavior:
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 mobile suggestion-tap smoke coverage completed (Agent BE):
+  - Added controller smoke test that covers end-to-end bookmark suggestion flow:
+    - ambiguous book input (`jo`) -> suggestion list shown -> suggestion selected (`John`) -> successful bookmark save.
     - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
   - Validation passed:
     - `npm --prefix apps/mobile run test`
