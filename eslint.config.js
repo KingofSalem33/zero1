@@ -272,5 +272,45 @@ export default [
       "@typescript-eslint/no-require-imports": "off",
     },
   },
+  {
+    files: ["packages/**/*.{js,ts,tsx}"],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        Request: "readonly",
+        RequestInit: "readonly",
+        Response: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": typescript,
+      import: importPlugin,
+      "react-refresh": reactRefresh,
+    },
+    rules: {
+      ...typescript.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "no-console": "off",
+      "prefer-const": "error",
+      "react-refresh/only-export-components": "off",
+    },
+  },
   prettier,
 ];

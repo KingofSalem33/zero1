@@ -50,7 +50,8 @@ Status: In progress
 - [x] Agent AN (Branch Protection): Configure GitHub branch protection for `biblelot` to require passing `node-lint-build` before merge, and document required-check policy.
 - [x] Agent AO (Branch-Rule Smoke Merge): Complete branch-protection smoke PR merge path by aligning review requirements for solo-owner workflow and confirming merge to `biblelot`.
 - [x] Agent AP (Phase 2.1 Validation): Close remaining Phase 2.1 checklist item by executing and documenting essential mobile core-feature path validation evidence.
-- [ ] Agent AQ (Next): Start Phase 2.3 shared-logic extraction by scaffolding `packages/shared` and migrating first cross-client domain contracts.
+- [x] Agent AQ (Phase 2.3 Kickoff): Start Phase 2.3 shared-logic extraction by scaffolding `packages/shared` and migrating first cross-client domain contracts.
+- [ ] Agent AR (Next): Expand Phase 2.3 extraction to additional shared contracts and add API contract tests for shared schema stability.
 
 ### Execution Notes (2026-02-19)
 
@@ -563,6 +564,24 @@ Status: In progress
   - Executed validation:
     - `npm --prefix apps/mobile run phase2:core-validation`
     - Report: `apps/mobile/reports/phase21CoreFeatureValidation.json` (`passed: true`)
+- Phase 2.3 shared-logic extraction kickoff completed (Agent AQ):
+  - Added new shared workspace package for cross-client domain contracts:
+    - `packages/shared/package.json`
+    - `packages/shared/src/contracts/contentContracts.ts`
+    - `packages/shared/src/index.ts`
+  - Migrated first shared contracts with runtime schema validation + normalizers:
+    - `Bookmark`, `Highlight`, `LibraryConnection`
+    - Shared parsers for `/api/bookmarks`, `/api/highlights`, `/api/library/connections`
+  - Rewired client code to consume shared contracts:
+    - `packages/shared-client/src/api/createProtectedApiClient.ts`
+    - `apps/mobile/src/lib/api.ts`
+    - workspace deps in `packages/shared-client/package.json` and `apps/mobile/package.json`
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm --prefix apps/desktop run typecheck`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -750,7 +769,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 
 ### 2.3 Shared Logic Extraction
 
-- [ ] Create `packages/shared`
+- [x] Create `packages/shared`
 - [ ] Move shared types, zod schemas, domain helpers, and constants
 - [ ] Rewire web/desktop/mobile to consume shared package
 - [ ] Add API contract tests for shared schema stability
