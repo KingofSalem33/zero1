@@ -393,7 +393,10 @@ export function buildHighlightUpdatePayload(
     output.text = readString(payload.text) ?? "";
   }
   if (Object.prototype.hasOwnProperty.call(payload, "verses")) {
-    output.verses = normalizeVerseIds(payload.verses);
+    const normalizedVerses = normalizeVerseIds(payload.verses);
+    output.verses = Array.isArray(payload.verses)
+      ? (normalizedVerses ?? [])
+      : normalizedVerses;
   }
   return output;
 }

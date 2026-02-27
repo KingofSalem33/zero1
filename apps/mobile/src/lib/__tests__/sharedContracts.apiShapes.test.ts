@@ -117,6 +117,11 @@ describe("shared API contracts", () => {
       verses: [8, 9],
     });
 
+    const clearVersesPayload = buildHighlightUpdatePayload({
+      verses: [],
+    });
+    expect(clearVersesPayload).toEqual({ verses: [] });
+
     const parsed = parseHighlightUpdateResponse({
       highlight: {
         id: "hl-2",
