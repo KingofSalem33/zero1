@@ -44,7 +44,8 @@ Status: In progress
 - [x] Agent AH (Mobile Interactions): Add mobile bookmark/highlight interaction flows (detail, refresh UX, and write-path hooks) to move from read-only shell to task-complete mobile usage.
 - [x] Agent AI (Mobile Routing Shell): Introduce route-based mobile navigation shell (auth/app split + routed detail screens) and migrate current inline panels to route-based flows.
 - [x] Agent AJ (Mobile Navigation Stack): Migrate mobile shell to React Navigation (auth/app split + native stack + bottom tabs) so route state is no longer managed inside `App.tsx`.
-- [ ] Agent AK (Next): Extract remaining mobile screen JSX/state slices from `apps/mobile/App.tsx` into screen modules + hooks (screen props/context) to reduce controller/file size and improve maintainability.
+- [x] Agent AK (Mobile Modularization): Extract remaining mobile screen JSX/state slices from `apps/mobile/App.tsx` into screen modules + hooks to reduce controller/file size and improve maintainability.
+- [ ] Agent AL (Next): Move shared mobile state/actions from prop wiring to a dedicated context provider + add focused mobile screen/unit tests for controller actions and route rendering.
 
 ### Execution Notes (2026-02-19)
 
@@ -502,6 +503,22 @@ Status: In progress
     - detail routes for bookmark/highlight create/detail screens
   - Removed manual tab/detail route state from `apps/mobile/App.tsx`; navigation is now driven by React Navigation callbacks and stack routes.
   - Existing mobile screen renderers and write-path flows remain functional while routing is handled by the navigator module.
+- Mobile screen/controller modularization completed (Agent AK):
+  - Added extracted mobile controller hook:
+    - `apps/mobile/src/hooks/useMobileAppController.ts`
+    - centralizes auth/session state, API data loading, and bookmark/highlight write actions.
+  - Added extracted mobile screen modules:
+    - `apps/mobile/src/screens/AuthHomeAccountScreens.tsx`
+    - `apps/mobile/src/screens/DataListScreens.tsx`
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+    - `apps/mobile/src/screens/common/EntityCards.tsx`
+  - Added extracted mobile style module:
+    - `apps/mobile/src/theme/mobileStyles.ts`
+  - Refactored `apps/mobile/App.tsx` into a thin composition root that wires:
+    - `useMobileAppController`
+    - `MobileRootNavigator`
+    - extracted screen modules.
+  - Result: mobile surface area is now organized by responsibility (navigation, controller, screens, shared styling) instead of a monolithic single file.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
