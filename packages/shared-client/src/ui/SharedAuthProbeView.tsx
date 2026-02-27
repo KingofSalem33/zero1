@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import type { CSSProperties } from "react";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import { buildAuthSessionPayload } from "@zero1/shared";
 import {
   createProtectedApiClient,
   type Bookmark,
@@ -102,6 +103,17 @@ export function SharedAuthProbeView({
         authFetch,
       }),
     [apiBaseUrl, authFetch],
+  );
+  const authSessionPayload = useMemo(
+    () =>
+      buildAuthSessionPayload({
+        session,
+        user,
+        strictEnv,
+        tokenRefreshCount,
+        lastTokenRefreshAt,
+      }),
+    [lastTokenRefreshAt, session, strictEnv, tokenRefreshCount, user],
   );
 
   useEffect(() => {
@@ -226,11 +238,14 @@ export function SharedAuthProbeView({
         </p>
         <p>{authLabel}</p>
         <p>
-          Session: {session ? "active" : "none"} | Strict env: {String(strictEnv)}
+          Session: {authSessionPayload.sessionActive ? "active" : "none"} |
+          Strict env: {String(authSessionPayload.strictEnv)}
         </p>
         <p>
-          Token refresh events: {tokenRefreshCount}
-          {lastTokenRefreshAt ? ` | Last refresh: ${lastTokenRefreshAt}` : ""}
+          Token refresh events: {authSessionPayload.tokenRefreshCount}
+          {authSessionPayload.lastTokenRefreshAt
+            ? ` | Last refresh: ${authSessionPayload.lastTokenRefreshAt}`
+            : ""}
         </p>
         {sessionPersistenceLabel ? <p>{sessionPersistenceLabel}</p> : null}
       </section>

@@ -1,11 +1,46 @@
 import {
+  buildLibraryBundleCreatePayload,
+  buildLibraryConnectionCreatePayload,
+  buildLibraryConnectionUpdatePayload,
+  buildLibraryMapCreatePayload,
+  buildLibraryMapUpdatePayload,
   parseBookmarksResponse,
+  parseLibraryBundleCreateResponse,
   parseHighlightsResponse,
+  parseLibraryConnectionMutationResponse,
   parseLibraryConnectionsResponse,
+  parseLibraryConnectionUpdateResponse,
+  parseLibraryMapMutationResponse,
+  parseLibraryMapsResponse,
+  parseLibraryMapUpdateResponse,
 } from "@zero1/shared";
-import type { Bookmark, Highlight, LibraryConnection } from "@zero1/shared";
+import type {
+  Bookmark,
+  Highlight,
+  LibraryBundleCreateResult,
+  LibraryConnection,
+  LibraryConnectionCreatePayload,
+  LibraryConnectionMutationResult,
+  LibraryConnectionUpdatePayload,
+  LibraryMap,
+  LibraryMapCreatePayload,
+  LibraryMapMutationResult,
+  LibraryMapUpdatePayload,
+} from "@zero1/shared";
 
-export type { Bookmark, Highlight, LibraryConnection } from "@zero1/shared";
+export type {
+  Bookmark,
+  Highlight,
+  LibraryBundleCreateResult,
+  LibraryConnection,
+  LibraryConnectionCreatePayload,
+  LibraryConnectionMutationResult,
+  LibraryConnectionUpdatePayload,
+  LibraryMap,
+  LibraryMapCreatePayload,
+  LibraryMapMutationResult,
+  LibraryMapUpdatePayload,
+} from "@zero1/shared";
 
 type AuthFetch = (
   input: string | URL | Request,
@@ -46,6 +81,105 @@ export function createProtectedApiClient({
       const response = await authFetch(`${baseUrl}/api/library/connections`);
       const payload = await parseApiResponse<unknown>(response);
       return parseLibraryConnectionsResponse(payload);
+    },
+    async getLibraryMaps(): Promise<LibraryMap[]> {
+      const response = await authFetch(`${baseUrl}/api/library/maps`);
+      const payload = await parseApiResponse<unknown>(response);
+      return parseLibraryMapsResponse(payload);
+    },
+    async createLibraryBundle(bundle: unknown): Promise<LibraryBundleCreateResult> {
+      const payload = buildLibraryBundleCreatePayload(bundle);
+      const response = await authFetch(`${baseUrl}/api/library/bundles`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseLibraryBundleCreateResponse(responsePayload);
+    },
+    async createLibraryConnection(
+      payload: LibraryConnectionCreatePayload,
+    ): Promise<LibraryConnectionMutationResult> {
+      const normalizedPayload = buildLibraryConnectionCreatePayload(payload);
+      const response = await authFetch(`${baseUrl}/api/library/connections`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(normalizedPayload),
+      });
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseLibraryConnectionMutationResponse(responsePayload);
+    },
+    async updateLibraryConnection(
+      id: string,
+      payload: LibraryConnectionUpdatePayload,
+    ): Promise<LibraryConnection> {
+      const normalizedPayload = buildLibraryConnectionUpdatePayload(payload);
+      const response = await authFetch(
+        `${baseUrl}/api/library/connections/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(normalizedPayload),
+        },
+      );
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseLibraryConnectionUpdateResponse(responsePayload);
+    },
+    async deleteLibraryConnection(id: string): Promise<void> {
+      const response = await authFetch(
+        `${baseUrl}/api/library/connections/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      await parseApiResponse<unknown>(response);
+    },
+    async createLibraryMap(
+      payload: LibraryMapCreatePayload,
+    ): Promise<LibraryMapMutationResult> {
+      const normalizedPayload = buildLibraryMapCreatePayload(payload);
+      const response = await authFetch(`${baseUrl}/api/library/maps`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(normalizedPayload),
+      });
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseLibraryMapMutationResponse(responsePayload);
+    },
+    async updateLibraryMap(
+      id: string,
+      payload: LibraryMapUpdatePayload,
+    ): Promise<LibraryMap> {
+      const normalizedPayload = buildLibraryMapUpdatePayload(payload);
+      const response = await authFetch(
+        `${baseUrl}/api/library/maps/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(normalizedPayload),
+        },
+      );
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseLibraryMapUpdateResponse(responsePayload);
+    },
+    async deleteLibraryMap(id: string): Promise<void> {
+      const response = await authFetch(
+        `${baseUrl}/api/library/maps/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      await parseApiResponse<unknown>(response);
     },
   };
 }

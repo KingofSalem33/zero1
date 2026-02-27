@@ -17,7 +17,7 @@
     "build:web": "npm --prefix apps/web run build",
     "build:desktop": "npm --prefix apps/desktop run build",
     "typecheck:mobile": "npm --prefix apps/mobile run typecheck",
-    "lint": "eslint \"apps/**/*.{ts,tsx,js}\"",
+    "lint": "eslint \"apps/**/*.{ts,tsx,js}\" \"packages/**/*.{ts,tsx,js}\"",
     "format": "prettier -w .",
     "prepare": "husky || echo \"Skipping husky in CI/build environment\""
   },

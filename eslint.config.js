@@ -291,6 +291,8 @@ export default [
         Request: "readonly",
         RequestInit: "readonly",
         Response: "readonly",
+        Headers: "readonly",
+        HTMLFormElement: "readonly",
       },
     },
     plugins: {

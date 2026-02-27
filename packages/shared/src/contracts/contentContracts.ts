@@ -61,6 +61,7 @@ export interface Highlight {
 }
 
 export interface LibraryConnectionVerseRef {
+  id?: number;
   reference: string;
   text?: string;
 }
@@ -73,21 +74,112 @@ export interface LibraryConnectionBundleMeta {
 
 export interface LibraryConnection {
   id: string;
+  userId?: string;
   bundleId?: string;
   synopsis: string;
   connectionType: string;
   similarity: number;
   fromVerse: LibraryConnectionVerseRef;
   toVerse: LibraryConnectionVerseRef;
+  explanation?: string;
+  connectedVerseIds?: number[];
+  connectedVerses?: LibraryConnectionVerseRef[];
+  goDeeperPrompt?: string;
+  mapSession?: unknown;
   note?: string;
   tags: string[];
   createdAt?: string;
+  updatedAt?: string;
+  bundle?: unknown;
   bundleMeta?: LibraryConnectionBundleMeta;
+}
+
+export interface LibraryMap {
+  id: string;
+  userId?: string;
+  bundleId?: string;
+  title?: string;
+  note?: string;
+  tags: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  bundleMeta?: LibraryConnectionBundleMeta;
+  bundle?: unknown;
+}
+
+export interface LibraryBundleCreateResult {
+  bundleId: string;
+  existing: boolean;
+}
+
+export interface LibraryBundleCreatePayload {
+  bundle: unknown;
+}
+
+export interface LibraryMapCreatePayload {
+  bundleId: string;
+  title?: string;
+}
+
+export interface LibraryMapUpdatePayload {
+  title?: string;
+  note?: string;
+  tags?: string[];
+}
+
+export interface LibraryConnectionCreatePayload {
+  bundleId: string;
+  fromVerse: LibraryConnectionVerseRef;
+  toVerse: LibraryConnectionVerseRef;
+  connectionType: string;
+  similarity: number;
+  synopsis: string;
+  explanation?: string;
+  connectedVerseIds?: number[];
+  connectedVerses?: LibraryConnectionVerseRef[];
+  goDeeperPrompt: string;
+  mapSession?: unknown;
+}
+
+export interface LibraryConnectionUpdatePayload {
+  note?: string;
+  tags?: string[];
+}
+
+export interface LibraryMapSessionConnection {
+  fromId: number;
+  toId: number;
+  connectionType: string;
+}
+
+export interface LibraryMapSessionPayload {
+  cluster?: {
+    baseId: number;
+    verseIds: number[];
+    connectionType: string;
+  };
+  currentConnection?: LibraryMapSessionConnection;
+  previousConnection?: LibraryMapSessionConnection;
+  nextConnection?: LibraryMapSessionConnection | null;
+  visitedEdgeKeys?: string[];
+  offMapReferences?: string[];
+  exhausted?: boolean;
+}
+
+export interface LibraryConnectionMutationResult {
+  connection: LibraryConnection;
+  existing: boolean;
+}
+
+export interface LibraryMapMutationResult {
+  map: LibraryMap;
+  existing: boolean;
 }
 
 function normalizeVerseRef(value: unknown): LibraryConnectionVerseRef {
   const obj = asObject(value);
   return {
+    id: readNumber(obj.id),
     reference: readString(obj.reference) ?? "Unknown reference",
     text: readString(obj.text),
   };
@@ -114,6 +206,28 @@ function normalizeBundleMeta(
     verseCount,
     edgeCount,
   };
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.from(
+    new Set(
+      readStringArray(value)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+}
+
+function normalizeVerseIds(value: unknown): number[] | undefined {
+  const normalized = readNumberArray(value)
+    .map((entry) => Math.trunc(entry))
+    .filter((entry) => Number.isFinite(entry) && entry > 0);
+
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
+}
+
+function normalizeConnectionType(value: unknown): string {
+  return readString(value)?.trim() || "connection";
 }
 
 export function buildHighlightReferenceLabel(
@@ -169,18 +283,54 @@ export function normalizeLibraryConnection(
   index: number,
 ): LibraryConnection {
   const obj = asObject(value);
+  const connectedVerses = Array.isArray(obj.connectedVerses)
+    ? obj.connectedVerses.map((entry) => normalizeVerseRef(entry))
+    : Array.isArray(obj.connected_verses)
+      ? obj.connected_verses.map((entry) => normalizeVerseRef(entry))
+      : [];
+
   return {
     id: readString(obj.id) ?? `connection-${index}`,
+    userId: readString(obj.userId) ?? readString(obj.user_id),
     bundleId: readString(obj.bundleId) ?? readString(obj.bundle_id),
     synopsis: readString(obj.synopsis) ?? "No synopsis available.",
-    connectionType: readString(obj.connectionType) ?? "connection",
+    connectionType:
+      readString(obj.connectionType) ??
+      readString(obj.connection_type) ??
+      "connection",
     similarity: readNumber(obj.similarity) ?? 0,
     fromVerse: normalizeVerseRef(obj.fromVerse ?? obj.from_verse),
     toVerse: normalizeVerseRef(obj.toVerse ?? obj.to_verse),
+    explanation: readString(obj.explanation),
+    connectedVerseIds: readNumberArray(
+      obj.connectedVerseIds ?? obj.connected_verse_ids,
+    ),
+    connectedVerses,
+    goDeeperPrompt:
+      readString(obj.goDeeperPrompt) ?? readString(obj.go_deeper_prompt),
+    mapSession: obj.mapSession ?? obj.map_session,
     note: readString(obj.note),
     tags: readStringArray(obj.tags),
     createdAt: readString(obj.createdAt) ?? readString(obj.created_at),
+    updatedAt: readString(obj.updatedAt) ?? readString(obj.updated_at),
+    bundle: obj.bundle,
     bundleMeta: normalizeBundleMeta(obj.bundleMeta),
+  };
+}
+
+export function normalizeLibraryMap(value: unknown, index: number): LibraryMap {
+  const obj = asObject(value);
+  return {
+    id: readString(obj.id) ?? `map-${index}`,
+    userId: readString(obj.userId) ?? readString(obj.user_id),
+    bundleId: readString(obj.bundleId) ?? readString(obj.bundle_id),
+    title: readString(obj.title),
+    note: readString(obj.note),
+    tags: readStringArray(obj.tags),
+    createdAt: readString(obj.createdAt) ?? readString(obj.created_at),
+    updatedAt: readString(obj.updatedAt) ?? readString(obj.updated_at),
+    bundleMeta: normalizeBundleMeta(obj.bundleMeta),
+    bundle: obj.bundle,
   };
 }
 
@@ -204,6 +354,180 @@ export function parseLibraryConnectionsResponse(
   return connections.map((entry, index) =>
     normalizeLibraryConnection(entry, index),
   );
+}
+
+export function parseLibraryMapsResponse(payload: unknown): LibraryMap[] {
+  const obj = asObject(payload);
+  const maps = Array.isArray(obj.maps) ? obj.maps : [];
+  return maps.map((entry, index) => normalizeLibraryMap(entry, index));
+}
+
+export function parseLibraryBundleCreateResponse(
+  payload: unknown,
+): LibraryBundleCreateResult {
+  const obj = asObject(payload);
+  return {
+    bundleId: readString(obj.bundleId) ?? "",
+    existing: Boolean(obj.existing),
+  };
+}
+
+export function parseLibraryConnectionMutationResponse(
+  payload: unknown,
+): LibraryConnectionMutationResult {
+  const obj = asObject(payload);
+  return {
+    connection: normalizeLibraryConnection(obj.connection, 0),
+    existing: Boolean(obj.existing),
+  };
+}
+
+export function parseLibraryConnectionUpdateResponse(
+  payload: unknown,
+): LibraryConnection {
+  const obj = asObject(payload);
+  return normalizeLibraryConnection(obj.connection, 0);
+}
+
+export function parseLibraryMapMutationResponse(
+  payload: unknown,
+): LibraryMapMutationResult {
+  const obj = asObject(payload);
+  return {
+    map: normalizeLibraryMap(obj.map, 0),
+    existing: Boolean(obj.existing),
+  };
+}
+
+export function parseLibraryMapUpdateResponse(payload: unknown): LibraryMap {
+  const obj = asObject(payload);
+  return normalizeLibraryMap(obj.map, 0);
+}
+
+export function buildLibraryBundleCreatePayload(
+  bundle: unknown,
+): LibraryBundleCreatePayload {
+  return { bundle };
+}
+
+export function buildLibraryMapCreatePayload(
+  input: LibraryMapCreatePayload,
+): LibraryMapCreatePayload {
+  const title = readString(input.title)?.trim();
+  return {
+    bundleId: readString(input.bundleId)?.trim() ?? "",
+    ...(title ? { title } : {}),
+  };
+}
+
+export function buildLibraryMapUpdatePayload(
+  input: LibraryMapUpdatePayload,
+): LibraryMapUpdatePayload {
+  const payload: LibraryMapUpdatePayload = {};
+  if (Object.prototype.hasOwnProperty.call(input, "title")) {
+    payload.title = readString(input.title)?.trim() ?? "";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "note")) {
+    payload.note = readString(input.note)?.trim() ?? "";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "tags")) {
+    payload.tags = normalizeStringArray(input.tags);
+  }
+  return payload;
+}
+
+export function buildLibraryConnectionCreatePayload(
+  input: LibraryConnectionCreatePayload,
+): LibraryConnectionCreatePayload {
+  const connectionType = normalizeConnectionType(input.connectionType);
+  const connectedVerseIds = normalizeVerseIds(input.connectedVerseIds);
+  const explanation = readString(input.explanation)?.trim();
+  const connectedVerses = Array.isArray(input.connectedVerses)
+    ? input.connectedVerses
+        .map((entry) => normalizeVerseRef(entry))
+        .filter(
+          (entry) =>
+            entry.reference.trim().length > 0 &&
+            typeof entry.id === "number" &&
+            Number.isFinite(entry.id),
+        )
+    : undefined;
+
+  return {
+    bundleId: readString(input.bundleId)?.trim() ?? "",
+    fromVerse: normalizeVerseRef(input.fromVerse),
+    toVerse: normalizeVerseRef(input.toVerse),
+    connectionType,
+    similarity: readNumber(input.similarity) ?? 0,
+    synopsis: readString(input.synopsis)?.trim() ?? "",
+    ...(explanation ? { explanation } : {}),
+    ...(connectedVerseIds ? { connectedVerseIds } : {}),
+    ...(connectedVerses && connectedVerses.length > 0
+      ? { connectedVerses }
+      : {}),
+    goDeeperPrompt: readString(input.goDeeperPrompt)?.trim() ?? "",
+    ...(input.mapSession !== undefined ? { mapSession: input.mapSession } : {}),
+  };
+}
+
+export function buildLibraryConnectionUpdatePayload(
+  input: LibraryConnectionUpdatePayload,
+): LibraryConnectionUpdatePayload {
+  const payload: LibraryConnectionUpdatePayload = {};
+  if (Object.prototype.hasOwnProperty.call(input, "note")) {
+    payload.note = readString(input.note)?.trim() ?? "";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "tags")) {
+    payload.tags = normalizeStringArray(input.tags);
+  }
+  return payload;
+}
+
+export function buildLibraryEdgeKey(
+  connectionType: string,
+  fromId: number,
+  toId: number,
+): string {
+  const a = Math.min(fromId, toId);
+  const b = Math.max(fromId, toId);
+  return `${connectionType}:${a}-${b}`;
+}
+
+interface BuildLibraryMapSessionOptions {
+  connectionType: string;
+  fromId: number;
+  toId: number;
+  verseIds?: number[];
+}
+
+export function buildLibraryMapSession(
+  options: BuildLibraryMapSessionOptions,
+): LibraryMapSessionPayload {
+  const fromId = Math.trunc(options.fromId);
+  const toId = Math.trunc(options.toId);
+  const clusterVerseIds = normalizeVerseIds(options.verseIds) ?? [];
+
+  if (!clusterVerseIds.includes(fromId)) {
+    clusterVerseIds.unshift(fromId);
+  }
+  if (!clusterVerseIds.includes(toId)) {
+    clusterVerseIds.push(toId);
+  }
+
+  const connectionType = normalizeConnectionType(options.connectionType);
+  return {
+    cluster: {
+      baseId: fromId,
+      verseIds: clusterVerseIds,
+      connectionType,
+    },
+    currentConnection: {
+      fromId,
+      toId,
+      connectionType,
+    },
+    visitedEdgeKeys: [buildLibraryEdgeKey(connectionType, fromId, toId)],
+  };
 }
 
 export function toHighlightSyncRecord(

@@ -52,7 +52,7 @@ import {
   resolveConnectionFamily,
   resolveConnectionChip,
 } from "./narrativeMapConfig";
-import { authFetch } from "../../lib/authFetch";
+import { createLibraryBundle, createLibraryMap } from "../../lib/libraryApi";
 import type {
   ConnectionStyleType,
   BranchCluster,
@@ -336,37 +336,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       setMapSaving(true);
       setMapSaveError(null);
 
-      const bundleResponse = await authFetch(`${API_URL}/api/library/bundles`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bundle,
-        }),
-      });
-
-      if (!bundleResponse.ok) {
-        throw new Error("Failed to save map snapshot");
-      }
-
-      const bundleData = await bundleResponse.json();
-      const bundleId = bundleData.bundleId as string | undefined;
+      const bundleResult = await createLibraryBundle(bundle);
+      const bundleId = bundleResult.bundleId;
       if (!bundleId) {
         throw new Error("Missing bundle ID");
       }
 
       const title = resolveAnchorRef();
-      const mapResponse = await authFetch(`${API_URL}/api/library/maps`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bundleId,
-          title,
-        }),
-      });
-
-      if (!mapResponse.ok) {
-        throw new Error("Failed to save map");
-      }
+      await createLibraryMap({ bundleId, title });
 
       setMapSaved(true);
       toast("Map saved to Library", { type: "success", duration: 2500 });

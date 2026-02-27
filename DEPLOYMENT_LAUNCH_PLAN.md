@@ -51,7 +51,10 @@ Status: In progress
 - [x] Agent AO (Branch-Rule Smoke Merge): Complete branch-protection smoke PR merge path by aligning review requirements for solo-owner workflow and confirming merge to `biblelot`.
 - [x] Agent AP (Phase 2.1 Validation): Close remaining Phase 2.1 checklist item by executing and documenting essential mobile core-feature path validation evidence.
 - [x] Agent AQ (Phase 2.3 Kickoff): Start Phase 2.3 shared-logic extraction by scaffolding `packages/shared` and migrating first cross-client domain contracts.
-- [ ] Agent AR (Next): Expand Phase 2.3 extraction to additional shared contracts and add API contract tests for shared schema stability.
+- [x] Agent AR (Shared Contracts + Tests): Expand Phase 2.3 extraction to additional shared contracts and add API contract tests for shared schema stability.
+- [x] Agent AS (Web Library Rewire): Continue Phase 2.3 by migrating web library domain types/parsers to `@zero1/shared` and reducing duplicate API-shape normalization in web components.
+- [x] Agent AT (Web Mutation Contracts): Continue Phase 2.3 by migrating remaining web-side library mutation/request contracts (connection/map update payloads + bundle/session helpers) into `@zero1/shared`.
+- [ ] Agent AU (Next): Apply the new shared library mutation contracts to mobile/desktop library write paths so all clients use one protected API contract surface.
 
 ### Execution Notes (2026-02-19)
 
@@ -582,6 +585,68 @@ Status: In progress
     - `npm --prefix apps/mobile run test`
     - `npm --prefix apps/mobile run phase2:core-validation`
     - `npm --prefix apps/desktop run typecheck`
+- Phase 2.3 shared-contract expansion + schema stability tests completed (Agent AR):
+  - Expanded `@zero1/shared` contracts with additional API payload shapes:
+    - library maps (`parseLibraryMapsResponse`, `normalizeLibraryMap`, `LibraryMap`)
+    - library bundle creation response (`parseLibraryBundleCreateResponse`, `LibraryBundleCreateResult`)
+    - auth/session summary payload (`buildAuthSessionPayload`, `AuthSessionPayload`)
+  - Rewired additional cross-client consumers:
+    - `packages/shared-client/src/api/createProtectedApiClient.ts` now uses shared map/bundle parsers
+    - `packages/shared-client/src/ui/SharedAuthProbeView.tsx` now builds auth/session status through shared contract helper
+    - `apps/mobile/src/lib/api.ts` now consumes shared map/bundle parsers and exposes map/bundle client methods
+  - Added API contract tests for shared schema stability:
+    - `apps/mobile/src/lib/__tests__/sharedContracts.apiShapes.test.ts`
+    - Covers bookmarks/highlights/connections/maps/bundle-create response normalization and auth/session payload building.
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm --prefix apps/desktop run typecheck`
+    - `npm run build`
+- Phase 2.3 web library domain rewire completed (Agent AS):
+  - Added shared web library API adapters using shared parsers:
+    - `apps/web/src/lib/libraryApi.ts`
+  - Reduced duplicate web API-shape parsing and aligned web components to shared contracts:
+    - `apps/web/src/components/BookmarkPanel.tsx`
+    - `apps/web/src/components/LibraryView.tsx`
+  - Extended shared contracts + shared-client surface to support additional map/bundle/auth payloads used by web/desktop/mobile:
+    - `packages/shared/src/contracts/contentContracts.ts`
+    - `packages/shared/src/contracts/authContracts.ts`
+    - `packages/shared/src/index.ts`
+    - `packages/shared-client/src/api/createProtectedApiClient.ts`
+    - `packages/shared-client/src/ui/SharedAuthProbeView.tsx`
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/web run typecheck`
+    - `npm --prefix apps/desktop run typecheck`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm run build`
+- Phase 2.3 web mutation/request contract migration completed (Agent AT):
+  - Added shared library mutation payload/result contracts and session/bundle helpers:
+    - `packages/shared/src/contracts/contentContracts.ts`
+    - `packages/shared/src/index.ts`
+  - Extended shared protected API client with library mutation methods using shared builders/parsers:
+    - `packages/shared-client/src/api/createProtectedApiClient.ts`
+    - `packages/shared-client/src/index.ts`
+  - Rewired web library mutation call sites to the shared contract surface (removed direct `/api/library/*` request construction from web components):
+    - `apps/web/src/lib/libraryApi.ts`
+    - `apps/web/src/components/LibraryView.tsx`
+    - `apps/web/src/components/BookmarkPanel.tsx`
+    - `apps/web/src/components/golden-thread/NarrativeMap.tsx`
+    - `apps/web/src/components/golden-thread/SemanticConnectionModal.tsx`
+  - Expanded shared contract tests to cover mutation parsing/session payload builders:
+    - `apps/mobile/src/lib/__tests__/sharedContracts.apiShapes.test.ts`
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/web run typecheck`
+    - `npm --prefix apps/desktop run typecheck`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm run build`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -772,7 +837,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 - [x] Create `packages/shared`
 - [ ] Move shared types, zod schemas, domain helpers, and constants
 - [ ] Rewire web/desktop/mobile to consume shared package
-- [ ] Add API contract tests for shared schema stability
+- [x] Add API contract tests for shared schema stability
 
 ### 2.4 Mobile Product Quality
 
