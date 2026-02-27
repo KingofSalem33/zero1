@@ -3,9 +3,6 @@ import {
   normalizeHighlight,
   parseBookmarksResponse,
   parseHighlightsResponse,
-  parseLibraryBundleCreateResponse,
-  parseLibraryConnectionsResponse,
-  parseLibraryMapsResponse,
   toHighlightSyncRecord,
   type Bookmark,
   type Highlight,
@@ -13,6 +10,13 @@ import {
   type LibraryConnection,
   type LibraryMap,
 } from "@zero1/shared";
+import {
+  createProtectedApiClient,
+  type LibraryConnectionCreatePayload,
+  type LibraryConnectionUpdatePayload,
+  type LibraryMapCreatePayload,
+  type LibraryMapUpdatePayload,
+} from "@zero1/shared-client";
 
 interface ProtectedProbeOptions {
   apiBaseUrl: string;
@@ -39,6 +43,30 @@ export type MobileHighlightItem = Highlight;
 
 function normalizeBaseUrl(apiBaseUrl: string): string {
   return apiBaseUrl.replace(/\/+$/, "");
+}
+
+function buildMobileAuthFetch(accessToken: string) {
+  return async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ) => {
+    const headers = new Headers(init?.headers);
+    headers.set("Authorization", `Bearer ${accessToken}`);
+    return fetch(input, {
+      ...init,
+      headers,
+    });
+  };
+}
+
+function createMobileProtectedApiClient({
+  apiBaseUrl,
+  accessToken,
+}: ProtectedProbeOptions) {
+  return createProtectedApiClient({
+    apiBaseUrl: normalizeBaseUrl(apiBaseUrl),
+    authFetch: buildMobileAuthFetch(accessToken),
+  });
 }
 
 interface RequestJsonOptions {
@@ -87,17 +115,15 @@ export async function fetchProtectedProbe({
   apiBaseUrl,
   accessToken,
 }: ProtectedProbeOptions): Promise<ProtectedProbeResult> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const [bookmarksPayload, highlightsPayload, connectionsPayload] =
-    await Promise.all([
-      fetchJson<unknown>(`${baseUrl}/api/bookmarks`, accessToken),
-      fetchJson<unknown>(`${baseUrl}/api/highlights`, accessToken),
-      fetchJson<unknown>(`${baseUrl}/api/library/connections`, accessToken),
-    ]);
-
-  const bookmarks = parseBookmarksResponse(bookmarksPayload);
-  const highlights = parseHighlightsResponse(highlightsPayload);
-  const connections = parseLibraryConnectionsResponse(connectionsPayload);
+  const apiClient = createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  });
+  const [bookmarks, highlights, connections] = await Promise.all([
+    apiClient.getBookmarks(),
+    apiClient.getHighlights(),
+    apiClient.getLibraryConnections(),
+  ]);
 
   return {
     bookmarksCount: bookmarks.length,
@@ -110,24 +136,20 @@ export async function fetchLibraryConnections({
   apiBaseUrl,
   accessToken,
 }: ProtectedProbeOptions): Promise<LibraryConnectionItem[]> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await fetchJson<unknown>(
-    `${baseUrl}/api/library/connections`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-  );
-  return parseLibraryConnectionsResponse(payload);
+  }).getLibraryConnections();
 }
 
 export async function fetchLibraryMaps({
   apiBaseUrl,
   accessToken,
 }: ProtectedProbeOptions): Promise<LibraryMapItem[]> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await fetchJson<unknown>(
-    `${baseUrl}/api/library/maps`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-  );
-  return parseLibraryMapsResponse(payload);
+  }).getLibraryMaps();
 }
 
 export async function createLibraryBundle({
@@ -137,16 +159,90 @@ export async function createLibraryBundle({
 }: ProtectedProbeOptions & {
   bundle: unknown;
 }): Promise<LibraryBundleResult> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await requestJson<unknown>(
-    `${baseUrl}/api/library/bundles`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-    {
-      method: "POST",
-      body: { bundle },
-    },
-  );
-  return parseLibraryBundleCreateResponse(payload);
+  }).createLibraryBundle(bundle);
+}
+
+export async function createLibraryConnection({
+  apiBaseUrl,
+  accessToken,
+  payload,
+}: ProtectedProbeOptions & {
+  payload: LibraryConnectionCreatePayload;
+}): Promise<LibraryConnectionItem> {
+  const result = await createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).createLibraryConnection(payload);
+  return result.connection;
+}
+
+export async function updateLibraryConnection({
+  apiBaseUrl,
+  accessToken,
+  id,
+  payload,
+}: ProtectedProbeOptions & {
+  id: string;
+  payload: LibraryConnectionUpdatePayload;
+}): Promise<LibraryConnectionItem> {
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).updateLibraryConnection(id, payload);
+}
+
+export async function deleteLibraryConnection({
+  apiBaseUrl,
+  accessToken,
+  id,
+}: ProtectedProbeOptions & { id: string }): Promise<void> {
+  await createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).deleteLibraryConnection(id);
+}
+
+export async function createLibraryMap({
+  apiBaseUrl,
+  accessToken,
+  payload,
+}: ProtectedProbeOptions & {
+  payload: LibraryMapCreatePayload;
+}): Promise<LibraryMapItem> {
+  const result = await createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).createLibraryMap(payload);
+  return result.map;
+}
+
+export async function updateLibraryMap({
+  apiBaseUrl,
+  accessToken,
+  id,
+  payload,
+}: ProtectedProbeOptions & {
+  id: string;
+  payload: LibraryMapUpdatePayload;
+}): Promise<LibraryMapItem> {
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).updateLibraryMap(id, payload);
+}
+
+export async function deleteLibraryMap({
+  apiBaseUrl,
+  accessToken,
+  id,
+}: ProtectedProbeOptions & { id: string }): Promise<void> {
+  await createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).deleteLibraryMap(id);
 }
 
 export async function fetchBookmarks({
