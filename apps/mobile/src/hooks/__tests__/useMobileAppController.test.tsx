@@ -129,7 +129,7 @@ describe("useMobileAppController", () => {
     });
 
     await act(async () => {
-      latest?.setBookmarkDraftText("Genesis 1:1");
+      latest?.setBookmarkDraftText("  Genesis   1:1 ");
     });
 
     await act(async () => {
@@ -139,6 +139,9 @@ describe("useMobileAppController", () => {
     await waitFor(() => {
       expect(createBookmark).toHaveBeenCalledTimes(1);
     });
+    expect(createBookmark).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Genesis 1:1" }),
+    );
     expect(latest?.bookmarks[0]?.id).toBe("bm-1");
   });
 

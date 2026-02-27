@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { formatBookmarkReference, parseBookmarkReference } from "@zero1/shared";
 import {
   createProtectedApiClient,
   type Bookmark as ApiBookmark,
@@ -35,34 +36,6 @@ function loadBookmarks(): BibleBookmark[] {
 
 function saveBookmarks(bookmarks: BibleBookmark[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
-}
-
-function formatBookmarkReference(
-  book: string,
-  chapter: number,
-  verse?: number,
-): string {
-  return `${book} ${chapter}${verse ? `:${verse}` : ""}`;
-}
-
-function parseBookmarkReference(reference: string): {
-  book: string;
-  chapter: number;
-  verse?: number;
-} {
-  const match = reference.trim().match(/^(.*)\s+(\d+)(?::(\d+))?$/);
-  if (!match) {
-    return {
-      book: reference.trim(),
-      chapter: 1,
-    };
-  }
-
-  return {
-    book: match[1].trim(),
-    chapter: Number(match[2]),
-    ...(match[3] ? { verse: Number(match[3]) } : {}),
-  };
 }
 
 function mapApiBookmarkToBibleBookmark(bookmark: ApiBookmark): BibleBookmark {
@@ -164,7 +137,7 @@ export function BibleBookmarksProvider({
 
   const addBookmark = useCallback(
     (book: string, chapter: number, verse?: number, note?: string) => {
-      const referenceText = formatBookmarkReference(book, chapter, verse);
+      const referenceText = formatBookmarkReference({ book, chapter, verse });
       const optimisticId = `${referenceText}-${Date.now()}`;
       const optimisticBookmark: BibleBookmark = {
         id: optimisticId,

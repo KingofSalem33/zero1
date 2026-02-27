@@ -5,6 +5,8 @@ import {
   buildHighlightUpdatePayload,
   buildLibraryConnectionUpdatePayload,
   buildLibraryMapSession,
+  formatBookmarkReference,
+  parseBookmarkReference,
   parseBookmarkCreateResponse,
   parseBookmarksResponse,
   parseHighlightsResponse,
@@ -14,6 +16,7 @@ import {
   parseLibraryConnectionsResponse,
   parseLibraryMapMutationResponse,
   parseLibraryMapsResponse,
+  tryParseBookmarkReference,
 } from "@zero1/shared";
 
 describe("shared API contracts", () => {
@@ -55,6 +58,15 @@ describe("shared API contracts", () => {
       text: "John 3:16",
       createdAt: "2026-02-27T00:00:00.000Z",
     });
+  });
+
+  it("parses and formats bookmark references consistently", () => {
+    const parsed = tryParseBookmarkReference(" 1 John   3:16 ");
+    expect(parsed).toEqual({ book: "1 John", chapter: 3, verse: 16 });
+    expect(formatBookmarkReference(parsed!)).toBe("1 John 3:16");
+
+    const fallback = parseBookmarkReference("not-a-reference");
+    expect(fallback).toEqual({ book: "not-a-reference", chapter: 1 });
   });
 
   it("parses highlight payload and preserves valid verses in mixed arrays", () => {

@@ -58,7 +58,8 @@ Status: In progress
 - [x] Agent AV (Bookmark/Highlight Client Unification): Extend shared-client mutation coverage to bookmark/highlight write paths and migrate remaining client-local request builders.
 - [x] Agent AW (Web Highlight Sync Rewire): Rewire web highlight sync hook to shared-client so web no longer builds direct highlight sync request payloads locally.
 - [x] Agent AX (Cross-Client Bookmark Alignment): Finalize cross-client bookmark model alignment (structured verse bookmark fields vs text-only bookmark API contract) and migrate web bookmark context accordingly.
-- [ ] Agent AY (Next): Extract bookmark reference parse/format helpers into `@zero1/shared` and adopt them across web/mobile so bookmark identity logic is guaranteed consistent cross-client.
+- [x] Agent AY (Shared Bookmark Reference Helpers): Extract bookmark reference parse/format helpers into `@zero1/shared` and adopt them across web/mobile so bookmark identity logic is guaranteed consistent cross-client.
+- [ ] Agent AZ (Next): Promote mobile bookmark creation UX from free-text entry to structured `book/chapter/verse` input backed by shared bookmark reference helpers.
 
 ### Execution Notes (2026-02-19)
 
@@ -704,6 +705,23 @@ Status: In progress
   - Validation passed:
     - `npm run lint`
     - `npm --prefix apps/web run typecheck`
+    - `npm run build`
+- Phase 2.3 shared bookmark reference helper adoption completed (Agent AY):
+  - Shared bookmark reference helper utilities added to `@zero1/shared` and exported for cross-client reuse:
+    - `packages/shared/src/contracts/contentContracts.ts`
+    - `packages/shared/src/index.ts`
+  - Web bookmark context now uses shared bookmark parse/format helpers instead of local regex implementations:
+    - `apps/web/src/contexts/BibleBookmarksContext.tsx`
+  - Mobile bookmark create flow now normalizes parseable verse references through shared helpers before API create calls:
+    - `apps/mobile/src/hooks/useMobileAppController.ts`
+  - Contract + controller tests expanded for helper behavior and mobile normalization:
+    - `apps/mobile/src/lib/__tests__/sharedContracts.apiShapes.test.ts`
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm --prefix apps/mobile run test`
     - `npm run build`
 - Verification passed:
   - `npm --prefix apps/api run build`
