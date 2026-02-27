@@ -1,29 +1,11 @@
-export interface Bookmark {
-  id: string;
-  text: string;
-  createdAt: string;
-  userId: string;
-}
+import {
+  parseBookmarksResponse,
+  parseHighlightsResponse,
+  parseLibraryConnectionsResponse,
+} from "@zero1/shared";
+import type { Bookmark, Highlight, LibraryConnection } from "@zero1/shared";
 
-export interface Highlight {
-  id: string;
-  book: string;
-  chapter: number;
-  verses: number[];
-  text: string;
-  color: string;
-  note?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface LibraryConnection {
-  id: string;
-  bundleId: string;
-  connectionType: string;
-  similarity: number;
-  synopsis: string;
-}
+export type { Bookmark, Highlight, LibraryConnection } from "@zero1/shared";
 
 type AuthFetch = (
   input: string | URL | Request,
@@ -52,22 +34,18 @@ export function createProtectedApiClient({
   return {
     async getBookmarks(): Promise<Bookmark[]> {
       const response = await authFetch(`${baseUrl}/api/bookmarks`);
-      const payload = await parseApiResponse<{ bookmarks: Bookmark[] }>(response);
-      return payload.bookmarks;
+      const payload = await parseApiResponse<unknown>(response);
+      return parseBookmarksResponse(payload);
     },
     async getHighlights(): Promise<Highlight[]> {
       const response = await authFetch(`${baseUrl}/api/highlights`);
-      const payload = await parseApiResponse<{ highlights: Highlight[] }>(
-        response,
-      );
-      return payload.highlights;
+      const payload = await parseApiResponse<unknown>(response);
+      return parseHighlightsResponse(payload);
     },
     async getLibraryConnections(): Promise<LibraryConnection[]> {
       const response = await authFetch(`${baseUrl}/api/library/connections`);
-      const payload = await parseApiResponse<{
-        connections: LibraryConnection[];
-      }>(response);
-      return payload.connections;
+      const payload = await parseApiResponse<unknown>(response);
+      return parseLibraryConnectionsResponse(payload);
     },
   };
 }

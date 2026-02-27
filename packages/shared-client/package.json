@@ -7,6 +7,9 @@
     ".": "./src/index.ts"
   },
   "types": "./src/index.ts",
+  "dependencies": {
+    "@zero1/shared": "file:../shared"
+  },
   "peerDependencies": {
     "@supabase/supabase-js": "^2.58.0",
     "react": "^19.1.1",

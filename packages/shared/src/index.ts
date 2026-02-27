@@ -1,0 +1,15 @@
+export {
+  buildHighlightReferenceLabel,
+  normalizeBookmark,
+  normalizeHighlight,
+  normalizeLibraryConnection,
+  parseBookmarksResponse,
+  parseHighlightsResponse,
+  parseLibraryConnectionsResponse,
+  toHighlightSyncRecord,
+  type Bookmark,
+  type Highlight,
+  type LibraryConnection,
+  type LibraryConnectionBundleMeta,
+  type LibraryConnectionVerseRef,
+} from "./contracts/contentContracts";
