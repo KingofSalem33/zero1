@@ -59,7 +59,8 @@ Status: In progress
 - [x] Agent AW (Web Highlight Sync Rewire): Rewire web highlight sync hook to shared-client so web no longer builds direct highlight sync request payloads locally.
 - [x] Agent AX (Cross-Client Bookmark Alignment): Finalize cross-client bookmark model alignment (structured verse bookmark fields vs text-only bookmark API contract) and migrate web bookmark context accordingly.
 - [x] Agent AY (Shared Bookmark Reference Helpers): Extract bookmark reference parse/format helpers into `@zero1/shared` and adopt them across web/mobile so bookmark identity logic is guaranteed consistent cross-client.
-- [ ] Agent AZ (Next): Promote mobile bookmark creation UX from free-text entry to structured `book/chapter/verse` input backed by shared bookmark reference helpers.
+- [x] Agent AZ (Mobile Bookmark Structured Input): Promote mobile bookmark creation UX from free-text entry to structured `book/chapter/verse` input backed by shared bookmark reference helpers.
+- [ ] Agent BA (Next): Add mobile book picker + chapter/verse validation assistance (book list/autocomplete and per-book chapter bounds) to reduce reference entry errors before API submission.
 
 ### Execution Notes (2026-02-19)
 
@@ -722,6 +723,19 @@ Status: In progress
     - `npm --prefix apps/mobile run typecheck`
     - `npm --prefix apps/web run typecheck`
     - `npm --prefix apps/mobile run test`
+    - `npm run build`
+- Phase 2.3 mobile bookmark structured-input UX completed (Agent AZ):
+  - Mobile bookmark create flow migrated from free-text input to structured draft fields (`book/chapter/verse`) in controller state:
+    - `apps/mobile/src/hooks/useMobileAppController.ts`
+  - Bookmark create route now renders explicit structured inputs and clear/reset behavior for those fields:
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+  - Controller tests updated for structured bookmark draft mutation + submission path:
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
     - `npm run build`
 - Verification passed:
   - `npm --prefix apps/api run build`
