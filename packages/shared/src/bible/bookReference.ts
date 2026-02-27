@@ -179,20 +179,20 @@ export function resolveBibleBookName(rawBook: string): BibleBookName | null {
     return romanMatch;
   }
   if (romanKey.length >= 2) {
-    const romanPrefixMatch = BIBLE_BOOKS.find((book) =>
+    const romanPrefixMatches = BIBLE_BOOKS.filter((book) =>
       book.toLowerCase().startsWith(romanKey),
     );
-    if (romanPrefixMatch) {
-      return romanPrefixMatch;
+    if (romanPrefixMatches.length === 1) {
+      return romanPrefixMatches[0];
     }
   }
 
   if (key.length >= 2) {
-    const prefixMatch = BIBLE_BOOKS.find((book) =>
+    const prefixMatches = BIBLE_BOOKS.filter((book) =>
       book.toLowerCase().startsWith(key),
     );
-    if (prefixMatch) {
-      return prefixMatch;
+    if (prefixMatches.length === 1) {
+      return prefixMatches[0];
     }
   }
 

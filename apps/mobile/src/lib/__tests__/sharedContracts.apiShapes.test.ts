@@ -75,6 +75,7 @@ describe("shared API contracts", () => {
   it("resolves book aliases/suggestions and chapter counts", () => {
     expect(resolveBibleBookName("ii tim")).toBe("2 Timothy");
     expect(resolveBibleBookName("song of songs")).toBe("Song of Solomon");
+    expect(resolveBibleBookName("jud")).toBeNull();
     expect(getBibleChapterCount("Jude")).toBe(1);
     expect(getBibleBookSuggestions("rev", 3)).toContain("Revelation");
   });
