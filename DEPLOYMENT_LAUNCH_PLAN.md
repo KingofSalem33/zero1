@@ -54,7 +54,8 @@ Status: In progress
 - [x] Agent AR (Shared Contracts + Tests): Expand Phase 2.3 extraction to additional shared contracts and add API contract tests for shared schema stability.
 - [x] Agent AS (Web Library Rewire): Continue Phase 2.3 by migrating web library domain types/parsers to `@zero1/shared` and reducing duplicate API-shape normalization in web components.
 - [x] Agent AT (Web Mutation Contracts): Continue Phase 2.3 by migrating remaining web-side library mutation/request contracts (connection/map update payloads + bundle/session helpers) into `@zero1/shared`.
-- [ ] Agent AU (Next): Apply the new shared library mutation contracts to mobile/desktop library write paths so all clients use one protected API contract surface.
+- [x] Agent AU (Mobile/Desktop Contract Adoption): Apply the new shared library mutation contracts to mobile/desktop library write paths so all clients use one protected API contract surface.
+- [ ] Agent AV (Next): Extend shared-client mutation coverage to bookmark/highlight write paths and migrate remaining client-local request builders.
 
 ### Execution Notes (2026-02-19)
 
@@ -646,6 +647,21 @@ Status: In progress
     - `npm --prefix apps/mobile run typecheck`
     - `npm --prefix apps/mobile run test`
     - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm run build`
+- Phase 2.3 mobile/desktop contract adoption completed (Agent AU):
+  - Mobile library API bridge now uses the shared protected API client for library reads and write-capable methods (bundle/map/connection create/update/delete):
+    - `apps/mobile/src/lib/api.ts`
+  - Desktop contract surface audit completed:
+    - Desktop app routes all protected API probes through `SharedAuthProbeView` + `createProtectedApiClient` and currently has no separate direct library mutation path to migrate.
+    - Files:
+      - `apps/desktop/src/App.tsx`
+      - `packages/shared-client/src/ui/SharedAuthProbeView.tsx`
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm --prefix apps/desktop run typecheck`
     - `npm run build`
 - Verification passed:
   - `npm --prefix apps/api run build`
