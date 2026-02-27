@@ -62,7 +62,8 @@ Status: In progress
 - [x] Agent AZ (Mobile Bookmark Structured Input): Promote mobile bookmark creation UX from free-text entry to structured `book/chapter/verse` input backed by shared bookmark reference helpers.
 - [x] Agent BA (Mobile Book Guidance + Bounds): Add mobile book picker + chapter/verse validation assistance (book list/autocomplete and per-book chapter bounds) to reduce reference entry errors before API submission.
 - [x] Agent BB (Shared Bible Reference Adoption): Extract `apps/web/src/utils/bibleReference.ts` to consume the new shared Bible book metadata/resolution helpers so web + mobile use one canonical source.
-- [ ] Agent BC (Next): Add cross-client contract tests that assert web/mobile canonical book resolution parity for ambiguous and alias inputs.
+- [x] Agent BC (Cross-Client Parity Tests): Add cross-client contract tests that assert web/mobile canonical book resolution parity for ambiguous and alias inputs.
+- [ ] Agent BD (Next): Surface explicit user-facing validation copy in mobile bookmark UI for ambiguous book prefixes (for example, recommend tap-to-select when multiple books match).
 
 ### Execution Notes (2026-02-19)
 
@@ -772,6 +773,11 @@ Status: In progress
     - `npm --prefix apps/mobile run test`
     - `npm run lint`
     - `npm run build`
+- Phase 2.3 cross-client Bible resolution parity tests completed (Agent BC):
+  - Added parity test coverage that compares web resolver output with shared resolver output for canonical, alias, and ambiguous-prefix inputs:
+    - `apps/mobile/src/lib/__tests__/bibleReferenceParity.test.ts`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
