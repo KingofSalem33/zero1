@@ -61,7 +61,8 @@ Status: In progress
 - [x] Agent AY (Shared Bookmark Reference Helpers): Extract bookmark reference parse/format helpers into `@zero1/shared` and adopt them across web/mobile so bookmark identity logic is guaranteed consistent cross-client.
 - [x] Agent AZ (Mobile Bookmark Structured Input): Promote mobile bookmark creation UX from free-text entry to structured `book/chapter/verse` input backed by shared bookmark reference helpers.
 - [x] Agent BA (Mobile Book Guidance + Bounds): Add mobile book picker + chapter/verse validation assistance (book list/autocomplete and per-book chapter bounds) to reduce reference entry errors before API submission.
-- [ ] Agent BB (Next): Extract `apps/web/src/utils/bibleReference.ts` to consume the new shared Bible book metadata/resolution helpers so web + mobile use one canonical source.
+- [x] Agent BB (Shared Bible Reference Adoption): Extract `apps/web/src/utils/bibleReference.ts` to consume the new shared Bible book metadata/resolution helpers so web + mobile use one canonical source.
+- [ ] Agent BC (Next): Add cross-client contract tests that assert web/mobile canonical book resolution parity for ambiguous and alias inputs.
 
 ### Execution Notes (2026-02-19)
 
@@ -758,6 +759,17 @@ Status: In progress
     - `npm --prefix apps/mobile run typecheck`
     - `npm --prefix apps/mobile run test`
     - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 shared Bible reference adoption completed (Agent BB):
+  - Web Bible reference utilities now consume shared canonical metadata and resolver helpers from `@zero1/shared`:
+    - `apps/web/src/utils/bibleReference.ts`
+  - Shared source of truth for books/chapter counts/resolution now drives both mobile and web bookmark/reference flows:
+    - `packages/shared/src/bible/bookReference.ts`
+  - Validation passed:
+    - `npm --prefix apps/web run typecheck`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
     - `npm run lint`
     - `npm run build`
 - Verification passed:
