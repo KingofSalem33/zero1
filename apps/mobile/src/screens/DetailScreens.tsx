@@ -1,13 +1,10 @@
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import type { MobileAppController } from "../hooks/useMobileAppController";
+import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
 import { formatRelativeDate } from "./common/EntityCards";
 
-export function BookmarkCreateScreen({
-  controller,
-}: {
-  controller: MobileAppController;
-}) {
+export function BookmarkCreateScreen() {
+  const controller = useMobileApp();
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
       <View style={styles.panel}>
@@ -63,13 +60,8 @@ export function BookmarkCreateScreen({
   );
 }
 
-export function BookmarkDetailScreen({
-  controller,
-  bookmarkId,
-}: {
-  controller: MobileAppController;
-  bookmarkId: string;
-}) {
+export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
+  const controller = useMobileApp();
   const bookmark = controller.bookmarks.find((item) => item.id === bookmarkId);
   if (!bookmark) {
     return (
@@ -117,11 +109,8 @@ export function BookmarkDetailScreen({
   );
 }
 
-export function HighlightCreateScreen({
-  controller,
-}: {
-  controller: MobileAppController;
-}) {
+export function HighlightCreateScreen() {
+  const controller = useMobileApp();
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
       <View style={styles.panel}>
@@ -264,12 +253,11 @@ export function HighlightCreateScreen({
 }
 
 export function HighlightDetailScreen({
-  controller,
   highlightId,
 }: {
-  controller: MobileAppController;
   highlightId: string;
 }) {
+  const controller = useMobileApp();
   const highlight = controller.highlights.find(
     (item) => item.id === highlightId,
   );

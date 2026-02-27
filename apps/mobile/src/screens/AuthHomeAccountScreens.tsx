@@ -1,15 +1,12 @@
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { MOBILE_ENV } from "../lib/env";
 import { getOAuthRedirectUrl } from "../lib/authRedirect";
-import type { MobileAppController } from "../hooks/useMobileAppController";
+import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
 import { formatRelativeDate } from "./common/EntityCards";
 
-export function AuthScreen({
-  controller,
-}: {
-  controller: MobileAppController;
-}) {
+export function AuthScreen() {
+  const controller = useMobileApp();
   return (
     <ScrollView
       contentContainerStyle={styles.rootScrollContent}
@@ -113,16 +110,15 @@ export function AuthScreen({
 }
 
 export function HomeScreen({
-  controller,
   nav,
 }: {
-  controller: MobileAppController;
   nav: {
     openLibrary: () => void;
     openBookmarks: () => void;
     openHighlights: () => void;
   };
 }) {
+  const controller = useMobileApp();
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
       <View style={styles.heroCard}>
@@ -224,11 +220,8 @@ export function HomeScreen({
   );
 }
 
-export function AccountScreen({
-  controller,
-}: {
-  controller: MobileAppController;
-}) {
+export function AccountScreen() {
+  const controller = useMobileApp();
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
       <View style={styles.panel}>

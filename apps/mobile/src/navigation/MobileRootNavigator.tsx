@@ -67,6 +67,19 @@ const navTheme = {
   },
 };
 
+export function resolveRootFlow(
+  isAuthenticated: boolean,
+): keyof RootStackParamList {
+  return isAuthenticated ? "App" : "Auth";
+}
+
+export const APP_DETAIL_ROUTES: Array<keyof AppStackParamList> = [
+  "BookmarkCreate",
+  "BookmarkDetail",
+  "HighlightCreate",
+  "HighlightDetail",
+];
+
 function AppTabsNavigator(
   props: Omit<MobileRootNavigatorProps, "isAuthenticated" | "renderAuth">,
 ) {
@@ -185,6 +198,7 @@ function AppStackNavigator(
 }
 
 export function MobileRootNavigator(props: MobileRootNavigatorProps) {
+  const rootFlow = resolveRootFlow(props.isAuthenticated);
   const appProps = {
     renderHome: props.renderHome,
     renderLibrary: props.renderLibrary,
@@ -200,7 +214,7 @@ export function MobileRootNavigator(props: MobileRootNavigatorProps) {
   return (
     <NavigationContainer theme={navTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {props.isAuthenticated ? (
+        {rootFlow === "App" ? (
           <RootStack.Screen name="App">
             {() => <AppStackNavigator {...appProps} />}
           </RootStack.Screen>

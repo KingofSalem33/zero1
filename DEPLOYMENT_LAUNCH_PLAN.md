@@ -45,7 +45,8 @@ Status: In progress
 - [x] Agent AI (Mobile Routing Shell): Introduce route-based mobile navigation shell (auth/app split + routed detail screens) and migrate current inline panels to route-based flows.
 - [x] Agent AJ (Mobile Navigation Stack): Migrate mobile shell to React Navigation (auth/app split + native stack + bottom tabs) so route state is no longer managed inside `App.tsx`.
 - [x] Agent AK (Mobile Modularization): Extract remaining mobile screen JSX/state slices from `apps/mobile/App.tsx` into screen modules + hooks to reduce controller/file size and improve maintainability.
-- [ ] Agent AL (Next): Move shared mobile state/actions from prop wiring to a dedicated context provider + add focused mobile screen/unit tests for controller actions and route rendering.
+- [x] Agent AL (Mobile Context + Tests): Move shared mobile state/actions from prop wiring to a dedicated context provider + add focused mobile screen/unit tests for controller actions and route rendering.
+- [ ] Agent AM (Next): Add first stable mobile CI quality gate (`typecheck + lint + mobile tests`) and enforce it for `biblelot` merges.
 
 ### Execution Notes (2026-02-19)
 
@@ -519,6 +520,20 @@ Status: In progress
     - `MobileRootNavigator`
     - extracted screen modules.
   - Result: mobile surface area is now organized by responsibility (navigation, controller, screens, shared styling) instead of a monolithic single file.
+- Mobile context + test gate completed (Agent AL):
+  - Added dedicated context provider/hook for shared mobile controller access:
+    - `apps/mobile/src/context/MobileAppContext.tsx`
+  - Updated mobile screens to consume shared controller state/actions via context instead of passing controller through screen props:
+    - `apps/mobile/src/screens/AuthHomeAccountScreens.tsx`
+    - `apps/mobile/src/screens/DataListScreens.tsx`
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+  - Kept `apps/mobile/App.tsx` as a thin composition root and wrapped navigator in `MobileAppProvider`.
+  - Added focused mobile tests and runner:
+    - `apps/mobile/jest.config.cjs`
+    - `apps/mobile/jest.setup.ts`
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx` (controller actions)
+    - `apps/mobile/src/navigation/__tests__/MobileRootNavigator.routes.test.ts` (auth/app route split + detail route config)
+    - `apps/mobile/package.json` script: `npm --prefix apps/mobile run test`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

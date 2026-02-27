@@ -2,6 +2,7 @@ import { ActivityIndicator, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { MobileRootNavigator } from "./src/navigation/MobileRootNavigator";
+import { MobileAppProvider } from "./src/context/MobileAppContext";
 import { useMobileAppController } from "./src/hooks/useMobileAppController";
 import {
   AccountScreen,
@@ -32,37 +33,25 @@ export default function App() {
       <View style={styles.appBackground}>
         <View style={styles.backdropBlobA} />
         <View style={styles.backdropBlobB} />
-        <MobileRootNavigator
-          isAuthenticated={Boolean(controller.user)}
-          renderAuth={() => <AuthScreen controller={controller} />}
-          renderHome={(nav) => <HomeScreen controller={controller} nav={nav} />}
-          renderLibrary={() => <LibraryScreen controller={controller} />}
-          renderBookmarks={(nav) => (
-            <BookmarksScreen controller={controller} nav={nav} />
-          )}
-          renderHighlights={(nav) => (
-            <HighlightsScreen controller={controller} nav={nav} />
-          )}
-          renderAccount={() => <AccountScreen controller={controller} />}
-          renderBookmarkCreate={() => (
-            <BookmarkCreateScreen controller={controller} />
-          )}
-          renderBookmarkDetail={(bookmarkId) => (
-            <BookmarkDetailScreen
-              controller={controller}
-              bookmarkId={bookmarkId}
-            />
-          )}
-          renderHighlightCreate={() => (
-            <HighlightCreateScreen controller={controller} />
-          )}
-          renderHighlightDetail={(highlightId) => (
-            <HighlightDetailScreen
-              controller={controller}
-              highlightId={highlightId}
-            />
-          )}
-        />
+        <MobileAppProvider value={controller}>
+          <MobileRootNavigator
+            isAuthenticated={Boolean(controller.user)}
+            renderAuth={() => <AuthScreen />}
+            renderHome={(nav) => <HomeScreen nav={nav} />}
+            renderLibrary={() => <LibraryScreen />}
+            renderBookmarks={(nav) => <BookmarksScreen nav={nav} />}
+            renderHighlights={(nav) => <HighlightsScreen nav={nav} />}
+            renderAccount={() => <AccountScreen />}
+            renderBookmarkCreate={() => <BookmarkCreateScreen />}
+            renderBookmarkDetail={(bookmarkId) => (
+              <BookmarkDetailScreen bookmarkId={bookmarkId} />
+            )}
+            renderHighlightCreate={() => <HighlightCreateScreen />}
+            renderHighlightDetail={(highlightId) => (
+              <HighlightDetailScreen highlightId={highlightId} />
+            )}
+          />
+        </MobileAppProvider>
         {controller.busy ? (
           <View style={styles.globalBusyOverlay} pointerEvents="none">
             <ActivityIndicator color={T.colors.accentStrong} />

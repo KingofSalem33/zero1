@@ -5,7 +5,7 @@ import {
   Text,
   View,
 } from "react-native";
-import type { MobileAppController } from "../hooks/useMobileAppController";
+import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
 import {
   BookmarkCard,
@@ -14,11 +14,8 @@ import {
   formatRelativeDate,
 } from "./common/EntityCards";
 
-export function LibraryScreen({
-  controller,
-}: {
-  controller: MobileAppController;
-}) {
+export function LibraryScreen() {
+  const controller = useMobileApp();
   return (
     <View style={styles.tabScreen}>
       <View style={styles.panel}>
@@ -82,15 +79,14 @@ export function LibraryScreen({
 }
 
 export function BookmarksScreen({
-  controller,
   nav,
 }: {
-  controller: MobileAppController;
   nav: {
     openCreate: () => void;
     openDetail: (bookmarkId: string) => void;
   };
 }) {
+  const controller = useMobileApp();
   return (
     <View style={styles.tabScreen}>
       <View style={styles.panel}>
@@ -183,15 +179,14 @@ export function BookmarksScreen({
 }
 
 export function HighlightsScreen({
-  controller,
   nav,
 }: {
-  controller: MobileAppController;
   nav: {
     openCreate: () => void;
     openDetail: (highlightId: string) => void;
   };
 }) {
+  const controller = useMobileApp();
   return (
     <View style={styles.tabScreen}>
       <View style={styles.panel}>

@@ -207,6 +207,19 @@ export default [
     },
   },
   {
+    files: ["apps/mobile/**/*.test.{ts,tsx}", "apps/mobile/jest.setup.ts"],
+    languageOptions: {
+      globals: {
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        jest: "readonly",
+        beforeEach: "readonly",
+        afterEach: "readonly",
+      },
+    },
+  },
+  {
     files: ["apps/mobile/**/*.{js,ts,tsx}"],
     languageOptions: {
       parser: typescriptParser,
