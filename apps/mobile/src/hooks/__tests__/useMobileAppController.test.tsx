@@ -129,7 +129,12 @@ describe("useMobileAppController", () => {
     });
 
     await act(async () => {
-      latest?.setBookmarkDraftText("  Genesis   1:1 ");
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "Genesis",
+        chapter: "1",
+        verse: "1",
+      }));
     });
 
     await act(async () => {

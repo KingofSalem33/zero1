@@ -10,15 +10,47 @@ export function BookmarkCreateScreen() {
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>New Bookmark</Text>
         <Text style={styles.panelSubtitle}>
-          Create a bookmark directly from the mobile app shell.
+          Save a verse reference with structured fields.
         </Text>
+        <View style={styles.row}>
+          <TextInput
+            placeholder="Book"
+            placeholderTextColor={T.colors.textMuted}
+            style={[styles.input, styles.flex1]}
+            value={controller.bookmarkDraft.book}
+            onChangeText={(value) =>
+              controller.setBookmarkDraft((current) => ({
+                ...current,
+                book: value,
+              }))
+            }
+          />
+          <TextInput
+            keyboardType="number-pad"
+            placeholder="Chapter"
+            placeholderTextColor={T.colors.textMuted}
+            style={[styles.input, styles.inputCompact]}
+            value={controller.bookmarkDraft.chapter}
+            onChangeText={(value) =>
+              controller.setBookmarkDraft((current) => ({
+                ...current,
+                chapter: value,
+              }))
+            }
+          />
+        </View>
         <TextInput
-          multiline
-          placeholder="Paste verse text, note, or reference snippet..."
+          keyboardType="number-pad"
+          placeholder="Verse (optional)"
           placeholderTextColor={T.colors.textMuted}
-          style={[styles.input, styles.textAreaInput]}
-          value={controller.bookmarkDraftText}
-          onChangeText={controller.setBookmarkDraftText}
+          style={styles.input}
+          value={controller.bookmarkDraft.verse}
+          onChangeText={(value) =>
+            controller.setBookmarkDraft((current) => ({
+              ...current,
+              verse: value,
+            }))
+          }
         />
         {controller.bookmarkMutationError ? (
           <Text style={styles.error}>{controller.bookmarkMutationError}</Text>
@@ -41,14 +73,24 @@ export function BookmarkCreateScreen() {
             disabled={
               controller.bookmarkMutationBusy ||
               controller.busy ||
-              !controller.bookmarkDraftText
+              (!controller.bookmarkDraft.book.trim() &&
+                !controller.bookmarkDraft.chapter.trim() &&
+                !controller.bookmarkDraft.verse.trim())
             }
-            onPress={() => controller.setBookmarkDraftText("")}
+            onPress={() =>
+              controller.setBookmarkDraft({
+                book: "",
+                chapter: "",
+                verse: "",
+              })
+            }
             style={[
               styles.secondaryButton,
               (controller.bookmarkMutationBusy ||
                 controller.busy ||
-                !controller.bookmarkDraftText) &&
+                (!controller.bookmarkDraft.book.trim() &&
+                  !controller.bookmarkDraft.chapter.trim() &&
+                  !controller.bookmarkDraft.verse.trim())) &&
                 styles.buttonDisabled,
             ]}
           >

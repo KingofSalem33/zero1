@@ -2,10 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
-import {
-  formatBookmarkReference,
-  tryParseBookmarkReference,
-} from "@zero1/shared";
+import { formatBookmarkReference } from "@zero1/shared";
 import {
   createBookmark,
   createHighlightViaSync,
@@ -37,6 +34,12 @@ export interface HighlightDraftForm {
   note: string;
 }
 
+export interface BookmarkDraftForm {
+  book: string;
+  chapter: string;
+  verse: string;
+}
+
 function parseVersesInput(value: string): number[] {
   const numbers = value
     .split(",")
@@ -54,6 +57,14 @@ function makeUuidLike(): string {
     ).join("");
 
   return `${segment(8)}-${segment(4)}-4${segment(3)}-a${segment(3)}-${segment(12)}`;
+}
+
+function createDefaultBookmarkDraft(): BookmarkDraftForm {
+  return {
+    book: "Genesis",
+    chapter: "1",
+    verse: "1",
+  };
 }
 
 export interface MobileAppController {
@@ -76,8 +87,12 @@ export interface MobileAppController {
   bookmarksLoading: boolean;
   bookmarksError: string | null;
   bookmarksLoadedAt: string | null;
-  bookmarkDraftText: string;
-  setBookmarkDraftText: (value: string) => void;
+  bookmarkDraft: BookmarkDraftForm;
+  setBookmarkDraft: (
+    value:
+      | BookmarkDraftForm
+      | ((current: BookmarkDraftForm) => BookmarkDraftForm),
+  ) => void;
   bookmarkMutationBusy: boolean;
   bookmarkMutationError: string | null;
   selectedBookmarkId: string | null;
@@ -142,7 +157,9 @@ export function useMobileAppController(): MobileAppController {
   const [bookmarksLoadedAt, setBookmarksLoadedAt] = useState<string | null>(
     null,
   );
-  const [bookmarkDraftText, setBookmarkDraftText] = useState("");
+  const [bookmarkDraft, setBookmarkDraft] = useState<BookmarkDraftForm>(
+    createDefaultBookmarkDraft(),
+  );
   const [bookmarkMutationBusy, setBookmarkMutationBusy] = useState(false);
   const [bookmarkMutationError, setBookmarkMutationError] = useState<
     string | null
@@ -258,7 +275,7 @@ export function useMobileAppController(): MobileAppController {
       setBookmarks([]);
       setBookmarksError(null);
       setBookmarksLoadedAt(null);
-      setBookmarkDraftText("");
+      setBookmarkDraft(createDefaultBookmarkDraft());
       setBookmarkMutationError(null);
       setSelectedBookmarkId(null);
       setHighlights([]);
@@ -477,15 +494,24 @@ export function useMobileAppController(): MobileAppController {
   }
 
   async function handleCreateBookmark() {
-    const text = bookmarkDraftText.trim();
-    if (!text) {
-      setBookmarkMutationError("Bookmark text is required.");
+    const book = bookmarkDraft.book.trim();
+    const chapter = Number(bookmarkDraft.chapter.trim());
+    const verseText = bookmarkDraft.verse.trim();
+    const verse = verseText.length > 0 ? Number(verseText) : undefined;
+
+    if (!book || !Number.isInteger(chapter) || chapter <= 0) {
+      setBookmarkMutationError("Book and positive chapter are required.");
       return;
     }
-    const parsedReference = tryParseBookmarkReference(text);
-    const normalizedText = parsedReference
-      ? formatBookmarkReference(parsedReference)
-      : text;
+    if (
+      verse !== undefined &&
+      (!Number.isInteger(verse) || Number.isNaN(verse) || verse <= 0)
+    ) {
+      setBookmarkMutationError("Verse must be a positive whole number.");
+      return;
+    }
+
+    const normalizedText = formatBookmarkReference({ book, chapter, verse });
 
     setBookmarkMutationBusy(true);
     setBookmarkMutationError(null);
@@ -499,7 +525,10 @@ export function useMobileAppController(): MobileAppController {
       );
       setBookmarks((current) => [created, ...current]);
       setBookmarksLoadedAt(new Date().toISOString());
-      setBookmarkDraftText("");
+      setBookmarkDraft((current) => ({
+        ...current,
+        verse: "",
+      }));
       setSelectedBookmarkId(created.id);
       await runProbe();
     } catch (error) {
@@ -676,8 +705,8 @@ export function useMobileAppController(): MobileAppController {
     bookmarksLoading,
     bookmarksError,
     bookmarksLoadedAt,
-    bookmarkDraftText,
-    setBookmarkDraftText,
+    bookmarkDraft,
+    setBookmarkDraft,
     bookmarkMutationBusy,
     bookmarkMutationError,
     selectedBookmarkId,
