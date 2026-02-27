@@ -14,6 +14,7 @@ export function BookmarkCreateScreen() {
         </Text>
         <View style={styles.row}>
           <TextInput
+            autoCapitalize="words"
             placeholder="Book"
             placeholderTextColor={T.colors.textMuted}
             style={[styles.input, styles.flex1]}
@@ -39,6 +40,22 @@ export function BookmarkCreateScreen() {
             }
           />
         </View>
+        {controller.bookmarkChapterHint ? (
+          <Text style={styles.caption}>{controller.bookmarkChapterHint}</Text>
+        ) : null}
+        {controller.bookmarkBookSuggestions.length > 0 ? (
+          <View style={styles.suggestionRow}>
+            {controller.bookmarkBookSuggestions.map((book) => (
+              <Pressable
+                key={book}
+                onPress={() => controller.selectBookmarkBookSuggestion(book)}
+                style={styles.suggestionChip}
+              >
+                <Text style={styles.suggestionChipLabel}>{book}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <TextInput
           keyboardType="number-pad"
           placeholder="Verse (optional)"

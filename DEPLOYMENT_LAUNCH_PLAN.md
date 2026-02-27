@@ -60,7 +60,8 @@ Status: In progress
 - [x] Agent AX (Cross-Client Bookmark Alignment): Finalize cross-client bookmark model alignment (structured verse bookmark fields vs text-only bookmark API contract) and migrate web bookmark context accordingly.
 - [x] Agent AY (Shared Bookmark Reference Helpers): Extract bookmark reference parse/format helpers into `@zero1/shared` and adopt them across web/mobile so bookmark identity logic is guaranteed consistent cross-client.
 - [x] Agent AZ (Mobile Bookmark Structured Input): Promote mobile bookmark creation UX from free-text entry to structured `book/chapter/verse` input backed by shared bookmark reference helpers.
-- [ ] Agent BA (Next): Add mobile book picker + chapter/verse validation assistance (book list/autocomplete and per-book chapter bounds) to reduce reference entry errors before API submission.
+- [x] Agent BA (Mobile Book Guidance + Bounds): Add mobile book picker + chapter/verse validation assistance (book list/autocomplete and per-book chapter bounds) to reduce reference entry errors before API submission.
+- [ ] Agent BB (Next): Extract `apps/web/src/utils/bibleReference.ts` to consume the new shared Bible book metadata/resolution helpers so web + mobile use one canonical source.
 
 ### Execution Notes (2026-02-19)
 
@@ -731,6 +732,28 @@ Status: In progress
     - `apps/mobile/src/screens/DetailScreens.tsx`
   - Controller tests updated for structured bookmark draft mutation + submission path:
     - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 mobile bookmark guidance + bounds completed (Agent BA):
+  - Added shared Bible book metadata/resolution/suggestion helpers (book list, chapter counts, alias resolution, and suggestions):
+    - `packages/shared/src/bible/bookReference.ts`
+    - `packages/shared/src/index.ts`
+  - Mobile bookmark controller now provides:
+    - canonical book validation via shared resolver
+    - per-book chapter-bound checks before submit
+    - book suggestion list + chapter hint for UI consumption
+    - files:
+      - `apps/mobile/src/hooks/useMobileAppController.ts`
+  - Mobile bookmark create screen now shows book suggestion chips and chapter-bound hint:
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+    - `apps/mobile/src/theme/mobileStyles.ts`
+  - Tests expanded for chapter bound validation and shared book helper behavior:
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+    - `apps/mobile/src/lib/__tests__/sharedContracts.apiShapes.test.ts`
   - Validation passed:
     - `npm --prefix apps/mobile run typecheck`
     - `npm --prefix apps/mobile run test`

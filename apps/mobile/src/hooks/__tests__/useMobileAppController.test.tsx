@@ -150,6 +150,30 @@ describe("useMobileAppController", () => {
     expect(latest?.bookmarks[0]?.id).toBe("bm-1");
   });
 
+  it("blocks bookmark creation when chapter exceeds book bounds", async () => {
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "Jude",
+        chapter: "2",
+        verse: "",
+      }));
+    });
+
+    await act(async () => {
+      await latest?.handleCreateBookmark();
+    });
+
+    expect(createBookmark).not.toHaveBeenCalled();
+    expect(latest?.bookmarkMutationError).toContain("Jude has 1 chapters");
+  });
+
   it("deletes bookmark via controller action", async () => {
     (fetchBookmarks as jest.Mock).mockResolvedValue([
       {

@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
-import { formatBookmarkReference } from "@zero1/shared";
+import {
+  formatBookmarkReference,
+  getBibleBookSuggestions,
+  getBibleChapterCount,
+  resolveBibleBookName,
+} from "@zero1/shared";
 import {
   createBookmark,
   createHighlightViaSync,
@@ -93,6 +98,9 @@ export interface MobileAppController {
       | BookmarkDraftForm
       | ((current: BookmarkDraftForm) => BookmarkDraftForm),
   ) => void;
+  bookmarkBookSuggestions: string[];
+  bookmarkChapterHint: string | null;
+  selectBookmarkBookSuggestion: (book: string) => void;
   bookmarkMutationBusy: boolean;
   bookmarkMutationError: string | null;
   selectedBookmarkId: string | null;
@@ -197,12 +205,50 @@ export function useMobileAppController(): MobileAppController {
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
     [highlights, selectedHighlightId],
   );
+  const bookmarkBookSuggestions = useMemo(() => {
+    const query = bookmarkDraft.book.trim();
+    if (!query) {
+      return [];
+    }
+
+    const suggestions = getBibleBookSuggestions(query, 6);
+    if (
+      suggestions.length === 1 &&
+      suggestions[0].toLowerCase() === query.toLowerCase()
+    ) {
+      return [];
+    }
+
+    return suggestions;
+  }, [bookmarkDraft.book]);
+  const bookmarkChapterHint = useMemo(() => {
+    const maxChapter = getBibleChapterCount(bookmarkDraft.book);
+    return maxChapter ? `Chapters 1-${maxChapter}` : null;
+  }, [bookmarkDraft.book]);
 
   useEffect(() => {
     if (!selectedHighlight) return;
     setHighlightEditColor(selectedHighlight.color || "#facc15");
     setHighlightEditNote(selectedHighlight.note ?? "");
   }, [selectedHighlight?.id]);
+
+  function selectBookmarkBookSuggestion(book: string) {
+    const maxChapter = getBibleChapterCount(book);
+    setBookmarkDraft((current) => {
+      const currentChapter = Number(current.chapter.trim());
+      const nextChapter =
+        maxChapter &&
+        Number.isInteger(currentChapter) &&
+        currentChapter > maxChapter
+          ? String(maxChapter)
+          : current.chapter;
+      return {
+        ...current,
+        book,
+        chapter: nextChapter,
+      };
+    });
+  }
 
   const authLabel = useMemo(() => {
     if (!user) return "Not signed in";
@@ -495,12 +541,25 @@ export function useMobileAppController(): MobileAppController {
 
   async function handleCreateBookmark() {
     const book = bookmarkDraft.book.trim();
+    const canonicalBook = resolveBibleBookName(book);
     const chapter = Number(bookmarkDraft.chapter.trim());
     const verseText = bookmarkDraft.verse.trim();
     const verse = verseText.length > 0 ? Number(verseText) : undefined;
 
-    if (!book || !Number.isInteger(chapter) || chapter <= 0) {
-      setBookmarkMutationError("Book and positive chapter are required.");
+    if (!canonicalBook) {
+      setBookmarkMutationError("Select a valid Bible book.");
+      return;
+    }
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      setBookmarkMutationError("Chapter must be a positive whole number.");
+      return;
+    }
+
+    const maxChapter = getBibleChapterCount(canonicalBook);
+    if (maxChapter && chapter > maxChapter) {
+      setBookmarkMutationError(
+        `${canonicalBook} has ${maxChapter} chapters. Enter 1-${maxChapter}.`,
+      );
       return;
     }
     if (
@@ -511,7 +570,11 @@ export function useMobileAppController(): MobileAppController {
       return;
     }
 
-    const normalizedText = formatBookmarkReference({ book, chapter, verse });
+    const normalizedText = formatBookmarkReference({
+      book: canonicalBook,
+      chapter,
+      verse,
+    });
 
     setBookmarkMutationBusy(true);
     setBookmarkMutationError(null);
@@ -527,6 +590,7 @@ export function useMobileAppController(): MobileAppController {
       setBookmarksLoadedAt(new Date().toISOString());
       setBookmarkDraft((current) => ({
         ...current,
+        book: canonicalBook,
         verse: "",
       }));
       setSelectedBookmarkId(created.id);
@@ -707,6 +771,9 @@ export function useMobileAppController(): MobileAppController {
     bookmarksLoadedAt,
     bookmarkDraft,
     setBookmarkDraft,
+    bookmarkBookSuggestions,
+    bookmarkChapterHint,
+    selectBookmarkBookSuggestion,
     bookmarkMutationBusy,
     bookmarkMutationError,
     selectedBookmarkId,

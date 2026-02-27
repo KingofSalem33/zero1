@@ -6,6 +6,8 @@ import {
   buildLibraryConnectionUpdatePayload,
   buildLibraryMapSession,
   formatBookmarkReference,
+  getBibleBookSuggestions,
+  getBibleChapterCount,
   parseBookmarkReference,
   parseBookmarkCreateResponse,
   parseBookmarksResponse,
@@ -16,6 +18,7 @@ import {
   parseLibraryConnectionsResponse,
   parseLibraryMapMutationResponse,
   parseLibraryMapsResponse,
+  resolveBibleBookName,
   tryParseBookmarkReference,
 } from "@zero1/shared";
 
@@ -67,6 +70,13 @@ describe("shared API contracts", () => {
 
     const fallback = parseBookmarkReference("not-a-reference");
     expect(fallback).toEqual({ book: "not-a-reference", chapter: 1 });
+  });
+
+  it("resolves book aliases/suggestions and chapter counts", () => {
+    expect(resolveBibleBookName("ii tim")).toBe("2 Timothy");
+    expect(resolveBibleBookName("song of songs")).toBe("Song of Solomon");
+    expect(getBibleChapterCount("Jude")).toBe(1);
+    expect(getBibleBookSuggestions("rev", 3)).toContain("Revelation");
   });
 
   it("parses highlight payload and preserves valid verses in mixed arrays", () => {
