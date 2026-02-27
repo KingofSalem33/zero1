@@ -1120,7 +1120,3 @@ export function SemanticConnectionModal({
 
   return createPortal(modalContent, document.body);
 }
-
-
-
-

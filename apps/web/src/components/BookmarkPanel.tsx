@@ -708,5 +708,3 @@ export function BookmarkPanel({
     </div>
   );
 }
-
-

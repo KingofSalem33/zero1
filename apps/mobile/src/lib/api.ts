@@ -123,7 +123,10 @@ export async function fetchLibraryMaps({
   accessToken,
 }: ProtectedProbeOptions): Promise<LibraryMapItem[]> {
   const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await fetchJson<unknown>(`${baseUrl}/api/library/maps`, accessToken);
+  const payload = await fetchJson<unknown>(
+    `${baseUrl}/api/library/maps`,
+    accessToken,
+  );
   return parseLibraryMapsResponse(payload);
 }
 

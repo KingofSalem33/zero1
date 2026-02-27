@@ -87,7 +87,9 @@ export function createProtectedApiClient({
       const payload = await parseApiResponse<unknown>(response);
       return parseLibraryMapsResponse(payload);
     },
-    async createLibraryBundle(bundle: unknown): Promise<LibraryBundleCreateResult> {
+    async createLibraryBundle(
+      bundle: unknown,
+    ): Promise<LibraryBundleCreateResult> {
       const payload = buildLibraryBundleCreatePayload(bundle);
       const response = await authFetch(`${baseUrl}/api/library/bundles`, {
         method: "POST",

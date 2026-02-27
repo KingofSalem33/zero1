@@ -28,23 +28,17 @@
     {
       "feature": "Bookmarks create + delete actions",
       "status": "validated_by_tests",
-      "evidence": [
-        "src/hooks/__tests__/useMobileAppController.test.tsx"
-      ]
+      "evidence": ["src/hooks/__tests__/useMobileAppController.test.tsx"]
     },
     {
       "feature": "Highlights create + update + delete actions",
       "status": "validated_by_tests",
-      "evidence": [
-        "src/hooks/__tests__/useMobileAppController.test.tsx"
-      ]
+      "evidence": ["src/hooks/__tests__/useMobileAppController.test.tsx"]
     },
     {
       "feature": "Native OAuth callback/session exchange (Google + Apple)",
       "status": "validated_prior_manual_run",
-      "evidence": [
-        "DEPLOYMENT_LAUNCH_PLAN.md (Agent AE execution notes)"
-      ]
+      "evidence": ["DEPLOYMENT_LAUNCH_PLAN.md (Agent AE execution notes)"]
     }
   ],
   "passed": true
