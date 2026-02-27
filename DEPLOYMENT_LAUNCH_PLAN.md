@@ -57,7 +57,8 @@ Status: In progress
 - [x] Agent AU (Mobile/Desktop Contract Adoption): Apply the new shared library mutation contracts to mobile/desktop library write paths so all clients use one protected API contract surface.
 - [x] Agent AV (Bookmark/Highlight Client Unification): Extend shared-client mutation coverage to bookmark/highlight write paths and migrate remaining client-local request builders.
 - [x] Agent AW (Web Highlight Sync Rewire): Rewire web highlight sync hook to shared-client so web no longer builds direct highlight sync request payloads locally.
-- [ ] Agent AX (Next): Finalize cross-client bookmark model alignment (structured verse bookmark fields vs text-only bookmark API contract) and migrate web bookmark context accordingly.
+- [x] Agent AX (Cross-Client Bookmark Alignment): Finalize cross-client bookmark model alignment (structured verse bookmark fields vs text-only bookmark API contract) and migrate web bookmark context accordingly.
+- [ ] Agent AY (Next): Extract bookmark reference parse/format helpers into `@zero1/shared` and adopt them across web/mobile so bookmark identity logic is guaranteed consistent cross-client.
 
 ### Execution Notes (2026-02-19)
 
@@ -691,6 +692,18 @@ Status: In progress
     - `npm run lint`
     - `npm --prefix apps/web run typecheck`
     - `npm --prefix apps/mobile run test`
+    - `npm run build`
+- Phase 2.3 cross-client bookmark model alignment completed (Agent AX):
+  - Web bookmark context now bridges structured verse bookmark fields (`book/chapter/verse`) to the API bookmark contract (`text`) with deterministic format/parse helpers:
+    - `apps/web/src/contexts/BibleBookmarksContext.tsx`
+  - Web bookmark context now reads/writes authenticated bookmark data through shared protected API client methods for create/delete/read:
+    - `apps/web/src/contexts/BibleBookmarksContext.tsx`
+  - Auth transition handling hardened:
+    - On sign-in: pull canonical bookmark state from API.
+    - On sign-out: restore local bookmark state fallback.
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/web run typecheck`
     - `npm run build`
 - Verification passed:
   - `npm --prefix apps/api run build`
