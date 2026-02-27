@@ -174,6 +174,23 @@ describe("useMobileAppController", () => {
     expect(latest?.bookmarkMutationError).toContain("Jude has 1 chapters");
   });
 
+  it("shows guidance text for ambiguous book prefixes", async () => {
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "jo",
+      }));
+    });
+
+    expect(latest?.bookmarkBookGuidance).toContain('Multiple books match "jo"');
+  });
+
   it("deletes bookmark via controller action", async () => {
     (fetchBookmarks as jest.Mock).mockResolvedValue([
       {
