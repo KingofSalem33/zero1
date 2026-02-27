@@ -3,6 +3,10 @@ import { Linking } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
 import {
+  formatBookmarkReference,
+  tryParseBookmarkReference,
+} from "@zero1/shared";
+import {
   createBookmark,
   createHighlightViaSync,
   deleteBookmark,
@@ -478,6 +482,10 @@ export function useMobileAppController(): MobileAppController {
       setBookmarkMutationError("Bookmark text is required.");
       return;
     }
+    const parsedReference = tryParseBookmarkReference(text);
+    const normalizedText = parsedReference
+      ? formatBookmarkReference(parsedReference)
+      : text;
 
     setBookmarkMutationBusy(true);
     setBookmarkMutationError(null);
@@ -486,7 +494,7 @@ export function useMobileAppController(): MobileAppController {
         createBookmark({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
-          text,
+          text: normalizedText,
         }),
       );
       setBookmarks((current) => [created, ...current]);

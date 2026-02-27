@@ -51,6 +51,12 @@ export interface BookmarkCreatePayload {
   text: string;
 }
 
+export interface BookmarkReference {
+  book: string;
+  chapter: number;
+  verse?: number;
+}
+
 export interface Highlight {
   id: string;
   book: string;
@@ -244,6 +250,59 @@ function normalizeVerseIds(value: unknown): number[] | undefined {
 
 function normalizeConnectionType(value: unknown): string {
   return readString(value)?.trim() || "connection";
+}
+
+function toPositiveInt(value: number, fallback: number): number {
+  const normalized = Math.trunc(value);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : fallback;
+}
+
+export function formatBookmarkReference(reference: BookmarkReference): string {
+  const book = reference.book.trim() || "Unknown";
+  const chapter = toPositiveInt(reference.chapter, 1);
+  const verse =
+    reference.verse === undefined
+      ? undefined
+      : toPositiveInt(reference.verse, 1);
+  return `${book} ${chapter}${verse ? `:${verse}` : ""}`;
+}
+
+export function tryParseBookmarkReference(
+  reference: string,
+): BookmarkReference | undefined {
+  const trimmed = reference.trim();
+  const match = trimmed.match(/^(.*\S)\s+(\d+)(?::(\d+))?$/);
+  if (!match) {
+    return undefined;
+  }
+
+  const book = match[1].trim();
+  const chapter = Number(match[2]);
+  const verse = match[3] ? Number(match[3]) : undefined;
+
+  if (!book || !Number.isInteger(chapter) || chapter <= 0) {
+    return undefined;
+  }
+  if (verse !== undefined && (!Number.isInteger(verse) || verse <= 0)) {
+    return undefined;
+  }
+
+  return {
+    book,
+    chapter,
+    ...(verse !== undefined ? { verse } : {}),
+  };
+}
+
+export function parseBookmarkReference(reference: string): BookmarkReference {
+  const parsed = tryParseBookmarkReference(reference);
+  if (parsed) {
+    return parsed;
+  }
+  return {
+    book: reference.trim() || "Unknown",
+    chapter: 1,
+  };
 }
 
 export function buildHighlightReferenceLabel(

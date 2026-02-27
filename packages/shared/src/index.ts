@@ -1,5 +1,6 @@
 export {
   buildBookmarkCreatePayload,
+  formatBookmarkReference,
   buildHighlightSyncPayload,
   buildHighlightUpdatePayload,
   buildLibraryBundleCreatePayload,
@@ -20,6 +21,7 @@ export {
   normalizeHighlight,
   normalizeLibraryConnection,
   normalizeLibraryMap,
+  parseBookmarkReference,
   parseBookmarkCreateResponse,
   parseHighlightUpdateResponse,
   parseBookmarksResponse,
@@ -28,6 +30,7 @@ export {
   toHighlightSyncRecord,
   type Bookmark,
   type BookmarkCreatePayload,
+  type BookmarkReference,
   type Highlight,
   type HighlightSyncPayload,
   type HighlightUpdatePayload,
@@ -45,6 +48,7 @@ export {
   type LibraryMapSessionConnection,
   type LibraryMapSessionPayload,
   type LibraryMapUpdatePayload,
+  tryParseBookmarkReference,
 } from "./contracts/contentContracts";
 export {
   buildAuthSessionPayload,
