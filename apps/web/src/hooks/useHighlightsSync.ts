@@ -9,11 +9,15 @@
  * - Tracks `updated_at` per highlight for conflict resolution
  */
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import {
+  createProtectedApiClient,
+  type Highlight as SharedHighlight,
+} from "@zero1/shared-client";
+import { buildHighlightReferenceLabel } from "@zero1/shared";
 import { useAuth } from "../contexts/AuthContext";
 import type { BibleHighlight } from "../contexts/BibleHighlightsContext";
 
-const API_URL = WEB_ENV.API_URL;
 const SYNC_DEBOUNCE_MS = 3000;
 const LAST_SYNCED_KEY = "bible_highlights_last_synced";
 
@@ -26,6 +30,43 @@ interface SyncableHighlight extends BibleHighlight {
 export interface HighlightsSyncState {
   status: SyncStatus;
   lastSyncedAt: string | null;
+}
+
+function toSharedHighlight(highlight: BibleHighlight): SharedHighlight {
+  const verses = Array.from(new Set(highlight.verses)).sort((a, b) => a - b);
+  const createdAt = highlight.createdAt;
+  const updatedAt =
+    (highlight as SyncableHighlight).updated_at ?? highlight.createdAt;
+
+  return {
+    id: highlight.id,
+    book: highlight.book,
+    chapter: highlight.chapter,
+    verses,
+    text: highlight.text,
+    color: highlight.color,
+    note: highlight.note,
+    createdAt,
+    updatedAt,
+    referenceLabel: buildHighlightReferenceLabel(
+      highlight.book,
+      highlight.chapter,
+      verses,
+    ),
+  };
+}
+
+function toBibleHighlight(highlight: SharedHighlight): BibleHighlight {
+  return {
+    id: highlight.id,
+    book: highlight.book,
+    chapter: highlight.chapter,
+    verses: highlight.verses,
+    text: highlight.text,
+    color: highlight.color,
+    note: highlight.note,
+    createdAt: highlight.createdAt ?? new Date().toISOString(),
+  };
 }
 
 export function useHighlightsSync(
@@ -41,6 +82,31 @@ export function useHighlightsSync(
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() =>
     localStorage.getItem(LAST_SYNCED_KEY),
   );
+  const authFetch = useCallback(
+    async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ) => {
+      const token = await getAccessToken();
+      const headers = new globalThis.Headers(init?.headers);
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+      return fetch(input, {
+        ...init,
+        headers,
+      });
+    },
+    [getAccessToken],
+  );
+  const apiClient = useMemo(
+    () =>
+      createProtectedApiClient({
+        apiBaseUrl: WEB_ENV.API_URL,
+        authFetch,
+      }),
+    [authFetch],
+  );
 
   // Clear synced flash after 3s
   useEffect(() => {
@@ -54,9 +120,6 @@ export function useHighlightsSync(
   const pushToCloud = useCallback(async () => {
     if (!user || isSyncingRef.current) return;
 
-    const token = await getAccessToken();
-    if (!token) return;
-
     const serialized = JSON.stringify(highlights);
     if (serialized === lastPushedRef.current) return;
 
@@ -65,43 +128,18 @@ export function useHighlightsSync(
 
     try {
       const lastSynced = localStorage.getItem(LAST_SYNCED_KEY);
-
-      const payload = {
-        highlights: highlights.map((h) => ({
-          ...h,
-          created_at: h.createdAt,
-          updated_at: (h as SyncableHighlight).updated_at || h.createdAt,
-        })),
-        last_synced_at: lastSynced,
-      };
-
-      const response = await fetch(`${API_URL}/api/highlights/sync`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+      const synced = await apiClient.syncHighlights({
+        highlights: highlights.map((item) => toSharedHighlight(item)),
+        lastSyncedAt: lastSynced,
       });
 
-      if (!response.ok) {
-        console.warn("[HighlightsSync] Push failed:", response.status);
-        setStatus("error");
-        return;
-      }
+      const merged = mergeServerHighlights(highlights, synced);
+      setHighlights(merged);
+      lastPushedRef.current = JSON.stringify(merged);
 
-      const data = await response.json();
-
-      if (data.highlights && Array.isArray(data.highlights)) {
-        const merged = mergeServerHighlights(highlights, data.highlights);
-        setHighlights(merged);
-        lastPushedRef.current = JSON.stringify(merged);
-      }
-
-      if (data.synced_at) {
-        localStorage.setItem(LAST_SYNCED_KEY, data.synced_at);
-        setLastSyncedAt(data.synced_at);
-      }
+      const syncedAt = new Date().toISOString();
+      localStorage.setItem(LAST_SYNCED_KEY, syncedAt);
+      setLastSyncedAt(syncedAt);
 
       setStatus("synced");
     } catch (error) {
@@ -110,42 +148,29 @@ export function useHighlightsSync(
     } finally {
       isSyncingRef.current = false;
     }
-  }, [user, highlights, getAccessToken, setHighlights]);
+  }, [user, highlights, apiClient, setHighlights]);
 
   // Pull from cloud on login
   const pullFromCloud = useCallback(async () => {
     if (!user) return;
 
-    const token = await getAccessToken();
-    if (!token) return;
-
     setStatus("syncing");
 
     try {
-      const response = await fetch(`${API_URL}/api/highlights`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const cloudHighlights = await apiClient.getHighlights();
+      const merged = mergeServerHighlights(highlights, cloudHighlights);
+      setHighlights(merged);
+      lastPushedRef.current = JSON.stringify(merged);
+      const now = new Date().toISOString();
+      localStorage.setItem(LAST_SYNCED_KEY, now);
+      setLastSyncedAt(now);
 
-      if (!response.ok) {
-        setStatus("error");
-        return;
-      }
-
-      const data = await response.json();
-      if (data.highlights && Array.isArray(data.highlights)) {
-        const merged = mergeServerHighlights(highlights, data.highlights);
-        setHighlights(merged);
-        lastPushedRef.current = JSON.stringify(merged);
-        const now = new Date().toISOString();
-        localStorage.setItem(LAST_SYNCED_KEY, now);
-        setLastSyncedAt(now);
-      }
       setStatus("synced");
     } catch (error) {
       console.warn("[HighlightsSync] Pull error:", error);
       setStatus("error");
     }
-  }, [user, highlights, getAccessToken, setHighlights]);
+  }, [user, highlights, apiClient, setHighlights]);
 
   // Set offline status when not authenticated
   useEffect(() => {
@@ -188,25 +213,15 @@ export function useHighlightsSync(
  */
 function mergeServerHighlights(
   local: BibleHighlight[],
-  server: Record<string, unknown>[],
+  server: SharedHighlight[],
 ): BibleHighlight[] {
   const localMap = new Map(local.map((h) => [h.id, h]));
   const merged = new Map(local.map((h) => [h.id, h]));
 
   for (const sh of server) {
-    const id = sh.id as string;
+    const id = sh.id;
     const localH = localMap.get(id);
-
-    const serverHighlight: BibleHighlight = {
-      id,
-      book: sh.book as string,
-      chapter: sh.chapter as number,
-      verses: sh.verses as number[],
-      text: sh.text as string,
-      color: sh.color as string,
-      note: (sh.note as string) || undefined,
-      createdAt: (sh.created_at as string) || new Date().toISOString(),
-    };
+    const serverHighlight = toBibleHighlight(sh);
 
     if (!localH) {
       merged.set(id, serverHighlight);
@@ -214,9 +229,7 @@ function mergeServerHighlights(
       const localTime = new Date(
         (localH as SyncableHighlight).updated_at || localH.createdAt,
       ).getTime();
-      const serverTime = new Date(
-        (sh.updated_at as string) || (sh.created_at as string) || 0,
-      ).getTime();
+      const serverTime = new Date(sh.updatedAt || sh.createdAt || 0).getTime();
 
       if (serverTime > localTime) {
         merged.set(id, serverHighlight);
@@ -226,5 +239,3 @@ function mergeServerHighlights(
 
   return Array.from(merged.values());
 }
-
-
