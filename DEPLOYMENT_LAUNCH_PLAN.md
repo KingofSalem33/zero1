@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-26
+Last updated: 2026-02-27
 Owner: Product + Engineering
 Status: In progress
 
@@ -49,7 +49,8 @@ Status: In progress
 - [x] Agent AM (Mobile CI Gate): Add first stable mobile CI quality gate (`typecheck + lint + mobile tests`) and enforce it in `biblelot` CI flow.
 - [x] Agent AN (Branch Protection): Configure GitHub branch protection for `biblelot` to require passing `node-lint-build` before merge, and document required-check policy.
 - [x] Agent AO (Branch-Rule Smoke Merge): Complete branch-protection smoke PR merge path by aligning review requirements for solo-owner workflow and confirming merge to `biblelot`.
-- [ ] Agent AP (Next): Close remaining Phase 2.1 checklist item by executing and documenting essential mobile core-feature path validation evidence.
+- [x] Agent AP (Phase 2.1 Validation): Close remaining Phase 2.1 checklist item by executing and documenting essential mobile core-feature path validation evidence.
+- [ ] Agent AQ (Next): Start Phase 2.3 shared-logic extraction by scaffolding `packages/shared` and migrating first cross-client domain contracts.
 
 ### Execution Notes (2026-02-19)
 
@@ -551,6 +552,17 @@ Status: In progress
   - Ruleset context corrected from `CI / node-lint-build` to `node-lint-build` and smoke PR merged successfully:
     - PR: `https://github.com/KingofSalem33/zero1/pull/1`
     - Merge commit on `biblelot`: `dcd1fcc87f605c41e21d9a78887443a5d420452f`
+- Mobile Phase 2.1 core-feature validation completed (Agent AP):
+  - Added executable mobile validation gate:
+    - `apps/mobile/scripts/runPhase21CoreFeatureValidation.mjs`
+    - `apps/mobile/package.json` script `phase2:core-validation`
+  - Expanded controller test coverage for essential write-path flows:
+    - bookmark create + delete
+    - highlight create + update + delete
+    - File: `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Executed validation:
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - Report: `apps/mobile/reports/phase21CoreFeatureValidation.json` (`passed: true`)
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -725,7 +737,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 
 - [x] Add `apps/mobile` (Expo + React Native + TypeScript)
 - [x] Establish navigation, design tokens, and mobile-first layout rules
-- [ ] Implement essential core feature paths before parity edge-cases
+- [x] Implement essential core feature paths before parity edge-cases
 
 ### 2.2 Mobile Auth (Critical)
 

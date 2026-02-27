@@ -1,0 +1,51 @@
+{
+  "gate": "phase2.1-core-feature-validation",
+  "generatedAt": "2026-02-27T04:15:26.263Z",
+  "checks": [
+    {
+      "name": "Mobile TypeScript typecheck",
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run typecheck",
+      "passed": true,
+      "durationMs": 6814,
+      "error": null
+    },
+    {
+      "name": "Mobile focused test suite",
+      "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run test",
+      "passed": true,
+      "durationMs": 9106,
+      "error": null
+    }
+  ],
+  "featureEvidence": [
+    {
+      "feature": "Auth/App flow split and detail route wiring",
+      "status": "validated_by_tests",
+      "evidence": [
+        "src/navigation/__tests__/MobileRootNavigator.routes.test.ts"
+      ]
+    },
+    {
+      "feature": "Bookmarks create + delete actions",
+      "status": "validated_by_tests",
+      "evidence": [
+        "src/hooks/__tests__/useMobileAppController.test.tsx"
+      ]
+    },
+    {
+      "feature": "Highlights create + update + delete actions",
+      "status": "validated_by_tests",
+      "evidence": [
+        "src/hooks/__tests__/useMobileAppController.test.tsx"
+      ]
+    },
+    {
+      "feature": "Native OAuth callback/session exchange (Google + Apple)",
+      "status": "validated_prior_manual_run",
+      "evidence": [
+        "DEPLOYMENT_LAUNCH_PLAN.md (Agent AE execution notes)"
+      ]
+    }
+  ],
+  "passed": true
+}
