@@ -379,6 +379,24 @@ export const styles = StyleSheet.create({
   listHintRow: {
     paddingHorizontal: T.spacing.xs,
   },
+  suggestionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: T.spacing.xs,
+  },
+  suggestionChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.canvasMuted,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: 6,
+  },
+  suggestionChipLabel: {
+    color: T.colors.text,
+    fontSize: T.typography.caption,
+    fontWeight: "600",
+  },
   colorPreviewWrap: {
     minWidth: 92,
     borderRadius: T.radius.md,

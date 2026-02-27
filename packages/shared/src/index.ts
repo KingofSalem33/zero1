@@ -51,6 +51,14 @@ export {
   tryParseBookmarkReference,
 } from "./contracts/contentContracts";
 export {
+  BIBLE_BOOKS,
+  CHAPTER_COUNTS,
+  getBibleBookSuggestions,
+  getBibleChapterCount,
+  resolveBibleBookName,
+  type BibleBookName,
+} from "./bible/bookReference";
+export {
   buildAuthSessionPayload,
   type AuthSessionPayload,
   type AuthUserSummary,
