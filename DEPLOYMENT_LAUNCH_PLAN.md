@@ -63,7 +63,8 @@ Status: In progress
 - [x] Agent BA (Mobile Book Guidance + Bounds): Add mobile book picker + chapter/verse validation assistance (book list/autocomplete and per-book chapter bounds) to reduce reference entry errors before API submission.
 - [x] Agent BB (Shared Bible Reference Adoption): Extract `apps/web/src/utils/bibleReference.ts` to consume the new shared Bible book metadata/resolution helpers so web + mobile use one canonical source.
 - [x] Agent BC (Cross-Client Parity Tests): Add cross-client contract tests that assert web/mobile canonical book resolution parity for ambiguous and alias inputs.
-- [ ] Agent BD (Next): Surface explicit user-facing validation copy in mobile bookmark UI for ambiguous book prefixes (for example, recommend tap-to-select when multiple books match).
+- [x] Agent BD (Mobile Ambiguity Guidance): Surface explicit user-facing validation copy in mobile bookmark UI for ambiguous book prefixes (for example, recommend tap-to-select when multiple books match).
+- [ ] Agent BE (Next): Add mobile bookmark UX smoke coverage for suggestion-tap flows (ambiguous prefix -> selection -> successful save).
 
 ### Execution Notes (2026-02-19)
 
@@ -778,6 +779,19 @@ Status: In progress
     - `apps/mobile/src/lib/__tests__/bibleReferenceParity.test.ts`
   - Validation passed:
     - `npm --prefix apps/mobile run test`
+- Phase 2.3 mobile ambiguity guidance completed (Agent BD):
+  - Mobile controller now exposes explicit book-input guidance messaging for empty, ambiguous, single-suggestion, and invalid states:
+    - `apps/mobile/src/hooks/useMobileAppController.ts`
+  - Bookmark create screen now surfaces the guidance copy in a muted callout directly under book/chapter fields:
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+  - Controller tests expanded to assert ambiguity guidance behavior:
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

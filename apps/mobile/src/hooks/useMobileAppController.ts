@@ -100,6 +100,7 @@ export interface MobileAppController {
   ) => void;
   bookmarkBookSuggestions: string[];
   bookmarkChapterHint: string | null;
+  bookmarkBookGuidance: string | null;
   selectBookmarkBookSuggestion: (book: string) => void;
   bookmarkMutationBusy: boolean;
   bookmarkMutationError: string | null;
@@ -225,6 +226,27 @@ export function useMobileAppController(): MobileAppController {
     const maxChapter = getBibleChapterCount(bookmarkDraft.book);
     return maxChapter ? `Chapters 1-${maxChapter}` : null;
   }, [bookmarkDraft.book]);
+  const bookmarkBookGuidance = useMemo(() => {
+    const query = bookmarkDraft.book.trim();
+    if (!query) {
+      return "Start typing a book name and choose from suggestions.";
+    }
+
+    const canonical = resolveBibleBookName(query);
+    if (canonical) {
+      return null;
+    }
+
+    if (bookmarkBookSuggestions.length > 1) {
+      return `Multiple books match "${query}". Tap one below to avoid saving the wrong reference.`;
+    }
+
+    if (bookmarkBookSuggestions.length === 1) {
+      return `Did you mean "${bookmarkBookSuggestions[0]}"? Tap to select.`;
+    }
+
+    return "Book name not recognized. Use a full canonical book name.";
+  }, [bookmarkDraft.book, bookmarkBookSuggestions]);
 
   useEffect(() => {
     if (!selectedHighlight) return;
@@ -773,6 +795,7 @@ export function useMobileAppController(): MobileAppController {
     setBookmarkDraft,
     bookmarkBookSuggestions,
     bookmarkChapterHint,
+    bookmarkBookGuidance,
     selectBookmarkBookSuggestion,
     bookmarkMutationBusy,
     bookmarkMutationError,

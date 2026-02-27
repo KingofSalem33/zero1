@@ -43,6 +43,13 @@ export function BookmarkCreateScreen() {
         {controller.bookmarkChapterHint ? (
           <Text style={styles.caption}>{controller.bookmarkChapterHint}</Text>
         ) : null}
+        {controller.bookmarkBookGuidance ? (
+          <View style={styles.calloutMuted}>
+            <Text style={styles.calloutMutedText}>
+              {controller.bookmarkBookGuidance}
+            </Text>
+          </View>
+        ) : null}
         {controller.bookmarkBookSuggestions.length > 0 ? (
           <View style={styles.suggestionRow}>
             {controller.bookmarkBookSuggestions.map((book) => (
