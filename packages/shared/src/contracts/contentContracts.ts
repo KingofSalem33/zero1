@@ -6,7 +6,6 @@ const objectSchema = z.record(z.unknown());
 const stringSchema = z.string();
 const numberSchema = z.number().finite();
 const stringArraySchema = z.array(z.string());
-const numberArraySchema = z.array(z.number().finite());
 
 function asObject(value: unknown): JsonObject {
   const parsed = objectSchema.safeParse(value);
@@ -29,10 +28,16 @@ function readStringArray(value: unknown): string[] {
 }
 
 function readNumberArray(value: unknown): number[] {
-  const parsed = numberArraySchema.safeParse(value);
-  return parsed.success
-    ? parsed.data.filter((entry) => Number.isFinite(entry))
-    : [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      const parsed = numberSchema.safeParse(entry);
+      return parsed.success ? parsed.data : undefined;
+    })
+    .filter((entry): entry is number => entry !== undefined);
 }
 
 export interface Bookmark {

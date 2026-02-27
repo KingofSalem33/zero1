@@ -1,19 +1,19 @@
 {
   "gate": "phase2.1-core-feature-validation",
-  "generatedAt": "2026-02-27T04:28:07.967Z",
+  "generatedAt": "2026-02-27T04:39:44.865Z",
   "checks": [
     {
       "name": "Mobile TypeScript typecheck",
       "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run typecheck",
       "passed": true,
-      "durationMs": 7495,
+      "durationMs": 5304,
       "error": null
     },
     {
       "name": "Mobile focused test suite",
       "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run test",
       "passed": true,
-      "durationMs": 8059,
+      "durationMs": 5811,
       "error": null
     }
   ],
