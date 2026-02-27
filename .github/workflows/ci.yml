@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
+    branches:
+      - biblelot
   pull_request:
+    branches:
+      - biblelot
 
 jobs:
   node-lint-build:
@@ -23,6 +27,12 @@ jobs:
 
       - name: Run linting
         run: npm run lint
+
+      - name: Run mobile typecheck
+        run: npm --prefix apps/mobile run typecheck
+
+      - name: Run mobile tests
+        run: npm --prefix apps/mobile run test
 
       - name: Build applications
         run: npm run build

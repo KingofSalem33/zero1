@@ -46,7 +46,8 @@ Status: In progress
 - [x] Agent AJ (Mobile Navigation Stack): Migrate mobile shell to React Navigation (auth/app split + native stack + bottom tabs) so route state is no longer managed inside `App.tsx`.
 - [x] Agent AK (Mobile Modularization): Extract remaining mobile screen JSX/state slices from `apps/mobile/App.tsx` into screen modules + hooks to reduce controller/file size and improve maintainability.
 - [x] Agent AL (Mobile Context + Tests): Move shared mobile state/actions from prop wiring to a dedicated context provider + add focused mobile screen/unit tests for controller actions and route rendering.
-- [ ] Agent AM (Next): Add first stable mobile CI quality gate (`typecheck + lint + mobile tests`) and enforce it for `biblelot` merges.
+- [x] Agent AM (Mobile CI Gate): Add first stable mobile CI quality gate (`typecheck + lint + mobile tests`) and enforce it in `biblelot` CI flow.
+- [ ] Agent AN (Next): Configure GitHub branch protection for `biblelot` to require passing `CI / node-lint-build` before merge, and document required-check policy.
 
 ### Execution Notes (2026-02-19)
 
@@ -534,6 +535,14 @@ Status: In progress
     - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx` (controller actions)
     - `apps/mobile/src/navigation/__tests__/MobileRootNavigator.routes.test.ts` (auth/app route split + detail route config)
     - `apps/mobile/package.json` script: `npm --prefix apps/mobile run test`
+- Mobile CI gate completed (Agent AM):
+  - Updated GitHub Actions CI trigger scope to `biblelot` branch push/PR events:
+    - `.github/workflows/ci.yml`
+  - Added explicit mobile quality steps to CI:
+    - `npm run lint`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+  - Result: the mobile quality gate now runs in branch CI for `biblelot` merge flow.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
