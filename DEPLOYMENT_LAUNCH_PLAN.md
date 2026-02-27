@@ -47,7 +47,8 @@ Status: In progress
 - [x] Agent AK (Mobile Modularization): Extract remaining mobile screen JSX/state slices from `apps/mobile/App.tsx` into screen modules + hooks to reduce controller/file size and improve maintainability.
 - [x] Agent AL (Mobile Context + Tests): Move shared mobile state/actions from prop wiring to a dedicated context provider + add focused mobile screen/unit tests for controller actions and route rendering.
 - [x] Agent AM (Mobile CI Gate): Add first stable mobile CI quality gate (`typecheck + lint + mobile tests`) and enforce it in `biblelot` CI flow.
-- [ ] Agent AN (Next): Configure GitHub branch protection for `biblelot` to require passing `CI / node-lint-build` before merge, and document required-check policy.
+- [x] Agent AN (Branch Protection): Configure GitHub branch protection for `biblelot` to require passing `CI / node-lint-build` before merge, and document required-check policy.
+- [ ] Agent AO (Next): Complete branch-protection smoke PR merge path by aligning review requirements for solo-owner workflow and confirming merge to `biblelot`.
 
 ### Execution Notes (2026-02-19)
 
@@ -543,6 +544,9 @@ Status: In progress
     - `npm --prefix apps/mobile run typecheck`
     - `npm --prefix apps/mobile run test`
   - Result: the mobile quality gate now runs in branch CI for `biblelot` merge flow.
+- Branch protection configured for `biblelot`:
+  - Required status check set to `CI / node-lint-build` before merge.
+  - Smoke PR validation confirms policy enforcement (PR blocked until review requirement is satisfied for current ruleset).
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
