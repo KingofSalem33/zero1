@@ -1,12 +1,17 @@
 import {
+  buildBookmarkCreatePayload,
+  buildHighlightSyncPayload,
+  buildHighlightUpdatePayload,
   buildLibraryBundleCreatePayload,
   buildLibraryConnectionCreatePayload,
   buildLibraryConnectionUpdatePayload,
   buildLibraryMapCreatePayload,
   buildLibraryMapUpdatePayload,
+  parseBookmarkCreateResponse,
   parseBookmarksResponse,
   parseLibraryBundleCreateResponse,
   parseHighlightsResponse,
+  parseHighlightUpdateResponse,
   parseLibraryConnectionMutationResponse,
   parseLibraryConnectionsResponse,
   parseLibraryConnectionUpdateResponse,
@@ -17,6 +22,8 @@ import {
 import type {
   Bookmark,
   Highlight,
+  HighlightSyncPayload,
+  HighlightUpdatePayload,
   LibraryBundleCreateResult,
   LibraryConnection,
   LibraryConnectionCreatePayload,
@@ -31,6 +38,8 @@ import type {
 export type {
   Bookmark,
   Highlight,
+  HighlightSyncPayload,
+  HighlightUpdatePayload,
   LibraryBundleCreateResult,
   LibraryConnection,
   LibraryConnectionCreatePayload,
@@ -50,6 +59,11 @@ type AuthFetch = (
 interface ApiClientOptions {
   apiBaseUrl: string;
   authFetch: AuthFetch;
+}
+
+export interface HighlightSyncOptions {
+  highlights: Highlight[];
+  lastSyncedAt?: string | null;
 }
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
@@ -76,6 +90,69 @@ export function createProtectedApiClient({
       const response = await authFetch(`${baseUrl}/api/highlights`);
       const payload = await parseApiResponse<unknown>(response);
       return parseHighlightsResponse(payload);
+    },
+    async createBookmark(text: string): Promise<Bookmark> {
+      const payload = buildBookmarkCreatePayload(text);
+      const response = await authFetch(`${baseUrl}/api/bookmarks`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseBookmarkCreateResponse(responsePayload);
+    },
+    async deleteBookmark(id: string): Promise<void> {
+      const response = await authFetch(
+        `${baseUrl}/api/bookmarks/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      await parseApiResponse<unknown>(response);
+    },
+    async syncHighlights(options: HighlightSyncOptions): Promise<Highlight[]> {
+      const payload: HighlightSyncPayload = buildHighlightSyncPayload({
+        highlights: options.highlights,
+        lastSyncedAt: options.lastSyncedAt,
+      });
+      const response = await authFetch(`${baseUrl}/api/highlights/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseHighlightsResponse(responsePayload);
+    },
+    async updateHighlight(
+      id: string,
+      payload: HighlightUpdatePayload,
+    ): Promise<Highlight> {
+      const normalizedPayload = buildHighlightUpdatePayload(payload);
+      const response = await authFetch(
+        `${baseUrl}/api/highlights/${encodeURIComponent(id)}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(normalizedPayload),
+        },
+      );
+      const responsePayload = await parseApiResponse<unknown>(response);
+      return parseHighlightUpdateResponse(responsePayload);
+    },
+    async deleteHighlight(id: string): Promise<void> {
+      const response = await authFetch(
+        `${baseUrl}/api/highlights/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      await parseApiResponse<unknown>(response);
     },
     async getLibraryConnections(): Promise<LibraryConnection[]> {
       const response = await authFetch(`${baseUrl}/api/library/connections`);

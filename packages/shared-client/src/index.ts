@@ -10,8 +10,11 @@ export {
 } from "./auth/attachTokenRefreshObserver";
 export {
   createProtectedApiClient,
+  type HighlightSyncOptions,
   type Bookmark,
   type Highlight,
+  type HighlightSyncPayload,
+  type HighlightUpdatePayload,
   type LibraryBundleCreateResult,
   type LibraryConnection,
   type LibraryConnectionCreatePayload,

@@ -55,7 +55,8 @@ Status: In progress
 - [x] Agent AS (Web Library Rewire): Continue Phase 2.3 by migrating web library domain types/parsers to `@zero1/shared` and reducing duplicate API-shape normalization in web components.
 - [x] Agent AT (Web Mutation Contracts): Continue Phase 2.3 by migrating remaining web-side library mutation/request contracts (connection/map update payloads + bundle/session helpers) into `@zero1/shared`.
 - [x] Agent AU (Mobile/Desktop Contract Adoption): Apply the new shared library mutation contracts to mobile/desktop library write paths so all clients use one protected API contract surface.
-- [ ] Agent AV (Next): Extend shared-client mutation coverage to bookmark/highlight write paths and migrate remaining client-local request builders.
+- [x] Agent AV (Bookmark/Highlight Client Unification): Extend shared-client mutation coverage to bookmark/highlight write paths and migrate remaining client-local request builders.
+- [ ] Agent AW (Next): Rewire web highlight/bookmark mutation hooks to shared-client so web no longer builds direct highlight/bookmark request payloads locally.
 
 ### Execution Notes (2026-02-19)
 
@@ -656,6 +657,24 @@ Status: In progress
     - Files:
       - `apps/desktop/src/App.tsx`
       - `packages/shared-client/src/ui/SharedAuthProbeView.tsx`
+  - Validation passed:
+    - `npm run lint`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run phase2:core-validation`
+    - `npm --prefix apps/desktop run typecheck`
+    - `npm run build`
+- Phase 2.3 bookmark/highlight client unification completed (Agent AV):
+  - Expanded shared contracts for bookmark/highlight mutation request+response handling:
+    - `packages/shared/src/contracts/contentContracts.ts`
+    - `packages/shared/src/index.ts`
+  - Extended shared protected API client with bookmark/highlight mutation methods:
+    - `packages/shared-client/src/api/createProtectedApiClient.ts`
+    - `packages/shared-client/src/index.ts`
+  - Migrated mobile bookmark/highlight flows (read + write paths) to use shared protected API client wrappers:
+    - `apps/mobile/src/lib/api.ts`
+  - Extended shared contract tests for bookmark/highlight builders + mutation parsers:
+    - `apps/mobile/src/lib/__tests__/sharedContracts.apiShapes.test.ts`
   - Validation passed:
     - `npm run lint`
     - `npm --prefix apps/mobile run typecheck`
