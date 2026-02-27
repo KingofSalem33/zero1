@@ -15,7 +15,12 @@ import {
   buildGoDeeperPrompt,
 } from "../../prompts/semanticConnection";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
-import { authFetch } from "../../lib/authFetch";
+import { buildLibraryMapSession } from "@zero1/shared";
+import {
+  createLibraryBundle,
+  createLibraryConnection,
+  updateLibraryConnection,
+} from "../../lib/libraryApi";
 
 const __DEV__ = import.meta.env.DEV;
 
@@ -120,12 +125,6 @@ const normalizeConnectionType = (
     return LEGACY_CONNECTION_MAP[connectionType as LegacyConnectionType];
   }
   return connectionType as ConnectionFamily;
-};
-
-const buildEdgeKey = (connectionType: string, fromId: number, toId: number) => {
-  const a = Math.min(fromId, toId);
-  const b = Math.max(fromId, toId);
-  return `${connectionType}:${a}-${b}`;
 };
 
 export function SemanticConnectionModal({
@@ -552,30 +551,19 @@ export function SemanticConnectionModal({
       fromReference: fromVerse.reference,
       toReference: toVerse.reference,
     });
+    const mapSession = buildLibraryMapSession({
+      fromId: fromVerse.id,
+      toId: toVerse.id,
+      connectionType: normalizedConnectionType,
+      verseIds: clusterVerseIds,
+    });
 
     return {
       displayText,
       prompt: goDeeperPrompt,
       mode: "go_deeper_short" as const,
       visualBundle,
-      mapSession: {
-        cluster: {
-          baseId: fromVerse.id,
-          verseIds:
-            clusterVerseIds.length > 0
-              ? clusterVerseIds
-              : [fromVerse.id, toVerse.id],
-          connectionType: normalizedConnectionType,
-        },
-        currentConnection: {
-          fromId: fromVerse.id,
-          toId: toVerse.id,
-          connectionType: normalizedConnectionType,
-        },
-        visitedEdgeKeys: [
-          buildEdgeKey(normalizedConnectionType, fromVerse.id, toVerse.id),
-        ],
-      },
+      mapSession,
     };
   }, [
     connectedVerseIds,
@@ -612,20 +600,8 @@ export function SemanticConnectionModal({
       setSaving(true);
       setSaveError(null);
 
-      const bundleResponse = await authFetch(`${API_URL}/api/library/bundles`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bundle: visualBundle,
-        }),
-      });
-
-      if (!bundleResponse.ok) {
-        throw new Error("Failed to save map snapshot");
-      }
-
-      const bundleData = await bundleResponse.json();
-      const bundleId = bundleData.bundleId as string | undefined;
+      const bundleResult = await createLibraryBundle(visualBundle);
+      const bundleId = bundleResult.bundleId;
       if (!bundleId) {
         throw new Error("Missing bundle ID");
       }
@@ -646,32 +622,21 @@ export function SemanticConnectionModal({
                   verse !== undefined,
               )
           : Array.from(verseById.values());
-      const connectionResponse = await authFetch(
-        `${API_URL}/api/library/connections`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            bundleId,
-            fromVerse,
-            toVerse,
-            connectionType: normalizedConnectionType,
-            similarity,
-            synopsis,
-            explanation,
-            connectedVerseIds:
-              clusterVerseIds.length > 0 ? clusterVerseIds : undefined,
-            connectedVerses:
-              orderedVerseSeed.length > 0 ? orderedVerseSeed : undefined,
-            goDeeperPrompt: goDeeperPayload.prompt,
-            mapSession: goDeeperPayload.mapSession,
-          }),
-        },
-      );
-
-      if (!connectionResponse.ok) {
-        throw new Error("Failed to save connection");
-      }
+      await createLibraryConnection({
+        bundleId,
+        fromVerse,
+        toVerse,
+        connectionType: normalizedConnectionType,
+        similarity,
+        synopsis,
+        explanation,
+        connectedVerseIds:
+          clusterVerseIds.length > 0 ? clusterVerseIds : undefined,
+        connectedVerses:
+          orderedVerseSeed.length > 0 ? orderedVerseSeed : undefined,
+        goDeeperPrompt: goDeeperPayload.prompt,
+        mapSession: goDeeperPayload.mapSession,
+      });
 
       setSaved(true);
       toast("Connection saved to Library", { type: "success", duration: 2500 });
@@ -693,17 +658,10 @@ export function SemanticConnectionModal({
       if (onUpdateLibraryEntry) {
         await onUpdateLibraryEntry(libraryEntry.id, note, nextTags);
       } else {
-        const response = await authFetch(
-          `${API_URL}/api/library/connections/${libraryEntry.id}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ note, tags: nextTags }),
-          },
-        );
-        if (!response.ok) {
-          throw new Error("Failed to update notes");
-        }
+        await updateLibraryConnection(libraryEntry.id, {
+          note,
+          tags: nextTags,
+        });
       }
       setMetaSaved(true);
     } catch (err) {
@@ -1162,7 +1120,3 @@ export function SemanticConnectionModal({
 
   return createPortal(modalContent, document.body);
 }
-
-
-
-

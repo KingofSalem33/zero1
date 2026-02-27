@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import type { CSSProperties } from "react";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import { buildAuthSessionPayload } from "@zero1/shared";
 import {
   createProtectedApiClient,
   type Bookmark,
@@ -103,6 +104,17 @@ export function SharedAuthProbeView({
       }),
     [apiBaseUrl, authFetch],
   );
+  const authSessionPayload = useMemo(
+    () =>
+      buildAuthSessionPayload({
+        session,
+        user,
+        strictEnv,
+        tokenRefreshCount,
+        lastTokenRefreshAt,
+      }),
+    [lastTokenRefreshAt, session, strictEnv, tokenRefreshCount, user],
+  );
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -121,13 +133,18 @@ export function SharedAuthProbeView({
   }, [supabase]);
 
   useEffect(() => {
-    return attachTokenRefreshObserver(supabase, (snapshot: TokenRefreshSnapshot) => {
-      setTokenRefreshCount((current) => current + 1);
-      setLastTokenRefreshAt(snapshot.refreshedAtIso);
-    });
+    return attachTokenRefreshObserver(
+      supabase,
+      (snapshot: TokenRefreshSnapshot) => {
+        setTokenRefreshCount((current) => current + 1);
+        setLastTokenRefreshAt(snapshot.refreshedAtIso);
+      },
+    );
   }, [supabase]);
 
-  const authLabel = user ? `Signed in as ${user.email ?? user.id}` : "Not signed in";
+  const authLabel = user
+    ? `Signed in as ${user.email ?? user.id}`
+    : "Not signed in";
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -222,15 +239,19 @@ export function SharedAuthProbeView({
       <section style={cardStyle}>
         <h1>{appLabel}</h1>
         <p>
-          {runtimeVersionLabel ? `${runtimeVersionLabel} | ` : ""}API: {apiBaseUrl}
+          {runtimeVersionLabel ? `${runtimeVersionLabel} | ` : ""}API:{" "}
+          {apiBaseUrl}
         </p>
         <p>{authLabel}</p>
         <p>
-          Session: {session ? "active" : "none"} | Strict env: {String(strictEnv)}
+          Session: {authSessionPayload.sessionActive ? "active" : "none"} |
+          Strict env: {String(authSessionPayload.strictEnv)}
         </p>
         <p>
-          Token refresh events: {tokenRefreshCount}
-          {lastTokenRefreshAt ? ` | Last refresh: ${lastTokenRefreshAt}` : ""}
+          Token refresh events: {authSessionPayload.tokenRefreshCount}
+          {authSessionPayload.lastTokenRefreshAt
+            ? ` | Last refresh: ${authSessionPayload.lastTokenRefreshAt}`
+            : ""}
         </p>
         {sessionPersistenceLabel ? <p>{sessionPersistenceLabel}</p> : null}
       </section>
@@ -278,7 +299,12 @@ export function SharedAuthProbeView({
             </button>
           </form>
         ) : (
-          <button type="button" disabled={busy} onClick={() => void signOut()} style={buttonStyle}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void signOut()}
+            style={buttonStyle}
+          >
             Sign out
           </button>
         )}

@@ -1,52 +1,29 @@
 ﻿import { useState, useEffect, useMemo } from "react";
+import type {
+  LibraryConnection as SharedLibraryConnection,
+  LibraryMap as SharedLibraryMap,
+} from "@zero1/shared";
 import type { GoDeeperPayload } from "../types/chat";
 import type { VisualContextBundle } from "../types/goldenThread";
 import { SemanticConnectionModal } from "./golden-thread/SemanticConnectionModal";
-import { authFetch } from "../lib/authFetch";
-import { WEB_ENV } from "../lib/env";
+import {
+  deleteLibraryConnection,
+  deleteLibraryMap,
+  fetchLibraryConnections,
+  fetchLibraryMaps,
+  updateLibraryConnection,
+} from "../lib/libraryApi";
 
-const API_URL = WEB_ENV.API_URL;
-
-type BundleMeta = {
-  anchorRef?: string;
-  verseCount: number;
-  edgeCount: number;
-};
-
-interface LibraryConnection {
-  id: string;
-  userId: string;
-  bundleId: string;
+type LibraryConnection = SharedLibraryConnection & {
   fromVerse: { id: number; reference: string; text: string };
   toVerse: { id: number; reference: string; text: string };
-  connectionType: string;
-  similarity: number;
-  synopsis: string;
-  explanation?: string;
-  connectedVerseIds?: number[];
   connectedVerses?: Array<{ id: number; reference: string; text: string }>;
-  goDeeperPrompt: string;
-  mapSession: unknown;
-  note?: string;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
   bundle?: VisualContextBundle;
-  bundleMeta?: BundleMeta;
-}
+};
 
-interface LibraryMap {
-  id: string;
-  userId: string;
-  bundleId: string;
-  title?: string;
-  note?: string;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
+type LibraryMap = SharedLibraryMap & {
   bundle?: VisualContextBundle;
-  bundleMeta?: BundleMeta;
-}
+};
 
 interface BookmarkPanelProps {
   onClose: () => void;
@@ -121,19 +98,12 @@ export function BookmarkPanel({
       setIsLoading(true);
       setError(null);
 
-      const [connectionsResponse, mapsResponse] = await Promise.all([
-        authFetch(`${API_URL}/api/library/connections`),
-        authFetch(`${API_URL}/api/library/maps`),
+      const [connectionsData, mapsData] = await Promise.all([
+        fetchLibraryConnections(),
+        fetchLibraryMaps(),
       ]);
-
-      if (!connectionsResponse.ok || !mapsResponse.ok) {
-        throw new Error("Failed to load library");
-      }
-
-      const connectionsData = await connectionsResponse.json();
-      const mapsData = await mapsResponse.json();
-      setConnections(connectionsData.connections || []);
-      setMaps(mapsData.maps || []);
+      setConnections(connectionsData as LibraryConnection[]);
+      setMaps(mapsData as LibraryMap[]);
     } catch (err) {
       console.error("Error loading library:", err);
       setError("Failed to load library");
@@ -170,15 +140,7 @@ export function BookmarkPanel({
 
   const deleteConnection = async (id: string) => {
     try {
-      const response = await authFetch(
-        `${API_URL}/api/library/connections/${id}`,
-        { method: "DELETE" },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete connection");
-      }
-
+      await deleteLibraryConnection(id);
       setConnections((prev) => prev.filter((entry) => entry.id !== id));
     } catch (err) {
       console.error("Error deleting connection:", err);
@@ -188,14 +150,7 @@ export function BookmarkPanel({
 
   const deleteMap = async (id: string) => {
     try {
-      const response = await authFetch(`${API_URL}/api/library/maps/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete map");
-      }
-
+      await deleteLibraryMap(id);
       setMaps((prev) => prev.filter((entry) => entry.id !== id));
     } catch (err) {
       console.error("Error deleting map:", err);
@@ -258,26 +213,14 @@ export function BookmarkPanel({
     note: string,
     tags: string[],
   ) => {
-    const response = await authFetch(
-      `${API_URL}/api/library/connections/${id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note, tags }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to update notes");
-    }
-
-    const data = await response.json();
+    const connection = (await updateLibraryConnection(id, {
+      note,
+      tags,
+    })) as LibraryConnection;
     setConnections((prev) =>
-      prev.map((entry) => (entry.id === id ? data.connection : entry)),
+      prev.map((entry) => (entry.id === id ? connection : entry)),
     );
-    setActiveConnection((prev) =>
-      prev && prev.id === id ? data.connection : prev,
-    );
+    setActiveConnection((prev) => (prev && prev.id === id ? connection : prev));
   };
 
   const emptyState = activeTab === "connections" ? connections : maps;
@@ -765,5 +708,3 @@ export function BookmarkPanel({
     </div>
   );
 }
-
-

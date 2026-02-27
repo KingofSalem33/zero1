@@ -3,11 +3,15 @@ import {
   normalizeHighlight,
   parseBookmarksResponse,
   parseHighlightsResponse,
+  parseLibraryBundleCreateResponse,
   parseLibraryConnectionsResponse,
+  parseLibraryMapsResponse,
   toHighlightSyncRecord,
   type Bookmark,
   type Highlight,
+  type LibraryBundleCreateResult,
   type LibraryConnection,
+  type LibraryMap,
 } from "@zero1/shared";
 
 interface ProtectedProbeOptions {
@@ -28,6 +32,8 @@ export interface ProtectedProbeResult {
 }
 
 export type LibraryConnectionItem = LibraryConnection;
+export type LibraryMapItem = LibraryMap;
+export type LibraryBundleResult = LibraryBundleCreateResult;
 export type MobileBookmarkItem = Bookmark;
 export type MobileHighlightItem = Highlight;
 
@@ -110,6 +116,37 @@ export async function fetchLibraryConnections({
     accessToken,
   );
   return parseLibraryConnectionsResponse(payload);
+}
+
+export async function fetchLibraryMaps({
+  apiBaseUrl,
+  accessToken,
+}: ProtectedProbeOptions): Promise<LibraryMapItem[]> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await fetchJson<unknown>(
+    `${baseUrl}/api/library/maps`,
+    accessToken,
+  );
+  return parseLibraryMapsResponse(payload);
+}
+
+export async function createLibraryBundle({
+  apiBaseUrl,
+  accessToken,
+  bundle,
+}: ProtectedProbeOptions & {
+  bundle: unknown;
+}): Promise<LibraryBundleResult> {
+  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const payload = await requestJson<unknown>(
+    `${baseUrl}/api/library/bundles`,
+    accessToken,
+    {
+      method: "POST",
+      body: { bundle },
+    },
+  );
+  return parseLibraryBundleCreateResponse(payload);
 }
 
 export async function fetchBookmarks({
