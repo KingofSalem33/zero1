@@ -1,17 +1,14 @@
-import {
-  normalizeBookmark,
-  normalizeHighlight,
-  parseBookmarksResponse,
-  parseHighlightsResponse,
-  toHighlightSyncRecord,
-  type Bookmark,
-  type Highlight,
-  type LibraryBundleCreateResult,
-  type LibraryConnection,
-  type LibraryMap,
+import type {
+  Bookmark,
+  Highlight,
+  HighlightUpdatePayload,
+  LibraryBundleCreateResult,
+  LibraryConnection,
+  LibraryMap,
 } from "@zero1/shared";
 import {
   createProtectedApiClient,
+  type HighlightSyncOptions,
   type LibraryConnectionCreatePayload,
   type LibraryConnectionUpdatePayload,
   type LibraryMapCreatePayload,
@@ -67,48 +64,6 @@ function createMobileProtectedApiClient({
     apiBaseUrl: normalizeBaseUrl(apiBaseUrl),
     authFetch: buildMobileAuthFetch(accessToken),
   });
-}
-
-interface RequestJsonOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  body?: unknown;
-}
-
-async function requestJson<T>(
-  url: string,
-  accessToken: string,
-  options?: RequestJsonOptions,
-): Promise<T> {
-  const hasBody = options?.body !== undefined;
-  const response = await fetch(url, {
-    method: options?.method ?? "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(hasBody ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
-  });
-
-  if (!response.ok) {
-    const payload = await response.text();
-    throw new Error(`API request failed (${response.status}): ${payload}`);
-  }
-
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return (await response.json()) as T;
-}
-
-async function fetchJson<T>(url: string, accessToken: string): Promise<T> {
-  return requestJson<T>(url, accessToken, { method: "GET" });
-}
-
-function asObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 export async function fetchProtectedProbe({
@@ -249,24 +204,20 @@ export async function fetchBookmarks({
   apiBaseUrl,
   accessToken,
 }: ProtectedProbeOptions): Promise<MobileBookmarkItem[]> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await fetchJson<unknown>(
-    `${baseUrl}/api/bookmarks`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-  );
-  return parseBookmarksResponse(payload);
+  }).getBookmarks();
 }
 
 export async function fetchHighlights({
   apiBaseUrl,
   accessToken,
 }: ProtectedProbeOptions): Promise<MobileHighlightItem[]> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await fetchJson<unknown>(
-    `${baseUrl}/api/highlights`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-  );
-  return parseHighlightsResponse(payload);
+  }).getHighlights();
 }
 
 export async function createBookmark({
@@ -274,18 +225,10 @@ export async function createBookmark({
   accessToken,
   text,
 }: ProtectedProbeOptions & { text: string }): Promise<MobileBookmarkItem> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await requestJson<unknown>(
-    `${baseUrl}/api/bookmarks`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-    {
-      method: "POST",
-      body: { text },
-    },
-  );
-
-  const obj = asObject(payload);
-  return normalizeBookmark(obj.bookmark, 0);
+  }).createBookmark(text);
 }
 
 export async function deleteBookmark({
@@ -293,12 +236,10 @@ export async function deleteBookmark({
   accessToken,
   id,
 }: ProtectedProbeOptions & { id: string }): Promise<void> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  await requestJson<Record<string, unknown>>(
-    `${baseUrl}/api/bookmarks/${encodeURIComponent(id)}`,
+  await createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-    { method: "DELETE" },
-  );
+  }).deleteBookmark(id);
 }
 
 export async function createHighlightViaSync({
@@ -310,23 +251,15 @@ export async function createHighlightViaSync({
   currentHighlights: MobileHighlightItem[];
   newHighlight: MobileHighlightItem;
 }): Promise<MobileHighlightItem[]> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await requestJson<unknown>(
-    `${baseUrl}/api/highlights/sync`,
-    accessToken,
-    {
-      method: "POST",
-      body: {
-        highlights: [
-          ...currentHighlights.map((item) => toHighlightSyncRecord(item)),
-          toHighlightSyncRecord(newHighlight),
-        ],
-        last_synced_at: null,
-      },
-    },
-  );
+  const syncOptions: HighlightSyncOptions = {
+    highlights: [...currentHighlights, newHighlight],
+    lastSyncedAt: null,
+  };
 
-  return parseHighlightsResponse(payload);
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  }).syncHighlights(syncOptions);
 }
 
 export async function updateHighlight({
@@ -336,25 +269,12 @@ export async function updateHighlight({
   updates,
 }: ProtectedProbeOptions & {
   id: string;
-  updates: {
-    color?: string;
-    note?: string | null;
-    text?: string;
-    verses?: number[];
-  };
+  updates: HighlightUpdatePayload;
 }): Promise<MobileHighlightItem> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  const payload = await requestJson<unknown>(
-    `${baseUrl}/api/highlights/${encodeURIComponent(id)}`,
+  return createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-    {
-      method: "PUT",
-      body: updates,
-    },
-  );
-
-  const obj = asObject(payload);
-  return normalizeHighlight(obj.highlight, 0);
+  }).updateHighlight(id, updates);
 }
 
 export async function deleteHighlight({
@@ -362,23 +282,24 @@ export async function deleteHighlight({
   accessToken,
   id,
 }: ProtectedProbeOptions & { id: string }): Promise<void> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
-  await requestJson<Record<string, unknown>>(
-    `${baseUrl}/api/highlights/${encodeURIComponent(id)}`,
+  await createMobileProtectedApiClient({
+    apiBaseUrl,
     accessToken,
-    { method: "DELETE" },
-  );
+  }).deleteHighlight(id);
 }
 
 export async function fetchProtectedProbePayload({
   apiBaseUrl,
   accessToken,
 }: ProtectedProbeOptions): Promise<ProtectedProbePayload> {
-  const baseUrl = normalizeBaseUrl(apiBaseUrl);
+  const apiClient = createMobileProtectedApiClient({
+    apiBaseUrl,
+    accessToken,
+  });
   const [bookmarks, highlights, connections] = await Promise.all([
-    fetchJson<unknown>(`${baseUrl}/api/bookmarks`, accessToken),
-    fetchJson<unknown>(`${baseUrl}/api/highlights`, accessToken),
-    fetchJson<unknown>(`${baseUrl}/api/library/connections`, accessToken),
+    apiClient.getBookmarks(),
+    apiClient.getHighlights(),
+    apiClient.getLibraryConnections(),
   ]);
 
   return { bookmarks, highlights, connections };

@@ -47,6 +47,10 @@ export interface Bookmark {
   userId?: string;
 }
 
+export interface BookmarkCreatePayload {
+  text: string;
+}
+
 export interface Highlight {
   id: string;
   book: string;
@@ -58,6 +62,18 @@ export interface Highlight {
   createdAt?: string;
   updatedAt?: string;
   referenceLabel: string;
+}
+
+export interface HighlightUpdatePayload {
+  color?: string;
+  note?: string | null;
+  text?: string;
+  verses?: number[];
+}
+
+export interface HighlightSyncPayload {
+  highlights: Array<Record<string, unknown>>;
+  last_synced_at: string | null;
 }
 
 export interface LibraryConnectionVerseRef {
@@ -340,10 +356,46 @@ export function parseBookmarksResponse(payload: unknown): Bookmark[] {
   return bookmarks.map((entry, index) => normalizeBookmark(entry, index));
 }
 
+export function parseBookmarkCreateResponse(payload: unknown): Bookmark {
+  const obj = asObject(payload);
+  return normalizeBookmark(obj.bookmark, 0);
+}
+
+export function buildBookmarkCreatePayload(
+  text: string,
+): BookmarkCreatePayload {
+  return { text: text.trim() };
+}
+
 export function parseHighlightsResponse(payload: unknown): Highlight[] {
   const obj = asObject(payload);
   const highlights = Array.isArray(obj.highlights) ? obj.highlights : [];
   return highlights.map((entry, index) => normalizeHighlight(entry, index));
+}
+
+export function parseHighlightUpdateResponse(payload: unknown): Highlight {
+  const obj = asObject(payload);
+  return normalizeHighlight(obj.highlight, 0);
+}
+
+export function buildHighlightUpdatePayload(
+  payload: HighlightUpdatePayload,
+): HighlightUpdatePayload {
+  const output: HighlightUpdatePayload = {};
+  if (Object.prototype.hasOwnProperty.call(payload, "color")) {
+    output.color = readString(payload.color)?.trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "note")) {
+    output.note =
+      payload.note === null ? null : (readString(payload.note)?.trim() ?? "");
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "text")) {
+    output.text = readString(payload.text) ?? "";
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "verses")) {
+    output.verses = normalizeVerseIds(payload.verses);
+  }
+  return output;
 }
 
 export function parseLibraryConnectionsResponse(
@@ -543,5 +595,19 @@ export function toHighlightSyncRecord(
     note: item.note ?? undefined,
     created_at: item.createdAt,
     updated_at: item.updatedAt,
+  };
+}
+
+interface BuildHighlightSyncPayloadOptions {
+  highlights: Highlight[];
+  lastSyncedAt?: string | null;
+}
+
+export function buildHighlightSyncPayload(
+  options: BuildHighlightSyncPayloadOptions,
+): HighlightSyncPayload {
+  return {
+    highlights: options.highlights.map((item) => toHighlightSyncRecord(item)),
+    last_synced_at: options.lastSyncedAt ?? null,
   };
 }

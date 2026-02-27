@@ -1,9 +1,14 @@
 import {
+  buildBookmarkCreatePayload,
   buildAuthSessionPayload,
+  buildHighlightSyncPayload,
+  buildHighlightUpdatePayload,
   buildLibraryConnectionUpdatePayload,
   buildLibraryMapSession,
+  parseBookmarkCreateResponse,
   parseBookmarksResponse,
   parseHighlightsResponse,
+  parseHighlightUpdateResponse,
   parseLibraryBundleCreateResponse,
   parseLibraryConnectionMutationResponse,
   parseLibraryConnectionsResponse,
@@ -34,6 +39,24 @@ describe("shared API contracts", () => {
     ]);
   });
 
+  it("builds and parses bookmark create payload/response", () => {
+    const payload = buildBookmarkCreatePayload("  John 3:16  ");
+    expect(payload).toEqual({ text: "John 3:16" });
+
+    const parsed = parseBookmarkCreateResponse({
+      bookmark: {
+        id: "bm-42",
+        text: "John 3:16",
+        created_at: "2026-02-27T00:00:00.000Z",
+      },
+    });
+    expect(parsed).toMatchObject({
+      id: "bm-42",
+      text: "John 3:16",
+      createdAt: "2026-02-27T00:00:00.000Z",
+    });
+  });
+
   it("parses highlight payload and preserves valid verses in mixed arrays", () => {
     const parsed = parseHighlightsResponse({
       highlights: [
@@ -58,6 +81,60 @@ describe("shared API contracts", () => {
       verses: [1, 3],
       referenceLabel: "Genesis 1:1-3",
       text: "In the beginning",
+    });
+  });
+
+  it("builds highlight sync/update payloads and parses update response", () => {
+    const syncPayload = buildHighlightSyncPayload({
+      highlights: [
+        {
+          id: "hl-2",
+          book: "Romans",
+          chapter: 5,
+          verses: [8],
+          text: "God demonstrates his love",
+          color: "#facc15",
+          referenceLabel: "Romans 5:8",
+          createdAt: "2026-02-27T00:00:00.000Z",
+          updatedAt: "2026-02-27T00:01:00.000Z",
+        },
+      ],
+      lastSyncedAt: null,
+    });
+    expect(syncPayload).toMatchObject({
+      last_synced_at: null,
+    });
+    expect(syncPayload.highlights).toHaveLength(1);
+
+    const updatePayload = buildHighlightUpdatePayload({
+      color: " #22c55e ",
+      note: "  keep this ",
+      verses: [8, 8, -2, 9],
+    });
+    expect(updatePayload).toEqual({
+      color: "#22c55e",
+      note: "keep this",
+      verses: [8, 9],
+    });
+
+    const parsed = parseHighlightUpdateResponse({
+      highlight: {
+        id: "hl-2",
+        book: "Romans",
+        chapter: 5,
+        verses: [8, 9],
+        text: "God demonstrates his love",
+        color: "#22c55e",
+        note: "keep this",
+        created_at: "2026-02-27T00:00:00.000Z",
+        updated_at: "2026-02-27T00:02:00.000Z",
+      },
+    });
+    expect(parsed).toMatchObject({
+      id: "hl-2",
+      color: "#22c55e",
+      note: "keep this",
+      verses: [8, 9],
     });
   });
 
