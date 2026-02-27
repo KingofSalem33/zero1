@@ -543,6 +543,8 @@ Status: In progress
     - `npm --prefix apps/mobile run typecheck`
     - `npm --prefix apps/mobile run test`
   - Result: the mobile quality gate now runs in branch CI for `biblelot` merge flow.
+- Branch protection configured for `biblelot`:
+  - Required status check set to `CI / node-lint-build` before merge.
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
