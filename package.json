@@ -45,6 +45,7 @@
     "lint-staged": "^16.1.6",
     "playwright": "^1.57.0",
     "prettier": "^3.6.2",
+    "react-test-renderer": "19.1.0",
     "rimraf": "^6.0.1",
     "terser": "^5.44.1",
     "ts-node": "^10.9.2",
