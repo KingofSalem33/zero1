@@ -139,4 +139,31 @@ describe("BookmarkCreateScreen", () => {
       verse: "",
     });
   });
+
+  it("shows Saving... label while bookmark mutation is busy", () => {
+    mockedUseMobileApp.mockReturnValue(
+      makeController({
+        bookmarkMutationBusy: true,
+      }),
+    );
+
+    const { getByText } = render(<BookmarkCreateScreen />);
+    expect(getByText("Saving...")).toBeTruthy();
+  });
+
+  it("blocks save and clear handlers while busy", () => {
+    const handleCreateBookmark = jest.fn(async () => undefined);
+    const controller = makeController({
+      bookmarkMutationBusy: true,
+      handleCreateBookmark,
+    });
+    mockedUseMobileApp.mockReturnValue(controller);
+
+    const { getByText } = render(<BookmarkCreateScreen />);
+    fireEvent.press(getByText("Saving..."));
+    fireEvent.press(getByText("Clear"));
+
+    expect(handleCreateBookmark).not.toHaveBeenCalled();
+    expect(controller.setBookmarkDraft).not.toHaveBeenCalled();
+  });
 });
