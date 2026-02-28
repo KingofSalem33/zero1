@@ -39,6 +39,12 @@
       }
     },
     "plugins": ["expo-dev-client", "expo-web-browser", "@sentry/react-native"],
-    "owner": "cmoney612s-organization"
+    "owner": "cmoney612s-organization",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3389b803-88f4-4fec-aebb-7eefa88f066a"
+    }
   }
 }
