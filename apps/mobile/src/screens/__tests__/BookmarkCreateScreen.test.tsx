@@ -95,4 +95,48 @@ describe("BookmarkCreateScreen", () => {
     fireEvent.press(getByText("Save bookmark"));
     expect(handleCreateBookmark).toHaveBeenCalledTimes(1);
   });
+
+  it("renders bookmark validation error text when present", () => {
+    mockedUseMobileApp.mockReturnValue(
+      makeController({
+        bookmarkMutationError: "Select a valid Bible book.",
+      }),
+    );
+
+    const { getByText } = render(<BookmarkCreateScreen />);
+    expect(getByText("Select a valid Bible book.")).toBeTruthy();
+  });
+
+  it("does not trigger clear action when draft is empty", () => {
+    const controller = makeController({
+      bookmarkDraft: { book: "", chapter: "", verse: "" },
+      bookmarkBookSuggestions: [],
+      bookmarkBookGuidance: null,
+      bookmarkChapterHint: null,
+    });
+    mockedUseMobileApp.mockReturnValue(controller);
+
+    const { getByText } = render(<BookmarkCreateScreen />);
+    fireEvent.press(getByText("Clear"));
+
+    expect(controller.setBookmarkDraft).not.toHaveBeenCalled();
+  });
+
+  it("clears draft when clear is pressed with non-empty values", () => {
+    const controller = makeController({
+      bookmarkDraft: { book: "John", chapter: "3", verse: "16" },
+      bookmarkBookSuggestions: [],
+      bookmarkBookGuidance: null,
+    });
+    mockedUseMobileApp.mockReturnValue(controller);
+
+    const { getByText } = render(<BookmarkCreateScreen />);
+    fireEvent.press(getByText("Clear"));
+
+    expect(controller.setBookmarkDraft).toHaveBeenCalledWith({
+      book: "",
+      chapter: "",
+      verse: "",
+    });
+  });
 });
