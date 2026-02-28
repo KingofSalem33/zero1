@@ -11,6 +11,8 @@ jest.mock("../../context/MobileAppContext", () => ({
 const mockedUseMobileApp = useMobileApp as jest.MockedFunction<
   typeof useMobileApp
 >;
+const AMBIGUOUS_GUIDANCE =
+  'Multiple books match "jo". Tap one below to avoid saving the wrong reference.';
 
 function makeController(
   overrides: Partial<MobileAppController> = {},
@@ -24,8 +26,7 @@ function makeController(
     setBookmarkDraft: jest.fn(),
     bookmarkBookSuggestions: ["John", "Joshua"],
     bookmarkChapterHint: "Chapters 1-24",
-    bookmarkBookGuidance:
-      'Multiple books match "jo". Tap one below to avoid saving the wrong reference.',
+    bookmarkBookGuidance: AMBIGUOUS_GUIDANCE,
     selectBookmarkBookSuggestion: jest.fn(),
     bookmarkMutationError: null,
     bookmarkMutationBusy: false,
@@ -45,11 +46,7 @@ describe("BookmarkCreateScreen", () => {
 
     const { getByText } = render(<BookmarkCreateScreen />);
 
-    expect(
-      getByText(
-        'Multiple books match "jo". Tap one below to avoid saving the wrong reference.',
-      ),
-    ).toBeTruthy();
+    expect(getByText(AMBIGUOUS_GUIDANCE)).toBeTruthy();
     expect(getByText("John")).toBeTruthy();
     expect(getByText("Joshua")).toBeTruthy();
   });
@@ -68,11 +65,9 @@ describe("BookmarkCreateScreen", () => {
 
   it("applies selected suggestion to the book field and preserves save-path action", () => {
     const handleCreateBookmark = jest.fn(async () => undefined);
-    const ambiguousGuidance =
-      'Multiple books match "jo". Tap one below to avoid saving the wrong reference.';
     const controller = makeController({
       handleCreateBookmark,
-      bookmarkBookGuidance: ambiguousGuidance,
+      bookmarkBookGuidance: AMBIGUOUS_GUIDANCE,
     });
 
     controller.selectBookmarkBookSuggestion = jest.fn((book: string) => {
@@ -90,13 +85,13 @@ describe("BookmarkCreateScreen", () => {
       <BookmarkCreateScreen />,
     );
 
-    expect(queryByText(ambiguousGuidance)).toBeTruthy();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeTruthy();
     expect(queryByText("Joshua")).toBeTruthy();
     fireEvent.press(getByText("John"));
     rerender(<BookmarkCreateScreen />);
 
     expect(getByDisplayValue("John")).toBeTruthy();
-    expect(queryByText(ambiguousGuidance)).toBeNull();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeNull();
     expect(queryByText("Joshua")).toBeNull();
 
     fireEvent.press(getByText("Save bookmark"));
@@ -190,11 +185,7 @@ describe("BookmarkCreateScreen", () => {
     );
 
     const { queryByText } = render(<BookmarkCreateScreen />);
-    expect(
-      queryByText(
-        'Multiple books match "jo". Tap one below to avoid saving the wrong reference.',
-      ),
-    ).toBeNull();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeNull();
   });
 
   it("hides suggestion chips when book input is already canonical", () => {
@@ -207,6 +198,32 @@ describe("BookmarkCreateScreen", () => {
     );
 
     const { queryByText } = render(<BookmarkCreateScreen />);
+    expect(queryByText("Joshua")).toBeNull();
+  });
+
+  it("keeps ambiguity UI hidden across rerenders for canonical prefill state", () => {
+    const controller = makeController({
+      bookmarkDraft: { book: "John", chapter: "3", verse: "16" },
+      bookmarkBookSuggestions: [],
+      bookmarkBookGuidance: null,
+      bookmarkChapterHint: "Chapters 1-21",
+    });
+    mockedUseMobileApp.mockImplementation(() => controller);
+
+    const { getByDisplayValue, queryByText, rerender } = render(
+      <BookmarkCreateScreen />,
+    );
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeNull();
+    expect(queryByText("Joshua")).toBeNull();
+
+    controller.bookmarkDraft = {
+      ...controller.bookmarkDraft,
+      verse: "17",
+    };
+    rerender(<BookmarkCreateScreen />);
+
+    expect(getByDisplayValue("17")).toBeTruthy();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeNull();
     expect(queryByText("Joshua")).toBeNull();
   });
 
