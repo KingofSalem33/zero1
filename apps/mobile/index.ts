@@ -1,6 +1,5 @@
 import "react-native-gesture-handler";
 import { registerRootComponent } from "expo";
-import * as Sentry from "@sentry/react-native";
 
 import App from "./App";
 import { initMobileMonitoring } from "./src/lib/monitoring";
@@ -10,4 +9,4 @@ import { initMobileMonitoring } from "./src/lib/monitoring";
 // the environment is set up appropriately
 initMobileMonitoring();
 
-registerRootComponent(Sentry.wrap(App));
+registerRootComponent(App);
