@@ -68,7 +68,8 @@ Status: In progress
 - [x] Agent BF (BookmarkCreate Screen Tests): Add lightweight mobile screen-level test coverage for `BookmarkCreateScreen` guidance + suggestion chip rendering to lock UI behavior (beyond controller-only tests).
 - [x] Agent BG (BookmarkCreate Chip-Mutation Test): Add UI-level test coverage for suggestion chip press wiring from `BookmarkCreateScreen` into controller callbacks with one focused mutation assertion.
 - [x] Agent BH (BookmarkCreate Validation UI Tests): Add `BookmarkCreateScreen` UI tests for validation/error-state rendering (invalid book/chapter feedback and disabled/clear behavior guards).
-- [ ] Agent BI (Next): Add a compact mobile UI test for busy-state button labels/press guards (`Saving...`/disabled paths) in `BookmarkCreateScreen`.
+- [x] Agent BI (BookmarkCreate Busy-State UI Tests): Add compact mobile UI tests for busy-state button labels/press guards (`Saving...`/disabled paths) in `BookmarkCreateScreen`.
+- [ ] Agent BJ (Next): Add mobile UI tests for chapter-hint visibility transitions (known book vs unknown book) in `BookmarkCreateScreen`.
 
 ### Execution Notes (2026-02-19)
 
@@ -836,6 +837,18 @@ Status: In progress
     - validation error text renders when controller exposes `bookmarkMutationError`
     - clear action is blocked when draft fields are all empty (disabled guard path)
     - clear action triggers expected draft reset payload when fields are populated
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate busy-state UI coverage completed (Agent BI):
+  - Added screen-level tests to verify:
+    - save button label changes to `Saving...` during busy mutation state
+    - save/clear press handlers are blocked while busy/disabled
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
