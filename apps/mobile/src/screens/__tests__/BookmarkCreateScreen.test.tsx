@@ -284,6 +284,50 @@ describe("BookmarkCreateScreen", () => {
     expect(queryByText("Joshua")).toBeTruthy();
   });
 
+  it("maintains stable ambiguity UI across ambiguous-canonical-ambiguous roundtrip", () => {
+    const controller = makeController({
+      bookmarkDraft: { book: "jo", chapter: "3", verse: "16" },
+      bookmarkBookSuggestions: ["John", "Joshua"],
+      bookmarkBookGuidance: AMBIGUOUS_GUIDANCE,
+      bookmarkChapterHint: "Chapters 1-24",
+    });
+    mockedUseMobileApp.mockImplementation(() => controller);
+
+    const { getByDisplayValue, queryByText, rerender } = render(
+      <BookmarkCreateScreen />,
+    );
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeTruthy();
+    expect(queryByText("Joshua")).toBeTruthy();
+
+    controller.bookmarkDraft = {
+      ...controller.bookmarkDraft,
+      book: "John",
+    };
+    controller.bookmarkBookSuggestions = [];
+    controller.bookmarkBookGuidance = null;
+    controller.bookmarkChapterHint = "Chapters 1-21";
+    rerender(<BookmarkCreateScreen />);
+
+    expect(getByDisplayValue("John")).toBeTruthy();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeNull();
+    expect(queryByText("Joshua")).toBeNull();
+    expect(queryByText("Chapters 1-21")).toBeTruthy();
+
+    controller.bookmarkDraft = {
+      ...controller.bookmarkDraft,
+      book: "jo",
+    };
+    controller.bookmarkBookSuggestions = ["John", "Joshua"];
+    controller.bookmarkBookGuidance = AMBIGUOUS_GUIDANCE;
+    controller.bookmarkChapterHint = "Chapters 1-24";
+    rerender(<BookmarkCreateScreen />);
+
+    expect(getByDisplayValue("jo")).toBeTruthy();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeTruthy();
+    expect(queryByText("Joshua")).toBeTruthy();
+    expect(queryByText("Chapters 1-24")).toBeTruthy();
+  });
+
   it("blocks save and clear handlers while busy", () => {
     const handleCreateBookmark = jest.fn(async () => undefined);
     const controller = makeController({
