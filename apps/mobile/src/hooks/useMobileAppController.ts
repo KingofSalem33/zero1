@@ -29,6 +29,7 @@ import {
   handleSupabaseAuthRedirect,
 } from "../lib/authRedirect";
 import { supabase } from "../lib/supabase";
+import { finishPerfSpan, startPerfSpan } from "../lib/perfTelemetry";
 
 export interface HighlightDraftForm {
   book: string;
@@ -201,6 +202,7 @@ export function useMobileAppController(): MobileAppController {
       note: "",
     });
   const processedAuthUrlsRef = useRef<Set<string>>(new Set());
+  const oauthPerfSpanRef = useRef<string | null>(null);
 
   const selectedHighlight = useMemo(
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
@@ -290,12 +292,23 @@ export function useMobileAppController(): MobileAppController {
       return;
     }
     if (outcome.kind === "error") {
+      finishPerfSpan(oauthPerfSpanRef.current, "error", {
+        source,
+        reason: outcome.message,
+      });
+      oauthPerfSpanRef.current = null;
       setAuthError(outcome.message);
       setAuthInfo(null);
       return;
     }
 
     const sessionUser = outcome.session?.user;
+    finishPerfSpan(oauthPerfSpanRef.current, "success", {
+      source,
+      userId: sessionUser?.id ?? null,
+      email: sessionUser?.email ?? null,
+    });
+    oauthPerfSpanRef.current = null;
     setAuthError(null);
     setAuthInfo(
       sessionUser
@@ -425,6 +438,12 @@ export function useMobileAppController(): MobileAppController {
     setBusy(true);
     setAuthError(null);
     setAuthInfo(null);
+    finishPerfSpan(oauthPerfSpanRef.current, "cancelled", {
+      reason: "replaced_by_new_oauth",
+    });
+    oauthPerfSpanRef.current = startPerfSpan("oauth_callback_latency", {
+      provider,
+    });
     try {
       const redirectTo = getOAuthRedirectUrl();
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -450,6 +469,11 @@ export function useMobileAppController(): MobileAppController {
       if (authSessionResult.type === "success" && authSessionResult.url) {
         await processAuthRedirect(authSessionResult.url, "authSession");
       } else if (authSessionResult.type === "cancel") {
+        finishPerfSpan(oauthPerfSpanRef.current, "cancelled", {
+          provider,
+          source: "authSession",
+        });
+        oauthPerfSpanRef.current = null;
         setAuthInfo(`${provider} sign-in cancelled.`);
       } else {
         setAuthInfo(
@@ -457,6 +481,11 @@ export function useMobileAppController(): MobileAppController {
         );
       }
     } catch (error) {
+      finishPerfSpan(oauthPerfSpanRef.current, "error", {
+        provider,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      oauthPerfSpanRef.current = null;
       setAuthError(error instanceof Error ? error.message : String(error));
       setAuthInfo(null);
     } finally {
@@ -598,6 +627,14 @@ export function useMobileAppController(): MobileAppController {
       verse,
     });
 
+    const bookmarkSaveSpanId = startPerfSpan("bookmark_save_latency", {
+      book: canonicalBook,
+      chapter,
+      hasVerse: verse !== undefined,
+    });
+    let bookmarkSaveStatus: "success" | "error" = "error";
+    let createdBookmarkId: string | null = null;
+
     setBookmarkMutationBusy(true);
     setBookmarkMutationError(null);
     try {
@@ -608,6 +645,8 @@ export function useMobileAppController(): MobileAppController {
           text: normalizedText,
         }),
       );
+      createdBookmarkId = created.id;
+      bookmarkSaveStatus = "success";
       setBookmarks((current) => [created, ...current]);
       setBookmarksLoadedAt(new Date().toISOString());
       setBookmarkDraft((current) => ({
@@ -622,6 +661,9 @@ export function useMobileAppController(): MobileAppController {
         error instanceof Error ? error.message : String(error),
       );
     } finally {
+      finishPerfSpan(bookmarkSaveSpanId, bookmarkSaveStatus, {
+        bookmarkId: createdBookmarkId,
+      });
       setBookmarkMutationBusy(false);
     }
   }

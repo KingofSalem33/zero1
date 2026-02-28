@@ -76,7 +76,9 @@ Status: In progress
 - [x] Agent BN (BookmarkCreate Canonical-to-Ambiguous UI Tests): Add mobile UI tests for transition from canonical input back to ambiguous prefix to confirm ambiguity UI returns when expected.
 - [x] Agent BO (BookmarkCreate Hint-Transition UI Tests): Add mobile UI tests for chapter-hint transition during canonical-to-ambiguous regression to ensure hint updates stay consistent with guidance/suggestions.
 - [x] Agent BP (BookmarkCreate Roundtrip Transition UI Tests): Add mobile UI tests for full roundtrip transition (ambiguous -> canonical -> ambiguous) to confirm stable repeated toggling behavior.
-- [ ] Agent BQ (Next, Manual): Run real iOS device performance profiling baseline (cold start, auth callback, bookmark save latency) and attach metrics evidence.
+- [x] Agent BQ (Mobile Perf Baseline, Manual): Run real iOS device performance profiling baseline (cold start, auth callback, bookmark save latency) and attach metrics evidence.
+- [x] Agent BR (Mobile Perf Telemetry Markers): Add in-app mobile performance telemetry markers for cold-start/auth-callback/bookmark-save timing so baseline evidence is machine-captured (not stopwatch-only).
+- [ ] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
 
 ### Execution Notes (2026-02-19)
 
@@ -944,6 +946,30 @@ Status: In progress
     - chapter hint remains consistent across repeated ambiguous/canonical state toggles
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.4 mobile real-device baseline captured (Agent BQ):
+  - Device: iPhone 15, iOS 18.6.2
+  - Baseline timings (manual capture):
+    - cold start: < 1s
+    - auth callback: < 1s
+    - bookmark save latency: < 1s
+  - Notes:
+    - Auth flow validated successfully on device.
+    - Runtime warning observed for missing WebCrypto subtle support (PKCE falls back to `plain`); tracked for hardening in next step.
+- Phase 2.4 mobile in-app telemetry markers completed (Agent BR):
+  - Added machine-captured mobile perf span instrumentation with structured log output (`[MOBILE PERF]`) for:
+    - cold start to first interactive frame
+    - OAuth callback latency
+    - bookmark save latency
+  - Files:
+    - `apps/mobile/src/lib/perfTelemetry.ts`
+    - `apps/mobile/App.tsx`
+    - `apps/mobile/src/hooks/useMobileAppController.ts`
   - Validation passed:
     - `npm --prefix apps/mobile run test`
     - `npm --prefix apps/mobile run typecheck`
