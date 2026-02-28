@@ -68,8 +68,11 @@ describe("BookmarkCreateScreen", () => {
 
   it("applies selected suggestion to the book field and preserves save-path action", () => {
     const handleCreateBookmark = jest.fn(async () => undefined);
+    const ambiguousGuidance =
+      'Multiple books match "jo". Tap one below to avoid saving the wrong reference.';
     const controller = makeController({
       handleCreateBookmark,
+      bookmarkBookGuidance: ambiguousGuidance,
     });
 
     controller.selectBookmarkBookSuggestion = jest.fn((book: string) => {
@@ -83,14 +86,16 @@ describe("BookmarkCreateScreen", () => {
 
     mockedUseMobileApp.mockImplementation(() => controller);
 
-    const { getByText, getByDisplayValue, rerender } = render(
+    const { getByText, getByDisplayValue, queryByText, rerender } = render(
       <BookmarkCreateScreen />,
     );
 
+    expect(queryByText(ambiguousGuidance)).toBeTruthy();
     fireEvent.press(getByText("John"));
     rerender(<BookmarkCreateScreen />);
 
     expect(getByDisplayValue("John")).toBeTruthy();
+    expect(queryByText(ambiguousGuidance)).toBeNull();
 
     fireEvent.press(getByText("Save bookmark"));
     expect(handleCreateBookmark).toHaveBeenCalledTimes(1);
@@ -171,6 +176,23 @@ describe("BookmarkCreateScreen", () => {
 
     const { queryByText } = render(<BookmarkCreateScreen />);
     expect(queryByText("Chapters 1-24")).toBeNull();
+  });
+
+  it("hides guidance callout when book input is already canonical", () => {
+    mockedUseMobileApp.mockReturnValue(
+      makeController({
+        bookmarkDraft: { book: "John", chapter: "3", verse: "16" },
+        bookmarkBookSuggestions: [],
+        bookmarkBookGuidance: null,
+      }),
+    );
+
+    const { queryByText } = render(<BookmarkCreateScreen />);
+    expect(
+      queryByText(
+        'Multiple books match "jo". Tap one below to avoid saving the wrong reference.',
+      ),
+    ).toBeNull();
   });
 
   it("blocks save and clear handlers while busy", () => {
