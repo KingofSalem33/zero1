@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
@@ -21,11 +22,21 @@ import {
   HighlightDetailScreen,
 } from "./src/screens/DetailScreens";
 import { styles, T } from "./src/theme/mobileStyles";
+import { finishPerfSpan, startPerfSpan } from "./src/lib/perfTelemetry";
 
 WebBrowser.maybeCompleteAuthSession();
+const coldStartSpanId = startPerfSpan("cold_start_to_interactive");
 
 export default function App() {
   const controller = useMobileAppController();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      finishPerfSpan(coldStartSpanId, "success");
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <View style={styles.safeArea}>
