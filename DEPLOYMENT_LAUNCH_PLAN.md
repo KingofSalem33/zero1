@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-27
+Last updated: 2026-02-28
 Owner: Product + Engineering
 Status: In progress
 
@@ -78,7 +78,7 @@ Status: In progress
 - [x] Agent BP (BookmarkCreate Roundtrip Transition UI Tests): Add mobile UI tests for full roundtrip transition (ambiguous -> canonical -> ambiguous) to confirm stable repeated toggling behavior.
 - [x] Agent BQ (Mobile Perf Baseline, Manual): Run real iOS device performance profiling baseline (cold start, auth callback, bookmark save latency) and attach metrics evidence.
 - [x] Agent BR (Mobile Perf Telemetry Markers): Add in-app mobile performance telemetry markers for cold-start/auth-callback/bookmark-save timing so baseline evidence is machine-captured (not stopwatch-only).
-- [ ] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
+- [x] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
 
 ### Execution Notes (2026-02-19)
 
@@ -976,6 +976,14 @@ Status: In progress
     - `npm --prefix apps/web run typecheck`
     - `npm run lint`
     - `npm run build`
+- Phase 2.4 real-device telemetry sample captured (Agent BS):
+  - Device: iPhone 15, iOS 18.6.2
+  - Runtime evidence captured from dev-client session:
+    - app remains signed in and session shows `active`
+    - repeated real-device runs reported UX timings under 1s for cold start/auth/bookmark interactions
+  - Console evidence observed:
+    - `[MOBILE PERF]` structured event logging enabled in app runtime
+    - Supabase OAuth warnings still show WebCrypto fallback to PKCE `plain` on this runtime and are tracked as a hardening follow-up item
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
