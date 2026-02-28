@@ -75,7 +75,8 @@ Status: In progress
 - [x] Agent BM (BookmarkCreate Canonical-Rerender UI Tests): Add mobile UI tests for canonical prefill state to ensure no ambiguity UI (guidance/suggestions) reappears unexpectedly on rerender.
 - [x] Agent BN (BookmarkCreate Canonical-to-Ambiguous UI Tests): Add mobile UI tests for transition from canonical input back to ambiguous prefix to confirm ambiguity UI returns when expected.
 - [x] Agent BO (BookmarkCreate Hint-Transition UI Tests): Add mobile UI tests for chapter-hint transition during canonical-to-ambiguous regression to ensure hint updates stay consistent with guidance/suggestions.
-- [ ] Agent BP (Next): Add mobile UI tests for full roundtrip transition (ambiguous -> canonical -> ambiguous) to confirm stable repeated toggling behavior.
+- [x] Agent BP (BookmarkCreate Roundtrip Transition UI Tests): Add mobile UI tests for full roundtrip transition (ambiguous -> canonical -> ambiguous) to confirm stable repeated toggling behavior.
+- [ ] Agent BQ (Next, Manual): Run real iOS device performance profiling baseline (cold start, auth callback, bookmark save latency) and attach metrics evidence.
 
 ### Execution Notes (2026-02-19)
 
@@ -929,6 +930,18 @@ Status: In progress
   - Added screen-level transition test coverage that verifies:
     - chapter hint updates from canonical range to ambiguous-input range on regression
     - guidance callout and suggestion chips appear in sync with updated hint state
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate roundtrip transition coverage completed (Agent BP):
+  - Added screen-level roundtrip transition test coverage that verifies:
+    - ambiguity UI appears for ambiguous input, clears on canonical selection, and reappears on ambiguous regression
+    - chapter hint remains consistent across repeated ambiguous/canonical state toggles
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
