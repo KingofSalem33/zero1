@@ -227,6 +227,35 @@ describe("BookmarkCreateScreen", () => {
     expect(queryByText("Joshua")).toBeNull();
   });
 
+  it("shows ambiguity UI again when canonical input regresses to ambiguous prefix", () => {
+    const controller = makeController({
+      bookmarkDraft: { book: "John", chapter: "3", verse: "16" },
+      bookmarkBookSuggestions: [],
+      bookmarkBookGuidance: null,
+      bookmarkChapterHint: "Chapters 1-21",
+    });
+    mockedUseMobileApp.mockImplementation(() => controller);
+
+    const { getByDisplayValue, queryByText, rerender } = render(
+      <BookmarkCreateScreen />,
+    );
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeNull();
+    expect(queryByText("Joshua")).toBeNull();
+
+    controller.bookmarkDraft = {
+      ...controller.bookmarkDraft,
+      book: "jo",
+    };
+    controller.bookmarkBookSuggestions = ["John", "Joshua"];
+    controller.bookmarkBookGuidance = AMBIGUOUS_GUIDANCE;
+    controller.bookmarkChapterHint = "Chapters 1-24";
+    rerender(<BookmarkCreateScreen />);
+
+    expect(getByDisplayValue("jo")).toBeTruthy();
+    expect(queryByText(AMBIGUOUS_GUIDANCE)).toBeTruthy();
+    expect(queryByText("Joshua")).toBeTruthy();
+  });
+
   it("blocks save and clear handlers while busy", () => {
     const handleCreateBookmark = jest.fn(async () => undefined);
     const controller = makeController({

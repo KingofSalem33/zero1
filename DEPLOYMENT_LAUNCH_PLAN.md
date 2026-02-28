@@ -73,7 +73,8 @@ Status: In progress
 - [x] Agent BK (BookmarkCreate Guidance-Transition UI Tests): Add mobile UI tests for guidance callout visibility transitions (visible on ambiguity, hidden on canonical selection).
 - [x] Agent BL (BookmarkCreate Suggestion-Visibility UI Tests): Add mobile UI tests for suggestion-chip list visibility transitions (present for ambiguous input, removed after canonical selection).
 - [x] Agent BM (BookmarkCreate Canonical-Rerender UI Tests): Add mobile UI tests for canonical prefill state to ensure no ambiguity UI (guidance/suggestions) reappears unexpectedly on rerender.
-- [ ] Agent BN (Next): Add mobile UI tests for transition from canonical input back to ambiguous prefix to confirm ambiguity UI returns when expected.
+- [x] Agent BN (BookmarkCreate Canonical-to-Ambiguous UI Tests): Add mobile UI tests for transition from canonical input back to ambiguous prefix to confirm ambiguity UI returns when expected.
+- [ ] Agent BO (Next): Add mobile UI tests for chapter-hint transition during canonical-to-ambiguous regression to ensure hint updates stay consistent with guidance/suggestions.
 
 ### Execution Notes (2026-02-19)
 
@@ -903,6 +904,18 @@ Status: In progress
   - Added screen-level rerender test coverage that verifies:
     - ambiguity guidance and suggestion chips remain hidden when state starts canonical
     - ambiguity UI does not reappear after controller rerender with canonical field updates
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate canonical-to-ambiguous transition coverage completed (Agent BN):
+  - Added screen-level rerender test coverage that verifies:
+    - ambiguity guidance and suggestion chips are hidden in canonical prefill state
+    - ambiguity UI returns when user input regresses from canonical book to ambiguous prefix
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
