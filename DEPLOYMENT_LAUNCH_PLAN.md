@@ -1172,13 +1172,13 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 ### 2.3 Shared Logic Extraction
 
 - [x] Create `packages/shared`
-- [ ] Move shared types, zod schemas, domain helpers, and constants
-- [ ] Rewire web/desktop/mobile to consume shared package
+- [x] Move shared types, zod schemas, domain helpers, and constants
+- [x] Rewire web/desktop/mobile to consume shared package
 - [x] Add API contract tests for shared schema stability
 
 ### 2.4 Mobile Product Quality
 
-- [ ] Performance profiling on real devices
+- [x] Performance profiling on real devices
 - [ ] Push notifications (if retained in product scope)
 - [ ] Crash/error instrumentation
 - [ ] TestFlight beta cycle + bug triage
