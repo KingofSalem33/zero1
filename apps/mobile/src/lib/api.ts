@@ -44,7 +44,7 @@ function normalizeBaseUrl(apiBaseUrl: string): string {
 
 function buildMobileAuthFetch(accessToken: string) {
   return async (
-    input: Parameters<typeof fetch>[0],
+    input: string | URL | Request,
     init?: Parameters<typeof fetch>[1],
   ) => {
     const headers = new Headers(init?.headers);

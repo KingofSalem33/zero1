@@ -6,14 +6,17 @@ const workspaceRoot = path.resolve(appRoot, "../..");
 
 const config = getDefaultConfig(appRoot);
 
-config.watchFolders = [workspaceRoot];
-config.resolver.nodeModulesPaths = [
-  path.resolve(workspaceRoot, "node_modules"),
-  path.resolve(appRoot, "node_modules"),
-];
-config.resolver.extraNodeModules = {
-  react: path.resolve(workspaceRoot, "node_modules/react"),
-  "react-dom": path.resolve(workspaceRoot, "node_modules/react-dom"),
-};
+const defaultWatchFolders = config.watchFolders ?? [];
+config.watchFolders = Array.from(
+  new Set([...defaultWatchFolders, workspaceRoot]),
+);
 
+const defaultNodeModulesPaths = config.resolver.nodeModulesPaths ?? [];
+config.resolver.nodeModulesPaths = Array.from(
+  new Set([
+    ...defaultNodeModulesPaths,
+    path.resolve(workspaceRoot, "node_modules"),
+    path.resolve(appRoot, "node_modules"),
+  ]),
+);
 module.exports = config;
