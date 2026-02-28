@@ -65,7 +65,8 @@ Status: In progress
 - [x] Agent BC (Cross-Client Parity Tests): Add cross-client contract tests that assert web/mobile canonical book resolution parity for ambiguous and alias inputs.
 - [x] Agent BD (Mobile Ambiguity Guidance): Surface explicit user-facing validation copy in mobile bookmark UI for ambiguous book prefixes (for example, recommend tap-to-select when multiple books match).
 - [x] Agent BE (Mobile Suggestion-Tap Smoke): Add mobile bookmark UX smoke coverage for suggestion-tap flows (ambiguous prefix -> selection -> successful save).
-- [ ] Agent BF (Next): Add lightweight mobile screen-level test coverage for `BookmarkCreateScreen` guidance + suggestion chip rendering to lock UI behavior (beyond controller-only tests).
+- [x] Agent BF (BookmarkCreate Screen Tests): Add lightweight mobile screen-level test coverage for `BookmarkCreateScreen` guidance + suggestion chip rendering to lock UI behavior (beyond controller-only tests).
+- [ ] Agent BG (Next): Add UI-level test coverage for suggestion chip press wiring from `BookmarkCreateScreen` into controller callbacks with one focused mutation assertion.
 
 ### Execution Notes (2026-02-19)
 
@@ -797,6 +798,19 @@ Status: In progress
   - Added controller smoke test that covers end-to-end bookmark suggestion flow:
     - ambiguous book input (`jo`) -> suggestion list shown -> suggestion selected (`John`) -> successful bookmark save.
     - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate screen-level coverage completed (Agent BF):
+  - Added screen-level tests for `BookmarkCreateScreen` to verify:
+    - ambiguity guidance text renders when provided by controller
+    - suggestion chips render from controller suggestion list
+    - suggestion chip press invokes controller selection callback
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
     - `npm --prefix apps/mobile run test`
     - `npm --prefix apps/mobile run typecheck`
