@@ -70,7 +70,8 @@ Status: In progress
 - [x] Agent BH (BookmarkCreate Validation UI Tests): Add `BookmarkCreateScreen` UI tests for validation/error-state rendering (invalid book/chapter feedback and disabled/clear behavior guards).
 - [x] Agent BI (BookmarkCreate Busy-State UI Tests): Add compact mobile UI tests for busy-state button labels/press guards (`Saving...`/disabled paths) in `BookmarkCreateScreen`.
 - [x] Agent BJ (BookmarkCreate Chapter-Hint UI Tests): Add mobile UI tests for chapter-hint visibility transitions (known book vs unknown book) in `BookmarkCreateScreen`.
-- [ ] Agent BK (Next): Add mobile UI tests for guidance callout visibility transitions (visible on ambiguity, hidden on canonical selection).
+- [x] Agent BK (BookmarkCreate Guidance-Transition UI Tests): Add mobile UI tests for guidance callout visibility transitions (visible on ambiguity, hidden on canonical selection).
+- [ ] Agent BL (Next): Add mobile UI tests for suggestion-chip list visibility transitions (present for ambiguous input, removed after canonical selection).
 
 ### Execution Notes (2026-02-19)
 
@@ -862,6 +863,19 @@ Status: In progress
   - Added screen-level tests that verify chapter-hint behavior:
     - hint renders when controller provides recognized-book chapter range
     - hint is hidden when controller indicates unknown/unresolved book
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate guidance-transition UI coverage completed (Agent BK):
+  - Added screen-level tests that verify guidance callout behavior:
+    - guidance callout is visible during ambiguous-input state
+    - guidance callout is removed after suggestion selection resolves to canonical book
+    - guidance callout stays hidden when controller state is already canonical
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
