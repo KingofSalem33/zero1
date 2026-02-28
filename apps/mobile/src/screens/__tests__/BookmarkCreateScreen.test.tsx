@@ -65,4 +65,34 @@ describe("BookmarkCreateScreen", () => {
       "John",
     );
   });
+
+  it("applies selected suggestion to the book field and preserves save-path action", () => {
+    const handleCreateBookmark = jest.fn(async () => undefined);
+    const controller = makeController({
+      handleCreateBookmark,
+    });
+
+    controller.selectBookmarkBookSuggestion = jest.fn((book: string) => {
+      controller.bookmarkDraft = {
+        ...controller.bookmarkDraft,
+        book,
+      };
+      controller.bookmarkBookSuggestions = [];
+      controller.bookmarkBookGuidance = null;
+    });
+
+    mockedUseMobileApp.mockImplementation(() => controller);
+
+    const { getByText, getByDisplayValue, rerender } = render(
+      <BookmarkCreateScreen />,
+    );
+
+    fireEvent.press(getByText("John"));
+    rerender(<BookmarkCreateScreen />);
+
+    expect(getByDisplayValue("John")).toBeTruthy();
+
+    fireEvent.press(getByText("Save bookmark"));
+    expect(handleCreateBookmark).toHaveBeenCalledTimes(1);
+  });
 });

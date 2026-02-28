@@ -66,7 +66,8 @@ Status: In progress
 - [x] Agent BD (Mobile Ambiguity Guidance): Surface explicit user-facing validation copy in mobile bookmark UI for ambiguous book prefixes (for example, recommend tap-to-select when multiple books match).
 - [x] Agent BE (Mobile Suggestion-Tap Smoke): Add mobile bookmark UX smoke coverage for suggestion-tap flows (ambiguous prefix -> selection -> successful save).
 - [x] Agent BF (BookmarkCreate Screen Tests): Add lightweight mobile screen-level test coverage for `BookmarkCreateScreen` guidance + suggestion chip rendering to lock UI behavior (beyond controller-only tests).
-- [ ] Agent BG (Next): Add UI-level test coverage for suggestion chip press wiring from `BookmarkCreateScreen` into controller callbacks with one focused mutation assertion.
+- [x] Agent BG (BookmarkCreate Chip-Mutation Test): Add UI-level test coverage for suggestion chip press wiring from `BookmarkCreateScreen` into controller callbacks with one focused mutation assertion.
+- [ ] Agent BH (Next): Add `BookmarkCreateScreen` UI tests for validation/error-state rendering (invalid book/chapter feedback and disabled/clear behavior guards).
 
 ### Execution Notes (2026-02-19)
 
@@ -809,6 +810,18 @@ Status: In progress
     - ambiguity guidance text renders when provided by controller
     - suggestion chips render from controller suggestion list
     - suggestion chip press invokes controller selection callback
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate chip-mutation coverage completed (Agent BG):
+  - Added UI-level test that verifies:
+    - suggestion chip press mutates displayed book field value on the screen test harness
+    - save button path remains callable after suggestion selection
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
