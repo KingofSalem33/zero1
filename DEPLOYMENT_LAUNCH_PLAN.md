@@ -81,6 +81,7 @@ Status: In progress
 - [x] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
 - [x] Agent BU (Mobile Crash Instrumentation): Add mobile crash/error instrumentation bootstrap (Sentry, env-gated) so runtime exceptions are captured in production builds.
 - [x] Agent BW (Mobile Boot Diagnostics): Replace white-screen startup failures with explicit boot fallback/error boundary UI and lazy runtime load so startup exceptions are visible on-device.
+- [x] Agent BX (Mobile Runtime Compatibility): Resolve Expo SDK/runtime skew by pinning React versions across workspaces, downgrading mobile Sentry to SDK-compatible range, and hardening Metro/EAS config for stable iOS preview startup.
 
 ### Execution Notes (2026-02-19)
 
@@ -1003,6 +1004,24 @@ Status: In progress
   - Files:
     - `apps/mobile/App.tsx`
     - `apps/mobile/src/AppRuntime.tsx`
+- Phase 2.4 mobile runtime compatibility hardening completed (Agent BX):
+  - Resolved monorepo React runtime skew that was causing mixed React versions in mobile bundle resolution.
+  - Aligned React/ReactDOM/react-test-renderer versions to `19.1.0` across workspaces and root override surface.
+  - Updated mobile dependency compatibility for Expo SDK 54 by setting `@sentry/react-native` to `~7.2.0`.
+  - Removed risky Metro React alias override and preserved Expo default watch folders + resolver paths.
+  - Enabled preview `autoIncrement` in EAS to avoid stale same-build-number installs during rapid validation cycles.
+  - Disabled `newArchEnabled` in mobile app config during stabilization to reduce native compatibility surface for launch.
+  - Files:
+    - `apps/mobile/package.json`
+    - `apps/mobile/metro.config.js`
+    - `apps/mobile/eas.json`
+    - `apps/mobile/app.json`
+    - `apps/mobile/src/lib/api.ts`
+    - `apps/web/package.json`
+    - `apps/desktop/package.json`
+    - `packages/shared-client/package.json`
+    - `package.json`
+    - `package-lock.json`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "zero1",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -38,7 +38,7 @@
         "projectId": "3389b803-88f4-4fec-aebb-7eefa88f066a"
       }
     },
-    "plugins": ["expo-dev-client", "expo-web-browser"],
+    "plugins": ["expo-dev-client", "expo-web-browser", "@sentry/react-native"],
     "owner": "cmoney612s-organization"
   }
 }
