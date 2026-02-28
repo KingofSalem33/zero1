@@ -82,6 +82,7 @@ Status: In progress
 - [x] Agent BU (Mobile Crash Instrumentation): Add mobile crash/error instrumentation bootstrap (Sentry, env-gated) so runtime exceptions are captured in production builds.
 - [x] Agent BW (Mobile Boot Diagnostics): Replace white-screen startup failures with explicit boot fallback/error boundary UI and lazy runtime load so startup exceptions are visible on-device.
 - [x] Agent BX (Mobile Runtime Compatibility): Resolve Expo SDK/runtime skew by pinning React versions across workspaces, downgrading mobile Sentry to SDK-compatible range, and hardening Metro/EAS config for stable iOS preview startup.
+- [x] Agent BT (Mobile White-Screen Triage): Run three-track diagnosis (runtime code path, Expo/EAS delivery path, Sentry startup path), apply the known-good white-screen fix set to this working branch, and re-validate mobile compatibility gates.
 
 ### Execution Notes (2026-02-19)
 
@@ -984,9 +985,8 @@ Status: In progress
   - Runtime evidence captured from dev-client session:
     - app remains signed in and session shows `active`
     - repeated real-device runs reported UX timings under 1s for cold start/auth/bookmark interactions
-  - Console evidence observed:
-    - `[MOBILE PERF]` structured event logging enabled in app runtime
-    - Supabase OAuth warnings still show WebCrypto fallback to PKCE `plain` on this runtime and are tracked as a hardening follow-up item
+  - Console evidence observed: - `[MOBILE PERF]` structured event logging enabled in app runtime - Supabase OAuth warnings still show WebCrypto fallback to PKCE `plain` on this runtime and are tracked as a hardening follow-up item
+    <<<<<<< HEAD
 - Phase 2.4 mobile crash/error instrumentation completed (Agent BU):
   - Added mobile Sentry bootstrap, enabled only when `EXPO_PUBLIC_SENTRY_DSN` is present.
   - Runtime behavior:
@@ -1011,17 +1011,16 @@ Status: In progress
   - Removed risky Metro React alias override and preserved Expo default watch folders + resolver paths.
   - Enabled preview `autoIncrement` in EAS to avoid stale same-build-number installs during rapid validation cycles.
   - Disabled `newArchEnabled` in mobile app config during stabilization to reduce native compatibility surface for launch.
-  - Files:
-    - `apps/mobile/package.json`
-    - `apps/mobile/metro.config.js`
-    - `apps/mobile/eas.json`
-    - `apps/mobile/app.json`
-    - `apps/mobile/src/lib/api.ts`
-    - `apps/web/package.json`
-    - `apps/desktop/package.json`
-    - `packages/shared-client/package.json`
-    - `package.json`
-    - `package-lock.json`
+  - Files: - `apps/mobile/package.json` - `apps/mobile/metro.config.js` - `apps/mobile/eas.json` - `apps/mobile/app.json` - `apps/mobile/src/lib/api.ts` - `apps/web/package.json` - `apps/desktop/package.json` - `packages/shared-client/package.json` - `package.json` - `package-lock.json`
+    =======
+- Phase 2.5 mobile white-screen triage + compatibility remediation completed (Agent BT):
+  - Three-track diagnosis summary:
+    - Runtime track: branch was missing post-fix mobile boot fallback files (`apps/mobile/src/AppRuntime.tsx`) and Sentry boot hardening wiring from `biblelot`.
+    - Expo/EAS track: branch metro overrides diverged from Expo defaults and `expo-doctor` reported metro config risk + duplicate React versions.
+    - Sentry track: mobile Sentry package/runtime wiring was inconsistent in branch state; plugin/dependency mismatch prevented clean startup validation.
+  - Applied remediation by syncing this branch to known-good `origin/biblelot` versions for mobile/runtime compatibility files and workspace dependency constraints.
+  - Verification passed locally: - `npm --prefix apps/mobile run typecheck` - `npx expo-doctor` (`17/17 checks passed`) - `npm ls react react-dom react-native-renderer @sentry/react-native --all` (single React 19.1.0 tree, `@sentry/react-native@7.2.0`)
+    > > > > > > > 9b06454 (Fix mobile white-screen startup path and align Expo workspace compatibility)
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
