@@ -1,74 +1,60 @@
-import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
-import { StatusBar } from "expo-status-bar";
-import * as WebBrowser from "expo-web-browser";
-import { MobileRootNavigator } from "./src/navigation/MobileRootNavigator";
-import { MobileAppProvider } from "./src/context/MobileAppContext";
-import { useMobileAppController } from "./src/hooks/useMobileAppController";
-import {
-  AccountScreen,
-  AuthScreen,
-  HomeScreen,
-} from "./src/screens/AuthHomeAccountScreens";
-import {
-  BookmarksScreen,
-  HighlightsScreen,
-  LibraryScreen,
-} from "./src/screens/DataListScreens";
-import {
-  BookmarkCreateScreen,
-  BookmarkDetailScreen,
-  HighlightCreateScreen,
-  HighlightDetailScreen,
-} from "./src/screens/DetailScreens";
-import { styles, T } from "./src/theme/mobileStyles";
-import { finishPerfSpan, startPerfSpan } from "./src/lib/perfTelemetry";
+import { Component, type ReactNode, Suspense, lazy } from "react";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { styles } from "./src/theme/mobileStyles";
 
-WebBrowser.maybeCompleteAuthSession();
-const coldStartSpanId = startPerfSpan("cold_start_to_interactive");
+const AppRuntime = lazy(() => import("./src/AppRuntime"));
+
+interface BootBoundaryState {
+  error: Error | null;
+}
+
+class BootErrorBoundary extends Component<
+  { children: ReactNode },
+  BootBoundaryState
+> {
+  state: BootBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): BootBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("[MOBILE BOOT] Startup failure captured by boundary.", error);
+  }
+
+  render() {
+    if (!this.state.error) {
+      return this.props.children;
+    }
+
+    return (
+      <ScrollView contentContainerStyle={styles.rootScrollContent}>
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Startup Error</Text>
+          <Text style={styles.error}>{this.state.error.message}</Text>
+          {this.state.error.stack ? (
+            <Text style={styles.caption}>{this.state.error.stack}</Text>
+          ) : null}
+        </View>
+      </ScrollView>
+    );
+  }
+}
+
+function BootFallback() {
+  return (
+    <View style={styles.globalBusyOverlay}>
+      <ActivityIndicator />
+    </View>
+  );
+}
 
 export default function App() {
-  const controller = useMobileAppController();
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      finishPerfSpan(coldStartSpanId, "success");
-    }, 0);
-
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
-    <View style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <View style={styles.appBackground}>
-        <View style={styles.backdropBlobA} />
-        <View style={styles.backdropBlobB} />
-        <MobileAppProvider value={controller}>
-          <MobileRootNavigator
-            isAuthenticated={Boolean(controller.user)}
-            renderAuth={() => <AuthScreen />}
-            renderHome={(nav) => <HomeScreen nav={nav} />}
-            renderLibrary={() => <LibraryScreen />}
-            renderBookmarks={(nav) => <BookmarksScreen nav={nav} />}
-            renderHighlights={(nav) => <HighlightsScreen nav={nav} />}
-            renderAccount={() => <AccountScreen />}
-            renderBookmarkCreate={() => <BookmarkCreateScreen />}
-            renderBookmarkDetail={(bookmarkId) => (
-              <BookmarkDetailScreen bookmarkId={bookmarkId} />
-            )}
-            renderHighlightCreate={() => <HighlightCreateScreen />}
-            renderHighlightDetail={(highlightId) => (
-              <HighlightDetailScreen highlightId={highlightId} />
-            )}
-          />
-        </MobileAppProvider>
-        {controller.busy ? (
-          <View style={styles.globalBusyOverlay} pointerEvents="none">
-            <ActivityIndicator color={T.colors.accentStrong} />
-          </View>
-        ) : null}
-      </View>
-    </View>
+    <BootErrorBoundary>
+      <Suspense fallback={<BootFallback />}>
+        <AppRuntime />
+      </Suspense>
+    </BootErrorBoundary>
   );
 }

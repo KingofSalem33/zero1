@@ -80,6 +80,7 @@ Status: In progress
 - [x] Agent BR (Mobile Perf Telemetry Markers): Add in-app mobile performance telemetry markers for cold-start/auth-callback/bookmark-save timing so baseline evidence is machine-captured (not stopwatch-only).
 - [x] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
 - [x] Agent BU (Mobile Crash Instrumentation): Add mobile crash/error instrumentation bootstrap (Sentry, env-gated) so runtime exceptions are captured in production builds.
+- [x] Agent BW (Mobile Boot Diagnostics): Replace white-screen startup failures with explicit boot fallback/error boundary UI and lazy runtime load so startup exceptions are visible on-device.
 
 ### Execution Notes (2026-02-19)
 
@@ -996,6 +997,12 @@ Status: In progress
     - `apps/mobile/index.ts`
     - `apps/mobile/src/lib/env.ts`
     - `apps/mobile/.env.example`
+- Phase 2.4 mobile boot diagnostics hardening completed (Agent BW):
+  - Startup path now lazy-loads runtime app module behind `Suspense` fallback and root error boundary.
+  - If startup/render throws, app shows a visible "Startup Error" panel with message/stack instead of silent white screen.
+  - Files:
+    - `apps/mobile/App.tsx`
+    - `apps/mobile/src/AppRuntime.tsx`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
