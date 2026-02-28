@@ -151,6 +151,28 @@ describe("BookmarkCreateScreen", () => {
     expect(getByText("Saving...")).toBeTruthy();
   });
 
+  it("shows chapter hint for recognized book context", () => {
+    mockedUseMobileApp.mockReturnValue(
+      makeController({
+        bookmarkChapterHint: "Chapters 1-21",
+      }),
+    );
+
+    const { getByText } = render(<BookmarkCreateScreen />);
+    expect(getByText("Chapters 1-21")).toBeTruthy();
+  });
+
+  it("hides chapter hint when book is not recognized", () => {
+    mockedUseMobileApp.mockReturnValue(
+      makeController({
+        bookmarkChapterHint: null,
+      }),
+    );
+
+    const { queryByText } = render(<BookmarkCreateScreen />);
+    expect(queryByText("Chapters 1-24")).toBeNull();
+  });
+
   it("blocks save and clear handlers while busy", () => {
     const handleCreateBookmark = jest.fn(async () => undefined);
     const controller = makeController({

@@ -69,7 +69,8 @@ Status: In progress
 - [x] Agent BG (BookmarkCreate Chip-Mutation Test): Add UI-level test coverage for suggestion chip press wiring from `BookmarkCreateScreen` into controller callbacks with one focused mutation assertion.
 - [x] Agent BH (BookmarkCreate Validation UI Tests): Add `BookmarkCreateScreen` UI tests for validation/error-state rendering (invalid book/chapter feedback and disabled/clear behavior guards).
 - [x] Agent BI (BookmarkCreate Busy-State UI Tests): Add compact mobile UI tests for busy-state button labels/press guards (`Saving...`/disabled paths) in `BookmarkCreateScreen`.
-- [ ] Agent BJ (Next): Add mobile UI tests for chapter-hint visibility transitions (known book vs unknown book) in `BookmarkCreateScreen`.
+- [x] Agent BJ (BookmarkCreate Chapter-Hint UI Tests): Add mobile UI tests for chapter-hint visibility transitions (known book vs unknown book) in `BookmarkCreateScreen`.
+- [ ] Agent BK (Next): Add mobile UI tests for guidance callout visibility transitions (visible on ambiguity, hidden on canonical selection).
 
 ### Execution Notes (2026-02-19)
 
@@ -849,6 +850,18 @@ Status: In progress
   - Added screen-level tests to verify:
     - save button label changes to `Saving...` during busy mutation state
     - save/clear press handlers are blocked while busy/disabled
+  - File:
+    - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
+  - Validation passed:
+    - `npm --prefix apps/mobile run test`
+    - `npm --prefix apps/mobile run typecheck`
+    - `npm --prefix apps/web run typecheck`
+    - `npm run lint`
+    - `npm run build`
+- Phase 2.3 BookmarkCreate chapter-hint UI coverage completed (Agent BJ):
+  - Added screen-level tests that verify chapter-hint behavior:
+    - hint renders when controller provides recognized-book chapter range
+    - hint is hidden when controller indicates unknown/unresolved book
   - File:
     - `apps/mobile/src/screens/__tests__/BookmarkCreateScreen.test.tsx`
   - Validation passed:
