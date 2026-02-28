@@ -79,6 +79,7 @@ Status: In progress
 - [x] Agent BQ (Mobile Perf Baseline, Manual): Run real iOS device performance profiling baseline (cold start, auth callback, bookmark save latency) and attach metrics evidence.
 - [x] Agent BR (Mobile Perf Telemetry Markers): Add in-app mobile performance telemetry markers for cold-start/auth-callback/bookmark-save timing so baseline evidence is machine-captured (not stopwatch-only).
 - [x] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
+- [x] Agent BT (Mobile White-Screen Triage): Run three-track diagnosis (runtime code path, Expo/EAS delivery path, Sentry startup path), apply the known-good white-screen fix set to this working branch, and re-validate mobile compatibility gates.
 
 ### Execution Notes (2026-02-19)
 
@@ -984,6 +985,16 @@ Status: In progress
   - Console evidence observed:
     - `[MOBILE PERF]` structured event logging enabled in app runtime
     - Supabase OAuth warnings still show WebCrypto fallback to PKCE `plain` on this runtime and are tracked as a hardening follow-up item
+- Phase 2.5 mobile white-screen triage + compatibility remediation completed (Agent BT):
+  - Three-track diagnosis summary:
+    - Runtime track: branch was missing post-fix mobile boot fallback files (`apps/mobile/src/AppRuntime.tsx`) and Sentry boot hardening wiring from `biblelot`.
+    - Expo/EAS track: branch metro overrides diverged from Expo defaults and `expo-doctor` reported metro config risk + duplicate React versions.
+    - Sentry track: mobile Sentry package/runtime wiring was inconsistent in branch state; plugin/dependency mismatch prevented clean startup validation.
+  - Applied remediation by syncing this branch to known-good `origin/biblelot` versions for mobile/runtime compatibility files and workspace dependency constraints.
+  - Verification passed locally:
+    - `npm --prefix apps/mobile run typecheck`
+    - `npx expo-doctor` (`17/17 checks passed`)
+    - `npm ls react react-dom react-native-renderer @sentry/react-native --all` (single React 19.1.0 tree, `@sentry/react-native@7.2.0`)
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`

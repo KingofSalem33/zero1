@@ -45,12 +45,20 @@
     "lint-staged": "^16.1.6",
     "playwright": "^1.57.0",
     "prettier": "^3.6.2",
+    "react-test-renderer": "19.1.0",
     "rimraf": "^6.0.1",
     "terser": "^5.44.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "openai": "^6.15.0"
+    "openai": "^6.15.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-test-renderer": "19.1.0"
   }
 }

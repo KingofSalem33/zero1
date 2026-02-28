@@ -37,8 +37,8 @@
     "@zero1/shared-client": "file:../../packages/shared-client",
     "@supabase/supabase-js": "^2.58.0",
     "electron-updater": "^6.3.9",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.5.0",
