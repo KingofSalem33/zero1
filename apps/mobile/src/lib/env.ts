@@ -27,6 +27,7 @@ const rawMagicLinkRedirectTo =
   process.env.EXPO_PUBLIC_MAGIC_LINK_REDIRECT_TO || "";
 const rawEnableGoogleOAuth = process.env.EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH || "";
 const rawEnableAppleOAuth = process.env.EXPO_PUBLIC_ENABLE_APPLE_OAUTH || "";
+const rawSentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN || "";
 
 const normalizedApiUrl = trimTrailingSlashes(rawApiUrl);
 const normalizedSupabaseUrl = trimTrailingSlashes(rawSupabaseUrl);
@@ -60,4 +61,5 @@ export const MOBILE_ENV = {
   MAGIC_LINK_REDIRECT_TO: rawMagicLinkRedirectTo,
   ENABLE_GOOGLE_OAUTH: parseBoolean(rawEnableGoogleOAuth, false),
   ENABLE_APPLE_OAUTH: parseBoolean(rawEnableAppleOAuth, false),
+  SENTRY_DSN: rawSentryDsn,
 };

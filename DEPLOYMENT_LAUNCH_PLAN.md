@@ -79,6 +79,7 @@ Status: In progress
 - [x] Agent BQ (Mobile Perf Baseline, Manual): Run real iOS device performance profiling baseline (cold start, auth callback, bookmark save latency) and attach metrics evidence.
 - [x] Agent BR (Mobile Perf Telemetry Markers): Add in-app mobile performance telemetry markers for cold-start/auth-callback/bookmark-save timing so baseline evidence is machine-captured (not stopwatch-only).
 - [x] Agent BS (Next, Manual): Capture a real-device telemetry log sample (`[MOBILE PERF]`) for cold start, OAuth callback, and bookmark save and attach it to the launch evidence.
+- [x] Agent BU (Mobile Crash Instrumentation): Add mobile crash/error instrumentation bootstrap (Sentry, env-gated) so runtime exceptions are captured in production builds.
 
 ### Execution Notes (2026-02-19)
 
@@ -984,6 +985,17 @@ Status: In progress
   - Console evidence observed:
     - `[MOBILE PERF]` structured event logging enabled in app runtime
     - Supabase OAuth warnings still show WebCrypto fallback to PKCE `plain` on this runtime and are tracked as a hardening follow-up item
+- Phase 2.4 mobile crash/error instrumentation completed (Agent BU):
+  - Added mobile Sentry bootstrap, enabled only when `EXPO_PUBLIC_SENTRY_DSN` is present.
+  - Runtime behavior:
+    - app boot initializes Sentry once during startup
+    - Sentry wrapper is applied at root component registration
+    - production gating keeps tracing disabled when DSN is not configured
+  - Files:
+    - `apps/mobile/src/lib/monitoring.ts`
+    - `apps/mobile/index.ts`
+    - `apps/mobile/src/lib/env.ts`
+    - `apps/mobile/.env.example`
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
@@ -1180,7 +1192,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 
 - [x] Performance profiling on real devices
 - [ ] Push notifications (if retained in product scope)
-- [ ] Crash/error instrumentation
+- [x] Crash/error instrumentation
 - [ ] TestFlight beta cycle + bug triage
 
 ### Phase 2 Exit Criteria
