@@ -91,11 +91,13 @@ describe("BookmarkCreateScreen", () => {
     );
 
     expect(queryByText(ambiguousGuidance)).toBeTruthy();
+    expect(queryByText("Joshua")).toBeTruthy();
     fireEvent.press(getByText("John"));
     rerender(<BookmarkCreateScreen />);
 
     expect(getByDisplayValue("John")).toBeTruthy();
     expect(queryByText(ambiguousGuidance)).toBeNull();
+    expect(queryByText("Joshua")).toBeNull();
 
     fireEvent.press(getByText("Save bookmark"));
     expect(handleCreateBookmark).toHaveBeenCalledTimes(1);
@@ -193,6 +195,19 @@ describe("BookmarkCreateScreen", () => {
         'Multiple books match "jo". Tap one below to avoid saving the wrong reference.',
       ),
     ).toBeNull();
+  });
+
+  it("hides suggestion chips when book input is already canonical", () => {
+    mockedUseMobileApp.mockReturnValue(
+      makeController({
+        bookmarkDraft: { book: "John", chapter: "3", verse: "16" },
+        bookmarkBookSuggestions: [],
+        bookmarkBookGuidance: null,
+      }),
+    );
+
+    const { queryByText } = render(<BookmarkCreateScreen />);
+    expect(queryByText("Joshua")).toBeNull();
   });
 
   it("blocks save and clear handlers while busy", () => {
