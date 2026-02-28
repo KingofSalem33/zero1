@@ -16,17 +16,18 @@ export function initMobileMonitoring() {
     return;
   }
 
-  try {
-    const Sentry = require("@sentry/react-native") as typeof import("@sentry/react-native");
-    Sentry.init({
-      dsn: MOBILE_ENV.SENTRY_DSN,
-      enabled,
-      tracesSampleRate: enabled ? 0.1 : 0,
+  void import("@sentry/react-native")
+    .then((Sentry) => {
+      Sentry.init({
+        dsn: MOBILE_ENV.SENTRY_DSN,
+        enabled,
+        tracesSampleRate: enabled ? 0.1 : 0,
+      });
+    })
+    .catch((error) => {
+      console.warn(
+        "[MOBILE MONITORING] Sentry initialization failed; continuing without crash reporting.",
+        error,
+      );
     });
-  } catch (error) {
-    console.warn(
-      "[MOBILE MONITORING] Sentry initialization failed; continuing without crash reporting.",
-      error,
-    );
-  }
 }
