@@ -21,13 +21,15 @@ import {
   HighlightCreateScreen,
   HighlightDetailScreen,
 } from "./screens/DetailScreens";
+import { WebAppShellScreen } from "./screens/WebAppShellScreen";
 import { styles, T } from "./theme/mobileStyles";
+import { MOBILE_ENV } from "./lib/env";
 import { finishPerfSpan, startPerfSpan } from "./lib/perfTelemetry";
 
 WebBrowser.maybeCompleteAuthSession();
 const coldStartSpanId = startPerfSpan("cold_start_to_interactive");
 
-export default function AppRuntime() {
+function NativeAppRuntime() {
   const controller = useMobileAppController();
 
   useEffect(() => {
@@ -71,4 +73,24 @@ export default function AppRuntime() {
       </View>
     </View>
   );
+}
+
+export default function AppRuntime() {
+  const webAppUrl = MOBILE_ENV.WEB_APP_URL;
+
+  useEffect(() => {
+    if (!webAppUrl) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      finishPerfSpan(coldStartSpanId, "success", { mode: "web_shell" });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [webAppUrl]);
+
+  if (webAppUrl) {
+    return <WebAppShellScreen webUrl={webAppUrl} />;
+  }
+
+  return <NativeAppRuntime />;
 }
