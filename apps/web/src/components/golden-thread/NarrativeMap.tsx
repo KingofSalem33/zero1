@@ -53,6 +53,10 @@ import {
   resolveConnectionChip,
 } from "./narrativeMapConfig";
 import { createLibraryBundle, createLibraryMap } from "../../lib/libraryApi";
+import {
+  isAuthenticationRequiredError,
+  WEB_SIGN_IN_PATH,
+} from "../../lib/authErrors";
 import type {
   ConnectionStyleType,
   BranchCluster,
@@ -349,8 +353,18 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       toast("Map saved to Library", { type: "success", duration: 2500 });
     } catch (error) {
       console.error("[NarrativeMap] Save map failed:", error);
-      setMapSaveError("Could not save map");
-      toast("Failed to save map", { type: "error", duration: 3000 });
+      if (isAuthenticationRequiredError(error)) {
+        setMapSaveError(
+          `Sign in required to save. Open ${WEB_SIGN_IN_PATH} then try again.`,
+        );
+        toast("Sign in required before saving", {
+          type: "error",
+          duration: 3500,
+        });
+      } else {
+        setMapSaveError("Could not save map");
+        toast("Failed to save map", { type: "error", duration: 3000 });
+      }
     } finally {
       setMapSaving(false);
     }

@@ -21,6 +21,10 @@ import {
   createLibraryConnection,
   updateLibraryConnection,
 } from "../../lib/libraryApi";
+import {
+  isAuthenticationRequiredError,
+  WEB_SIGN_IN_PATH,
+} from "../../lib/authErrors";
 
 const __DEV__ = import.meta.env.DEV;
 
@@ -642,8 +646,18 @@ export function SemanticConnectionModal({
       toast("Connection saved to Library", { type: "success", duration: 2500 });
     } catch (err) {
       console.error("[SemanticConnectionModal] Save failed:", err);
-      setSaveError("Could not save this connection");
-      toast("Failed to save connection", { type: "error", duration: 3000 });
+      if (isAuthenticationRequiredError(err)) {
+        setSaveError(
+          `Sign in required to save. Open ${WEB_SIGN_IN_PATH} then try again.`,
+        );
+        toast("Sign in required before saving", {
+          type: "error",
+          duration: 3500,
+        });
+      } else {
+        setSaveError("Could not save this connection");
+        toast("Failed to save connection", { type: "error", duration: 3000 });
+      }
     } finally {
       setSaving(false);
     }
