@@ -38,7 +38,7 @@
         "projectId": "3389b803-88f4-4fec-aebb-7eefa88f066a"
       }
     },
-    "plugins": ["expo-dev-client", "expo-web-browser", "@sentry/react-native"],
+    "plugins": ["expo-dev-client", "expo-web-browser"],
     "owner": "cmoney612s-organization",
     "runtimeVersion": {
       "policy": "appVersion"
