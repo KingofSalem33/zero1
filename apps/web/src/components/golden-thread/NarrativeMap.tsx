@@ -2243,7 +2243,9 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           style: {
             ...edge.style,
             opacity: finalOpacity,
-            transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+            transitionProperty: "opacity",
+            transitionDuration: "600ms",
+            transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)",
             transitionDelay: `${clampedDelay}ms`,
           },
         };
@@ -2298,7 +2300,14 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
               filter: baseFilter,
               strokeWidth: baseWidth,
               ...getEdgeAnimationConfig(isLLMDiscovered, "5.6s"),
-              ...(shouldSnap ? { transition: "none" } : {}),
+              ...(shouldSnap
+                ? {
+                    transitionProperty: "none",
+                    transitionDuration: "0ms",
+                    transitionTimingFunction: "linear",
+                    transitionDelay: "0ms",
+                  }
+                : {}),
             },
           };
         }),
