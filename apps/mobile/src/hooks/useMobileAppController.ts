@@ -449,16 +449,49 @@ export function useMobileAppController(): MobileAppController {
     void refreshDashboard();
   }, [user]);
 
+  function isExpiredTokenError(error: unknown): boolean {
+    const message =
+      error instanceof Error ? error.message.toLowerCase() : String(error);
+    return (
+      message.includes("api request failed (401)") ||
+      message.includes("invalid or expired token") ||
+      message.includes("jwt expired") ||
+      message.includes("authentication required")
+    );
+  }
+
+  async function resolveAccessToken(forceRefresh = false): Promise<string> {
+    const { data } = forceRefresh
+      ? await supabase.auth.refreshSession()
+      : await supabase.auth.getSession();
+
+    if (data.session?.access_token) {
+      return data.session.access_token;
+    }
+
+    if (!forceRefresh) {
+      const refreshed = await supabase.auth.refreshSession();
+      if (refreshed.data.session?.access_token) {
+        return refreshed.data.session.access_token;
+      }
+    }
+
+    throw new Error("Sign in required before running this action.");
+  }
+
   async function withAccessToken<T>(
     fn: (accessToken: string) => Promise<T>,
   ): Promise<T> {
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession();
-    if (!currentSession?.access_token) {
-      throw new Error("Sign in required before running this action.");
+    const accessToken = await resolveAccessToken();
+    try {
+      return await fn(accessToken);
+    } catch (error) {
+      if (!isExpiredTokenError(error)) {
+        throw error;
+      }
+      const refreshedAccessToken = await resolveAccessToken(true);
+      return fn(refreshedAccessToken);
     }
-    return fn(currentSession.access_token);
   }
 
   async function signIn() {
