@@ -1072,6 +1072,17 @@ Status: In progress
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
   - `npm --prefix apps/web run build`
+- Post-deploy production verification completed (2026-03-01):
+  - Live API readiness checks passed against `https://biblelot-api.onrender.com`:
+    - `GET /health` -> `200`
+    - `GET /api/health/db` -> `200`
+    - CORS preflight for `http://localhost:5173` -> `204`
+  - Endpoint probes passed:
+    - `POST /api/synopsis` -> `200` with synopsis payload
+    - `GET /api/library/connections` without bearer token -> `401` (expected)
+  - Release cut:
+    - GitHub release/tag `v1.0.0-beta.1` created targeting `biblelot`
+    - Release URL: `https://github.com/KingofSalem33/zero1/releases/tag/v1.0.0-beta.1`
 
 ## 1) Launch Objective
 
