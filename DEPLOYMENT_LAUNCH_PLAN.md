@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 Owner: Product + Engineering
 Status: In progress
 
@@ -86,6 +86,7 @@ Status: In progress
 - [x] Agent BY (iOS Preview Smoke): Install latest iOS preview build on physical device and validate startup + auth + bookmark + protected probe flows.
 - [x] Agent BZ (EAS Channel Hardening): Persist `expo-updates` config required for non-interactive channel-based iOS preview builds.
 - [x] Agent CA (Mobile Library Maps RW): Add authenticated mobile library map read/write flow (create/list/delete) to complete the first non-auth production feature slice beyond shell/probe mode.
+- [x] Agent CB (Mobile Release Ops): Add production iOS EAS build/submit scripts plus TestFlight readiness check + runbook to execute Phase 2.4 beta cycle methodically.
 
 ### Execution Notes (2026-02-19)
 
@@ -1083,6 +1084,15 @@ Status: In progress
   - Release cut:
     - GitHub release/tag `v1.0.0-beta.1` created targeting `biblelot`
     - Release URL: `https://github.com/KingofSalem33/zero1/releases/tag/v1.0.0-beta.1`
+- Phase 2.4 TestFlight execution tooling completed (2026-03-01):
+  - Added mobile package scripts:
+    - `eas:build:ios:prod`
+    - `eas:submit:ios:prod`
+    - `phase2:testflight:check`
+  - Added readiness checker script:
+    - `apps/mobile/scripts/checkTestFlightReadiness.mjs`
+  - Added runbook:
+    - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
 
 ## 1) Launch Objective
 
