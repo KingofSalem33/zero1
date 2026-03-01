@@ -53,6 +53,10 @@ import {
   resolveConnectionChip,
 } from "./narrativeMapConfig";
 import { createLibraryBundle, createLibraryMap } from "../../lib/libraryApi";
+import {
+  isAuthenticationRequiredError,
+  WEB_SIGN_IN_PATH,
+} from "../../lib/authErrors";
 import type {
   ConnectionStyleType,
   BranchCluster,
@@ -348,9 +352,19 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       setMapSaved(true);
       toast("Map saved to Library", { type: "success", duration: 2500 });
     } catch (error) {
-      console.error("[NarrativeMap] Save map failed:", error);
-      setMapSaveError("Could not save map");
-      toast("Failed to save map", { type: "error", duration: 3000 });
+      if (isAuthenticationRequiredError(error)) {
+        console.info("[NarrativeMap] Save blocked: user not authenticated.");
+        setMapSaveError(
+          `Sign in required to save. Open ${WEB_SIGN_IN_PATH} then try again.`,
+        );
+        toast("Sign in required before saving", {
+          type: "error",
+          duration: 3500,
+        });
+      } else {
+        setMapSaveError("Could not save map");
+        toast("Failed to save map", { type: "error", duration: 3000 });
+      }
     } finally {
       setMapSaving(false);
     }
@@ -2229,8 +2243,7 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
           style: {
             ...edge.style,
             opacity: finalOpacity,
-            transition: "opacity 600ms cubic-bezier(0.4, 0, 0.2, 1)",
-            transitionDelay: `${clampedDelay}ms`,
+            transition: `opacity 600ms cubic-bezier(0.4, 0, 0.2, 1) ${clampedDelay}ms`,
           },
         };
       }),

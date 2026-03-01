@@ -344,10 +344,12 @@ export function TextHighlightTooltip({
             (data?.verse as { reference?: string })?.reference ||
             (data?.verses as { reference?: string })?.reference ||
             null;
+          const synopsisText =
+            typeof data.synopsis === "string" && data.synopsis.trim().length > 0
+              ? data.synopsis.trim()
+              : "Unable to generate synopsis.";
           setVerseReference(reference);
-          setDescription(
-            (data.synopsis as string) || "Unable to generate synopsis.",
-          );
+          setDescription(synopsisText);
           setIsLoadingDescription(false);
         },
         onError: (message) => {
@@ -862,5 +864,3 @@ export function TextHighlightTooltip({
     </div>
   );
 }
-
-

@@ -22,6 +22,11 @@ import { TabBar } from "./TabBar";
 import { HighlightCard } from "./HighlightCard";
 import { useBibleBookmarks } from "../contexts/BibleBookmarksContext";
 import { useBibleNotes } from "../hooks/useBibleNotes";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  isAuthenticationRequiredError,
+  WEB_SIGN_IN_PATH,
+} from "../lib/authErrors";
 import {
   deleteLibraryConnection,
   deleteLibraryMap,
@@ -895,6 +900,7 @@ export function LibraryView({
     useBibleHighlightsContext();
   const { bookmarks, removeBookmark } = useBibleBookmarks();
   const { allNotes, setNote } = useBibleNotes();
+  const { session } = useAuth();
   const notes = allNotes();
   const { toast } = useToast();
   const pendingDeleteTimers = useRef<
@@ -908,15 +914,24 @@ export function LibraryView({
   const [activeConnection, setActiveConnection] =
     useState<LibraryConnection | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const hasAuthSession = Boolean(session?.access_token);
 
   // Scroll position memory - remembers scroll position per tab
   const { scrollRef: libraryScrollRef } = useLibraryScrollMemory(activeTab);
 
-  useEffect(() => {
-    void loadLibrary();
+  const openSignIn = useCallback(() => {
+    window.location.assign(WEB_SIGN_IN_PATH);
   }, []);
 
-  const loadLibrary = async () => {
+  const loadLibrary = useCallback(async () => {
+    if (!hasAuthSession) {
+      setConnections([]);
+      setMaps([]);
+      setError("Sign in required to load Library");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
@@ -928,12 +943,21 @@ export function LibraryView({
       setConnections(connectionsData as LibraryConnection[]);
       setMaps(mapsData as LibraryMap[]);
     } catch (err) {
-      console.error("Error loading library:", err);
-      setError("Failed to load library");
+      if (isAuthenticationRequiredError(err)) {
+        console.info("[LibraryView] Load blocked: user not authenticated.");
+        setError("Sign in required to load Library");
+      } else {
+        console.error("Error loading library:", err);
+        setError("Failed to load library");
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [hasAuthSession]);
+
+  useEffect(() => {
+    void loadLibrary();
+  }, [loadLibrary]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -1317,7 +1341,16 @@ export function LibraryView({
             </div>
           )
         ) : error ? (
-          <ErrorState title={error} onRetry={loadLibrary} />
+          <ErrorState
+            title={error}
+            detail={
+              !hasAuthSession
+                ? "Open sign-in, authenticate, then return to Library."
+                : undefined
+            }
+            onRetry={!hasAuthSession ? openSignIn : loadLibrary}
+            retryLabel={!hasAuthSession ? "Open Sign In" : "Try Again"}
+          />
         ) : emptyStateCount[activeTab] === 0 ? (
           <EmptyState
             type={activeTab}

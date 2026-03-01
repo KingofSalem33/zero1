@@ -2,9 +2,15 @@ interface ErrorStateProps {
   title: string;
   detail?: string;
   onRetry?: () => void;
+  retryLabel?: string;
 }
 
-export function ErrorState({ title, detail, onRetry }: ErrorStateProps) {
+export function ErrorState({
+  title,
+  detail,
+  onRetry,
+  retryLabel = "Try Again",
+}: ErrorStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6 gap-1">
       <svg
@@ -27,7 +33,7 @@ export function ErrorState({ title, detail, onRetry }: ErrorStateProps) {
           onClick={onRetry}
           className="mt-3 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm rounded-lg transition-colors border border-neutral-700/50"
         >
-          Try Again
+          {retryLabel}
         </button>
       )}
     </div>
