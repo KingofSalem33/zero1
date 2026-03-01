@@ -145,6 +145,7 @@ Status: In progress
     - `apps/api/src/bible/expandingRingExegesis.ts`
 - API CORS now uses env-configured allowlist instead of hardcoded localhost origins:
   - `apps/api/src/index.ts` uses `ENV.CORS_ALLOWED_ORIGINS` with runtime origin validation callback.
+  - `apps/api/src/env.ts` now merges both loopback host forms (`localhost` + `127.0.0.1`) for desktop/web local dev origins in all relevant runtime modes.
 - Strict API env contract added:
   - `apps/api/src/env.ts` introduces `STRICT_ENV` (defaults true in production) and required-var validation.
   - Required in strict mode: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`.

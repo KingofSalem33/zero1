@@ -17,26 +17,15 @@ function parseCsv(value: string | undefined): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+const LOCAL_DESKTOP_CORS_PORTS = [
+  ...Array.from({ length: 18 }, (_unused, index) => 5173 + index),
+  4173,
+];
+const LOOPBACK_HOSTS = ["localhost", "127.0.0.1"];
 const LOCAL_DESKTOP_CORS_ORIGINS = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:5175",
-  "http://localhost:5176",
-  "http://localhost:5177",
-  "http://localhost:5178",
-  "http://localhost:5179",
-  "http://localhost:5180",
-  "http://localhost:5181",
-  "http://localhost:5182",
-  "http://localhost:5183",
-  "http://localhost:5184",
-  "http://localhost:5185",
-  "http://localhost:5186",
-  "http://localhost:5187",
-  "http://localhost:5188",
-  "http://localhost:5189",
-  "http://localhost:5190",
-  "http://localhost:4173",
+  ...LOOPBACK_HOSTS.flatMap((host) =>
+    LOCAL_DESKTOP_CORS_PORTS.map((port) => `http://${host}:${port}`),
+  ),
   "null",
 ];
 
@@ -121,6 +110,6 @@ if (!ENV.IS_PRODUCTION && configuredCorsOrigins.length === 0) {
 
 if (ENV.IS_PRODUCTION && configuredCorsOrigins.length > 0) {
   console.log(
-    "[INFO] CORS allowlist merged with localhost + null origins for desktop/Electron clients.",
+    "[INFO] CORS allowlist merged with localhost/127.0.0.1 + null origins for desktop/Electron clients.",
   );
 }
