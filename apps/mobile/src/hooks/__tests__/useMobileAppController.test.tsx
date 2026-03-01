@@ -3,13 +3,16 @@ import { Linking, Text } from "react-native";
 import { act, render, waitFor } from "@testing-library/react-native";
 import type { MobileHighlightItem, ProtectedProbeResult } from "../../lib/api";
 import {
+  createLibraryMap,
   createBookmark,
   createHighlightViaSync,
+  deleteLibraryMap,
   deleteBookmark,
   deleteHighlight,
   fetchBookmarks,
   fetchHighlights,
   fetchLibraryConnections,
+  fetchLibraryMaps,
   fetchProtectedProbe,
   updateHighlight,
 } from "../../lib/api";
@@ -46,6 +49,9 @@ jest.mock("../../lib/supabase", () => ({
 jest.mock("../../lib/api", () => ({
   fetchProtectedProbe: jest.fn(),
   fetchLibraryConnections: jest.fn(),
+  fetchLibraryMaps: jest.fn(),
+  createLibraryMap: jest.fn(),
+  deleteLibraryMap: jest.fn(),
   fetchBookmarks: jest.fn(),
   fetchHighlights: jest.fn(),
   createBookmark: jest.fn(),
@@ -94,6 +100,7 @@ describe("useMobileAppController", () => {
       libraryConnectionsCount: 0,
     } as ProtectedProbeResult);
     (fetchLibraryConnections as jest.Mock).mockResolvedValue([]);
+    (fetchLibraryMaps as jest.Mock).mockResolvedValue([]);
     (fetchBookmarks as jest.Mock).mockResolvedValue([]);
     (fetchHighlights as jest.Mock).mockResolvedValue([
       {
@@ -148,6 +155,81 @@ describe("useMobileAppController", () => {
       expect.objectContaining({ text: "Genesis 1:1" }),
     );
     expect(latest?.bookmarks[0]?.id).toBe("bm-1");
+  });
+
+  it("creates library map via controller action", async () => {
+    (createLibraryMap as jest.Mock).mockResolvedValue({
+      id: "map-1",
+      bundleId: "bundle-1",
+      title: "Map 1",
+      tags: [],
+      createdAt: "2026-03-01T00:00:00.000Z",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    });
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setLibraryMapDraft({
+        bundleId: "bundle-1",
+        title: "Map 1",
+      });
+    });
+
+    await act(async () => {
+      await latest?.handleCreateLibraryMap();
+    });
+
+    await waitFor(() => {
+      expect(createLibraryMap).toHaveBeenCalledTimes(1);
+    });
+    expect(createLibraryMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: { bundleId: "bundle-1", title: "Map 1" },
+      }),
+    );
+    expect(latest?.libraryMaps[0]?.id).toBe("map-1");
+  });
+
+  it("deletes library map via controller action", async () => {
+    (deleteLibraryMap as jest.Mock).mockResolvedValue(undefined);
+    (fetchLibraryMaps as jest.Mock).mockResolvedValue([
+      {
+        id: "map-1",
+        bundleId: "bundle-1",
+        title: "Map 1",
+        tags: [],
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      await latest?.loadLibraryMaps();
+    });
+
+    expect(latest?.libraryMaps.length).toBe(1);
+
+    await act(async () => {
+      await latest?.handleDeleteLibraryMap("map-1");
+    });
+
+    await waitFor(() => {
+      expect(deleteLibraryMap).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "map-1" }),
+      );
+    });
+    expect(latest?.libraryMaps.length).toBe(0);
   });
 
   it("blocks bookmark creation when chapter exceeds book bounds", async () => {

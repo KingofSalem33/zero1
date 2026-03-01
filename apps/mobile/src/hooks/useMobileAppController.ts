@@ -11,13 +11,17 @@ import {
 import {
   createBookmark,
   createHighlightViaSync,
+  createLibraryMap,
   deleteBookmark,
   deleteHighlight,
+  deleteLibraryMap,
   fetchBookmarks,
   fetchHighlights,
   fetchLibraryConnections,
+  fetchLibraryMaps,
   fetchProtectedProbe,
   type LibraryConnectionItem,
+  type LibraryMapItem,
   type MobileBookmarkItem,
   type MobileHighlightItem,
   type ProtectedProbeResult,
@@ -44,6 +48,11 @@ export interface BookmarkDraftForm {
   book: string;
   chapter: string;
   verse: string;
+}
+
+export interface LibraryMapDraftForm {
+  bundleId: string;
+  title: string;
 }
 
 function parseVersesInput(value: string): number[] {
@@ -73,6 +82,13 @@ function createDefaultBookmarkDraft(): BookmarkDraftForm {
   };
 }
 
+function createDefaultLibraryMapDraft(): LibraryMapDraftForm {
+  return {
+    bundleId: "",
+    title: "",
+  };
+}
+
 export interface MobileAppController {
   session: Session | null;
   user: User | null;
@@ -86,9 +102,23 @@ export interface MobileAppController {
   probeResult: ProtectedProbeResult | null;
   probeError: string | null;
   libraryConnections: LibraryConnectionItem[];
+  libraryMaps: LibraryMapItem[];
   libraryLoading: boolean;
+  libraryMapsLoading: boolean;
   libraryError: string | null;
+  libraryMapsError: string | null;
   libraryLoadedAt: string | null;
+  libraryMapsLoadedAt: string | null;
+  libraryMapDraft: LibraryMapDraftForm;
+  setLibraryMapDraft: (
+    value:
+      | LibraryMapDraftForm
+      | ((current: LibraryMapDraftForm) => LibraryMapDraftForm),
+  ) => void;
+  libraryMapBundleSuggestions: string[];
+  selectLibraryMapBundleSuggestion: (bundleId: string) => void;
+  libraryMapMutationBusy: boolean;
+  libraryMapMutationError: string | null;
   bookmarks: MobileBookmarkItem[];
   bookmarksLoading: boolean;
   bookmarksError: string | null;
@@ -133,9 +163,12 @@ export interface MobileAppController {
   signOut: () => Promise<void>;
   runProbe: () => Promise<void>;
   loadLibraryConnections: () => Promise<void>;
+  loadLibraryMaps: () => Promise<void>;
   loadBookmarks: () => Promise<void>;
   loadHighlights: () => Promise<void>;
   refreshDashboard: () => Promise<void>;
+  handleCreateLibraryMap: () => Promise<void>;
+  handleDeleteLibraryMap: (id: string) => Promise<void>;
   handleCreateBookmark: () => Promise<void>;
   handleDeleteBookmark: (id: string) => Promise<void>;
   handleCreateHighlight: () => Promise<void>;
@@ -158,9 +191,22 @@ export function useMobileAppController(): MobileAppController {
   const [libraryConnections, setLibraryConnections] = useState<
     LibraryConnectionItem[]
   >([]);
+  const [libraryMaps, setLibraryMaps] = useState<LibraryMapItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryMapsLoading, setLibraryMapsLoading] = useState(false);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [libraryMapsError, setLibraryMapsError] = useState<string | null>(null);
   const [libraryLoadedAt, setLibraryLoadedAt] = useState<string | null>(null);
+  const [libraryMapsLoadedAt, setLibraryMapsLoadedAt] = useState<string | null>(
+    null,
+  );
+  const [libraryMapDraft, setLibraryMapDraft] = useState<LibraryMapDraftForm>(
+    createDefaultLibraryMapDraft(),
+  );
+  const [libraryMapMutationBusy, setLibraryMapMutationBusy] = useState(false);
+  const [libraryMapMutationError, setLibraryMapMutationError] = useState<
+    string | null
+  >(null);
   const [bookmarks, setBookmarks] = useState<MobileBookmarkItem[]>([]);
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
   const [bookmarksError, setBookmarksError] = useState<string | null>(null);
@@ -249,6 +295,27 @@ export function useMobileAppController(): MobileAppController {
 
     return "Book name not recognized. Use a full canonical book name.";
   }, [bookmarkDraft.book, bookmarkBookSuggestions]);
+  const libraryMapBundleSuggestions = useMemo(() => {
+    const query = libraryMapDraft.bundleId.trim().toLowerCase();
+    const candidates = Array.from(
+      new Set(
+        [
+          ...libraryConnections.map((item) => item.bundleId),
+          ...libraryMaps.map((item) => item.bundleId),
+        ]
+          .filter((value): value is string => Boolean(value && value.trim()))
+          .map((value) => value.trim()),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+
+    if (!query) {
+      return candidates.slice(0, 6);
+    }
+
+    return candidates
+      .filter((value) => value.toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [libraryConnections, libraryMaps, libraryMapDraft.bundleId]);
 
   useEffect(() => {
     if (!selectedHighlight) return;
@@ -272,6 +339,13 @@ export function useMobileAppController(): MobileAppController {
         chapter: nextChapter,
       };
     });
+  }
+
+  function selectLibraryMapBundleSuggestion(bundleId: string) {
+    setLibraryMapDraft((current) => ({
+      ...current,
+      bundleId,
+    }));
   }
 
   const authLabel = useMemo(() => {
@@ -353,6 +427,11 @@ export function useMobileAppController(): MobileAppController {
       setLibraryConnections([]);
       setLibraryError(null);
       setLibraryLoadedAt(null);
+      setLibraryMaps([]);
+      setLibraryMapsError(null);
+      setLibraryMapsLoadedAt(null);
+      setLibraryMapDraft(createDefaultLibraryMapDraft());
+      setLibraryMapMutationError(null);
       setBookmarks([]);
       setBookmarksError(null);
       setBookmarksLoadedAt(null);
@@ -541,6 +620,27 @@ export function useMobileAppController(): MobileAppController {
     }
   }
 
+  async function loadLibraryMaps() {
+    setLibraryMapsLoading(true);
+    setLibraryMapsError(null);
+    try {
+      const maps = await withAccessToken((accessToken) =>
+        fetchLibraryMaps({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+        }),
+      );
+      setLibraryMaps(maps);
+      setLibraryMapsLoadedAt(new Date().toISOString());
+    } catch (error) {
+      setLibraryMapsError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setLibraryMapsLoading(false);
+    }
+  }
+
   async function loadBookmarks() {
     setBookmarksLoading(true);
     setBookmarksError(null);
@@ -585,9 +685,69 @@ export function useMobileAppController(): MobileAppController {
     await Promise.all([
       runProbe(),
       loadLibraryConnections(),
+      loadLibraryMaps(),
       loadBookmarks(),
       loadHighlights(),
     ]);
+  }
+
+  async function handleCreateLibraryMap() {
+    const bundleId = libraryMapDraft.bundleId.trim();
+    const title = libraryMapDraft.title.trim();
+
+    if (!bundleId) {
+      setLibraryMapMutationError("Bundle ID is required to create a map.");
+      return;
+    }
+
+    setLibraryMapMutationBusy(true);
+    setLibraryMapMutationError(null);
+    try {
+      const created = await withAccessToken((accessToken) =>
+        createLibraryMap({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          payload: {
+            bundleId,
+            title: title.length > 0 ? title : undefined,
+          },
+        }),
+      );
+      setLibraryMaps((current) => [created, ...current]);
+      setLibraryMapsLoadedAt(new Date().toISOString());
+      setLibraryMapDraft((current) => ({
+        ...current,
+        title: "",
+      }));
+    } catch (error) {
+      setLibraryMapMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setLibraryMapMutationBusy(false);
+    }
+  }
+
+  async function handleDeleteLibraryMap(id: string) {
+    setLibraryMapMutationBusy(true);
+    setLibraryMapMutationError(null);
+    try {
+      await withAccessToken((accessToken) =>
+        deleteLibraryMap({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          id,
+        }),
+      );
+      setLibraryMaps((current) => current.filter((item) => item.id !== id));
+      setLibraryMapsLoadedAt(new Date().toISOString());
+    } catch (error) {
+      setLibraryMapMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setLibraryMapMutationBusy(false);
+    }
   }
 
   async function handleCreateBookmark() {
@@ -826,9 +986,19 @@ export function useMobileAppController(): MobileAppController {
     probeResult,
     probeError,
     libraryConnections,
+    libraryMaps,
     libraryLoading,
+    libraryMapsLoading,
     libraryError,
+    libraryMapsError,
     libraryLoadedAt,
+    libraryMapsLoadedAt,
+    libraryMapDraft,
+    setLibraryMapDraft,
+    libraryMapBundleSuggestions,
+    selectLibraryMapBundleSuggestion,
+    libraryMapMutationBusy,
+    libraryMapMutationError,
     bookmarks,
     bookmarksLoading,
     bookmarksError,
@@ -865,9 +1035,12 @@ export function useMobileAppController(): MobileAppController {
     signOut,
     runProbe,
     loadLibraryConnections,
+    loadLibraryMaps,
     loadBookmarks,
     loadHighlights,
     refreshDashboard,
+    handleCreateLibraryMap,
+    handleDeleteLibraryMap,
     handleCreateBookmark,
     handleDeleteBookmark,
     handleCreateHighlight,

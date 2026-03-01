@@ -85,6 +85,7 @@ Status: In progress
 - [x] Agent BT (Mobile White-Screen Triage): Run three-track diagnosis (runtime code path, Expo/EAS delivery path, Sentry startup path), apply the known-good white-screen fix set to this working branch, and re-validate mobile compatibility gates.
 - [x] Agent BY (iOS Preview Smoke): Install latest iOS preview build on physical device and validate startup + auth + bookmark + protected probe flows.
 - [x] Agent BZ (EAS Channel Hardening): Persist `expo-updates` config required for non-interactive channel-based iOS preview builds.
+- [x] Agent CA (Mobile Library Maps RW): Add authenticated mobile library map read/write flow (create/list/delete) to complete the first non-auth production feature slice beyond shell/probe mode.
 
 ### Execution Notes (2026-02-19)
 
@@ -1052,6 +1053,20 @@ Status: In progress
     - `#38` (`b128a34`) - "Add expo-updates config for non-interactive EAS channel builds"
   - Impact:
     - removes interactive prompt failure (`expo-updates package is missing`) during `eas build --profile preview`
+- Phase 2.7 mobile library maps read/write completed (Agent CA):
+  - Added authenticated map workflow to mobile Library route:
+    - list library maps
+    - create map from bundle ID + optional title
+    - delete map entries
+  - Added bundle ID suggestion chips in mobile map-create form using known bundle IDs from existing connections/maps.
+  - Files:
+    - `apps/mobile/src/hooks/useMobileAppController.ts`
+    - `apps/mobile/src/screens/DataListScreens.tsx`
+    - `apps/mobile/src/screens/common/EntityCards.tsx`
+    - `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx`
+  - Validation:
+    - `npm --prefix apps/mobile run typecheck` (pass)
+    - `npm --prefix apps/web run typecheck` (pass)
 - Verification passed:
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
