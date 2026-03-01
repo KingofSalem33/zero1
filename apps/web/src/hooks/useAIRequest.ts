@@ -44,6 +44,11 @@ export function useAIRequest() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const currentRequestId = ++requestIdRef.current;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 20000);
 
     try {
       const response = await fetch(`${API_URL}${endpoint}`, {
@@ -73,9 +78,15 @@ export function useAIRequest() {
 
       onSuccess(data);
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === "AbortError") return;
+      if (error instanceof Error && error.name === "AbortError") {
+        if (timedOut) {
+          onError("Request timed out. Please try again.");
+        }
+        return;
+      }
       onError("Unavailable right now.");
     } finally {
+      window.clearTimeout(timeoutId);
       if (currentRequestId === requestIdRef.current) {
         abortControllerRef.current = null;
       }
@@ -84,5 +95,3 @@ export function useAIRequest() {
 
   return { execute, abort };
 }
-
-

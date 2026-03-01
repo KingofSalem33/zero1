@@ -98,7 +98,10 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     )) as RunModelResult;
 
     // Extract the synopsis and enforce word count at sentence boundary
-    let synopsis = result.text || "Unable to generate synopsis.";
+    let synopsis =
+      typeof result.text === "string" && result.text.trim().length > 0
+        ? result.text.trim()
+        : "Unable to generate synopsis.";
     const words = synopsis.split(/\s+/);
     if (words.length > maxWords) {
       // Truncate at the last sentence-ending punctuation within the limit
