@@ -17,7 +17,7 @@ const mode = process.env.NODE_ENV || "development";
 const isProduction = mode === "production";
 const strictEnv = parseBoolean(
   process.env.EXPO_PUBLIC_STRICT_ENV,
-  isProduction,
+  false,
 );
 
 const rawApiUrl = process.env.EXPO_PUBLIC_API_URL || "";
@@ -39,15 +39,14 @@ if (!normalizedSupabaseUrl)
 if (!rawSupabaseAnonKey)
   missingRequiredVars.push("EXPO_PUBLIC_SUPABASE_ANON_KEY");
 
-if (strictEnv && missingRequiredVars.length > 0) {
-  throw new Error(
-    `[MOBILE ENV] Missing required environment variables: ${missingRequiredVars.join(", ")}.`,
-  );
-}
-
-if (!strictEnv && missingRequiredVars.length > 0) {
+if (missingRequiredVars.length > 0) {
+  if (strictEnv) {
+    throw new Error(
+      `[MOBILE ENV] Missing required environment variables: ${missingRequiredVars.join(", ")}.`,
+    );
+  }
   console.warn(
-    `[MOBILE ENV] Missing environment variables: ${missingRequiredVars.join(", ")}.`,
+    `[MOBILE ENV] Missing environment variables (continuing without strict env): ${missingRequiredVars.join(", ")}.`,
   );
 }
 
