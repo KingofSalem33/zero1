@@ -645,8 +645,10 @@ export function SemanticConnectionModal({
       setSaved(true);
       toast("Connection saved to Library", { type: "success", duration: 2500 });
     } catch (err) {
-      console.error("[SemanticConnectionModal] Save failed:", err);
       if (isAuthenticationRequiredError(err)) {
+        console.info(
+          "[SemanticConnectionModal] Save blocked: user not authenticated.",
+        );
         setSaveError(
           `Sign in required to save. Open ${WEB_SIGN_IN_PATH} then try again.`,
         );

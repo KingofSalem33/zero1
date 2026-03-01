@@ -352,8 +352,8 @@ const NarrativeMapComponent: React.FC<NarrativeMapProps> = ({
       setMapSaved(true);
       toast("Map saved to Library", { type: "success", duration: 2500 });
     } catch (error) {
-      console.error("[NarrativeMap] Save map failed:", error);
       if (isAuthenticationRequiredError(error)) {
+        console.info("[NarrativeMap] Save blocked: user not authenticated.");
         setMapSaveError(
           `Sign in required to save. Open ${WEB_SIGN_IN_PATH} then try again.`,
         );

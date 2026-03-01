@@ -943,10 +943,11 @@ export function LibraryView({
       setConnections(connectionsData as LibraryConnection[]);
       setMaps(mapsData as LibraryMap[]);
     } catch (err) {
-      console.error("Error loading library:", err);
       if (isAuthenticationRequiredError(err)) {
+        console.info("[LibraryView] Load blocked: user not authenticated.");
         setError("Sign in required to load Library");
       } else {
+        console.error("Error loading library:", err);
         setError("Failed to load library");
       }
     } finally {
