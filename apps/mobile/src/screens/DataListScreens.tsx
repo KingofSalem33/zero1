@@ -3,6 +3,7 @@ import {
   FlatList,
   Pressable,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useMobileApp } from "../context/MobileAppContext";
@@ -11,11 +12,21 @@ import {
   BookmarkCard,
   ConnectionCard,
   HighlightCard,
+  LibraryMapCard,
   formatRelativeDate,
 } from "./common/EntityCards";
 
 export function LibraryScreen() {
   const controller = useMobileApp();
+  const refreshing = controller.libraryLoading || controller.libraryMapsLoading;
+
+  async function handleRefreshLibrary() {
+    await Promise.all([
+      controller.loadLibraryConnections(),
+      controller.loadLibraryMaps(),
+    ]);
+  }
+
   return (
     <View style={styles.tabScreen}>
       <View style={styles.panel}>
@@ -23,21 +34,20 @@ export function LibraryScreen() {
           <View style={styles.flex1}>
             <Text style={styles.panelTitle}>Library Connections</Text>
             <Text style={styles.panelSubtitle}>
-              First production feature route on mobile. Data is pulled from the
-              same authenticated backend as desktop/web.
+              Authenticated connection and map workflows powered by the same
+              backend as desktop/web.
             </Text>
           </View>
           <Pressable
-            disabled={controller.libraryLoading || controller.busy}
-            onPress={() => void controller.loadLibraryConnections()}
+            disabled={refreshing || controller.busy}
+            onPress={() => void handleRefreshLibrary()}
             style={[
               styles.ghostButton,
-              (controller.libraryLoading || controller.busy) &&
-                styles.buttonDisabled,
+              (refreshing || controller.busy) && styles.buttonDisabled,
             ]}
           >
             <Text style={styles.ghostButtonLabel}>
-              {controller.libraryLoading ? "Loading..." : "Refresh"}
+              {refreshing ? "Loading..." : "Refresh"}
             </Text>
           </Pressable>
         </View>
@@ -54,8 +64,8 @@ export function LibraryScreen() {
         data={controller.libraryConnections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        refreshing={controller.libraryLoading}
-        onRefresh={() => void controller.loadLibraryConnections()}
+        refreshing={refreshing}
+        onRefresh={() => void handleRefreshLibrary()}
         renderItem={({ item }) => <ConnectionCard item={item} />}
         ListEmptyComponent={
           controller.libraryLoading ? (
@@ -72,6 +82,120 @@ export function LibraryScreen() {
               </Text>
             </View>
           )
+        }
+        ListFooterComponent={
+          <View style={styles.panel}>
+            <View style={styles.spaceBetweenRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.panelTitle}>Library Maps</Text>
+                <Text style={styles.panelSubtitle}>
+                  Create and manage map entries for your existing bundle IDs.
+                </Text>
+              </View>
+              <Pressable
+                disabled={controller.libraryMapsLoading || controller.busy}
+                onPress={() => void controller.loadLibraryMaps()}
+                style={[
+                  styles.ghostButton,
+                  (controller.libraryMapsLoading || controller.busy) &&
+                    styles.buttonDisabled,
+                ]}
+              >
+                <Text style={styles.ghostButtonLabel}>
+                  {controller.libraryMapsLoading ? "Loading..." : "Refresh"}
+                </Text>
+              </Pressable>
+            </View>
+            <TextInput
+              autoCapitalize="none"
+              placeholder="Bundle ID"
+              placeholderTextColor={T.colors.textMuted}
+              style={styles.input}
+              value={controller.libraryMapDraft.bundleId}
+              onChangeText={(value) =>
+                controller.setLibraryMapDraft((current) => ({
+                  ...current,
+                  bundleId: value,
+                }))
+              }
+            />
+            {controller.libraryMapBundleSuggestions.length > 0 ? (
+              <View style={styles.suggestionRow}>
+                {controller.libraryMapBundleSuggestions.map((bundleId) => (
+                  <Pressable
+                    key={bundleId}
+                    onPress={() =>
+                      controller.selectLibraryMapBundleSuggestion(bundleId)
+                    }
+                    style={styles.suggestionChip}
+                  >
+                    <Text style={styles.suggestionChipLabel}>{bundleId}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <TextInput
+              placeholder="Map title (optional)"
+              placeholderTextColor={T.colors.textMuted}
+              style={styles.input}
+              value={controller.libraryMapDraft.title}
+              onChangeText={(value) =>
+                controller.setLibraryMapDraft((current) => ({
+                  ...current,
+                  title: value,
+                }))
+              }
+            />
+            <View style={styles.row}>
+              <Pressable
+                disabled={controller.libraryMapMutationBusy || controller.busy}
+                onPress={() => void controller.handleCreateLibraryMap()}
+                style={[
+                  styles.primaryButton,
+                  (controller.libraryMapMutationBusy || controller.busy) &&
+                    styles.buttonDisabled,
+                ]}
+              >
+                <Text style={styles.primaryButtonLabel}>
+                  {controller.libraryMapMutationBusy ? "Saving..." : "Save map"}
+                </Text>
+              </Pressable>
+            </View>
+            {controller.libraryMapsError ? (
+              <Text style={styles.error}>{controller.libraryMapsError}</Text>
+            ) : null}
+            {controller.libraryMapMutationError ? (
+              <Text style={styles.error}>
+                {controller.libraryMapMutationError}
+              </Text>
+            ) : null}
+            {controller.libraryMapsLoadedAt ? (
+              <Text style={styles.caption}>
+                Last sync {formatRelativeDate(controller.libraryMapsLoadedAt)}
+              </Text>
+            ) : null}
+            {controller.libraryMaps.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>No maps yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Enter a bundle ID and save your first map.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.listContent}>
+                {controller.libraryMaps.map((map) => (
+                  <LibraryMapCard
+                    key={map.id}
+                    item={map}
+                    mutationBusy={controller.libraryMapMutationBusy}
+                    onDelete={() =>
+                      void controller.handleDeleteLibraryMap(map.id)
+                    }
+                  />
+                ))}
+              </View>
+            )}
+          </View>
         }
       />
     </View>

@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 import type {
   LibraryConnectionItem,
+  LibraryMapItem,
   MobileBookmarkItem,
   MobileHighlightItem,
 } from "../../lib/api";
@@ -115,5 +116,59 @@ export function HighlightCard({
         </Text>
       ) : null}
     </Pressable>
+  );
+}
+
+export function LibraryMapCard({
+  item,
+  mutationBusy,
+  onDelete,
+}: {
+  item: LibraryMapItem;
+  mutationBusy?: boolean;
+  onDelete?: () => void;
+}) {
+  return (
+    <View style={styles.featureCard}>
+      <View style={styles.connectionHeaderRow}>
+        <Text style={styles.connectionRoute} numberOfLines={1}>
+          {item.title?.trim() || "Untitled map"}
+        </Text>
+        <Text style={styles.metaPill}>Bundle {item.bundleId ?? "unknown"}</Text>
+      </View>
+      {item.note ? (
+        <Text style={styles.connectionNote} numberOfLines={3}>
+          Note: {item.note}
+        </Text>
+      ) : null}
+      <View style={styles.connectionMetaWrap}>
+        {item.bundleMeta?.anchorRef ? (
+          <Text style={styles.metaPill}>
+            Anchor {item.bundleMeta.anchorRef}
+          </Text>
+        ) : null}
+        {item.tags.length > 0 ? (
+          <Text style={styles.metaPill}>Tags {item.tags.join(", ")}</Text>
+        ) : null}
+      </View>
+      {item.updatedAt ? (
+        <Text style={styles.connectionTimestamp}>
+          Updated {formatRelativeDate(item.updatedAt)}
+        </Text>
+      ) : null}
+      {onDelete ? (
+        <View style={styles.row}>
+          <Pressable
+            disabled={mutationBusy}
+            onPress={onDelete}
+            style={[styles.dangerButton, mutationBusy && styles.buttonDisabled]}
+          >
+            <Text style={styles.dangerButtonLabel}>
+              {mutationBusy ? "Deleting..." : "Delete map"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
