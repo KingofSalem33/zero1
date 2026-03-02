@@ -27,6 +27,31 @@ const parseDotEnv = (relativePath) => {
   return values;
 };
 
+const parseBoolean = (value, defaultValue = false) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return defaultValue;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+};
+
+const parseCsv = (value) => {
+  if (!value || String(value).trim() === "") return [];
+  return String(value)
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const parseUrlHost = (value) => {
+  if (!value || String(value).trim() === "") return null;
+  try {
+    return new URL(String(value).trim()).host.toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
 const checks = [];
 let failed = 0;
 
@@ -44,6 +69,8 @@ try {
   const ios = expo.ios || {};
   const build = easJson.build || {};
   const submit = easJson.submit || {};
+  const productionBuild = build.production || {};
+  const productionEnv = productionBuild.env || {};
 
   record(
     "Bundle identifier configured",
@@ -59,8 +86,8 @@ try {
 
   record(
     "Production build profile exists",
-    Boolean(build.production),
-    build.production ? "ok" : "missing build.production",
+    Boolean(productionBuild),
+    productionBuild ? "ok" : "missing build.production",
   );
 
   record(
@@ -87,6 +114,75 @@ try {
     env.EXPO_PUBLIC_SUPABASE_ANON_KEY
       ? "configured"
       : "missing EXPO_PUBLIC_SUPABASE_ANON_KEY",
+  );
+
+  const pinnedWebAppUrl = productionEnv.EXPO_PUBLIC_WEB_APP_URL;
+  const localWebAppUrl = env.EXPO_PUBLIC_WEB_APP_URL;
+  const effectiveWebAppUrl = pinnedWebAppUrl || localWebAppUrl;
+  const effectiveWebHost = parseUrlHost(effectiveWebAppUrl);
+  const allowedHosts = parseCsv(
+    productionEnv.EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS ||
+      env.EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS,
+  );
+  const allowAnyHost = parseBoolean(
+    productionEnv.EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST ??
+      env.EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST,
+    false,
+  );
+  const webShellEnabled = parseBoolean(
+    productionEnv.EXPO_PUBLIC_ENABLE_WEB_SHELL ??
+      env.EXPO_PUBLIC_ENABLE_WEB_SHELL,
+    true,
+  );
+  const fallbackToNative = parseBoolean(
+    productionEnv.EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE ??
+      env.EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE,
+    false,
+  );
+
+  record(
+    "Production env pins web app URL",
+    Boolean(pinnedWebAppUrl),
+    pinnedWebAppUrl || "missing build.production.env.EXPO_PUBLIC_WEB_APP_URL",
+  );
+
+  record(
+    "Web app URL resolves to valid host",
+    Boolean(effectiveWebHost),
+    effectiveWebAppUrl || "missing EXPO_PUBLIC_WEB_APP_URL",
+  );
+
+  record(
+    "Web shell enabled for production",
+    webShellEnabled,
+    `EXPO_PUBLIC_ENABLE_WEB_SHELL=${String(
+      productionEnv.EXPO_PUBLIC_ENABLE_WEB_SHELL ??
+        env.EXPO_PUBLIC_ENABLE_WEB_SHELL,
+    )}`,
+  );
+
+  record(
+    "Web host included in allowed hosts",
+    Boolean(effectiveWebHost) && allowedHosts.includes(effectiveWebHost),
+    `host=${effectiveWebHost || "n/a"}, allowed=${allowedHosts.join(",") || "n/a"}`,
+  );
+
+  record(
+    "Allow-any-host disabled in production",
+    allowAnyHost === false,
+    `EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST=${String(
+      productionEnv.EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST ??
+        env.EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST,
+    )}`,
+  );
+
+  record(
+    "Fallback-to-native disabled for parity builds",
+    fallbackToNative === false,
+    `EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE=${String(
+      productionEnv.EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE ??
+        env.EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE,
+    )}`,
   );
 } catch (error) {
   console.error("[TestFlight Readiness] Fatal error:", error);

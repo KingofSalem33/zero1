@@ -18,7 +18,12 @@
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_WEB_APP_URL": "https://biblelot.vercel.app",
+        "EXPO_PUBLIC_ENABLE_WEB_SHELL": "true",
+        "EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS": "biblelot.vercel.app",
+        "EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST": "false",
+        "EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE": "false"
       }
     }
   },
