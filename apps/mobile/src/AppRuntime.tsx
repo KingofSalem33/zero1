@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
@@ -28,17 +28,24 @@ import { finishPerfSpan, startPerfSpan } from "./lib/perfTelemetry";
 
 WebBrowser.maybeCompleteAuthSession();
 const coldStartSpanId = startPerfSpan("cold_start_to_interactive");
+let coldStartMarked = false;
 
-function NativeAppRuntime() {
+function markColdStartInteractive(meta?: Record<string, unknown>) {
+  if (coldStartMarked) return;
+  coldStartMarked = true;
+  finishPerfSpan(coldStartSpanId, "success", meta);
+}
+
+function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
   const controller = useMobileAppController();
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      finishPerfSpan(coldStartSpanId, "success");
+      onInteractive();
     }, 0);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [onInteractive]);
 
   return (
     <View style={styles.safeArea}>
@@ -76,21 +83,34 @@ function NativeAppRuntime() {
 }
 
 export default function AppRuntime() {
+  const [forceNativeShell, setForceNativeShell] = useState(false);
+  const webShellEnabled = MOBILE_ENV.WEB_SHELL_ENABLED;
   const webAppUrl = MOBILE_ENV.WEB_APP_URL;
 
-  useEffect(() => {
-    if (!webAppUrl) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      finishPerfSpan(coldStartSpanId, "success", { mode: "web_shell" });
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [webAppUrl]);
-
-  if (webAppUrl) {
-    return <WebAppShellScreen webUrl={webAppUrl} />;
+  if (webShellEnabled && webAppUrl && !forceNativeShell) {
+    return (
+      <WebAppShellScreen
+        webUrl={webAppUrl}
+        webHost={MOBILE_ENV.WEB_APP_HOST}
+        loadTimeoutMs={MOBILE_ENV.WEB_SHELL_TIMEOUT_MS}
+        allowFallbackToNative={MOBILE_ENV.WEB_SHELL_FALLBACK_TO_NATIVE}
+        onFallbackToNative={() => {
+          setForceNativeShell(true);
+        }}
+        onInteractive={() => {
+          markColdStartInteractive({ mode: "web_shell" });
+        }}
+      />
+    );
   }
 
-  return <NativeAppRuntime />;
+  return (
+    <NativeAppRuntime
+      onInteractive={() => {
+        markColdStartInteractive({
+          mode: forceNativeShell ? "native_shell_fallback" : "native_shell",
+        });
+      }}
+    />
+  );
 }
