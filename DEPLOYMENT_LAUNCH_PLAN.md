@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-03-01
+Last updated: 2026-03-02
 Owner: Product + Engineering
 Status: In progress
 
@@ -1093,6 +1093,20 @@ Status: In progress
     - `apps/mobile/scripts/checkTestFlightReadiness.mjs`
   - Added runbook:
     - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
+- Phase 2.4 TestFlight beta cycle + triage stabilization completed (2026-03-02):
+  - iOS production/TestFlight build `18` validated as launch-stable after startup crash triage.
+  - Frontend deployment finalized on Vercel:
+    - `https://biblelot.vercel.app`
+  - Backend/frontend cross-origin policy corrected in Render:
+    - `CORS_ALLOWED_ORIGINS=https://biblelot.vercel.app,https://biblelot.com`
+  - Mobile web-shell parity mode enabled and routed to deployed frontend:
+    - `apps/mobile/src/AppRuntime.tsx`
+    - `apps/mobile/src/screens/WebAppShellScreen.tsx`
+    - EAS production env `EXPO_PUBLIC_WEB_APP_URL=https://biblelot.vercel.app`
+  - Mobile auth/session hardening for expired-token recovery completed:
+    - `apps/mobile/src/hooks/useMobileAppController.ts` now refreshes session and retries protected requests once on 401/expired-token errors.
+  - Operator verification:
+    - Confirmed frontend is successfully speaking to backend in live environment.
 
 ## 1) Launch Objective
 
@@ -1286,7 +1300,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 - [x] Performance profiling on real devices
 - [ ] Push notifications (if retained in product scope)
 - [x] Crash/error instrumentation
-- [ ] TestFlight beta cycle + bug triage
+- [x] TestFlight beta cycle + bug triage
 
 ### Phase 2 Exit Criteria
 
