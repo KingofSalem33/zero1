@@ -40,7 +40,6 @@ export function WebAppShellScreen({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loadError, setLoadError] = useState<WebShellError | null>(null);
   const [lastHttpStatus, setLastHttpStatus] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [isInteractive, setIsInteractive] = useState(false);
 
   const clearLoadTimeout = useCallback(() => {
@@ -53,7 +52,6 @@ export function WebAppShellScreen({
   const startLoadTimeout = useCallback(() => {
     clearLoadTimeout();
     timeoutRef.current = setTimeout(() => {
-      setIsLoading(false);
       setLoadError({
         type: "timeout",
         message: `Web shell load timed out after ${Math.round(loadTimeoutMs / 1000)}s.`,
@@ -79,7 +77,6 @@ export function WebAppShellScreen({
     setLoadError(null);
     setLastHttpStatus(null);
     setIsInteractive(false);
-    setIsLoading(true);
     startLoadTimeout();
     webViewRef.current?.reload();
   }, [startLoadTimeout]);
@@ -136,19 +133,16 @@ export function WebAppShellScreen({
       )}
       onLoadStart={() => {
         setLoadError(null);
-        setIsLoading(true);
         startLoadTimeout();
       }}
       onLoadEnd={() => {
         clearLoadTimeout();
-        setIsLoading(false);
       }}
       onLoad={() => {
         markInteractive();
       }}
       onError={(event) => {
         clearLoadTimeout();
-        setIsLoading(false);
         const description =
           event.nativeEvent.description || "Unknown WebView error.";
         setLoadError({
@@ -160,7 +154,6 @@ export function WebAppShellScreen({
       }}
       onHttpError={(event) => {
         clearLoadTimeout();
-        setIsLoading(false);
         setLastHttpStatus(event.nativeEvent.statusCode);
         setLoadError({
           type: "http",
