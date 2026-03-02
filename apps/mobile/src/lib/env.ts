@@ -59,8 +59,7 @@ const rawWebAppAllowedHosts =
   process.env.EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS || "biblelot.vercel.app";
 const rawWebShellFallbackToNative =
   process.env.EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE || "";
-const rawWebShellTimeoutMs =
-  process.env.EXPO_PUBLIC_WEB_SHELL_TIMEOUT_MS || "";
+const rawWebShellTimeoutMs = process.env.EXPO_PUBLIC_WEB_SHELL_TIMEOUT_MS || "";
 
 const normalizedApiUrl = trimTrailingSlashes(rawApiUrl);
 const normalizedSupabaseUrl = trimTrailingSlashes(rawSupabaseUrl);
@@ -78,9 +77,20 @@ const webShellEnabledRequested = parseBoolean(
   rawEnableWebShell,
   normalizedWebAppUrl.length > 0,
 );
-const webShellAllowAnyHost = parseBoolean(rawWebShellAllowAnyHost, !isProduction);
-const webShellFallbackToNative = parseBoolean(rawWebShellFallbackToNative, true);
-const webShellTimeoutMs = parseNumber(rawWebShellTimeoutMs, 15000, 3000, 120000);
+const webShellAllowAnyHost = parseBoolean(
+  rawWebShellAllowAnyHost,
+  !isProduction,
+);
+const webShellFallbackToNative = parseBoolean(
+  rawWebShellFallbackToNative,
+  true,
+);
+const webShellTimeoutMs = parseNumber(
+  rawWebShellTimeoutMs,
+  15000,
+  3000,
+  120000,
+);
 
 let webShellEnabled = webShellEnabledRequested;
 if (webShellEnabledRequested && !normalizedWebAppUrl) {
