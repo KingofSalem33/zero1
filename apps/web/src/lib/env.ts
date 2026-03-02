@@ -1,4 +1,7 @@
-function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
+function parseBoolean(
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean {
   if (value === undefined || value === null || value.trim().length === 0) {
     return defaultValue;
   }
@@ -22,7 +25,10 @@ const rawApiUrl =
 const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
 const rawSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN || "";
-const rawMagicLinkRedirectTo = import.meta.env.VITE_MAGIC_LINK_REDIRECT_TO || "";
+const rawMagicLinkRedirectTo =
+  import.meta.env.VITE_MAGIC_LINK_REDIRECT_TO || "";
+const rawEnableGoogleOAuth = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH || "";
+const rawEnableAppleOAuth = import.meta.env.VITE_ENABLE_APPLE_OAUTH || "";
 
 const normalizedApiUrl = trimTrailingSlashes(rawApiUrl);
 const normalizedSupabaseUrl = trimTrailingSlashes(rawSupabaseUrl);
@@ -53,4 +59,6 @@ export const WEB_ENV = {
   SUPABASE_ANON_KEY: rawSupabaseAnonKey,
   SENTRY_DSN: sentryDsn,
   MAGIC_LINK_REDIRECT_TO: rawMagicLinkRedirectTo,
+  ENABLE_GOOGLE_OAUTH: parseBoolean(rawEnableGoogleOAuth, true),
+  ENABLE_APPLE_OAUTH: parseBoolean(rawEnableAppleOAuth, true),
 };

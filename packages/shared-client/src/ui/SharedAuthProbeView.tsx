@@ -21,6 +21,8 @@ interface SharedAuthProbeViewProps {
   strictEnv: boolean;
   runtimeVersionLabel?: string;
   magicLinkRedirectTo?: string;
+  enableGoogleOAuth?: boolean;
+  enableAppleOAuth?: boolean;
   sessionPersistenceLabel?: string;
   supabase: SupabaseClient;
 }
@@ -78,6 +80,8 @@ export function SharedAuthProbeView({
   strictEnv,
   runtimeVersionLabel,
   magicLinkRedirectTo,
+  enableGoogleOAuth,
+  enableAppleOAuth,
   sessionPersistenceLabel,
   supabase,
 }: SharedAuthProbeViewProps) {
@@ -115,6 +119,19 @@ export function SharedAuthProbeView({
       }),
     [lastTokenRefreshAt, session, strictEnv, tokenRefreshCount, user],
   );
+  const oauthRedirectTo = useMemo(() => {
+    if (magicLinkRedirectTo && magicLinkRedirectTo.trim().length > 0) {
+      return magicLinkRedirectTo.trim();
+    }
+    const runtimeLocation = (globalThis as { location?: { origin?: string } })
+      .location;
+    if (runtimeLocation?.origin) {
+      return `${runtimeLocation.origin}/ops/shared-probe`;
+    }
+    return undefined;
+  }, [magicLinkRedirectTo]);
+  const showGoogleOAuth = enableGoogleOAuth ?? true;
+  const showAppleOAuth = enableAppleOAuth ?? true;
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -193,6 +210,35 @@ export function SharedAuthProbeView({
       }
 
       setAuthInfo("Magic link sent. Check your email to continue sign-in.");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signInWithOAuth(provider: "google" | "apple") {
+    setBusy(true);
+    setAuthError(null);
+    setAuthInfo(null);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        ...(oauthRedirectTo
+          ? {
+              options: {
+                redirectTo: oauthRedirectTo,
+              },
+            }
+          : {}),
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const label = provider === "google" ? "Google" : "Apple";
+      setAuthInfo(`Redirecting to ${label} sign-in...`);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -297,6 +343,34 @@ export function SharedAuthProbeView({
             >
               Send magic link
             </button>
+            {showGoogleOAuth || showAppleOAuth ? (
+              <div style={{ marginTop: 8 }}>
+                {showGoogleOAuth ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void signInWithOAuth("google")}
+                    style={{
+                      ...buttonStyle,
+                      background: "#2563eb",
+                      marginRight: 8,
+                    }}
+                  >
+                    Continue with Google
+                  </button>
+                ) : null}
+                {showAppleOAuth ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void signInWithOAuth("apple")}
+                    style={{ ...buttonStyle, background: "#111827" }}
+                  >
+                    Continue with Apple
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </form>
         ) : (
           <button

@@ -11,6 +11,8 @@ export default function SharedProbeRoute() {
         strictEnv={WEB_ENV.STRICT_ENV}
         runtimeVersionLabel={`Web (${WEB_ENV.MODE})`}
         magicLinkRedirectTo={WEB_ENV.MAGIC_LINK_REDIRECT_TO || undefined}
+        enableGoogleOAuth={WEB_ENV.ENABLE_GOOGLE_OAUTH}
+        enableAppleOAuth={WEB_ENV.ENABLE_APPLE_OAUTH}
         supabase={supabase}
       />
     </div>
