@@ -1309,7 +1309,7 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 #### 2.5.1 Web-Shell Stabilization (Current Live Path)
 
-- [ ] Lock production mobile web-shell URL and fallback strategy (`EXPO_PUBLIC_WEB_APP_URL`)
+- [x] Lock production mobile web-shell URL and fallback strategy (`EXPO_PUBLIC_WEB_APP_URL`)
 - [ ] Add explicit in-app web-shell diagnostics panel (host, HTTP status, last load error)
 - [ ] Add app-side handling for offline/timeout/server-unreachable states in `WebAppShellScreen`
 - [ ] Validate auth/session continuity between WebView shell and backend APIs on real devices

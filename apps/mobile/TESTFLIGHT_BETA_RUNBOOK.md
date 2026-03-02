@@ -13,6 +13,13 @@ Run the Phase 2.4 TestFlight beta cycle with repeatable commands and clear pass/
   - `EXPO_PUBLIC_API_URL`
   - `EXPO_PUBLIC_SUPABASE_URL`
   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
+  - `EXPO_PUBLIC_WEB_APP_URL=https://biblelot.vercel.app`
+- Production profile pins web-shell vars in `apps/mobile/eas.json`:
+  - `EXPO_PUBLIC_WEB_APP_URL`
+  - `EXPO_PUBLIC_ENABLE_WEB_SHELL=true`
+  - `EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS=biblelot.vercel.app`
+  - `EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST=false`
+  - `EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE=false`
 
 ## Step 1: Readiness Check
 
@@ -25,6 +32,7 @@ npm --prefix apps/mobile run phase2:testflight:check
 Expected:
 
 - All checks show `PASS`.
+- `EXPO_PUBLIC_WEB_APP_URL` resolves to `biblelot.vercel.app`.
 
 ## Step 2: Build Production iOS Artifact
 
