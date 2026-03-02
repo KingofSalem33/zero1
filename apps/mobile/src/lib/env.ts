@@ -9,6 +9,32 @@ function parseBoolean(
   return normalized === "1" || normalized === "true";
 }
 
+function parseCsv(value: string | undefined): string[] {
+  if (!value || value.trim().length === 0) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+}
+
+function parseNumber(
+  value: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number {
+  if (!value || value.trim().length === 0) {
+    return defaultValue;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
 function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
 }
@@ -26,10 +52,71 @@ const rawEnableGoogleOAuth = process.env.EXPO_PUBLIC_ENABLE_GOOGLE_OAUTH || "";
 const rawEnableAppleOAuth = process.env.EXPO_PUBLIC_ENABLE_APPLE_OAUTH || "";
 const rawSentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN || "";
 const rawWebAppUrl = process.env.EXPO_PUBLIC_WEB_APP_URL || "";
+const rawEnableWebShell = process.env.EXPO_PUBLIC_ENABLE_WEB_SHELL || "";
+const rawWebShellAllowAnyHost =
+  process.env.EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST || "";
+const rawWebAppAllowedHosts =
+  process.env.EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS || "biblelot.vercel.app";
+const rawWebShellFallbackToNative =
+  process.env.EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE || "";
+const rawWebShellTimeoutMs = process.env.EXPO_PUBLIC_WEB_SHELL_TIMEOUT_MS || "";
 
 const normalizedApiUrl = trimTrailingSlashes(rawApiUrl);
 const normalizedSupabaseUrl = trimTrailingSlashes(rawSupabaseUrl);
 const normalizedWebAppUrl = trimTrailingSlashes(rawWebAppUrl);
+const webAppHost = (() => {
+  if (!normalizedWebAppUrl) return "";
+  try {
+    return new URL(normalizedWebAppUrl).host.toLowerCase();
+  } catch {
+    return "";
+  }
+})();
+const webAppAllowedHosts = parseCsv(rawWebAppAllowedHosts);
+const webShellEnabledRequested = parseBoolean(
+  rawEnableWebShell,
+  normalizedWebAppUrl.length > 0,
+);
+const webShellAllowAnyHost = parseBoolean(
+  rawWebShellAllowAnyHost,
+  !isProduction,
+);
+const webShellFallbackToNative = parseBoolean(
+  rawWebShellFallbackToNative,
+  true,
+);
+const webShellTimeoutMs = parseNumber(
+  rawWebShellTimeoutMs,
+  15000,
+  3000,
+  120000,
+);
+
+let webShellEnabled = webShellEnabledRequested;
+if (webShellEnabledRequested && !normalizedWebAppUrl) {
+  webShellEnabled = false;
+  console.warn(
+    "[MOBILE WEB SHELL] Disabled because EXPO_PUBLIC_WEB_APP_URL is not set.",
+  );
+}
+if (webShellEnabledRequested && normalizedWebAppUrl && !webAppHost) {
+  webShellEnabled = false;
+  console.warn(
+    `[MOBILE WEB SHELL] Disabled because EXPO_PUBLIC_WEB_APP_URL is invalid: ${normalizedWebAppUrl}`,
+  );
+}
+if (
+  webShellEnabled &&
+  isProduction &&
+  !webShellAllowAnyHost &&
+  webAppAllowedHosts.length > 0 &&
+  !webAppAllowedHosts.includes(webAppHost)
+) {
+  webShellEnabled = false;
+  console.warn(
+    `[MOBILE WEB SHELL] Disabled because host "${webAppHost}" is not in EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS.`,
+  );
+}
 
 const missingRequiredVars: string[] = [];
 if (!normalizedApiUrl) missingRequiredVars.push("EXPO_PUBLIC_API_URL");
@@ -61,4 +148,10 @@ export const MOBILE_ENV = {
   ENABLE_APPLE_OAUTH: parseBoolean(rawEnableAppleOAuth, false),
   SENTRY_DSN: rawSentryDsn,
   WEB_APP_URL: normalizedWebAppUrl,
+  WEB_APP_HOST: webAppHost,
+  WEB_SHELL_ENABLED: webShellEnabled,
+  WEB_SHELL_ALLOWED_HOSTS: webAppAllowedHosts,
+  WEB_SHELL_ALLOW_ANY_HOST: webShellAllowAnyHost,
+  WEB_SHELL_FALLBACK_TO_NATIVE: webShellFallbackToNative,
+  WEB_SHELL_TIMEOUT_MS: webShellTimeoutMs,
 };

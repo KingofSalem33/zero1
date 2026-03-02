@@ -1302,6 +1302,45 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 - [x] Crash/error instrumentation
 - [x] TestFlight beta cycle + bug triage
 
+### 2.5 Mobile Productization (Post-Stabilization)
+
+Target: 2-4 weeks
+Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `native-first`) and measurable quality gates.
+
+#### 2.5.1 Web-Shell Stabilization (Current Live Path)
+
+- [ ] Lock production mobile web-shell URL and fallback strategy (`EXPO_PUBLIC_WEB_APP_URL`)
+- [ ] Add explicit in-app web-shell diagnostics panel (host, HTTP status, last load error)
+- [ ] Add app-side handling for offline/timeout/server-unreachable states in `WebAppShellScreen`
+- [ ] Validate auth/session continuity between WebView shell and backend APIs on real devices
+- [ ] Capture 3-day crash-free/launch-success baseline from TestFlight cohort
+
+#### 2.5.2 Native Recovery Path (Parallel Track)
+
+- [ ] Define native parity scope for v1 (auth, library, highlights, maps, chat entry points)
+- [ ] Split native screens into production-grade route groups (Home, Library, Highlights, Account)
+- [ ] Add native UX parity checklist against current web flows (screen-by-screen)
+- [ ] Decide keep/deprecate plan for web-shell mode after native parity milestone
+
+#### 2.5.3 Release and Observability Hardening
+
+- [ ] Add mobile-specific production smoke script (`launch -> auth -> library load -> map save`)
+- [ ] Add structured mobile release notes template per TestFlight build
+- [ ] Add dashboard links for mobile crash, API error, and auth failure triage in runbook
+- [ ] Define rollback trigger thresholds for mobile builds (startup crash rate, 401 spike, blank-screen rate)
+
+#### 2.5.4 Beta Operations
+
+- [ ] Expand TestFlight internal group with scripted verification steps
+- [ ] Run two full beta rounds and triage all P0/P1 issues to zero
+- [ ] Tag each beta build with pass/fail matrix evidence in deployment notes
+
+#### 2.5.5 Phase 2.5 Exit Criteria
+
+- [ ] Mobile launch success rate and crash-free session rate meet target thresholds
+- [ ] Auth + library/map/highlight core flows pass on latest TestFlight build
+- [ ] Product direction chosen and documented for Phase 2.6 (`web-shell-first` or `native-first`)
+
 ### Phase 2 Exit Criteria
 
 - [ ] Successful Apple review submission readiness
@@ -1401,6 +1440,9 @@ Recommended status labels:
 
 ## 11) Immediate Next Actions (This Week)
 
+- [ ] Execute Phase 2.5.1 web-shell stabilization checklist on current TestFlight build
+- [ ] Decide and document Phase 2.5 product direction (`web-shell-first` vs `native-first`)
+- [ ] Run one full internal beta verification round with evidence attached
 - [ ] Approve this plan as source of truth
 - [ ] Open Phase 0 epic with sub-tasks by section 0.1-0.4
 - [x] Start with route/auth hardening for `library` and `bookmarks`
