@@ -5,31 +5,121 @@ import {
   Text,
   View,
 } from "react-native";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WebView } from "react-native-webview";
 import type { WebView as WebViewType } from "react-native-webview";
 
-interface WebAppShellScreenProps {
-  webUrl: string;
+type WebShellErrorType = "network" | "http" | "timeout";
+
+interface WebShellError {
+  type: WebShellErrorType;
+  message: string;
+  url?: string;
+  statusCode?: number;
+  occurredAtIso: string;
 }
 
-export function WebAppShellScreen({ webUrl }: WebAppShellScreenProps) {
+interface WebAppShellScreenProps {
+  webUrl: string;
+  webHost: string;
+  loadTimeoutMs: number;
+  allowFallbackToNative: boolean;
+  onFallbackToNative?: () => void;
+  onInteractive?: () => void;
+}
+
+export function WebAppShellScreen({
+  webUrl,
+  webHost,
+  loadTimeoutMs,
+  allowFallbackToNative,
+  onFallbackToNative,
+  onInteractive,
+}: WebAppShellScreenProps) {
   const webViewRef = useRef<WebViewType>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [loadError, setLoadError] = useState<WebShellError | null>(null);
+  const [lastHttpStatus, setLastHttpStatus] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInteractive, setIsInteractive] = useState(false);
+
+  const clearLoadTimeout = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const startLoadTimeout = useCallback(() => {
+    clearLoadTimeout();
+    timeoutRef.current = setTimeout(() => {
+      setIsLoading(false);
+      setLoadError({
+        type: "timeout",
+        message: `Web shell load timed out after ${Math.round(loadTimeoutMs / 1000)}s.`,
+        url: webUrl,
+        occurredAtIso: new Date().toISOString(),
+      });
+    }, loadTimeoutMs);
+  }, [clearLoadTimeout, loadTimeoutMs, webUrl]);
+
+  useEffect(() => {
+    return () => {
+      clearLoadTimeout();
+    };
+  }, [clearLoadTimeout]);
+
+  const markInteractive = useCallback(() => {
+    if (isInteractive) return;
+    setIsInteractive(true);
+    onInteractive?.();
+  }, [isInteractive, onInteractive]);
 
   const handleReload = useCallback(() => {
     setLoadError(null);
+    setLastHttpStatus(null);
+    setIsInteractive(false);
+    setIsLoading(true);
+    startLoadTimeout();
     webViewRef.current?.reload();
-  }, []);
+  }, [startLoadTimeout]);
+
+  const diagnostics = useMemo(
+    () => [
+      `Host: ${webHost || "unknown"}`,
+      `URL: ${webUrl}`,
+      `Timeout: ${loadTimeoutMs}ms`,
+      `Last HTTP: ${lastHttpStatus ?? "n/a"}`,
+      `Last Error At: ${loadError?.occurredAtIso ?? "n/a"}`,
+    ],
+    [webHost, webUrl, loadTimeoutMs, lastHttpStatus, loadError?.occurredAtIso],
+  );
 
   if (loadError) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorTitle}>Web App Load Failed</Text>
-        <Text style={styles.errorMessage}>{loadError}</Text>
-        <Pressable onPress={handleReload} style={styles.reloadButton}>
-          <Text style={styles.reloadButtonLabel}>Retry</Text>
-        </Pressable>
+        <Text style={styles.errorMessage}>{loadError.message}</Text>
+        <View style={styles.diagnosticsPanel}>
+          {diagnostics.map((line) => (
+            <Text key={line} style={styles.diagnosticsLine}>
+              {line}
+            </Text>
+          ))}
+        </View>
+        <View style={styles.buttonRow}>
+          <Pressable onPress={handleReload} style={styles.reloadButton}>
+            <Text style={styles.reloadButtonLabel}>Retry</Text>
+          </Pressable>
+          {allowFallbackToNative && onFallbackToNative ? (
+            <Pressable
+              onPress={onFallbackToNative}
+              style={styles.fallbackButton}
+            >
+              <Text style={styles.fallbackButtonLabel}>Use Native Shell</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     );
   }
@@ -44,15 +134,41 @@ export function WebAppShellScreen({ webUrl }: WebAppShellScreenProps) {
           <ActivityIndicator />
         </View>
       )}
+      onLoadStart={() => {
+        setLoadError(null);
+        setIsLoading(true);
+        startLoadTimeout();
+      }}
+      onLoadEnd={() => {
+        clearLoadTimeout();
+        setIsLoading(false);
+      }}
+      onLoad={() => {
+        markInteractive();
+      }}
       onError={(event) => {
+        clearLoadTimeout();
+        setIsLoading(false);
         const description =
-          event.nativeEvent.description || "Unknown webview error.";
-        setLoadError(description);
+          event.nativeEvent.description || "Unknown WebView error.";
+        setLoadError({
+          type: "network",
+          message: description,
+          url: event.nativeEvent.url || webUrl,
+          occurredAtIso: new Date().toISOString(),
+        });
       }}
       onHttpError={(event) => {
-        setLoadError(
-          `HTTP ${event.nativeEvent.statusCode} while loading ${event.nativeEvent.url}`,
-        );
+        clearLoadTimeout();
+        setIsLoading(false);
+        setLastHttpStatus(event.nativeEvent.statusCode);
+        setLoadError({
+          type: "http",
+          message: `HTTP ${event.nativeEvent.statusCode} while loading ${event.nativeEvent.url}`,
+          url: event.nativeEvent.url,
+          statusCode: event.nativeEvent.statusCode,
+          occurredAtIso: new Date().toISOString(),
+        });
       }}
     />
   );
@@ -81,16 +197,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     color: "#334155",
-    marginBottom: 16,
+    marginBottom: 14,
+  },
+  diagnosticsPanel: {
+    width: "100%",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#cbd5e1",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14,
+    backgroundColor: "#f8fafc",
+  },
+  diagnosticsLine: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#0f172a",
+    fontFamily: "monospace",
+  },
+  buttonRow: {
+    width: "100%",
+    gap: 10,
   },
   reloadButton: {
     backgroundColor: "#111827",
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 10,
+    alignItems: "center",
   },
   reloadButtonLabel: {
     color: "#ffffff",
+    fontWeight: "600",
+  },
+  fallbackButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  fallbackButtonLabel: {
+    color: "#0f172a",
     fontWeight: "600",
   },
 });
