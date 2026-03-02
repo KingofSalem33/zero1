@@ -13,6 +13,9 @@
     "eas:init": "npx eas-cli init",
     "eas:build:ios:dev": "npx eas-cli build --platform ios --profile development",
     "eas:build:ios:preview": "npx eas-cli build --platform ios --profile preview",
+    "eas:build:ios:prod": "npx eas-cli build --platform ios --profile production",
+    "eas:submit:ios:prod": "npx eas-cli submit --platform ios --profile production --latest",
+    "phase2:testflight:check": "node scripts/checkTestFlightReadiness.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest --config jest.config.cjs --runInBand",
     "phase2:core-validation": "node scripts/runPhase21CoreFeatureValidation.mjs"
@@ -27,6 +30,7 @@
     "@supabase/supabase-js": "^2.58.0",
     "@zero1/shared": "file:../../packages/shared",
     "expo": "~54.0.33",
+    "expo-apple-authentication": "~8.0.7",
     "expo-dev-client": "~6.0.20",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.16",
@@ -38,7 +42,8 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-url-polyfill": "^2.0.0",
-    "react-native-web": "^0.21.0"
+    "react-native-web": "^0.21.0",
+    "react-native-webview": "^13.16.1"
   },
   "devDependencies": {
     "@testing-library/jest-native": "^5.4.3",

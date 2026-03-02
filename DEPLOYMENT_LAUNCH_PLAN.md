@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-02-28
+Last updated: 2026-03-02
 Owner: Product + Engineering
 Status: In progress
 
@@ -86,6 +86,7 @@ Status: In progress
 - [x] Agent BY (iOS Preview Smoke): Install latest iOS preview build on physical device and validate startup + auth + bookmark + protected probe flows.
 - [x] Agent BZ (EAS Channel Hardening): Persist `expo-updates` config required for non-interactive channel-based iOS preview builds.
 - [x] Agent CA (Mobile Library Maps RW): Add authenticated mobile library map read/write flow (create/list/delete) to complete the first non-auth production feature slice beyond shell/probe mode.
+- [x] Agent CB (Mobile Release Ops): Add production iOS EAS build/submit scripts plus TestFlight readiness check + runbook to execute Phase 2.4 beta cycle methodically.
 
 ### Execution Notes (2026-02-19)
 
@@ -1072,6 +1073,40 @@ Status: In progress
   - `npm --prefix apps/api run build`
   - `npm --prefix apps/web run typecheck`
   - `npm --prefix apps/web run build`
+- Post-deploy production verification completed (2026-03-01):
+  - Live API readiness checks passed against `https://biblelot-api.onrender.com`:
+    - `GET /health` -> `200`
+    - `GET /api/health/db` -> `200`
+    - CORS preflight for `http://localhost:5173` -> `204`
+  - Endpoint probes passed:
+    - `POST /api/synopsis` -> `200` with synopsis payload
+    - `GET /api/library/connections` without bearer token -> `401` (expected)
+  - Release cut:
+    - GitHub release/tag `v1.0.0-beta.1` created targeting `biblelot`
+    - Release URL: `https://github.com/KingofSalem33/zero1/releases/tag/v1.0.0-beta.1`
+- Phase 2.4 TestFlight execution tooling completed (2026-03-01):
+  - Added mobile package scripts:
+    - `eas:build:ios:prod`
+    - `eas:submit:ios:prod`
+    - `phase2:testflight:check`
+  - Added readiness checker script:
+    - `apps/mobile/scripts/checkTestFlightReadiness.mjs`
+  - Added runbook:
+    - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
+- Phase 2.4 TestFlight beta cycle + triage stabilization completed (2026-03-02):
+  - iOS production/TestFlight build `18` validated as launch-stable after startup crash triage.
+  - Frontend deployment finalized on Vercel:
+    - `https://biblelot.vercel.app`
+  - Backend/frontend cross-origin policy corrected in Render:
+    - `CORS_ALLOWED_ORIGINS=https://biblelot.vercel.app,https://biblelot.com`
+  - Mobile web-shell parity mode enabled and routed to deployed frontend:
+    - `apps/mobile/src/AppRuntime.tsx`
+    - `apps/mobile/src/screens/WebAppShellScreen.tsx`
+    - EAS production env `EXPO_PUBLIC_WEB_APP_URL=https://biblelot.vercel.app`
+  - Mobile auth/session hardening for expired-token recovery completed:
+    - `apps/mobile/src/hooks/useMobileAppController.ts` now refreshes session and retries protected requests once on 401/expired-token errors.
+  - Operator verification:
+    - Confirmed frontend is successfully speaking to backend in live environment.
 
 ## 1) Launch Objective
 
@@ -1265,7 +1300,7 @@ Exit gate: TestFlight-ready build with world-class auth and core UX.
 - [x] Performance profiling on real devices
 - [ ] Push notifications (if retained in product scope)
 - [x] Crash/error instrumentation
-- [ ] TestFlight beta cycle + bug triage
+- [x] TestFlight beta cycle + bug triage
 
 ### Phase 2 Exit Criteria
 
