@@ -5,9 +5,7 @@ const AUTH_REQUIRED_HINTS = [
   "not authenticated",
 ];
 
-// Keep auth-required redirects on root so sign-in flow does not depend on
-// deep-link route rewrites at the CDN edge.
-export const WEB_SIGN_IN_PATH = "/";
+export const WEB_SIGN_IN_PATH = "/ops/shared-probe";
 
 export function isAuthenticationRequiredError(error: unknown): boolean {
   if (error instanceof Error) {
