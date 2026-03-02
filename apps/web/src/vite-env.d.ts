@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_DSN?: string;
   readonly VITE_STRICT_ENV?: string;
   readonly VITE_MAGIC_LINK_REDIRECT_TO?: string;
+  readonly VITE_ENABLE_GOOGLE_OAUTH?: string;
+  readonly VITE_ENABLE_APPLE_OAUTH?: string;
 }
 
 interface ImportMeta {
