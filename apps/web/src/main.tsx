@@ -6,6 +6,8 @@ import "./index.css";
 import { router } from "./router.tsx";
 import { AuthProvider } from "./contexts/AuthContext.tsx";
 import { WEB_ENV } from "./lib/env";
+import { supabase } from "./lib/supabase";
+import { installNativeAuthBridge } from "./lib/nativeAuthBridge";
 
 const sentryDsn = WEB_ENV.SENTRY_DSN;
 const sentryEnabled = WEB_ENV.IS_PRODUCTION && Boolean(sentryDsn);
@@ -25,6 +27,8 @@ Sentry.init({
   replaysSessionSampleRate: 0.05,
   replaysOnErrorSampleRate: 1.0,
 });
+
+installNativeAuthBridge(supabase);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
