@@ -1127,6 +1127,12 @@ Status: In progress
     - `apps/mobile/TESTFLIGHT_RELEASE_NOTES_TEMPLATE.md`
   - Logged build-specific TestFlight release evidence for build `18`:
     - `apps/mobile/reports/testflight-release-notes-build18.md`
+  - Logged build-specific TestFlight release evidence for build `25`:
+    - `apps/mobile/reports/testflight-release-notes-build25.md`
+  - Beta round evidence update (2026-03-03):
+    - TestFlight build `25` smoke gate passed:
+      - `apps/mobile/reports/mobileProdSmoke-build25.json`
+    - Core matrix passed (`launch`, `auth`, `library`, `map`) with no P0/P1 regressions recorded.
   - Expanded TestFlight runbook with triage dashboard links and rollback thresholds:
     - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
 
@@ -1355,7 +1361,7 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 - [ ] Expand TestFlight internal group with scripted verification steps
 - [ ] Run two full beta rounds and triage all P0/P1 issues to zero
-- [ ] Tag each beta build with pass/fail matrix evidence in deployment notes
+- [x] Tag each beta build with pass/fail matrix evidence in deployment notes
 
 #### 2.5.5 Phase 2.5 Exit Criteria
 
