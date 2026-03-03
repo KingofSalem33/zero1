@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 
 export default function SharedProbeRoute() {
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
+    <div className="min-h-[100dvh] overflow-y-auto bg-slate-100 text-slate-900">
       <SharedAuthProbeView
         appLabel="Zero1 Web Shared Probe"
         apiBaseUrl={WEB_ENV.API_URL}
