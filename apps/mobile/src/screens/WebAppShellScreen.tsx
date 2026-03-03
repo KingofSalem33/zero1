@@ -7,7 +7,10 @@ import {
 } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WebView } from "react-native-webview";
-import type { WebView as WebViewType } from "react-native-webview";
+import type {
+  WebView as WebViewType,
+  WebViewMessageEvent,
+} from "react-native-webview";
 
 type WebShellErrorType = "network" | "http" | "timeout";
 
@@ -24,8 +27,52 @@ interface WebAppShellScreenProps {
   webHost: string;
   loadTimeoutMs: number;
   allowFallbackToNative: boolean;
+  authSession: WebShellAuthSession | null;
   onFallbackToNative?: () => void;
   onInteractive?: () => void;
+}
+
+interface WebShellAuthSession {
+  accessToken: string;
+  refreshToken: string;
+}
+
+interface NativeAuthBridgeMessage {
+  source: "zero1-mobile";
+  type: "native-auth-session";
+  payload: WebShellAuthSession | null;
+  emittedAtIso: string;
+}
+
+function buildNativeAuthBridgeScript(
+  authSession: WebShellAuthSession | null,
+): string {
+  const bridgeMessage: NativeAuthBridgeMessage = {
+    source: "zero1-mobile",
+    type: "native-auth-session",
+    payload: authSession,
+    emittedAtIso: new Date().toISOString(),
+  };
+
+  return `
+    (function () {
+      try {
+        var message = ${JSON.stringify(bridgeMessage)};
+        window.dispatchEvent(new MessageEvent("message", { data: message }));
+        window.dispatchEvent(new CustomEvent("zero1:native-auth-session", { detail: message }));
+      } catch (error) {
+        console.warn("[WebShellBridge] Failed to dispatch auth session", error);
+      }
+    })();
+    true;
+  `;
+}
+
+function authSessionFingerprint(authSession: WebShellAuthSession | null): string {
+  if (!authSession) {
+    return "signed-out";
+  }
+  return `${authSession.accessToken}:${authSession.refreshToken}`;
 }
 
 export function WebAppShellScreen({
@@ -33,11 +80,13 @@ export function WebAppShellScreen({
   webHost,
   loadTimeoutMs,
   allowFallbackToNative,
+  authSession,
   onFallbackToNative,
   onInteractive,
 }: WebAppShellScreenProps) {
   const webViewRef = useRef<WebViewType>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAuthFingerprintRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<WebShellError | null>(null);
   const [lastHttpStatus, setLastHttpStatus] = useState<number | null>(null);
   const [isInteractive, setIsInteractive] = useState(false);
@@ -73,10 +122,30 @@ export function WebAppShellScreen({
     onInteractive?.();
   }, [isInteractive, onInteractive]);
 
+  const pushAuthSessionToWebView = useCallback(
+    (nextAuthSession: WebShellAuthSession | null) => {
+      const nextFingerprint = authSessionFingerprint(nextAuthSession);
+      if (lastAuthFingerprintRef.current === nextFingerprint) {
+        return;
+      }
+
+      lastAuthFingerprintRef.current = nextFingerprint;
+      webViewRef.current?.injectJavaScript(
+        buildNativeAuthBridgeScript(nextAuthSession),
+      );
+    },
+    [],
+  );
+
+  useEffect(() => {
+    pushAuthSessionToWebView(authSession);
+  }, [authSession, pushAuthSessionToWebView]);
+
   const handleReload = useCallback(() => {
     setLoadError(null);
     setLastHttpStatus(null);
     setIsInteractive(false);
+    lastAuthFingerprintRef.current = null;
     startLoadTimeout();
     webViewRef.current?.reload();
   }, [startLoadTimeout]);
@@ -140,6 +209,24 @@ export function WebAppShellScreen({
       }}
       onLoad={() => {
         markInteractive();
+        pushAuthSessionToWebView(authSession);
+      }}
+      onMessage={(event: WebViewMessageEvent) => {
+        try {
+          const data = JSON.parse(event.nativeEvent.data) as {
+            source?: string;
+            type?: string;
+          };
+          if (
+            data.source === "zero1-web" &&
+            data.type === "native-auth-bridge-ready"
+          ) {
+            lastAuthFingerprintRef.current = null;
+            pushAuthSessionToWebView(authSession);
+          }
+        } catch {
+          // Ignore non-JSON messages from the web app.
+        }
       }}
       onError={(event) => {
         clearLoadTimeout();

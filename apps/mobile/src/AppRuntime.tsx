@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
+import type { Session } from "@supabase/supabase-js";
 import { MobileRootNavigator } from "./navigation/MobileRootNavigator";
 import { MobileAppProvider } from "./context/MobileAppContext";
 import { useMobileAppController } from "./hooks/useMobileAppController";
@@ -25,6 +26,7 @@ import { WebAppShellScreen } from "./screens/WebAppShellScreen";
 import { styles, T } from "./theme/mobileStyles";
 import { MOBILE_ENV } from "./lib/env";
 import { finishPerfSpan, startPerfSpan } from "./lib/perfTelemetry";
+import { supabase } from "./lib/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
 const coldStartSpanId = startPerfSpan("cold_start_to_interactive");
@@ -84,8 +86,42 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
 
 export default function AppRuntime() {
   const [forceNativeShell, setForceNativeShell] = useState(false);
+  const [webShellSession, setWebShellSession] = useState<Session | null>(null);
   const webShellEnabled = MOBILE_ENV.WEB_SHELL_ENABLED;
   const webAppUrl = MOBILE_ENV.WEB_APP_URL;
+  const webShellAuthSession = useMemo(() => {
+    if (!webShellSession?.access_token || !webShellSession.refresh_token) {
+      return null;
+    }
+    return {
+      accessToken: webShellSession.access_token,
+      refreshToken: webShellSession.refresh_token,
+    };
+  }, [webShellSession]);
+
+  useEffect(() => {
+    if (!webShellEnabled || forceNativeShell) {
+      return;
+    }
+
+    let isMounted = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (isMounted) {
+        setWebShellSession(data.session);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setWebShellSession(nextSession);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [forceNativeShell, webShellEnabled]);
 
   if (webShellEnabled && webAppUrl && !forceNativeShell) {
     return (
@@ -94,6 +130,7 @@ export default function AppRuntime() {
         webHost={MOBILE_ENV.WEB_APP_HOST}
         loadTimeoutMs={MOBILE_ENV.WEB_SHELL_TIMEOUT_MS}
         allowFallbackToNative={MOBILE_ENV.WEB_SHELL_FALLBACK_TO_NATIVE}
+        authSession={webShellAuthSession}
         onFallbackToNative={() => {
           setForceNativeShell(true);
         }}
