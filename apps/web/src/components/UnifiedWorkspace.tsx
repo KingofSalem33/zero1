@@ -2808,7 +2808,3 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 };
 
 export default UnifiedWorkspace;
-
-
-
-

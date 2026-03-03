@@ -504,5 +504,3 @@ export default function RootLayout() {
     </ToastProvider>
   );
 }
-
-
