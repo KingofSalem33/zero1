@@ -68,7 +68,9 @@ function buildNativeAuthBridgeScript(
   `;
 }
 
-function authSessionFingerprint(authSession: WebShellAuthSession | null): string {
+function authSessionFingerprint(
+  authSession: WebShellAuthSession | null,
+): string {
   if (!authSession) {
     return "signed-out";
   }
