@@ -1135,6 +1135,16 @@ Status: In progress
     - Core matrix passed (`launch`, `auth`, `library`, `map`) with no P0/P1 regressions recorded.
   - Expanded TestFlight runbook with triage dashboard links and rollback thresholds:
     - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
+- Phase 2.5.4 beta operations completed (2026-03-03):
+  - Internal TestFlight verification flow expanded and documented with scripted matrix assignment:
+    - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md` (Step 3.5)
+  - Two full internal beta rounds completed with pass/fail evidence:
+    - Round 1 (build `18`): `apps/mobile/reports/mobileProdSmoke-build18.json`
+    - Round 2 (build `25`): `apps/mobile/reports/mobileProdSmoke-build25.json`
+  - Consolidated beta-round evidence and triage summary:
+    - `apps/mobile/reports/testflight-beta-rounds-phase254.md`
+  - Triage outcome:
+    - No open P0/P1 issues in either round; both rounds marked `promote` in release notes.
 
 ## 1) Launch Objective
 
@@ -1359,8 +1369,8 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 #### 2.5.4 Beta Operations
 
-- [ ] Expand TestFlight internal group with scripted verification steps
-- [ ] Run two full beta rounds and triage all P0/P1 issues to zero
+- [x] Expand TestFlight internal group with scripted verification steps
+- [x] Run two full beta rounds and triage all P0/P1 issues to zero
 - [x] Tag each beta build with pass/fail matrix evidence in deployment notes
 
 #### 2.5.5 Phase 2.5 Exit Criteria
