@@ -1,5 +1,6 @@
 import { Component, type ReactNode, Suspense, lazy } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { styles } from "./src/theme/mobileStyles";
 
 const AppRuntime = lazy(() => import("./src/AppRuntime"));
@@ -51,10 +52,12 @@ function BootFallback() {
 
 export default function App() {
   return (
-    <BootErrorBoundary>
-      <Suspense fallback={<BootFallback />}>
-        <AppRuntime />
-      </Suspense>
-    </BootErrorBoundary>
+    <SafeAreaProvider>
+      <BootErrorBoundary>
+        <Suspense fallback={<BootFallback />}>
+          <AppRuntime />
+        </Suspense>
+      </BootErrorBoundary>
+    </SafeAreaProvider>
   );
 }

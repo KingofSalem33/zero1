@@ -362,7 +362,7 @@ export default function RootLayout() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950 flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-gradient-to-br from-gray-950 via-black to-gray-950 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
@@ -391,7 +391,7 @@ export default function RootLayout() {
               setToolsUsed,
             }}
           >
-            <div className="min-h-screen bg-gradient-to-br from-gray-950 via-black to-gray-950">
+            <div className="min-h-[100dvh] bg-gradient-to-br from-gray-950 via-black to-gray-950">
               <div className="flex">
                 {/* Left Sidebar */}
                 <RoadmapSidebarV2
@@ -420,13 +420,13 @@ export default function RootLayout() {
 
                 {/* Main Workspace */}
                 <main
-                  className={`flex-1 h-screen overflow-hidden relative transition-all duration-300 pt-12 md:pt-0 pb-16 md:pb-0 ${
+                  className={`flex-1 h-[100dvh] box-border overflow-hidden relative transition-all duration-300 pt-[calc(3rem+env(safe-area-inset-top,0px))] md:pt-0 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0 ${
                     sidebarCollapsed ? "md:ml-16" : "md:ml-64"
                   }`}
                 >
                   <Suspense
                     fallback={
-                      <div className="flex items-center justify-center min-h-screen">
+                      <div className="flex items-center justify-center min-h-[100dvh]">
                         <div className="w-12 h-12 border-4 border-neutral-700 border-t-blue-500 rounded-full animate-spin" />
                       </div>
                     }

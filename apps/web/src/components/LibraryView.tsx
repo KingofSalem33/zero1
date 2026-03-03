@@ -1205,10 +1205,10 @@ export function LibraryView({
   };
 
   return (
-    <div ref={libraryScrollRef} className="h-screen overflow-y-auto bg-black">
+    <div ref={libraryScrollRef} className="h-full overflow-y-auto bg-black">
       {/* Header chrome — matches Reader bar */}
       <div className="flex-shrink-0 border-b border-neutral-800/50 bg-neutral-900/50">
-        <div className="max-w-6xl mx-auto px-6 py-4 md:px-8">
+        <div className="max-w-6xl mx-auto px-4 py-4 md:px-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <svg
@@ -1233,7 +1233,7 @@ export function LibraryView({
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 md:px-8 pt-6">
+      <div className="max-w-6xl mx-auto px-4 md:px-8 pt-4 md:pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-8">
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <TabBar
             tabs={[
