@@ -18,6 +18,10 @@ function DefaultRedirect() {
 
 export const router = createBrowserRouter([
   {
+    path: "/ops/shared-probe",
+    element: <SharedProbeRoute />,
+  },
+  {
     path: "/",
     element: <RootLayout />,
     children: [
@@ -40,10 +44,6 @@ export const router = createBrowserRouter([
       {
         path: "library",
         element: <LibraryRoute />,
-      },
-      {
-        path: "ops/shared-probe",
-        element: <SharedProbeRoute />,
       },
       {
         path: "*",
