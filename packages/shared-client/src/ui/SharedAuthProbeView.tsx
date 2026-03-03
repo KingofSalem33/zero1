@@ -139,8 +139,6 @@ export function SharedAuthProbeView({
     }
     return undefined;
   }, [magicLinkRedirectTo]);
-  const showGoogleOAuth = (enableGoogleOAuth ?? true) && !isEmbeddedWebView;
-  const showAppleOAuth = (enableAppleOAuth ?? true) && !isEmbeddedWebView;
   const isEmbeddedWebView = useMemo(() => {
     const runtime = globalThis as {
       navigator?: { userAgent?: string };
@@ -150,6 +148,8 @@ export function SharedAuthProbeView({
     const ua = runtime.navigator?.userAgent?.toLowerCase() ?? "";
     return ua.includes("wv") || ua.includes("webview");
   }, []);
+  const showGoogleOAuth = (enableGoogleOAuth ?? true) && !isEmbeddedWebView;
+  const showAppleOAuth = (enableAppleOAuth ?? true) && !isEmbeddedWebView;
   const resolvedContainerStyle = useMemo<CSSProperties>(
     () => ({
       ...containerStyle,
