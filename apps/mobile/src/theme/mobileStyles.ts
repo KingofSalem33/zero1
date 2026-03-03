@@ -33,11 +33,18 @@ export const styles = StyleSheet.create({
     opacity: 0.9,
   },
   rootScrollContent: {
+    flexGrow: 1,
     padding: T.spacing.lg,
     paddingBottom: T.spacing.xxl,
   },
   rootFrame: {
     gap: T.spacing.md,
+  },
+  authHeroPanel: {
+    backgroundColor: T.colors.ink,
+    borderRadius: T.radius.lg,
+    padding: T.spacing.lg,
+    gap: T.spacing.sm,
   },
   globalBusyOverlay: {
     position: "absolute",
@@ -95,6 +102,9 @@ export const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     gap: T.spacing.sm,
+  },
+  rowStack: {
+    flexDirection: "column",
   },
   spaceBetweenRow: {
     flexDirection: "row",
@@ -182,9 +192,52 @@ export const styles = StyleSheet.create({
     borderRadius: T.radius.md,
     padding: T.spacing.sm,
   },
+  authDividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  authDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: T.colors.border,
+  },
+  authDividerLabel: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
   calloutMutedText: {
     color: T.colors.textMuted,
     fontSize: T.typography.caption,
+  },
+  errorCard: {
+    backgroundColor: T.colors.dangerSoft,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.danger,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+  },
+  errorCardText: {
+    color: T.colors.danger,
+    fontSize: T.typography.body,
+  },
+  infoCard: {
+    backgroundColor: T.colors.pineSoft,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.pine,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+  },
+  infoCardText: {
+    color: T.colors.pine,
+    fontSize: T.typography.body,
   },
   error: {
     color: T.colors.danger,
