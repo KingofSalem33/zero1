@@ -16,6 +16,7 @@
     "eas:build:ios:prod": "npx eas-cli build --platform ios --profile production",
     "eas:submit:ios:prod": "npx eas-cli submit --platform ios --profile production --latest",
     "phase2:testflight:check": "node scripts/checkTestFlightReadiness.mjs",
+    "phase2:smoke:mobile:prod": "node scripts/runMobileProductionSmoke.mjs",
     "typecheck": "tsc --noEmit",
     "test": "jest --config jest.config.cjs --runInBand",
     "phase2:core-validation": "node scripts/runPhase21CoreFeatureValidation.mjs"

@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 Owner: Product + Engineering
 Status: In progress
 
@@ -1107,6 +1107,28 @@ Status: In progress
     - `apps/mobile/src/hooks/useMobileAppController.ts` now refreshes session and retries protected requests once on 401/expired-token errors.
   - Operator verification:
     - Confirmed frontend is successfully speaking to backend in live environment.
+- Phase 2.5 web-shell auth/session bridge + bootstrap validation completed (2026-03-03):
+  - Merged PR `#53` (`b247028`) to bridge native mobile Supabase session into WebView web shell:
+    - `apps/web/src/lib/nativeAuthBridge.ts`
+    - `apps/web/src/main.tsx`
+    - `apps/mobile/src/screens/WebAppShellScreen.tsx`
+    - `apps/mobile/src/AppRuntime.tsx`
+  - Merged PR `#54` (`eaddafe`) to require native auth bootstrap before entering web-shell mode:
+    - signed-out users now authenticate in native shell first, then transition to web shell with active session.
+  - TestFlight operator verification:
+    - login succeeds and transitions into app shell correctly.
+    - core flow verified as working (`library` load + map save path).
+    - no startup crash or auth-loop regression observed during validation run.
+- Phase 2.5.3 release + observability hardening artifacts completed (2026-03-03):
+  - Added mobile production smoke gate script:
+    - `apps/mobile/scripts/runMobileProductionSmoke.mjs`
+    - npm script: `npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build> --launch=pass --auth=pass --library=pass --map=pass`
+  - Added structured release notes template:
+    - `apps/mobile/TESTFLIGHT_RELEASE_NOTES_TEMPLATE.md`
+  - Logged build-specific TestFlight release evidence for build `18`:
+    - `apps/mobile/reports/testflight-release-notes-build18.md`
+  - Expanded TestFlight runbook with triage dashboard links and rollback thresholds:
+    - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
 
 ## 1) Launch Objective
 
@@ -1324,10 +1346,10 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 #### 2.5.3 Release and Observability Hardening
 
-- [ ] Add mobile-specific production smoke script (`launch -> auth -> library load -> map save`)
-- [ ] Add structured mobile release notes template per TestFlight build
-- [ ] Add dashboard links for mobile crash, API error, and auth failure triage in runbook
-- [ ] Define rollback trigger thresholds for mobile builds (startup crash rate, 401 spike, blank-screen rate)
+- [x] Add mobile-specific production smoke script (`launch -> auth -> library load -> map save`)
+- [x] Add structured mobile release notes template per TestFlight build
+- [x] Add dashboard links for mobile crash, API error, and auth failure triage in runbook
+- [x] Define rollback trigger thresholds for mobile builds (startup crash rate, 401 spike, blank-screen rate)
 
 #### 2.5.4 Beta Operations
 
