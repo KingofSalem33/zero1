@@ -36,7 +36,8 @@ interface ApiProbeResult {
 const containerStyle: CSSProperties = {
   margin: "0 auto",
   maxWidth: 960,
-  padding: 24,
+  width: "100%",
+  padding: 16,
 };
 
 const cardStyle: CSSProperties = {
@@ -155,6 +156,12 @@ export function SharedAuthProbeView({
       ...containerStyle,
       maxWidth: isCompactLayout ? 640 : 960,
       padding: isCompactLayout ? 12 : 24,
+      paddingTop: isCompactLayout
+        ? "calc(env(safe-area-inset-top, 0px) + 8px)"
+        : "calc(env(safe-area-inset-top, 0px) + 16px)",
+      paddingBottom: isCompactLayout
+        ? "calc(env(safe-area-inset-bottom, 0px) + 16px)"
+        : "calc(env(safe-area-inset-bottom, 0px) + 24px)",
     }),
     [isCompactLayout],
   );
@@ -188,6 +195,7 @@ export function SharedAuthProbeView({
     () => ({
       ...inputStyle,
       padding: isCompactLayout ? 12 : 10,
+      fontSize: 16,
     }),
     [isCompactLayout],
   );
@@ -195,7 +203,8 @@ export function SharedAuthProbeView({
     () => ({
       ...buttonStyle,
       width: isCompactLayout ? "100%" : undefined,
-      minHeight: 44,
+      minHeight: 48,
+      fontSize: 15,
     }),
     [isCompactLayout],
   );
@@ -522,7 +531,18 @@ export function SharedAuthProbeView({
           Fetch bookmarks, highlights, and library connections
         </button>
         {probeError ? <p>{probeError}</p> : null}
-        {probeResult ? <pre>{JSON.stringify(probeResult, null, 2)}</pre> : null}
+        {probeResult ? (
+          <pre
+            style={{
+              maxHeight: isCompactLayout ? 280 : 420,
+              overflow: "auto",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {JSON.stringify(probeResult, null, 2)}
+          </pre>
+        ) : null}
       </section>
     </main>
   );

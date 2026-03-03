@@ -7,7 +7,13 @@ interface MobileHeaderProps {
 
 const MobileHeader: React.FC<MobileHeaderProps> = ({ title, onMenuToggle }) => {
   return (
-    <header className="fixed top-0 left-0 right-0 md:hidden z-40 bg-neutral-900/80 backdrop-blur-xl border-b border-white/10 h-12 flex items-center px-4">
+    <header
+      className="fixed top-0 left-0 right-0 md:hidden z-40 bg-neutral-900/80 backdrop-blur-xl border-b border-white/10 flex items-center px-4"
+      style={{
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        height: "calc(3rem + env(safe-area-inset-top, 0px))",
+      }}
+    >
       <button
         onClick={onMenuToggle}
         className="p-2 -ml-2 text-neutral-400 hover:text-white transition-colors rounded-lg"

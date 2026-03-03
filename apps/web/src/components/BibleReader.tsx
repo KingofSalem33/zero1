@@ -1212,7 +1212,7 @@ const BibleReader: React.FC<BibleReaderProps> = ({
           }}
         />
         <div
-          className={`max-w-4xl mx-auto px-8 py-12 transition-all duration-150 ease-out ${
+          className={`max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8 md:py-12 transition-all duration-150 ease-out ${
             transitionDir
               ? `opacity-0 ${transitionDir === "next" ? "-translate-x-3" : "translate-x-3"}`
               : "opacity-100 translate-x-0"

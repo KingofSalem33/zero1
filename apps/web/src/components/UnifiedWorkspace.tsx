@@ -2021,7 +2021,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
             >
               <div
                 ref={chatScrollRef}
-                className="absolute inset-0 overflow-y-auto px-6 py-8 pb-28"
+                className="absolute inset-0 overflow-y-auto px-4 md:px-6 py-6 md:py-8 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] md:pb-28"
               >
                 {/* Message list - always visible */}
                 <div
@@ -2808,7 +2808,3 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
 };
 
 export default UnifiedWorkspace;
-
-
-
-
