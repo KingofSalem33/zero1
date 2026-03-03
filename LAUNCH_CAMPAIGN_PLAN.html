@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zero1 — World-Class Launch Campaign Plan</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Georgia", "Times New Roman", serif;
+    font-size: 11pt;
+    line-height: 1.65;
+    color: #1a1a2e;
+    background: #ffffff;
+    padding: 0;
+  }
+
+  /* ── Cover header ── */
+  .cover {
+    background: linear-gradient(135deg, #0f3460 0%, #16213e 60%, #1a1a2e 100%);
+    color: #ffffff;
+    padding: 56px 56px 48px;
+    margin-bottom: 0;
+  }
+  .cover-eyebrow {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 9pt;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #a8c4e0;
+    margin-bottom: 16px;
+  }
+  .cover h1 {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 28pt;
+    font-weight: 800;
+    line-height: 1.15;
+    color: #ffffff;
+    margin-bottom: 16px;
+    border: none;
+  }
+  .cover-subtitle {
+    font-size: 13pt;
+    color: #c8d8e8;
+    font-style: italic;
+    margin-bottom: 28px;
+  }
+  .cover-meta {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 9pt;
+    color: #88aacc;
+    letter-spacing: 0.05em;
+  }
+  .cover-formula {
+    display: inline-block;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(168,196,224,0.3);
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 10pt;
+    color: #e0ecf8;
+    margin-top: 24px;
+    letter-spacing: 0.03em;
+  }
+
+  /* ── Main content ── */
+  .content {
+    padding: 40px 56px 56px;
+  }
+
+  h1 { display: none; } /* covered by the .cover block */
+
+  h2 {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 16pt;
+    font-weight: 700;
+    color: #0f3460;
+    margin: 40px 0 14px;
+    padding-bottom: 6px;
+    border-bottom: 2.5px solid #0f3460;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 13pt;
+    font-weight: 700;
+    color: #16213e;
+    margin: 28px 0 10px;
+    page-break-after: avoid;
+  }
+
+  h4 {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #0f3460;
+    margin: 20px 0 8px;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin: 0 0 12px;
+  }
+
+  a { color: #1565c0; text-decoration: none; }
+
+  /* ── Blockquote (philosophy callout) ── */
+  blockquote {
+    background: #f0f5ff;
+    border-left: 5px solid #0f3460;
+    border-radius: 0 6px 6px 0;
+    padding: 16px 20px;
+    margin: 16px 0 24px;
+    color: #1a1a2e;
+    font-style: italic;
+  }
+  blockquote p { margin: 0; }
+  blockquote strong { font-style: normal; color: #0f3460; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    margin: 14px 0 22px;
+    page-break-inside: avoid;
+  }
+  thead tr {
+    background: #0f3460;
+    color: #ffffff;
+  }
+  thead th {
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: 1px solid #0a2647;
+  }
+  tbody tr:nth-child(even) { background: #f4f7fb; }
+  tbody tr:nth-child(odd)  { background: #ffffff; }
+  tbody tr:hover           { background: #e8f0fe; }
+  tbody td {
+    padding: 7px 10px;
+    border: 1px solid #dde3ed;
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  tbody td:first-child { font-weight: 600; color: #0f3460; }
+
+  /* ── Code blocks (timeline) ── */
+  pre {
+    background: #0f1923;
+    color: #c8d8e8;
+    border-radius: 8px;
+    padding: 24px 28px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 8.5pt;
+    line-height: 1.6;
+    overflow: hidden;
+    margin: 16px 0 24px;
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  code {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 8.5pt;
+    background: #eef2f9;
+    color: #0f3460;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  /* ── Lists ── */
+  ul, ol {
+    padding-left: 22px;
+    margin: 0 0 12px;
+  }
+  li { margin-bottom: 5px; }
+  li strong { color: #0f3460; }
+
+  /* ── Horizontal rules ── */
+  hr {
+    border: none;
+    border-top: 1.5px solid #dde3ed;
+    margin: 32px 0;
+  }
+
+  /* ── Page breaks ── */
+  h2 { page-break-before: auto; }
+  .page-break { page-break-after: always; }
+
+  /* ── Footer ── */
+  @page {
+    margin: 18mm 14mm 20mm;
+    @bottom-center {
+      content: "Zero1 Launch Campaign Plan — Confidential";
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      font-size: 8pt;
+      color: #888;
+    }
+    @bottom-right {
+      content: counter(page);
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      font-size: 8pt;
+      color: #888;
+    }
+  }
+
+  /* ── TOC styling ── */
+  .toc { margin-bottom: 32px; }
+  .toc a { color: #0f3460; }
+
+  /* ── Small tag styling ── */
+  em { color: #444; }
+  strong { color: #1a1a2e; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-eyebrow">Zero1 · Internal Planning Document</div>
+  <h1 class="cover-title">World-Class<br>Launch Campaign Plan</h1>
+  <div class="cover-subtitle">AI-Powered Bible Study Platform — Post-Beta Go-To-Market Playbook</div>
+  <div class="cover-formula">
+    Idea &times; Infrastructure &times; Distribution &times; Switching Cost = Durable Revenue
+  </div>
+  <div class="cover-meta" style="margin-top:24px;">Generated: 2026-03-03 &nbsp;|&nbsp; Confidential</div>
+</div>
+
+<div class="content">
+<h1>Zero1 — World-Class Launch Campaign Plan</h1>
+<blockquote>
+<p><strong>Philosophy:</strong> Idea × Infrastructure × Distribution × Switching Cost = Durable Revenue</p>
+<p>The idea is already differentiated. What determines success is the surrounding infrastructure you build <em>before</em> launch day, the distribution channels you seed <em>during</em> beta, and the switching costs you embed so deeply that users never leave.</p>
+</blockquote>
+<hr>
+<h2>Table of Contents</h2>
+<ol>
+<li><a href="#1-pre-launch-checklist">Pre-Launch Checklist</a><ul>
+<li><a href="#infrastructure">Infrastructure</a></li>
+<li><a href="#distribution">Distribution</a></li>
+<li><a href="#switching-cost">Switching Cost</a></li>
+</ul>
+</li>
+<li><a href="#2-launch-readiness-timeline-weeks--6-to-4">Launch Readiness Timeline</a></li>
+<li><a href="#3-metrics--instrumentation">Metrics &amp; Instrumentation</a></li>
+</ol>
+<hr>
+<h2>1. Pre-Launch Checklist</h2>
+<h3>Infrastructure</h3>
+<h4>AUTH &amp; ONBOARDING</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>I-1</td>
+<td><strong>Implement a 5-step guided onboarding flow</strong> (pick a book, study goal, preferred translation, notification cadence, first AI query)</td>
+<td>Product Engineer</td>
+<td>React Router wizard component, Supabase <code>user_profiles</code> onboarding state column</td>
+<td>M</td>
+<td>Supabase schema migration</td>
+<td>New user completes onboarding in &lt;3 min; completion rate &gt;70% in beta</td>
+</tr>
+<tr>
+<td>I-2</td>
+<td><strong>Add Apple OAuth for web</strong> (currently mobile-only)</td>
+<td>Engineer</td>
+<td><code>VITE_ENABLE_APPLE_OAUTH</code> env flag, Supabase OAuth provider config</td>
+<td>S</td>
+<td>Apple Developer account, Supabase config</td>
+<td>Web sign-in with Apple functional; e2e test passes</td>
+</tr>
+<tr>
+<td>I-3</td>
+<td><strong>Implement magic-link email sequence</strong> (Day 0 welcome, Day 2 feature discovery, Day 7 &quot;did you know&quot; tip, Day 14 retention nudge)</td>
+<td>Growth / Engineer</td>
+<td>Supabase Edge Functions + Resend (or Postmark) transactional email, HTML email templates</td>
+<td>M</td>
+<td>Email domain SPF/DKIM/DMARC setup, template design</td>
+<td>Sequence active; open rate &gt;40%, click rate &gt;10% in beta cohort</td>
+</tr>
+<tr>
+<td>I-4</td>
+<td><strong>Self-serve subscription paywall</strong> (Free tier: 20 AI queries/day; Pro: unlimited, priority model access)</td>
+<td>Engineer + Product</td>
+<td>Stripe Checkout, Supabase <code>subscriptions</code> table with RLS, webhook handler in Express API</td>
+<td>L</td>
+<td>Stripe account, pricing finalized</td>
+<td>Users can upgrade in &lt;60 s; Stripe webhook creates/updates subscription row; rate limiter reads tier</td>
+</tr>
+<tr>
+<td>I-5</td>
+<td><strong>Account deletion &amp; GDPR data export</strong></td>
+<td>Engineer</td>
+<td>Express endpoint <code>DELETE /api/user</code>, Supabase cascade deletes, JSON export builder</td>
+<td>S</td>
+<td>—</td>
+<td>Deletion removes all user rows; export produces valid JSON archive within 30 s</td>
+</tr>
+<tr>
+<td>I-6</td>
+<td><strong>Password-less session hardening</strong> (refresh token rotation, idle timeout banner)</td>
+<td>Engineer</td>
+<td>Supabase <code>autoRefreshToken</code>, frontend session-expiry middleware already in desktop</td>
+<td>S</td>
+<td>Auth hardening Phase 0 complete (already done)</td>
+<td>Session rotation tested; idle users prompted after 30 min</td>
+</tr>
+<tr>
+<td>I-7</td>
+<td><strong>Crash-free rate target ≥99.5% across all platforms</strong></td>
+<td>Engineer</td>
+<td>Sentry dashboards (already wired), set alert thresholds</td>
+<td>S</td>
+<td>Sentry DSNs live on all platforms</td>
+<td>Sentry &quot;crash-free sessions&quot; widget ≥99.5% over 7-day rolling window</td>
+</tr>
+</tbody></table>
+<h4>PAYMENTS &amp; MONETISATION</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>I-8</td>
+<td><strong>Define &amp; implement pricing tiers</strong> (Free / Pro $9.99/mo / Ministry $29.99/mo for group access)</td>
+<td>Founder + Product</td>
+<td>Stripe Products + Prices, Supabase <code>tiers</code> enum</td>
+<td>S</td>
+<td>Stripe account</td>
+<td>Three tiers visible on pricing page; checkout flow works end-to-end</td>
+</tr>
+<tr>
+<td>I-9</td>
+<td><strong>Annual billing option</strong> (20% discount, improves LTV)</td>
+<td>Engineer</td>
+<td>Stripe annual Price objects, toggle in checkout UI</td>
+<td>S</td>
+<td>I-8 complete</td>
+<td>Annual checkout functional; Stripe webhook correctly maps interval</td>
+</tr>
+<tr>
+<td>I-10</td>
+<td><strong>Stripe customer portal</strong> (manage subscription, update card, cancel)</td>
+<td>Engineer</td>
+<td>Stripe Billing Portal, redirect from Settings page</td>
+<td>S</td>
+<td>I-8 complete</td>
+<td>Users can self-serve cancel/upgrade without emailing support</td>
+</tr>
+<tr>
+<td>I-11</td>
+<td><strong>Revenue dashboard (internal)</strong></td>
+<td>Founder</td>
+<td>Stripe Dashboard or ChartMogul free tier, Supabase MRR view</td>
+<td>S</td>
+<td>I-8 complete</td>
+<td>MRR, churn, and new subs visible in one view</td>
+</tr>
+</tbody></table>
+<h4>PERFORMANCE &amp; RELIABILITY</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>I-12</td>
+<td><strong>Upgrade API hosting from Render free tier to paid</strong> (eliminates cold-start delay)</td>
+<td>DevOps</td>
+<td>Render Starter plan ($7/mo) or Railway</td>
+<td>S</td>
+<td>Billing</td>
+<td>P50 cold-start latency &lt;200 ms; no sleep-on-idle</td>
+</tr>
+<tr>
+<td>I-13</td>
+<td><strong>Implement Redis cache for AI responses</strong> (same query + same user context = cached response)</td>
+<td>Engineer</td>
+<td>Upstash Redis (serverless, free tier), custom cache key hash</td>
+<td>M</td>
+<td>I-12 complete</td>
+<td>Cache hit rate &gt;30% within 1 week; AI cost per active user drops measurably</td>
+</tr>
+<tr>
+<td>I-14</td>
+<td><strong>CDN for static assets</strong> (Vite build artifacts, Bible text JSON, graph data)</td>
+<td>DevOps</td>
+<td>Cloudflare Pages or Vercel Edge CDN (already likely on Vercel)</td>
+<td>S</td>
+<td>Vercel project configured</td>
+<td>Lighthouse performance score ≥90 on web</td>
+</tr>
+<tr>
+<td>I-15</td>
+<td><strong>App Store Submission prep (iOS)</strong> — final screenshots, App Privacy labels, age rating</td>
+<td>Mobile Engineer + Designer</td>
+<td>Fastlane screenshots, App Store Connect</td>
+<td>M</td>
+<td>TestFlight build 18+ stable</td>
+<td>App Store review submitted; no binary rejections</td>
+</tr>
+<tr>
+<td>I-16</td>
+<td><strong>Google Play Store submission</strong> (if not already started)</td>
+<td>Mobile Engineer</td>
+<td>Google Play Console, Expo EAS Build</td>
+<td>M</td>
+<td>Android build signing configured</td>
+<td>App in Internal Testing track</td>
+</tr>
+<tr>
+<td>I-17</td>
+<td><strong>Desktop auto-update signing verified</strong> (code-sign cert, <code>DESKTOP_AUTO_UPDATE_ENABLED=true</code>)</td>
+<td>Engineer</td>
+<td>Windows code-signing cert (already in CI secrets), electron-updater</td>
+<td>S</td>
+<td>CI secret <code>CSC_LINK</code> valid</td>
+<td>Auto-update installs silently from GitHub release; verified on clean VM</td>
+</tr>
+</tbody></table>
+<h4>LEGAL &amp; TRUST</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>I-18</td>
+<td><strong>Privacy Policy + Terms of Service pages</strong></td>
+<td>Legal / Founder</td>
+<td>Termly or Iubenda template, linked from footer + sign-up flow</td>
+<td>S</td>
+<td>—</td>
+<td>Policies live at <code>/privacy</code> and <code>/terms</code>; GDPR/CCPA compliant</td>
+</tr>
+<tr>
+<td>I-19</td>
+<td><strong>Cookie consent banner</strong> (web)</td>
+<td>Engineer</td>
+<td><code>react-cookie-consent</code> or equivalent; Sentry loaded only after consent for EU users</td>
+<td>S</td>
+<td>I-18 complete</td>
+<td>Banner appears for EU/UK visitors; Sentry only fires on consent</td>
+</tr>
+<tr>
+<td>I-20</td>
+<td><strong>SOC2-lite self-assessment</strong> (document data flows, encryption at rest, access control)</td>
+<td>Founder</td>
+<td>Vanta Starter or manual Google Doc</td>
+<td>M</td>
+<td>—</td>
+<td>One-page data security summary ready for church/ministry procurement</td>
+</tr>
+</tbody></table>
+<hr>
+<h3>Distribution</h3>
+<h4>SEO &amp; CONTENT ENGINE</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>D-1</td>
+<td><strong>Launch a programmatic SEO landing page for every Bible book + top study themes</strong> (e.g., <code>/study/romans-8</code>, <code>/study/grace-in-the-new-testament</code>)</td>
+<td>Engineer + Content</td>
+<td>Next.js or Vite SSG route generator, KJV text corpus already available, sitemap generator</td>
+<td>L</td>
+<td>I-14 (CDN), Bible text data</td>
+<td>1,000+ indexed pages; Ahrefs/Google Search Console shows crawl coverage within 2 weeks of launch</td>
+</tr>
+<tr>
+<td>D-2</td>
+<td><strong>Target high-intent longtail keywords</strong> (&quot;verse by verse Bible study&quot;, &quot;what does Romans 8 mean&quot;, &quot;KJV commentary&quot;)</td>
+<td>SEO / Content</td>
+<td>Ahrefs or Semrush keyword research, Google Search Console</td>
+<td>S</td>
+<td>D-1</td>
+<td>50-keyword target list mapped to landing pages</td>
+</tr>
+<tr>
+<td>D-3</td>
+<td><strong>Blog: 12 &quot;pillar&quot; posts</strong> pre-written before launch (exegesis how-tos, featured AI study sessions, theological deep dives)</td>
+<td>Content Writer</td>
+<td>Headless CMS (Contentful free tier or MDX in repo), blog at <code>/blog</code></td>
+<td>L</td>
+<td>I-14, D-1</td>
+<td>12 posts live, internally linked to product CTAs, indexed</td>
+</tr>
+<tr>
+<td>D-4</td>
+<td><strong>YouTube channel: 10 seed videos</strong> (product walkthroughs, &quot;AI explains [passage]&quot; shorts, comparison vs. manual concordance study)</td>
+<td>Content Creator</td>
+<td>Screen recording + OBS, YouTube Studio, thumbnail templates</td>
+<td>L</td>
+<td>—</td>
+<td>10 videos published; 3+ shorts optimized for Shorts algorithm</td>
+</tr>
+<tr>
+<td>D-5</td>
+<td><strong>Structured data (schema.org) on all scripture pages</strong> (<code>Article</code>, <code>FAQPage</code>, <code>HowTo</code>)</td>
+<td>Engineer</td>
+<td>JSON-LD in page <code>&lt;head&gt;</code>, Google Rich Results tester</td>
+<td>S</td>
+<td>D-1</td>
+<td>Zero Google Search Console errors on rich result test</td>
+</tr>
+</tbody></table>
+<h4>COMMUNITY &amp; SOCIAL</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>D-6</td>
+<td><strong>Build a waitlist / pre-launch email list of 2,000+</strong></td>
+<td>Growth</td>
+<td>Mailchimp or ConvertKit embedded form on landing page, Typeform, referral incentive (&quot;refer 3, get 3 months Pro free&quot;)</td>
+<td>M</td>
+<td>Landing page live</td>
+<td>2,000 verified emails collected before launch week</td>
+</tr>
+<tr>
+<td>D-7</td>
+<td><strong>Seed 5 Reddit communities</strong> (r/Christianity 3M+, r/Reformed, r/Bible, r/theology, r/AskBibleStudy) with value-first posts (not ads)</td>
+<td>Growth</td>
+<td>Reddit account with karma, genuine helpfulness posts linking to free tool</td>
+<td>S</td>
+<td>Product stable, free tier available</td>
+<td>5 threads posted; at least 2 reach &gt;50 upvotes</td>
+</tr>
+<tr>
+<td>D-8</td>
+<td><strong>Join and contribute to 10 Facebook Bible study groups</strong> (100K–1M member groups)</td>
+<td>Growth / Founder</td>
+<td>Facebook Groups, personal account</td>
+<td>S</td>
+<td>—</td>
+<td>Active contributor in 10 groups; moderator relationships established</td>
+</tr>
+<tr>
+<td>D-9</td>
+<td><strong>Partner with 3 seminary or Bible college professors</strong> for pilot access + testimonial</td>
+<td>BD / Founder</td>
+<td>Email outreach, academic pricing tier, co-branded case study</td>
+<td>M</td>
+<td>I-4 (paywall), Ministry tier</td>
+<td>3 signed testimonials or institutional pilots</td>
+</tr>
+<tr>
+<td>D-10</td>
+<td><strong>Church tech coordinator outreach</strong> (email 100 churches with &gt;500 members)</td>
+<td>Growth</td>
+<td>Apollo.io or Hunter.io for contacts, church website scraper, personalized email sequence</td>
+<td>M</td>
+<td>I-4 (Ministry tier)</td>
+<td>10% response rate; 5 Ministry pilot conversions</td>
+</tr>
+<tr>
+<td>D-11</td>
+<td><strong>Product Hunt launch</strong> (with 50+ upvotes commitment pre-secured from beta users)</td>
+<td>Founder + Growth</td>
+<td>Product Hunt profile, launch scheduling, Hunter community</td>
+<td>S</td>
+<td>D-6 (list), product stable</td>
+<td>#1 or #2 Product of the Day in &quot;Productivity&quot; or &quot;AI&quot; category</td>
+</tr>
+<tr>
+<td>D-12</td>
+<td><strong>Twitter/X &quot;Bible AI&quot; niche presence</strong> (daily verse + AI insight, reply to theology threads)</td>
+<td>Growth</td>
+<td>Buffer or Hypefury for scheduling, branded thread templates</td>
+<td>M</td>
+<td>—</td>
+<td>1,000 followers; 3 viral threads (&gt;1,000 impressions each) before launch</td>
+</tr>
+<tr>
+<td>D-13</td>
+<td><strong>Newsletter sponsorship in 1–2 Christian tech/ministry newsletters</strong></td>
+<td>Growth</td>
+<td>Beehiiv Boosts, paid newsletter ad slots ($200–500/issue)</td>
+<td>S</td>
+<td>Budget approved</td>
+<td>2 newsletter ads run; UTM-tracked signups from each</td>
+</tr>
+<tr>
+<td>D-14</td>
+<td><strong>App Store Optimization (ASO)</strong> — keyword-rich title, subtitle, description for iOS + Android</td>
+<td>Mobile Engineer + Growth</td>
+<td>AppFollow or Sensor Tower free tier, competitor keyword analysis</td>
+<td>S</td>
+<td>I-15, I-16</td>
+<td>ASO checklist complete; primary keyword in title/subtitle</td>
+</tr>
+<tr>
+<td>D-15</td>
+<td><strong>Podcast outreach</strong> (Christian tech, apologetics, seminary podcasts)</td>
+<td>BD / Founder</td>
+<td>Rephonic for podcast research, personalized pitch email</td>
+<td>M</td>
+<td>—</td>
+<td>3 confirmed podcast appearances scheduled around launch week</td>
+</tr>
+</tbody></table>
+<h4>PRESS &amp; INFLUENCERS</h4>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>D-16</td>
+<td><strong>Press kit page</strong> (<code>/press</code>) with logos, screenshots, founder bio, key stats, product demo video</td>
+<td>Designer + Founder</td>
+<td>Figma assets, Vimeo/Loom demo, press-kit ZIP download</td>
+<td>S</td>
+<td>Design assets ready</td>
+<td>Press kit page live; media inquiry email configured</td>
+</tr>
+<tr>
+<td>D-17</td>
+<td><strong>Outreach to 5 Christian tech/ministry journalists</strong> (Christianity Today, The Gospel Coalition, Relevant Magazine)</td>
+<td>Founder</td>
+<td>Muck Rack or manual search, personalized 3-paragraph pitch</td>
+<td>M</td>
+<td>D-16 live</td>
+<td>2+ journalist responses; 1 committed feature story</td>
+</tr>
+<tr>
+<td>D-18</td>
+<td><strong>Micro-influencer campaign</strong> (20 Christian YouTubers/TikTokers with 5K–100K subscribers)</td>
+<td>Growth</td>
+<td>grapevine.io or manual DM, affiliate code per influencer</td>
+<td>M</td>
+<td>I-4 (paywall + affiliate tracking)</td>
+<td>20 outreach messages; 5 agreed collaborations; 3 videos published by launch week</td>
+</tr>
+</tbody></table>
+<hr>
+<h3>Switching Cost</h3>
+<blockquote>
+<p>Switching costs are not locks — they are value accumulation. Every hour a user invests should compound into something they would grieve losing.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Owner</th>
+<th>Tools / Assets</th>
+<th>Effort</th>
+<th>Dependencies</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>SC-1</td>
+<td><strong>Rich annotation system</strong> — inline highlights with color tags, margin notes, linked cross-references, all synced across platforms via Supabase</td>
+<td>Engineer</td>
+<td><code>highlights</code> table (exists), add <code>margin_notes</code> column, cross-ref linking UI</td>
+<td>M</td>
+<td>Supabase schema</td>
+<td>Users can annotate, tag, and link any verse; syncs across web/mobile/desktop in &lt;2 s</td>
+</tr>
+<tr>
+<td>SC-2</td>
+<td><strong>Personal study library with custom collections</strong> — user-named collections, reorderable, exportable</td>
+<td>Engineer</td>
+<td><code>library</code> table (exists), drag-and-drop UI (dnd-kit), export to PDF/JSON</td>
+<td>M</td>
+<td>Library UI complete</td>
+<td>Users can create, name, reorder, and export 3+ collections</td>
+</tr>
+<tr>
+<td>SC-3</td>
+<td><strong>Study history &amp; &quot;Your Journey&quot; dashboard</strong> — time-studied heatmap, verses explored, AI conversation history, milestone badges</td>
+<td>Engineer + Designer</td>
+<td><code>verse_analytics</code> table (exists), Chart.js or Recharts heatmap, Supabase aggregation queries</td>
+<td>M</td>
+<td>verse_analytics populated</td>
+<td>Journey page shows 30-day heatmap; milestone badges awarded at 7, 30, 100 study days</td>
+</tr>
+<tr>
+<td>SC-4</td>
+<td><strong>AI memory / personalization</strong> — AI remembers user&#39;s theological tradition, study goals, previous discussions, preferred commentary style</td>
+<td>Engineer</td>
+<td>Supabase <code>user_context</code> JSONB column, prompt injection strategy (already versioned in <code>/prompts</code>)</td>
+<td>M</td>
+<td>Prompt architecture (exists)</td>
+<td>AI references user&#39;s tradition and prior topics in ≥50% of sessions after onboarding</td>
+</tr>
+<tr>
+<td>SC-5</td>
+<td><strong>Shareable study cards</strong> — one-click share of AI insight + verse as branded image card for social</td>
+<td>Engineer + Designer</td>
+<td>HTML Canvas or <code>html-to-image</code>, Cloudinary for hosting, branded frame templates</td>
+<td>M</td>
+<td>Design assets</td>
+<td>User can generate + download/share card in &lt;10 s; card includes Zero1 logo + verse ref</td>
+</tr>
+<tr>
+<td>SC-6</td>
+<td><strong>Export to popular formats</strong> — PDF study notes, EPUB, CSV of highlights, plain-text Bible commentary</td>
+<td>Engineer</td>
+<td><code>pdfkit</code> or <code>puppeteer</code> PDF generation, <code>json2csv</code>, EPUB builder</td>
+<td>M</td>
+<td>SC-1, SC-2 complete</td>
+<td>Export modal offers 4 formats; PDF renders correctly with fonts and verse citations</td>
+</tr>
+<tr>
+<td>SC-7</td>
+<td><strong>Cross-device bookmark sync (offline-first)</strong> — bookmarks available offline, sync on reconnect</td>
+<td>Mobile Engineer</td>
+<td>Expo SQLite for local store, sync queue in <code>shared</code> package, conflict resolution (last-write-wins)</td>
+<td>L</td>
+<td>Mobile Phase 2.5 stable</td>
+<td>Bookmarks persist offline on mobile; sync completes on reconnect with zero data loss</td>
+</tr>
+<tr>
+<td>SC-8</td>
+<td><strong>&quot;Study streak&quot; gamification</strong> — daily streak counter, streak restore (grace day), achievement system</td>
+<td>Engineer + Product</td>
+<td>Supabase <code>study_streaks</code> table, push notifications (Expo Notifications), in-app achievement modal</td>
+<td>M</td>
+<td>SC-3, I-3 (email)</td>
+<td>Streak visible on home screen; push notification fires at user&#39;s preferred study time</td>
+</tr>
+<tr>
+<td>SC-9</td>
+<td><strong>Community / small group feature (v1)</strong> — shared study collections a pastor can push to a group</td>
+<td>Engineer</td>
+<td>Supabase <code>groups</code> table, RLS group policies, invite link</td>
+<td>L</td>
+<td>I-4 (Ministry tier)</td>
+<td>Pastor can create group, invite up to 20 members, share a collection; members see shared notes</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>2. Launch Readiness Timeline (Weeks -6 to +4)</h2>
+<pre><code>WEEK -6  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Infrastructure:
+  ✦ [I-1]  Onboarding flow shipped to beta
+  ✦ [I-8]  Pricing tiers defined &amp; Stripe Products created
+  ✦ [I-18] Privacy Policy + ToS pages live
+  ✦ [I-20] SOC2-lite data security document drafted
+  Distribution:
+  ✦ [D-2]  50-keyword SEO target list finalized
+  ✦ [D-6]  Waitlist form live on landing page; referral incentive active
+  ✦ [D-16] Press kit page drafted
+  Switching Cost:
+  ✦ [SC-1] Annotation system shipped to beta (highlights + margin notes)
+  ✦ [SC-4] AI memory / personalization column + prompt injection live
+
+WEEK -5  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Infrastructure:
+  ✦ [I-4]  Stripe paywall integrated (Free/Pro/Ministry tiers)
+  ✦ [I-9]  Annual billing option live
+  ✦ [I-10] Stripe customer portal wired to Settings
+  ✦ [I-12] API hosting upgraded to Render Starter (no cold starts)
+  Distribution:
+  ✦ [D-3]  First 6 blog pillar posts published
+  ✦ [D-12] Twitter/X account created; daily posting begins
+  ✦ [D-7]  Begin seeding Reddit communities (value-first, no ads)
+  Switching Cost:
+  ✦ [SC-2] Custom library collections UI complete
+  ✦ [SC-3] Study history / Journey dashboard shipped
+
+WEEK -4  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Infrastructure:
+  ✦ [I-13] Redis cache for AI responses live (Upstash)
+  ✦ [I-3]  Email onboarding sequence live (Day 0/2/7/14)
+  ✦ [I-2]  Apple OAuth for web enabled
+  ✦ [I-19] Cookie consent banner live for EU
+  Distribution:
+  ✦ [D-1]  Programmatic SEO pages generated + submitted to Google
+  ✦ [D-4]  First 5 YouTube videos published
+  ✦ [D-9]  Seminary professor outreach sent (target 3 partnerships)
+  ✦ [D-10] Church coordinator email campaign launched (100 churches)
+  ✦ [D-18] Micro-influencer outreach sent (20 targets)
+  Switching Cost:
+  ✦ [SC-5] Shareable study cards feature shipped
+  ✦ [SC-6] Export to PDF/JSON shipped
+  ✦ [SC-8] Study streak gamification live
+
+  ★ MILESTONE: Beta → &quot;Soft Launch&quot; access (invite-only, no paywall)
+
+WEEK -3  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Infrastructure:
+  ✦ [I-15] iOS App Store submission sent
+  ✦ [I-16] Android Google Play submission sent
+  ✦ [I-17] Desktop auto-update signing verified
+  ✦ [I-5]  GDPR data export + account deletion live
+  Distribution:
+  ✦ [D-3]  Remaining 6 blog pillar posts published (12 total)
+  ✦ [D-13] Newsletter sponsorships booked (2 issues, launch week)
+  ✦ [D-15] Podcast appearances confirmed (3+)
+  ✦ [D-17] Press outreach sent to 5 journalists
+  ✦ [D-8]  Active in 10 Facebook Bible study groups
+  Switching Cost:
+  ✦ [SC-7] Offline-first bookmark sync shipped to mobile beta
+  ✦ Measure: Annotation depth (notes per user), streak retention, export usage
+
+  ★ MILESTONE: Feature freeze; QA regression suite passing on all platforms
+
+WEEK -2  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Infrastructure:
+  ✦ [I-7]  Sentry crash-free rate ≥99.5% confirmed
+  ✦ [I-14] Lighthouse ≥90 confirmed
+  ✦ [I-11] Revenue dashboard live (Stripe + ChartMogul)
+  ✦ iOS + Android App Store approvals expected
+  Distribution:
+  ✦ [D-11] Product Hunt launch page drafted; 50 supporters pre-committed
+  ✦ [D-18] Micro-influencer videos being filmed; 3+ confirmed for launch week
+  ✦ [D-6]  Waitlist at 2,000+ emails confirmed (or push harder)
+  ✦ [D-4]  Remaining 5 YouTube videos published (10 total)
+  Switching Cost:
+  ✦ [SC-9] Group/small group v1 shipped (Ministry tier)
+  ✦ All switching cost features in QA
+
+  ★ MILESTONE: Launch email draft finalized; all distribution assets ready
+
+WEEK -1  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✦ Email blast to waitlist: &quot;We launch in 7 days — here&#39;s your early access code&quot;
+  ✦ Paywall enabled on all new sign-ups (free tier gated, Pro unlocked for waitlist)
+  ✦ Final smoke tests across web, mobile, desktop
+  ✦ Support inbox and FAQ page live
+  ✦ Runbook for launch day incidents prepared
+  ✦ Team on-call schedule for launch week
+
+  ★ MILESTONE: Code frozen; monitoring dashboards green; all hands ready
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ LAUNCH DAY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WEEK 0  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Monday:  Email blast to full list; paywall live
+  Tuesday: Product Hunt launch (9am ET)
+  Wednesday: Newsletter sponsorships run
+  Thursday: Podcast episodes drop (coordinate with hosts)
+  Friday:  Twitter/X &quot;Bible AI&quot; thread launch recap
+  All week: Respond to every Reddit/Facebook comment within 4 hours
+            Monitor Sentry crash-free rate hourly
+            Monitor Stripe MRR dashboard daily
+
+WEEK +1  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✦ Post-launch retrospective: conversion rate, activation rate, support ticket volume
+  ✦ Churn survey sent to any user who cancels
+  ✦ &quot;Launch week&quot; blog post + press release published
+  ✦ Follow up with journalists who didn&#39;t respond
+  ✦ A/B test onboarding step 1 (book picker vs. goal picker first)
+
+  ★ MILESTONE: 100 paid subscribers OR 500 active free users
+
+WEEK +2  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✦ First cohort retention analysis (Day-7 return rate)
+  ✦ Email sequence optimization based on open/click data
+  ✦ SEO rank tracking: target keywords in top 20?
+  ✦ First paid ads test (Google &quot;Bible study app&quot; + Facebook retargeting) if organic CAC &lt;$20
+
+  ★ MILESTONE: Day-7 retention ≥40%
+
+WEEK +3  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✦ Identify top 20 power users; invite to advisory board / testimonial program
+  ✦ Ship highest-voted beta feedback items
+  ✦ Referral program launch (in-app &quot;invite a friend&quot; with Pro reward)
+  ✦ Ministry tier case study published (with seminary partner)
+
+WEEK +4  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✦ Full funnel audit: Acquisition → Activation → Retention → Revenue → Referral
+  ✦ Day-30 cohort retention target: ≥25%
+  ✦ LTV:CAC ratio target: ≥3:1
+  ✦ Decide: double down on SEO, paid, or partnerships based on CAC data
+  ✦ Roadmap for next quarter based on usage data
+
+  ★ MILESTONE: MRR ≥ $2,000; referral loop measurably contributing to signups
+</code></pre>
+<hr>
+<h2>3. Metrics &amp; Instrumentation</h2>
+<h3>3.1 The Five Core Metrics (AARRR)</h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Metric</th>
+<th>Target (30-day post-launch)</th>
+<th>Why it matters for Zero1</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Acquisition</strong></td>
+<td>Organic signups / week</td>
+<td>200+</td>
+<td>Bible study is high-intent search; organic should dominate</td>
+</tr>
+<tr>
+<td><strong>Activation</strong></td>
+<td>% users who complete onboarding AND run first AI query within 24 h</td>
+<td>≥60%</td>
+<td>First AI query is the &quot;aha moment&quot; — graph + response = hook</td>
+</tr>
+<tr>
+<td><strong>Retention</strong></td>
+<td>Day-7 return rate</td>
+<td>≥40%</td>
+<td>Signals daily study habit formation</td>
+</tr>
+<tr>
+<td></td>
+<td>Day-30 return rate</td>
+<td>≥25%</td>
+<td>SaaS benchmark for durable retention</td>
+</tr>
+<tr>
+<td></td>
+<td>Weekly study streak length (median)</td>
+<td>≥4 days</td>
+<td>Streak = switching cost accumulator</td>
+</tr>
+<tr>
+<td><strong>Revenue</strong></td>
+<td>Free → Pro conversion rate</td>
+<td>≥5% of actives</td>
+<td>Industry SaaS benchmark; Bible niche can achieve 8–12%</td>
+</tr>
+<tr>
+<td></td>
+<td>Monthly churn rate</td>
+<td>≤3%</td>
+<td>Subscriptions must be sticky</td>
+</tr>
+<tr>
+<td></td>
+<td>LTV:CAC ratio</td>
+<td>≥3:1</td>
+<td>Minimum viable unit economics</td>
+</tr>
+<tr>
+<td><strong>Referral</strong></td>
+<td>Referral-sourced signups / total signups</td>
+<td>≥15%</td>
+<td>Social proof in faith communities travels fast</td>
+</tr>
+<tr>
+<td></td>
+<td>Viral coefficient (K-factor)</td>
+<td>≥0.3</td>
+<td>K &gt; 1 = organic growth loop</td>
+</tr>
+</tbody></table>
+<h3>3.2 Zero1-Specific Product Metrics</h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>How to Measure</th>
+<th>Supabase / Event Source</th>
+<th>Target</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>AI queries per active user per week</td>
+<td><code>verse_analytics</code> query count aggregation</td>
+<td>API <code>/ai/query</code> endpoint log</td>
+<td>≥8 queries/week</td>
+</tr>
+<tr>
+<td>Graph visualization engagement rate</td>
+<td>% of sessions that open the map view</td>
+<td>Custom event <code>map_view_opened</code></td>
+<td>≥30% of sessions</td>
+</tr>
+<tr>
+<td>Annotation depth</td>
+<td>Highlights + margin notes per user</td>
+<td><code>highlights</code> + <code>margin_notes</code> table row count</td>
+<td>≥5 annotations by Day-7</td>
+</tr>
+<tr>
+<td>Cross-reference follows</td>
+<td>Clicks on semantic connection links</td>
+<td>Custom event <code>cross_ref_clicked</code></td>
+<td>≥3 per session</td>
+</tr>
+<tr>
+<td>Export / share actions</td>
+<td>PDF exports + share card generations</td>
+<td>API endpoint hit counts</td>
+<td>≥1 per week for retained users</td>
+</tr>
+<tr>
+<td>Multi-platform adoption</td>
+<td>% of users active on ≥2 platforms</td>
+<td><code>user_sessions</code> platform column</td>
+<td>≥20% (drives switching cost)</td>
+</tr>
+<tr>
+<td>Streak at churn</td>
+<td>Average streak length when user churns</td>
+<td><code>study_streaks</code> at cancellation</td>
+<td>Inversely correlated with churn — track to optimize</td>
+</tr>
+</tbody></table>
+<h3>3.3 Instrumentation Tasks</h3>
+<h4>Event Tracking (ship before launch)</h4>
+<p>All events should be emitted from the API and stored in Supabase <code>analytics_events</code> table AND forwarded to a BI tool. Use a single <code>track(userId, event, properties)</code> helper wrapping both.</p>
+<pre><code class="language-typescript">// apps/api/src/analytics.ts — single tracking surface
+export type TrackableEvent =
+  | &#39;onboarding_step_completed&#39;    // { step: 1-5 }
+  | &#39;first_ai_query&#39;               // { book, chapter }
+  | &#39;ai_query&#39;                     // { model, cached: boolean, latency_ms }
+  | &#39;map_view_opened&#39;              // { verse_count }
+  | &#39;cross_ref_clicked&#39;            // { from_verse, to_verse }
+  | &#39;annotation_created&#39;           // { type: &#39;highlight&#39; | &#39;note&#39; }
+  | &#39;export_generated&#39;             // { format: &#39;pdf&#39; | &#39;json&#39; | &#39;csv&#39; }
+  | &#39;share_card_created&#39;           // { verse_ref }
+  | &#39;streak_extended&#39;              // { current_streak }
+  | &#39;streak_broken&#39;                // { broken_at_streak }
+  | &#39;upgrade_started&#39;              // { from_tier, to_tier }
+  | &#39;upgrade_completed&#39;            // { tier, billing_interval }
+  | &#39;referral_sent&#39;                // { channel: &#39;link&#39; | &#39;email&#39; }
+  | &#39;referral_converted&#39;           // { referrer_user_id }
+  | &#39;session_start&#39;                // { platform: &#39;web&#39; | &#39;mobile&#39; | &#39;desktop&#39; }
+  | &#39;search_performed&#39;;            // { query_length, results_count }
+</code></pre>
+<p><strong>Required instrumentation tasks:</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Task</th>
+<th>Owner</th>
+<th>Effort</th>
+<th>Done Criteria</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M-1</td>
+<td>Add <code>analytics_events</code> table to Supabase (userId, event, properties JSONB, created_at)</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Table created, RLS allows insert by authenticated users</td>
+</tr>
+<tr>
+<td>M-2</td>
+<td>Implement <code>track()</code> helper in API middleware</td>
+<td>Engineer</td>
+<td>S</td>
+<td>All events in table above fire correctly in staging</td>
+</tr>
+<tr>
+<td>M-3</td>
+<td>Instrument all AI query endpoints with <code>ai_query</code> event + latency</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Latency tracked on 100% of requests</td>
+</tr>
+<tr>
+<td>M-4</td>
+<td>Instrument onboarding wizard (each step completion)</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Funnel visible in analytics within 1 day of shipping</td>
+</tr>
+<tr>
+<td>M-5</td>
+<td>Instrument map view open, cross-ref clicks, annotation creates</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Events fire on all platforms (web + mobile)</td>
+</tr>
+<tr>
+<td>M-6</td>
+<td>Instrument upgrade flow (started + completed + abandoned)</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Stripe webhook + frontend events cross-corroborated</td>
+</tr>
+<tr>
+<td>M-7</td>
+<td>Add <code>platform</code> field to all session events</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Multi-platform adoption metric calculable</td>
+</tr>
+<tr>
+<td>M-8</td>
+<td>Build Supabase SQL views for each AARRR metric</td>
+<td>Engineer</td>
+<td>M</td>
+<td>Views queryable; refresh in &lt;5 s</td>
+</tr>
+<tr>
+<td>M-9</td>
+<td>Forward events to PostHog free tier (product analytics, funnels, session replays)</td>
+<td>Engineer</td>
+<td>S</td>
+<td>PostHog project receiving events; funnel chart for onboarding visible</td>
+</tr>
+<tr>
+<td>M-10</td>
+<td>Set up Sentry performance alerts (P95 AI latency &gt;5 s = alert)</td>
+<td>Engineer</td>
+<td>S</td>
+<td>Alert fires in test; PagerDuty or email notification configured</td>
+</tr>
+</tbody></table>
+<h3>3.4 Dashboards</h3>
+<h4>Dashboard 1: Launch Command Center (real-time, launch week)</h4>
+<p>Hosted in PostHog or a Supabase + Grafana setup. Visible on a shared screen for the team during launch.</p>
+<table>
+<thead>
+<tr>
+<th>Panel</th>
+<th>Metric</th>
+<th>Refresh</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>New sign-ups today</td>
+<td><code>COUNT(users WHERE created_at &gt; today)</code></td>
+<td>1 min</td>
+</tr>
+<tr>
+<td>Activation rate (today)</td>
+<td><code>% who completed onboarding + first query</code></td>
+<td>5 min</td>
+</tr>
+<tr>
+<td>Active sessions (live)</td>
+<td>PostHog session count</td>
+<td>Live</td>
+</tr>
+<tr>
+<td>AI queries / hour</td>
+<td><code>analytics_events WHERE event=&#39;ai_query&#39;</code></td>
+<td>1 min</td>
+</tr>
+<tr>
+<td>Stripe MRR delta today</td>
+<td>Stripe Dashboard widget</td>
+<td>5 min</td>
+</tr>
+<tr>
+<td>Crash-free rate</td>
+<td>Sentry widget</td>
+<td>5 min</td>
+</tr>
+<tr>
+<td>API P95 latency</td>
+<td>Sentry performance</td>
+<td>1 min</td>
+</tr>
+</tbody></table>
+<h4>Dashboard 2: Retention &amp; Health (weekly review)</h4>
+<table>
+<thead>
+<tr>
+<th>Panel</th>
+<th>Metric</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Day-1 / Day-7 / Day-30 retention curves</td>
+<td>Cohort analysis (PostHog or Mixpanel)</td>
+</tr>
+<tr>
+<td>Weekly active users (WAU) trend</td>
+<td>Rolling 8-week chart</td>
+</tr>
+<tr>
+<td>Streak distribution</td>
+<td>Histogram of study streak lengths</td>
+</tr>
+<tr>
+<td>Annotation depth by cohort</td>
+<td>Highlights+notes per user, cohorted by signup week</td>
+</tr>
+<tr>
+<td>Platform split</td>
+<td>% web / mobile / desktop by WAU</td>
+</tr>
+<tr>
+<td>Feature adoption funnel</td>
+<td>Onboarding → first query → map view → annotation → export</td>
+</tr>
+</tbody></table>
+<h4>Dashboard 3: Revenue &amp; Growth (monthly review)</h4>
+<table>
+<thead>
+<tr>
+<th>Panel</th>
+<th>Metric</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MRR + MoM growth</td>
+<td>Stripe / ChartMogul</td>
+</tr>
+<tr>
+<td>Churn rate</td>
+<td>Cancellations / start-of-month subs</td>
+</tr>
+<tr>
+<td>LTV (projected 12-month)</td>
+<td>ARPU / churn rate</td>
+</tr>
+<tr>
+<td>CAC by channel</td>
+<td>Ad spend + effort cost / new paid subs, per channel</td>
+</tr>
+<tr>
+<td>LTV:CAC ratio</td>
+<td>LTV / CAC</td>
+</tr>
+<tr>
+<td>Referral coefficient (K)</td>
+<td>Referrals sent × conversion rate</td>
+</tr>
+<tr>
+<td>Free → Pro conversion by cohort</td>
+<td>Grouped by signup source</td>
+</tr>
+</tbody></table>
+<h3>3.5 CAC/LTV Tracking Setup</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Task</th>
+<th>Owner</th>
+<th>Effort</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>M-11</td>
+<td>Add <code>signup_source</code> UTM parameters to all links (newsletter, Product Hunt, social, SEO) captured at signup</td>
+<td>Engineer</td>
+<td>S</td>
+</tr>
+<tr>
+<td>M-12</td>
+<td>Store <code>signup_source</code> in Supabase <code>users</code> table at registration</td>
+<td>Engineer</td>
+<td>S</td>
+</tr>
+<tr>
+<td>M-13</td>
+<td>Build CAC report: group paid conversions by <code>signup_source</code>, divide by channel cost</td>
+<td>Growth</td>
+<td>S</td>
+</tr>
+<tr>
+<td>M-14</td>
+<td>Set up Google Analytics 4 (for SEO/content CAC) with conversion events</td>
+<td>Engineer</td>
+<td>S</td>
+</tr>
+<tr>
+<td>M-15</td>
+<td>Monthly LTV calculation: <code>ARPU ÷ monthly_churn_rate</code>; track trend</td>
+<td>Founder</td>
+<td>S</td>
+</tr>
+<tr>
+<td>M-16</td>
+<td>Set Stripe webhook to log subscription events to <code>analytics_events</code></td>
+<td>Engineer</td>
+<td>S</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Ownership Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Primary Responsibilities</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Founder</strong></td>
+<td>Pricing decisions, press outreach, podcast appearances, ministerial partnerships, revenue dashboard, monthly LTV review</td>
+</tr>
+<tr>
+<td><strong>Product Engineer</strong></td>
+<td>Onboarding flow, paywall integration, GDPR export, analytics instrumentation, Redis cache</td>
+</tr>
+<tr>
+<td><strong>Growth / Marketing</strong></td>
+<td>Email sequences, waitlist, Reddit/Facebook seeding, newsletter sponsorships, Twitter/X, referral program</td>
+</tr>
+<tr>
+<td><strong>Mobile Engineer</strong></td>
+<td>iOS App Store submission, Android Play Store, offline sync, ASO</td>
+</tr>
+<tr>
+<td><strong>DevOps</strong></td>
+<td>API hosting upgrade, CDN configuration, auto-update signing</td>
+</tr>
+<tr>
+<td><strong>Content Creator</strong></td>
+<td>Blog posts, YouTube videos, shareable study card templates</td>
+</tr>
+<tr>
+<td><strong>BD / Partnerships</strong></td>
+<td>Seminary outreach, church coordinator campaign, micro-influencer relationships</td>
+</tr>
+<tr>
+<td><strong>Designer</strong></td>
+<td>Press kit, social card templates, onboarding UI, App Store screenshots</td>
+</tr>
+</tbody></table>
+<hr>
+<p><em>Generated: 2026-03-03 | Zero1 Launch Planning | Idea × Infrastructure × Distribution × Switching Cost = Durable Revenue</em></p>
+
+</div>
+
+</body>
+</html>
