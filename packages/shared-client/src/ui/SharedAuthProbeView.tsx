@@ -139,8 +139,6 @@ export function SharedAuthProbeView({
     }
     return undefined;
   }, [magicLinkRedirectTo]);
-  const showGoogleOAuth = enableGoogleOAuth ?? true;
-  const showAppleOAuth = enableAppleOAuth ?? true;
   const isEmbeddedWebView = useMemo(() => {
     const runtime = globalThis as {
       navigator?: { userAgent?: string };
@@ -150,6 +148,8 @@ export function SharedAuthProbeView({
     const ua = runtime.navigator?.userAgent?.toLowerCase() ?? "";
     return ua.includes("wv") || ua.includes("webview");
   }, []);
+  const showGoogleOAuth = (enableGoogleOAuth ?? true) && !isEmbeddedWebView;
+  const showAppleOAuth = (enableAppleOAuth ?? true) && !isEmbeddedWebView;
   const resolvedContainerStyle = useMemo<CSSProperties>(
     () => ({
       ...containerStyle,
@@ -305,9 +305,9 @@ export function SharedAuthProbeView({
   }
 
   async function signInWithOAuth(provider: "google" | "apple") {
-    if (provider === "google" && isEmbeddedWebView) {
+    if (isEmbeddedWebView) {
       setAuthError(
-        "Google sign-in is blocked in in-app webviews (disallowed_useragent). Use Apple sign-in or magic link.",
+        "OAuth sign-in is blocked in this in-app webview. Use magic link sign-in.",
       );
       setAuthInfo(null);
       return;
@@ -491,7 +491,8 @@ export function SharedAuthProbeView({
             ) : null}
             {isEmbeddedWebView ? (
               <p style={{ marginTop: 8, color: "#475569", fontSize: 13 }}>
-                Note: Google blocks OAuth inside in-app webviews.
+                OAuth providers are blocked in this in-app webview. Use magic
+                link sign-in.
               </p>
             ) : null}
           </form>
