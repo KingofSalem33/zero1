@@ -8,7 +8,10 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { MOBILE_ENV } from "../lib/env";
 import { getOAuthRedirectUrl } from "../lib/authRedirect";
 import { useMobileApp } from "../context/MobileAppContext";
@@ -33,7 +36,10 @@ export function AuthScreen() {
             styles.rootScrollContent,
             {
               paddingTop: Math.max(T.spacing.lg, insets.top + T.spacing.sm),
-              paddingBottom: Math.max(T.spacing.xxl, insets.bottom + T.spacing.lg),
+              paddingBottom: Math.max(
+                T.spacing.xxl,
+                insets.bottom + T.spacing.lg,
+              ),
             },
           ]}
           keyboardDismissMode="on-drag"
@@ -66,7 +72,9 @@ export function AuthScreen() {
                     controller.busy && styles.buttonDisabled,
                   ]}
                 >
-                  <Text style={styles.providerButtonLabel}>Continue with Google</Text>
+                  <Text style={styles.providerButtonLabel}>
+                    Continue with Google
+                  </Text>
                 </Pressable>
                 <Pressable
                   disabled={controller.busy}
@@ -136,7 +144,9 @@ export function AuthScreen() {
                     controller.busy && styles.buttonDisabled,
                   ]}
                 >
-                  <Text style={styles.secondaryButtonLabel}>Send magic link</Text>
+                  <Text style={styles.secondaryButtonLabel}>
+                    Send magic link
+                  </Text>
                 </Pressable>
               </View>
 
@@ -148,7 +158,9 @@ export function AuthScreen() {
 
               {controller.authError ? (
                 <View style={styles.errorCard}>
-                  <Text style={styles.errorCardText}>{controller.authError}</Text>
+                  <Text style={styles.errorCardText}>
+                    {controller.authError}
+                  </Text>
                 </View>
               ) : null}
               {controller.authInfo ? (

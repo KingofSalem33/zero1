@@ -13,7 +13,10 @@ import type {
   WebView as WebViewType,
   WebViewMessageEvent,
 } from "react-native-webview";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 type WebShellErrorType = "network" | "http" | "timeout";
 
@@ -178,10 +181,7 @@ export function WebAppShellScreen({
   }, []);
 
   const handleShouldStartLoadWithRequest = useCallback(
-    (request: {
-      url: string;
-      isTopFrame?: boolean;
-    }): boolean => {
+    (request: { url: string; isTopFrame?: boolean }): boolean => {
       const requestUrl = request.url || "";
       let parsed: URL;
       try {
@@ -286,11 +286,16 @@ export function WebAppShellScreen({
           >
             <View style={styles.loadingHeaderRow}>
               <Text style={styles.loadingTitle}>Loading app experience...</Text>
-              <Text style={styles.loadingMeta}>{Math.round(loadProgress * 100)}%</Text>
+              <Text style={styles.loadingMeta}>
+                {Math.round(loadProgress * 100)}%
+              </Text>
             </View>
             <View style={styles.loadingTrack}>
               <View
-                style={[styles.loadingFill, { width: `${Math.max(8, loadProgress * 100)}%` }]}
+                style={[
+                  styles.loadingFill,
+                  { width: `${Math.max(8, loadProgress * 100)}%` },
+                ]}
               />
             </View>
           </View>
