@@ -83,7 +83,15 @@ function sessionFingerprint(payload: NativeAuthSessionPayload | null): string {
 }
 
 export function installNativeAuthBridge(supabase: SupabaseClient): () => void {
-  const runtimeWindow = globalThis as Window & {
+  const runtimeWindow = globalThis as typeof globalThis & {
+    addEventListener?: (
+      type: string,
+      listener: (event: unknown) => void,
+    ) => void;
+    removeEventListener?: (
+      type: string,
+      listener: (event: unknown) => void,
+    ) => void;
     ReactNativeWebView?: { postMessage: (message: string) => void };
   };
 
@@ -146,8 +154,8 @@ export function installNativeAuthBridge(supabase: SupabaseClient): () => void {
     lastAppliedFingerprint = nextFingerprint;
   };
 
-  const handleMessage = (event: MessageEvent) => {
-    const message = parseBridgeMessage(event.data);
+  const handleMessage = (event: unknown) => {
+    const message = parseBridgeMessage((event as { data?: unknown })?.data);
     if (!message) {
       return;
     }
