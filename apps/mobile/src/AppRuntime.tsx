@@ -89,6 +89,7 @@ export default function AppRuntime() {
   const [webShellSession, setWebShellSession] = useState<Session | null>(null);
   const webShellEnabled = MOBILE_ENV.WEB_SHELL_ENABLED;
   const webAppUrl = MOBILE_ENV.WEB_APP_URL;
+  const webShellConfigured = webShellEnabled && Boolean(webAppUrl);
   const webShellAuthSession = useMemo(() => {
     if (!webShellSession?.access_token || !webShellSession.refresh_token) {
       return null;
@@ -100,7 +101,7 @@ export default function AppRuntime() {
   }, [webShellSession]);
 
   useEffect(() => {
-    if (!webShellEnabled || forceNativeShell) {
+    if (!webShellConfigured || forceNativeShell) {
       return;
     }
 
@@ -121,9 +122,12 @@ export default function AppRuntime() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [forceNativeShell, webShellEnabled]);
+  }, [forceNativeShell, webShellConfigured]);
 
-  if (webShellEnabled && webAppUrl && !forceNativeShell) {
+  const canRenderWebShell =
+    webShellConfigured && !forceNativeShell && Boolean(webShellAuthSession);
+
+  if (canRenderWebShell) {
     return (
       <WebAppShellScreen
         webUrl={webAppUrl}
@@ -145,7 +149,11 @@ export default function AppRuntime() {
     <NativeAppRuntime
       onInteractive={() => {
         markColdStartInteractive({
-          mode: forceNativeShell ? "native_shell_fallback" : "native_shell",
+          mode: forceNativeShell
+            ? "native_shell_fallback"
+            : webShellConfigured
+              ? "native_shell_auth_bootstrap"
+              : "native_shell",
         });
       }}
     />
