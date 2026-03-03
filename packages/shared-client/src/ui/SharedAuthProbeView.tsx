@@ -141,6 +141,15 @@ export function SharedAuthProbeView({
   }, [magicLinkRedirectTo]);
   const showGoogleOAuth = enableGoogleOAuth ?? true;
   const showAppleOAuth = enableAppleOAuth ?? true;
+  const isEmbeddedWebView = useMemo(() => {
+    const runtime = globalThis as {
+      navigator?: { userAgent?: string };
+      ReactNativeWebView?: unknown;
+    };
+    if (runtime.ReactNativeWebView) return true;
+    const ua = runtime.navigator?.userAgent?.toLowerCase() ?? "";
+    return ua.includes("wv") || ua.includes("webview");
+  }, []);
   const resolvedContainerStyle = useMemo<CSSProperties>(
     () => ({
       ...containerStyle,
@@ -296,6 +305,14 @@ export function SharedAuthProbeView({
   }
 
   async function signInWithOAuth(provider: "google" | "apple") {
+    if (provider === "google" && isEmbeddedWebView) {
+      setAuthError(
+        "Google sign-in is blocked in in-app webviews (disallowed_useragent). Use Apple sign-in or magic link.",
+      );
+      setAuthInfo(null);
+      return;
+    }
+
     setBusy(true);
     setAuthError(null);
     setAuthInfo(null);
@@ -471,6 +488,11 @@ export function SharedAuthProbeView({
                   </button>
                 ) : null}
               </div>
+            ) : null}
+            {isEmbeddedWebView ? (
+              <p style={{ marginTop: 8, color: "#475569", fontSize: 13 }}>
+                Note: Google blocks OAuth inside in-app webviews.
+              </p>
             ) : null}
           </form>
         ) : (
