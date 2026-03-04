@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 import { MOBILE_TOKENS } from "../theme/tokens";
 
 type RootStackParamList = {
@@ -63,6 +64,26 @@ const navTheme = {
   },
 };
 
+function resolveTabIcon(
+  route: keyof AppTabsParamList,
+  focused: boolean,
+): keyof typeof Ionicons.glyphMap {
+  switch (route) {
+    case "Library":
+      return focused ? "book" : "book-outline";
+    case "Bookmarks":
+      return focused ? "bookmark" : "bookmark-outline";
+    case "Highlights":
+      return focused ? "sparkles" : "sparkles-outline";
+    case "Account":
+      return focused ? "person-circle" : "person-circle-outline";
+    case "MapFallback":
+      return focused ? "map" : "map-outline";
+    default:
+      return "ellipse";
+  }
+}
+
 export function resolveRootFlow(
   isAuthenticated: boolean,
 ): keyof RootStackParamList {
@@ -82,12 +103,12 @@ function AppTabsNavigator(
   return (
     <Tabs.Navigator
       initialRouteName="Library"
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
           backgroundColor: T.colors.surfaceRaised,
           borderTopColor: T.colors.border,
-          height: 64,
+          height: 66,
           paddingTop: 6,
           paddingBottom: 8,
         },
@@ -95,9 +116,22 @@ function AppTabsNavigator(
           fontSize: T.typography.caption,
           fontWeight: "700",
         },
+        tabBarIconStyle: {
+          marginBottom: -2,
+        },
+        tabBarItemStyle: {
+          paddingTop: 2,
+        },
+        tabBarIcon: ({ color, focused, size }) => (
+          <Ionicons
+            name={resolveTabIcon(route.name, focused)}
+            size={size}
+            color={color}
+          />
+        ),
         tabBarActiveTintColor: T.colors.accent,
         tabBarInactiveTintColor: T.colors.textMuted,
-      }}
+      })}
     >
       <Tabs.Screen name="Library" options={{ tabBarLabel: "Library" }}>
         {() => props.renderLibrary()}
@@ -132,7 +166,7 @@ function AppTabsNavigator(
       <Tabs.Screen name="Account" options={{ tabBarLabel: "Account" }}>
         {() => props.renderAccount()}
       </Tabs.Screen>
-      <Tabs.Screen name="MapFallback" options={{ tabBarLabel: "Map (Beta)" }}>
+      <Tabs.Screen name="MapFallback" options={{ tabBarLabel: "Map" }}>
         {() => props.renderMapFallback()}
       </Tabs.Screen>
     </Tabs.Navigator>
