@@ -1155,9 +1155,9 @@ Status: In progress
     - `apps/mobile/scripts/runMobileProductionSmoke.mjs`
     - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
     - `apps/mobile/TESTFLIGHT_RELEASE_NOTES_TEMPLATE.md`
-  - Latest TestFlight build (`26`) highlight-inclusive smoke run passed:
-    - `apps/mobile/reports/mobileProdSmoke-build26.json`
-    - `apps/mobile/reports/testflight-release-notes-build26.md`
+  - Latest TestFlight build (`27`) highlight-inclusive smoke run passed:
+    - `apps/mobile/reports/mobileProdSmoke-build27.json`
+    - `apps/mobile/reports/testflight-release-notes-build27.md`
   - Exit criterion update:
     - `Auth + library/map/highlight` on latest TestFlight build marked complete.
 - Phase 2.5.2 native parity foundation started (2026-03-04):
