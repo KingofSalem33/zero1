@@ -1155,9 +1155,9 @@ Status: In progress
     - `apps/mobile/scripts/runMobileProductionSmoke.mjs`
     - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
     - `apps/mobile/TESTFLIGHT_RELEASE_NOTES_TEMPLATE.md`
-  - Latest TestFlight build (`25`) highlight-inclusive smoke run passed:
-    - `apps/mobile/reports/mobileProdSmoke-build25.json`
-    - `apps/mobile/reports/testflight-release-notes-build25.md`
+  - Latest TestFlight build (`26`) highlight-inclusive smoke run passed:
+    - `apps/mobile/reports/mobileProdSmoke-build26.json`
+    - `apps/mobile/reports/testflight-release-notes-build26.md`
   - Exit criterion update:
     - `Auth + library/map/highlight` on latest TestFlight build marked complete.
 
