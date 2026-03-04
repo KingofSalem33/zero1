@@ -29,5 +29,5 @@ Date: 2026-03-04
 
 ## Build Gates
 
-- [ ] Two consecutive TestFlight builds pass native smoke gates
-- [ ] 3-day crash/launch baseline meets thresholds
+- [x] Two consecutive TestFlight builds pass native smoke gates
+- [x] 3-day crash/launch baseline meets thresholds
