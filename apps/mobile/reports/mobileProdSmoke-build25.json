@@ -1,6 +1,6 @@
 {
   "gate": "phase2.5-mobile-production-smoke",
-  "generatedAt": "2026-03-03T23:20:40.211Z",
+  "generatedAt": "2026-03-04T02:56:36.577Z",
   "build": "25",
   "appVersion": "1.0.0",
   "tester": "Cory Hanson",
@@ -31,6 +31,13 @@
       "key": "map",
       "name": "Map save",
       "requirement": "Create/save map succeeds and persists after reload.",
+      "status": "pass",
+      "passed": true
+    },
+    {
+      "key": "highlight",
+      "name": "Highlight flow",
+      "requirement": "Create/view highlight succeeds and remains visible after navigation/reload.",
       "status": "pass",
       "passed": true
     }

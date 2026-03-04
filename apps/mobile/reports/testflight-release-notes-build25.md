@@ -20,6 +20,7 @@
 
 - `npm --prefix apps/mobile run phase2:testflight:check`: PASS
 - `node .\scripts\runMobileProductionSmoke.mjs --build=25 --version=1.0.0 --tester="Cory Hanson" --launch=pass --auth=pass --library=pass --map=pass`: PASS
+- `npm run phase2:smoke:mobile:prod -- --build=25 --version=1.0.0 --tester="Cory Hanson" --launch=pass --auth=pass --library=pass --map=pass --highlight=pass` (2026-03-04): PASS
 - Smoke report path: `apps/mobile/reports/mobileProdSmoke-build25.json`
 
 ## Core Flow Results
@@ -28,6 +29,7 @@
 - Auth: PASS
 - Library load: PASS
 - Map save: PASS
+- Highlight flow: PASS
 - Regression notes: Safe-area startup issue resolved; mobile web-shell layout fit/scroll behavior improved and verified in this run.
 
 ## Issues and Triage
