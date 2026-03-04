@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const APP_DIR = path.resolve(__dirname, "..");
 const REPORTS_DIR = path.join(APP_DIR, "reports");
 
-const REQUIRED_ARGS = ["build", "launch", "auth", "library", "map"];
+const REQUIRED_ARGS = ["build", "launch", "auth", "library", "map", "highlight"];
 const STATUS_PASS = "pass";
 const STATUS_FAIL = "fail";
 
@@ -34,6 +34,12 @@ const STEP_DEFS = [
     name: "Map save",
     requirement: "Create/save map succeeds and persists after reload.",
   },
+  {
+    key: "highlight",
+    name: "Highlight flow",
+    requirement:
+      "Create/view highlight succeeds and remains visible after navigation/reload.",
+  },
 ];
 
 function parseArgs(argv) {
@@ -56,12 +62,12 @@ function parseArgs(argv) {
 function printUsage() {
   console.log("Usage:");
   console.log(
-    '  npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<number> --launch=pass|fail --auth=pass|fail --library=pass|fail --map=pass|fail [--version=<app-version>] [--tester=<name>] [--notes="<text>"]',
+    '  npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<number> --launch=pass|fail --auth=pass|fail --library=pass|fail --map=pass|fail --highlight=pass|fail [--version=<app-version>] [--tester=<name>] [--notes="<text>"]',
   );
   console.log("");
   console.log("Example:");
   console.log(
-    '  npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=18 --version=1.0.0 --tester="Cory Hanson" --launch=pass --auth=pass --library=pass --map=pass',
+    '  npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=25 --version=1.0.0 --tester="Cory Hanson" --launch=pass --auth=pass --library=pass --map=pass --highlight=pass',
   );
 }
 

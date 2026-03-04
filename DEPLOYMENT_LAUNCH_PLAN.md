@@ -1145,6 +1145,16 @@ Status: In progress
     - `apps/mobile/reports/testflight-beta-rounds-phase254.md`
   - Triage outcome:
     - No open P0/P1 issues in either round; both rounds marked `promote` in release notes.
+- Phase 2.5.5 exit criteria tracking updated (2026-03-04):
+  - Product direction documented for Phase 2.6:
+    - `apps/mobile/PHASE26_PRODUCT_DIRECTION.md`
+    - Decision: `native-first`
+  - Exit-criteria status tracker added:
+    - `apps/mobile/reports/phase25-exit-criteria-status.md`
+  - Mobile smoke gate expanded to include highlight verification:
+    - `apps/mobile/scripts/runMobileProductionSmoke.mjs`
+    - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
+    - `apps/mobile/TESTFLIGHT_RELEASE_NOTES_TEMPLATE.md`
 
 ## 1) Launch Objective
 
@@ -1377,7 +1387,7 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 - [ ] Mobile launch success rate and crash-free session rate meet target thresholds
 - [ ] Auth + library/map/highlight core flows pass on latest TestFlight build
-- [ ] Product direction chosen and documented for Phase 2.6 (`web-shell-first` or `native-first`)
+- [x] Product direction chosen and documented for Phase 2.6 (`web-shell-first` or `native-first`)
 
 ### Phase 2 Exit Criteria
 
@@ -1479,8 +1489,8 @@ Recommended status labels:
 ## 11) Immediate Next Actions (This Week)
 
 - [ ] Execute Phase 2.5.1 web-shell stabilization checklist on current TestFlight build
-- [ ] Decide and document Phase 2.5 product direction (`web-shell-first` vs `native-first`)
-- [ ] Run one full internal beta verification round with evidence attached
+- [x] Decide and document Phase 2.5 product direction (`web-shell-first` vs `native-first`)
+- [x] Run one full internal beta verification round with evidence attached
 - [ ] Approve this plan as source of truth
 - [ ] Open Phase 0 epic with sub-tasks by section 0.1-0.4
 - [x] Start with route/auth hardening for `library` and `bookmarks`

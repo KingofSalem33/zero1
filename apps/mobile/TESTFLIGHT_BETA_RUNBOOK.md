@@ -70,7 +70,7 @@ In App Store Connect TestFlight:
 Assign the same scripted verification matrix to each tester:
 
 ```bash
-npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build-number> --version=<app-version> --tester="<tester-name>" --launch=pass --auth=pass --library=pass --map=pass
+npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build-number> --version=<app-version> --tester="<tester-name>" --launch=pass --auth=pass --library=pass --map=pass --highlight=pass
 ```
 
 Verification evidence requirement per tester:
@@ -83,7 +83,7 @@ Verification evidence requirement per tester:
 Run after installing the TestFlight build on a real iPhone:
 
 ```bash
-npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build-number> --version=<app-version> --tester="<tester-name>" --launch=pass --auth=pass --library=pass --map=pass
+npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build-number> --version=<app-version> --tester="<tester-name>" --launch=pass --auth=pass --library=pass --map=pass --highlight=pass
 ```
 
 Expected:
