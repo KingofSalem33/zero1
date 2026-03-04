@@ -528,6 +528,31 @@ export const styles = StyleSheet.create({
     borderColor: T.colors.accentStrong,
     borderWidth: 2,
   },
+  quickActionsRow: {
+    flexDirection: "row",
+    gap: T.spacing.sm,
+    marginTop: T.spacing.xs,
+  },
+  quickActionButton: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: 6,
+  },
+  quickActionButtonDanger: {
+    borderColor: T.colors.danger,
+    backgroundColor: T.colors.dangerSoft,
+  },
+  quickActionButtonLabel: {
+    color: T.colors.text,
+    fontSize: T.typography.caption,
+    fontWeight: "700",
+  },
+  quickActionButtonLabelDanger: {
+    color: T.colors.danger,
+  },
   dangerButton: {
     flex: 1,
     borderRadius: T.radius.md,

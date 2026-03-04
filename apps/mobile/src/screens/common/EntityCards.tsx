@@ -56,14 +56,23 @@ export function BookmarkCard({
   item,
   selected,
   onPress,
+  onLongPress,
+  onEdit,
+  onDelete,
+  showQuickActions,
 }: {
   item: MobileBookmarkItem;
   selected?: boolean;
   onPress?: () => void;
+  onLongPress?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  showQuickActions?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       style={[styles.featureCard, selected && styles.featureCardSelected]}
     >
       <Text style={styles.bookmarkText} numberOfLines={4}>
@@ -74,6 +83,26 @@ export function BookmarkCard({
           Saved {formatRelativeDate(item.createdAt)}
         </Text>
       ) : null}
+      {showQuickActions ? (
+        <View style={styles.quickActionsRow}>
+          <Pressable onPress={onEdit} style={styles.quickActionButton}>
+            <Text style={styles.quickActionButtonLabel}>Edit</Text>
+          </Pressable>
+          <Pressable
+            onPress={onDelete}
+            style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+          >
+            <Text
+              style={[
+                styles.quickActionButtonLabel,
+                styles.quickActionButtonLabelDanger,
+              ]}
+            >
+              Delete
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -82,14 +111,23 @@ export function HighlightCard({
   item,
   selected,
   onPress,
+  onLongPress,
+  onEdit,
+  onDelete,
+  showQuickActions,
 }: {
   item: MobileHighlightItem;
   selected?: boolean;
   onPress?: () => void;
+  onLongPress?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  showQuickActions?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       style={[styles.featureCard, selected && styles.featureCardSelected]}
     >
       <View style={styles.connectionHeaderRow}>
@@ -115,6 +153,26 @@ export function HighlightCard({
         <Text style={styles.connectionTimestamp}>
           Updated {formatRelativeDate(item.updatedAt)}
         </Text>
+      ) : null}
+      {showQuickActions ? (
+        <View style={styles.quickActionsRow}>
+          <Pressable onPress={onEdit} style={styles.quickActionButton}>
+            <Text style={styles.quickActionButtonLabel}>Edit</Text>
+          </Pressable>
+          <Pressable
+            onPress={onDelete}
+            style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+          >
+            <Text
+              style={[
+                styles.quickActionButtonLabel,
+                styles.quickActionButtonLabelDanger,
+              ]}
+            >
+              Delete
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
     </Pressable>
   );

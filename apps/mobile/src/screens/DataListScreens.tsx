@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   Text,
@@ -305,6 +306,7 @@ export function BookmarksScreen({
 }) {
   const controller = useMobileApp();
   const [query, setQuery] = useState("");
+  const [actionBookmarkId, setActionBookmarkId] = useState<string | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredBookmarks = useMemo(
     () =>
@@ -314,6 +316,26 @@ export function BookmarksScreen({
     [controller.bookmarks, normalizedQuery],
   );
   const bookmarksCount = controller.bookmarks.length;
+
+  function confirmDeleteBookmark(bookmarkId: string) {
+    Alert.alert(
+      "Delete bookmark?",
+      "This will remove the bookmark from your library.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void controller.handleDeleteBookmark(bookmarkId);
+            setActionBookmarkId((current) =>
+              current === bookmarkId ? null : current,
+            );
+          },
+        },
+      ],
+    );
+  }
 
   return (
     <View style={styles.tabScreen}>
@@ -385,7 +407,7 @@ export function BookmarksScreen({
         ListHeaderComponent={
           filteredBookmarks.length > 0 ? (
             <Text style={styles.panelSubtitle}>
-              Tap a bookmark to open details.
+              Tap to open. Long press for quick actions.
             </Text>
           ) : null
         }
@@ -393,10 +415,24 @@ export function BookmarksScreen({
           <BookmarkCard
             item={item}
             selected={item.id === controller.selectedBookmarkId}
+            showQuickActions={
+              item.id === controller.selectedBookmarkId ||
+              item.id === actionBookmarkId
+            }
             onPress={() => {
               controller.setSelectedBookmarkId(item.id);
               nav.openDetail(item.id);
             }}
+            onLongPress={() =>
+              setActionBookmarkId((current) =>
+                current === item.id ? null : item.id,
+              )
+            }
+            onEdit={() => {
+              controller.setSelectedBookmarkId(item.id);
+              nav.openDetail(item.id);
+            }}
+            onDelete={() => confirmDeleteBookmark(item.id)}
           />
         )}
         ListEmptyComponent={
@@ -433,6 +469,9 @@ export function HighlightsScreen({
 }) {
   const controller = useMobileApp();
   const [query, setQuery] = useState("");
+  const [actionHighlightId, setActionHighlightId] = useState<string | null>(
+    null,
+  );
   const normalizedQuery = query.trim().toLowerCase();
   const filteredHighlights = useMemo(
     () =>
@@ -445,6 +484,26 @@ export function HighlightsScreen({
     [controller.highlights, normalizedQuery],
   );
   const highlightsCount = controller.highlights.length;
+
+  function confirmDeleteHighlight(highlightId: string) {
+    Alert.alert(
+      "Delete highlight?",
+      "This will permanently remove the highlight.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void controller.handleDeleteHighlight(highlightId);
+            setActionHighlightId((current) =>
+              current === highlightId ? null : current,
+            );
+          },
+        },
+      ],
+    );
+  }
 
   return (
     <View style={styles.tabScreen}>
@@ -516,7 +575,7 @@ export function HighlightsScreen({
         ListHeaderComponent={
           filteredHighlights.length > 0 ? (
             <Text style={styles.panelSubtitle}>
-              Tap a highlight to edit color and note.
+              Tap to open. Long press for quick actions.
             </Text>
           ) : null
         }
@@ -524,10 +583,24 @@ export function HighlightsScreen({
           <HighlightCard
             item={item}
             selected={item.id === controller.selectedHighlightId}
+            showQuickActions={
+              item.id === controller.selectedHighlightId ||
+              item.id === actionHighlightId
+            }
             onPress={() => {
               controller.setSelectedHighlightId(item.id);
               nav.openDetail(item.id);
             }}
+            onLongPress={() =>
+              setActionHighlightId((current) =>
+                current === item.id ? null : item.id,
+              )
+            }
+            onEdit={() => {
+              controller.setSelectedHighlightId(item.id);
+              nav.openDetail(item.id);
+            }}
+            onDelete={() => confirmDeleteHighlight(item.id)}
           />
         )}
         ListEmptyComponent={
