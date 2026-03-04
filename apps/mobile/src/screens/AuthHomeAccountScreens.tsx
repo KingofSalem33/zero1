@@ -222,8 +222,8 @@ export function AccountScreen() {
         {controller.probeResult ? (
           <View style={styles.calloutMuted}>
             <Text style={styles.calloutMutedText}>
-              Protected check: {controller.probeResult.bookmarksCount} bookmarks,{" "}
-              {controller.probeResult.highlightsCount} highlights,{" "}
+              Protected check: {controller.probeResult.bookmarksCount}{" "}
+              bookmarks, {controller.probeResult.highlightsCount} highlights,{" "}
               {controller.probeResult.libraryConnectionsCount} connections.
             </Text>
           </View>
@@ -268,9 +268,7 @@ export function MapFallbackScreen() {
           workflows until native map is released.
         </Text>
         <View style={styles.calloutMuted}>
-          <Text style={styles.calloutMutedText}>
-            1. Tap the button below.
-          </Text>
+          <Text style={styles.calloutMutedText}>1. Tap the button below.</Text>
           <Text style={styles.calloutMutedText}>
             2. Complete map actions in browser.
           </Text>
@@ -278,7 +276,9 @@ export function MapFallbackScreen() {
             3. Return to the app for native library/highlight flows.
           </Text>
         </View>
-        <Text style={styles.meta}>Fallback URL: {webLibraryUrl ?? "Not configured"}</Text>
+        <Text style={styles.meta}>
+          Fallback URL: {webLibraryUrl ?? "Not configured"}
+        </Text>
         <View style={styles.row}>
           <ActionButton
             disabled={!webLibraryUrl}
