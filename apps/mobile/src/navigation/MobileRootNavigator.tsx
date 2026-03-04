@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { MOBILE_TOKENS } from "../theme/tokens";
@@ -52,14 +52,14 @@ const Tabs = createBottomTabNavigator<AppTabsParamList>();
 const T = MOBILE_TOKENS;
 
 const navTheme = {
-  ...DefaultTheme,
+  ...DarkTheme,
   colors: {
-    ...DefaultTheme.colors,
+    ...DarkTheme.colors,
     background: T.colors.canvas,
     card: T.colors.surfaceRaised,
     text: T.colors.text,
     border: T.colors.border,
-    primary: T.colors.accentStrong,
+    primary: T.colors.accent,
   },
 };
 
@@ -95,14 +95,14 @@ function AppTabsNavigator(
           fontSize: T.typography.caption,
           fontWeight: "700",
         },
-        tabBarActiveTintColor: T.colors.accentStrong,
+        tabBarActiveTintColor: T.colors.accent,
         tabBarInactiveTintColor: T.colors.textMuted,
       }}
     >
       <Tabs.Screen name="Library" options={{ tabBarLabel: "Library" }}>
         {() => props.renderLibrary()}
       </Tabs.Screen>
-      <Tabs.Screen name="Bookmarks" options={{ tabBarLabel: "Marks" }}>
+      <Tabs.Screen name="Bookmarks" options={{ tabBarLabel: "Bookmarks" }}>
         {({ navigation }) =>
           props.renderBookmarks({
             openCreate: () =>
@@ -114,7 +114,7 @@ function AppTabsNavigator(
           })
         }
       </Tabs.Screen>
-      <Tabs.Screen name="Highlights" options={{ tabBarLabel: "Light" }}>
+      <Tabs.Screen name="Highlights" options={{ tabBarLabel: "Highlights" }}>
         {({ navigation }) =>
           props.renderHighlights({
             openCreate: () =>
@@ -148,7 +148,7 @@ function AppStackNavigator(
         headerStyle: {
           backgroundColor: T.colors.ink,
         },
-        headerTintColor: T.colors.canvas,
+        headerTintColor: T.colors.text,
         headerTitleStyle: {
           fontWeight: "800",
         },

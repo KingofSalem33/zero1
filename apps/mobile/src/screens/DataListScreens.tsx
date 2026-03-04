@@ -6,6 +6,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { ActionButton } from "../components/native/ActionButton";
+import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
 import {
@@ -29,7 +31,7 @@ export function LibraryScreen() {
 
   return (
     <View style={styles.tabScreen}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <View style={styles.spaceBetweenRow}>
           <View style={styles.flex1}>
             <Text style={styles.panelTitle}>Library Connections</Text>
@@ -38,18 +40,12 @@ export function LibraryScreen() {
               backend as desktop/web.
             </Text>
           </View>
-          <Pressable
+          <ActionButton
             disabled={refreshing || controller.busy}
+            label={refreshing ? "Loading..." : "Refresh"}
             onPress={() => void handleRefreshLibrary()}
-            style={[
-              styles.ghostButton,
-              (refreshing || controller.busy) && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.ghostButtonLabel}>
-              {refreshing ? "Loading..." : "Refresh"}
-            </Text>
-          </Pressable>
+            variant="ghost"
+          />
         </View>
         {controller.libraryError ? (
           <Text style={styles.error}>{controller.libraryError}</Text>
@@ -59,7 +55,7 @@ export function LibraryScreen() {
             Last sync {formatRelativeDate(controller.libraryLoadedAt)}
           </Text>
         ) : null}
-      </View>
+      </SurfaceCard>
       <FlatList
         data={controller.libraryConnections}
         keyExtractor={(item) => item.id}
@@ -84,7 +80,7 @@ export function LibraryScreen() {
           )
         }
         ListFooterComponent={
-          <View style={styles.panel}>
+          <SurfaceCard>
             <View style={styles.spaceBetweenRow}>
               <View style={styles.flex1}>
                 <Text style={styles.panelTitle}>Library Maps</Text>
@@ -92,19 +88,12 @@ export function LibraryScreen() {
                   Create and manage map entries for your existing bundle IDs.
                 </Text>
               </View>
-              <Pressable
+              <ActionButton
                 disabled={controller.libraryMapsLoading || controller.busy}
+                label={controller.libraryMapsLoading ? "Loading..." : "Refresh"}
                 onPress={() => void controller.loadLibraryMaps()}
-                style={[
-                  styles.ghostButton,
-                  (controller.libraryMapsLoading || controller.busy) &&
-                    styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.ghostButtonLabel}>
-                  {controller.libraryMapsLoading ? "Loading..." : "Refresh"}
-                </Text>
-              </Pressable>
+                variant="ghost"
+              />
             </View>
             <TextInput
               autoCapitalize="none"
@@ -147,19 +136,14 @@ export function LibraryScreen() {
               }
             />
             <View style={styles.row}>
-              <Pressable
+              <ActionButton
                 disabled={controller.libraryMapMutationBusy || controller.busy}
+                label={
+                  controller.libraryMapMutationBusy ? "Saving..." : "Save map"
+                }
                 onPress={() => void controller.handleCreateLibraryMap()}
-                style={[
-                  styles.primaryButton,
-                  (controller.libraryMapMutationBusy || controller.busy) &&
-                    styles.buttonDisabled,
-                ]}
-              >
-                <Text style={styles.primaryButtonLabel}>
-                  {controller.libraryMapMutationBusy ? "Saving..." : "Save map"}
-                </Text>
-              </Pressable>
+                variant="primary"
+              />
             </View>
             {controller.libraryMapsError ? (
               <Text style={styles.error}>{controller.libraryMapsError}</Text>
@@ -195,7 +179,7 @@ export function LibraryScreen() {
                 ))}
               </View>
             )}
-          </View>
+          </SurfaceCard>
         }
       />
     </View>
@@ -213,7 +197,7 @@ export function BookmarksScreen({
   const controller = useMobileApp();
   return (
     <View style={styles.tabScreen}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <View style={styles.spaceBetweenRow}>
           <View style={styles.flex1}>
             <Text style={styles.panelTitle}>Bookmarks</Text>
@@ -221,32 +205,20 @@ export function BookmarksScreen({
               Authenticated mobile list backed by `/api/bookmarks`.
             </Text>
           </View>
-          <Pressable
+          <ActionButton
             disabled={controller.bookmarksLoading || controller.busy}
+            label={controller.bookmarksLoading ? "Loading..." : "Refresh"}
             onPress={() => void controller.loadBookmarks()}
-            style={[
-              styles.ghostButton,
-              (controller.bookmarksLoading || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.ghostButtonLabel}>
-              {controller.bookmarksLoading ? "Loading..." : "Refresh"}
-            </Text>
-          </Pressable>
+            variant="ghost"
+          />
         </View>
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.bookmarkMutationBusy || controller.busy}
+            label="New bookmark"
             onPress={nav.openCreate}
-            style={[
-              styles.primaryButton,
-              (controller.bookmarkMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>New bookmark</Text>
-          </Pressable>
+            variant="primary"
+          />
         </View>
         {controller.bookmarksError ? (
           <Text style={styles.error}>{controller.bookmarksError}</Text>
@@ -259,7 +231,7 @@ export function BookmarksScreen({
         {controller.bookmarkMutationError ? (
           <Text style={styles.error}>{controller.bookmarkMutationError}</Text>
         ) : null}
-      </View>
+      </SurfaceCard>
 
       <View style={styles.listHintRow}>
         <Text style={styles.caption}>
@@ -313,7 +285,7 @@ export function HighlightsScreen({
   const controller = useMobileApp();
   return (
     <View style={styles.tabScreen}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <View style={styles.spaceBetweenRow}>
           <View style={styles.flex1}>
             <Text style={styles.panelTitle}>Highlights</Text>
@@ -321,32 +293,20 @@ export function HighlightsScreen({
               Authenticated mobile list backed by `/api/highlights`.
             </Text>
           </View>
-          <Pressable
+          <ActionButton
             disabled={controller.highlightsLoading || controller.busy}
+            label={controller.highlightsLoading ? "Loading..." : "Refresh"}
             onPress={() => void controller.loadHighlights()}
-            style={[
-              styles.ghostButton,
-              (controller.highlightsLoading || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.ghostButtonLabel}>
-              {controller.highlightsLoading ? "Loading..." : "Refresh"}
-            </Text>
-          </Pressable>
+            variant="ghost"
+          />
         </View>
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
+            label="New highlight"
             onPress={nav.openCreate}
-            style={[
-              styles.primaryButton,
-              (controller.highlightMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>New highlight</Text>
-          </Pressable>
+            variant="primary"
+          />
         </View>
         {controller.highlightsError ? (
           <Text style={styles.error}>{controller.highlightsError}</Text>
@@ -359,7 +319,7 @@ export function HighlightsScreen({
         {controller.highlightMutationError ? (
           <Text style={styles.error}>{controller.highlightMutationError}</Text>
         ) : null}
-      </View>
+      </SurfaceCard>
 
       <View style={styles.listHintRow}>
         <Text style={styles.caption}>

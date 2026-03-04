@@ -1,4 +1,5 @@
 import { Pressable, Text, View } from "react-native";
+import { ActionButton } from "../../components/native/ActionButton";
 import type {
   LibraryConnectionItem,
   LibraryMapItem,
@@ -158,15 +159,12 @@ export function LibraryMapCard({
       ) : null}
       {onDelete ? (
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={mutationBusy}
+            label={mutationBusy ? "Deleting..." : "Delete map"}
             onPress={onDelete}
-            style={[styles.dangerButton, mutationBusy && styles.buttonDisabled]}
-          >
-            <Text style={styles.dangerButtonLabel}>
-              {mutationBusy ? "Deleting..." : "Delete map"}
-            </Text>
-          </Pressable>
+            variant="danger"
+          />
         </View>
       ) : null}
     </View>
