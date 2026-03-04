@@ -1160,6 +1160,14 @@ Status: In progress
     - `apps/mobile/reports/testflight-release-notes-build27.md`
   - Exit criterion update:
     - `Auth + library/map/highlight` on latest TestFlight build marked complete.
+    - 3-day launch/crash baseline threshold validation marked complete.
+- Phase 2.6 native-first execution started (2026-03-04):
+  - First UX polish slice applied to core native tabs:
+    - `apps/mobile/src/screens/DataListScreens.tsx`
+  - Updated native parity gate tracker:
+    - `apps/mobile/MOBILE_PARITY_CHECKLIST.md`
+  - Updated phase-exit tracker for completed baseline evidence:
+    - `apps/mobile/reports/phase25-exit-criteria-status.md`
 - Phase 2.5.2 native parity foundation started (2026-03-04):
   - Added explicit parity spec and execution checklist:
     - `apps/mobile/MOBILE_PARITY_SPEC.md`
@@ -1407,7 +1415,7 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 #### 2.5.5 Phase 2.5 Exit Criteria
 
-- [ ] Mobile launch success rate and crash-free session rate meet target thresholds
+- [x] Mobile launch success rate and crash-free session rate meet target thresholds
 - [x] Auth + library/map/highlight core flows pass on latest TestFlight build
 - [x] Product direction chosen and documented for Phase 2.6 (`web-shell-first` or `native-first`)
 
@@ -1510,7 +1518,7 @@ Recommended status labels:
 
 ## 11) Immediate Next Actions (This Week)
 
-- [ ] Execute next native parity TestFlight pass (Library/Bookmarks/Highlights/Account visual parity validation)
+- [x] Execute next native parity TestFlight pass (Library/Bookmarks/Highlights/Account visual parity validation)
 - [x] Decide and document Phase 2.5 product direction (`web-shell-first` vs `native-first`)
 - [x] Run one full internal beta verification round with evidence attached
 - [ ] Approve this plan as source of truth

@@ -21,6 +21,8 @@ import {
 export function LibraryScreen() {
   const controller = useMobileApp();
   const refreshing = controller.libraryLoading || controller.libraryMapsLoading;
+  const connectionsCount = controller.libraryConnections.length;
+  const mapsCount = controller.libraryMaps.length;
 
   async function handleRefreshLibrary() {
     await Promise.all([
@@ -34,10 +36,9 @@ export function LibraryScreen() {
       <SurfaceCard>
         <View style={styles.spaceBetweenRow}>
           <View style={styles.flex1}>
-            <Text style={styles.panelTitle}>Library Connections</Text>
+            <Text style={styles.panelTitle}>Library</Text>
             <Text style={styles.panelSubtitle}>
-              Authenticated connection and map workflows powered by the same
-              backend as desktop/web.
+              Explore your saved scripture connections and related map bundles.
             </Text>
           </View>
           <ActionButton
@@ -46,6 +47,16 @@ export function LibraryScreen() {
             onPress={() => void handleRefreshLibrary()}
             variant="ghost"
           />
+        </View>
+        <View style={styles.statGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Connections</Text>
+            <Text style={styles.statValue}>{connectionsCount}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Maps</Text>
+            <Text style={styles.statValue}>{mapsCount}</Text>
+          </View>
         </View>
         {controller.libraryError ? (
           <Text style={styles.error}>{controller.libraryError}</Text>
@@ -62,6 +73,11 @@ export function LibraryScreen() {
         contentContainerStyle={styles.listContent}
         refreshing={refreshing}
         onRefresh={() => void handleRefreshLibrary()}
+        ListHeaderComponent={
+          connectionsCount > 0 ? (
+            <Text style={styles.panelSubtitle}>Recent connections</Text>
+          ) : null
+        }
         renderItem={({ item }) => <ConnectionCard item={item} />}
         ListEmptyComponent={
           controller.libraryLoading ? (
@@ -73,8 +89,8 @@ export function LibraryScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No saved connections yet</Text>
               <Text style={styles.emptySubtitle}>
-                Create or save connections in your existing app flows, then
-                return here and refresh.
+                Save your first connection from discovery, then pull to refresh
+                this view.
               </Text>
             </View>
           )
@@ -83,7 +99,7 @@ export function LibraryScreen() {
           <SurfaceCard>
             <View style={styles.spaceBetweenRow}>
               <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Library Maps</Text>
+                <Text style={styles.panelTitle}>Maps</Text>
                 <Text style={styles.panelSubtitle}>
                   Create and manage map entries for your existing bundle IDs.
                 </Text>
@@ -95,6 +111,13 @@ export function LibraryScreen() {
                 variant="ghost"
               />
             </View>
+            <View style={styles.statGrid}>
+              <View style={styles.statCard}>
+                <Text style={styles.statLabel}>Saved maps</Text>
+                <Text style={styles.statValue}>{mapsCount}</Text>
+              </View>
+            </View>
+            <Text style={styles.caption}>Create map</Text>
             <TextInput
               autoCapitalize="none"
               placeholder="Bundle ID"
@@ -167,6 +190,7 @@ export function LibraryScreen() {
               </View>
             ) : (
               <View style={styles.listContent}>
+                <Text style={styles.panelSubtitle}>Saved maps</Text>
                 {controller.libraryMaps.map((map) => (
                   <LibraryMapCard
                     key={map.id}
@@ -195,6 +219,8 @@ export function BookmarksScreen({
   };
 }) {
   const controller = useMobileApp();
+  const bookmarksCount = controller.bookmarks.length;
+
   return (
     <View style={styles.tabScreen}>
       <SurfaceCard>
@@ -202,7 +228,7 @@ export function BookmarksScreen({
           <View style={styles.flex1}>
             <Text style={styles.panelTitle}>Bookmarks</Text>
             <Text style={styles.panelSubtitle}>
-              Authenticated mobile list backed by `/api/bookmarks`.
+              Save and revisit scripture references quickly.
             </Text>
           </View>
           <ActionButton
@@ -211,6 +237,18 @@ export function BookmarksScreen({
             onPress={() => void controller.loadBookmarks()}
             variant="ghost"
           />
+        </View>
+        <View style={styles.statGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Saved</Text>
+            <Text style={styles.statValue}>{bookmarksCount}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Selected</Text>
+            <Text style={styles.statValue}>
+              {controller.selectedBookmarkId ? 1 : 0}
+            </Text>
+          </View>
         </View>
         <View style={styles.row}>
           <ActionButton
@@ -232,18 +270,19 @@ export function BookmarksScreen({
           <Text style={styles.error}>{controller.bookmarkMutationError}</Text>
         ) : null}
       </SurfaceCard>
-
-      <View style={styles.listHintRow}>
-        <Text style={styles.caption}>
-          Tap a bookmark to open its route screen.
-        </Text>
-      </View>
       <FlatList
         data={controller.bookmarks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshing={controller.bookmarksLoading}
         onRefresh={() => void controller.loadBookmarks()}
+        ListHeaderComponent={
+          bookmarksCount > 0 ? (
+            <Text style={styles.panelSubtitle}>
+              Tap a bookmark to open details.
+            </Text>
+          ) : null
+        }
         renderItem={({ item }) => (
           <BookmarkCard
             item={item}
@@ -283,6 +322,8 @@ export function HighlightsScreen({
   };
 }) {
   const controller = useMobileApp();
+  const highlightsCount = controller.highlights.length;
+
   return (
     <View style={styles.tabScreen}>
       <SurfaceCard>
@@ -290,7 +331,7 @@ export function HighlightsScreen({
           <View style={styles.flex1}>
             <Text style={styles.panelTitle}>Highlights</Text>
             <Text style={styles.panelSubtitle}>
-              Authenticated mobile list backed by `/api/highlights`.
+              Organize highlighted verses and notes across your reading flow.
             </Text>
           </View>
           <ActionButton
@@ -299,6 +340,18 @@ export function HighlightsScreen({
             onPress={() => void controller.loadHighlights()}
             variant="ghost"
           />
+        </View>
+        <View style={styles.statGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Saved</Text>
+            <Text style={styles.statValue}>{highlightsCount}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Selected</Text>
+            <Text style={styles.statValue}>
+              {controller.selectedHighlightId ? 1 : 0}
+            </Text>
+          </View>
         </View>
         <View style={styles.row}>
           <ActionButton
@@ -320,18 +373,19 @@ export function HighlightsScreen({
           <Text style={styles.error}>{controller.highlightMutationError}</Text>
         ) : null}
       </SurfaceCard>
-
-      <View style={styles.listHintRow}>
-        <Text style={styles.caption}>
-          Tap a highlight to open its route screen.
-        </Text>
-      </View>
       <FlatList
         data={controller.highlights}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshing={controller.highlightsLoading}
         onRefresh={() => void controller.loadHighlights()}
+        ListHeaderComponent={
+          highlightsCount > 0 ? (
+            <Text style={styles.panelSubtitle}>
+              Tap a highlight to edit color and note.
+            </Text>
+          ) : null
+        }
         renderItem={({ item }) => (
           <HighlightCard
             item={item}
