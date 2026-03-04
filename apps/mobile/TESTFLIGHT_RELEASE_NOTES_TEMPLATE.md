@@ -21,7 +21,7 @@ Use one copy of this template per TestFlight build.
 ## Gate Checks
 
 - `npm --prefix apps/mobile run phase2:testflight:check`:
-- `npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build> --launch=pass --auth=pass --library=pass --map=pass`:
+- `npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build> --launch=pass --auth=pass --library=pass --map=pass --highlight=pass`:
 - Smoke report path (`apps/mobile/reports/mobileProdSmoke-build<build>.json`):
 
 ## Core Flow Results
@@ -30,6 +30,7 @@ Use one copy of this template per TestFlight build.
 - Auth:
 - Library load:
 - Map save:
+- Highlight flow:
 - Regression notes:
 
 ## Issues and Triage
