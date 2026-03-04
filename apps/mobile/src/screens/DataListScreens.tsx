@@ -6,6 +6,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useMemo, useState } from "react";
 import { ActionButton } from "../components/native/ActionButton";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
@@ -18,9 +19,59 @@ import {
   formatRelativeDate,
 } from "./common/EntityCards";
 
+function includesQuery(
+  fields: Array<string | null | undefined>,
+  normalizedQuery: string,
+): boolean {
+  if (!normalizedQuery) return true;
+  const haystack = fields
+    .map((value) => value ?? "")
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(normalizedQuery);
+}
+
 export function LibraryScreen() {
   const controller = useMobileApp();
   const refreshing = controller.libraryLoading || controller.libraryMapsLoading;
+  const [connectionQuery, setConnectionQuery] = useState("");
+  const [mapQuery, setMapQuery] = useState("");
+  const normalizedConnectionQuery = connectionQuery.trim().toLowerCase();
+  const normalizedMapQuery = mapQuery.trim().toLowerCase();
+  const filteredConnections = useMemo(
+    () =>
+      controller.libraryConnections.filter((item) =>
+        includesQuery(
+          [
+            item.fromVerse.reference,
+            item.toVerse.reference,
+            item.synopsis,
+            item.connectionType,
+            item.note,
+            item.tags.join(" "),
+            item.bundleMeta?.anchorRef,
+          ],
+          normalizedConnectionQuery,
+        ),
+      ),
+    [controller.libraryConnections, normalizedConnectionQuery],
+  );
+  const filteredMaps = useMemo(
+    () =>
+      controller.libraryMaps.filter((item) =>
+        includesQuery(
+          [
+            item.title,
+            item.bundleId,
+            item.note,
+            item.tags.join(" "),
+            item.bundleMeta?.anchorRef,
+          ],
+          normalizedMapQuery,
+        ),
+      ),
+    [controller.libraryMaps, normalizedMapQuery],
+  );
   const connectionsCount = controller.libraryConnections.length;
   const mapsCount = controller.libraryMaps.length;
 
@@ -51,13 +102,26 @@ export function LibraryScreen() {
         <View style={styles.statGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Connections</Text>
-            <Text style={styles.statValue}>{connectionsCount}</Text>
+            <Text style={styles.statValue}>{filteredConnections.length}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Maps</Text>
-            <Text style={styles.statValue}>{mapsCount}</Text>
+            <Text style={styles.statValue}>{filteredMaps.length}</Text>
           </View>
         </View>
+        <TextInput
+          placeholder="Search connections (verse, type, tag, note)"
+          placeholderTextColor={T.colors.textMuted}
+          style={styles.input}
+          value={connectionQuery}
+          onChangeText={setConnectionQuery}
+        />
+        {normalizedConnectionQuery ? (
+          <Text style={styles.caption}>
+            Showing {filteredConnections.length} of {connectionsCount}{" "}
+            connections
+          </Text>
+        ) : null}
         {controller.libraryError ? (
           <Text style={styles.error}>{controller.libraryError}</Text>
         ) : null}
@@ -68,13 +132,13 @@ export function LibraryScreen() {
         ) : null}
       </SurfaceCard>
       <FlatList
-        data={controller.libraryConnections}
+        data={filteredConnections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshing={refreshing}
         onRefresh={() => void handleRefreshLibrary()}
         ListHeaderComponent={
-          connectionsCount > 0 ? (
+          filteredConnections.length > 0 ? (
             <Text style={styles.panelSubtitle}>Recent connections</Text>
           ) : null
         }
@@ -87,10 +151,15 @@ export function LibraryScreen() {
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No saved connections yet</Text>
+              <Text style={styles.emptyTitle}>
+                {normalizedConnectionQuery
+                  ? "No matching connections"
+                  : "No saved connections yet"}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Save your first connection from discovery, then pull to refresh
-                this view.
+                {normalizedConnectionQuery
+                  ? "Try a broader search query."
+                  : "Save your first connection from discovery, then pull to refresh this view."}
               </Text>
             </View>
           )
@@ -114,9 +183,21 @@ export function LibraryScreen() {
             <View style={styles.statGrid}>
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>Saved maps</Text>
-                <Text style={styles.statValue}>{mapsCount}</Text>
+                <Text style={styles.statValue}>{filteredMaps.length}</Text>
               </View>
             </View>
+            <TextInput
+              placeholder="Search maps (title, bundle, note)"
+              placeholderTextColor={T.colors.textMuted}
+              style={styles.input}
+              value={mapQuery}
+              onChangeText={setMapQuery}
+            />
+            {normalizedMapQuery ? (
+              <Text style={styles.caption}>
+                Showing {filteredMaps.length} of {mapsCount} maps
+              </Text>
+            ) : null}
             <Text style={styles.caption}>Create map</Text>
             <TextInput
               autoCapitalize="none"
@@ -181,17 +262,21 @@ export function LibraryScreen() {
                 Last sync {formatRelativeDate(controller.libraryMapsLoadedAt)}
               </Text>
             ) : null}
-            {controller.libraryMaps.length === 0 ? (
+            {filteredMaps.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>No maps yet</Text>
+                <Text style={styles.emptyTitle}>
+                  {normalizedMapQuery ? "No matching maps" : "No maps yet"}
+                </Text>
                 <Text style={styles.emptySubtitle}>
-                  Enter a bundle ID and save your first map.
+                  {normalizedMapQuery
+                    ? "Try a broader search query."
+                    : "Enter a bundle ID and save your first map."}
                 </Text>
               </View>
             ) : (
               <View style={styles.listContent}>
                 <Text style={styles.panelSubtitle}>Saved maps</Text>
-                {controller.libraryMaps.map((map) => (
+                {filteredMaps.map((map) => (
                   <LibraryMapCard
                     key={map.id}
                     item={map}
@@ -219,6 +304,15 @@ export function BookmarksScreen({
   };
 }) {
   const controller = useMobileApp();
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredBookmarks = useMemo(
+    () =>
+      controller.bookmarks.filter((item) =>
+        includesQuery([item.text], normalizedQuery),
+      ),
+    [controller.bookmarks, normalizedQuery],
+  );
   const bookmarksCount = controller.bookmarks.length;
 
   return (
@@ -241,7 +335,7 @@ export function BookmarksScreen({
         <View style={styles.statGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Saved</Text>
-            <Text style={styles.statValue}>{bookmarksCount}</Text>
+            <Text style={styles.statValue}>{filteredBookmarks.length}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Selected</Text>
@@ -250,6 +344,18 @@ export function BookmarksScreen({
             </Text>
           </View>
         </View>
+        <TextInput
+          placeholder="Search bookmarks"
+          placeholderTextColor={T.colors.textMuted}
+          style={styles.input}
+          value={query}
+          onChangeText={setQuery}
+        />
+        {normalizedQuery ? (
+          <Text style={styles.caption}>
+            Showing {filteredBookmarks.length} of {bookmarksCount} bookmarks
+          </Text>
+        ) : null}
         <View style={styles.row}>
           <ActionButton
             disabled={controller.bookmarkMutationBusy || controller.busy}
@@ -271,13 +377,13 @@ export function BookmarksScreen({
         ) : null}
       </SurfaceCard>
       <FlatList
-        data={controller.bookmarks}
+        data={filteredBookmarks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshing={controller.bookmarksLoading}
         onRefresh={() => void controller.loadBookmarks()}
         ListHeaderComponent={
-          bookmarksCount > 0 ? (
+          filteredBookmarks.length > 0 ? (
             <Text style={styles.panelSubtitle}>
               Tap a bookmark to open details.
             </Text>
@@ -301,9 +407,13 @@ export function BookmarksScreen({
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No bookmarks yet</Text>
+              <Text style={styles.emptyTitle}>
+                {normalizedQuery ? "No matching bookmarks" : "No bookmarks yet"}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Use New bookmark to create one, then pull down to sync.
+                {normalizedQuery
+                  ? "Try a broader search query."
+                  : "Use New bookmark to create one, then pull down to sync."}
               </Text>
             </View>
           )
@@ -322,6 +432,18 @@ export function HighlightsScreen({
   };
 }) {
   const controller = useMobileApp();
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredHighlights = useMemo(
+    () =>
+      controller.highlights.filter((item) =>
+        includesQuery(
+          [item.referenceLabel, item.text, item.note, item.color],
+          normalizedQuery,
+        ),
+      ),
+    [controller.highlights, normalizedQuery],
+  );
   const highlightsCount = controller.highlights.length;
 
   return (
@@ -344,7 +466,7 @@ export function HighlightsScreen({
         <View style={styles.statGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Saved</Text>
-            <Text style={styles.statValue}>{highlightsCount}</Text>
+            <Text style={styles.statValue}>{filteredHighlights.length}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Selected</Text>
@@ -353,6 +475,18 @@ export function HighlightsScreen({
             </Text>
           </View>
         </View>
+        <TextInput
+          placeholder="Search highlights"
+          placeholderTextColor={T.colors.textMuted}
+          style={styles.input}
+          value={query}
+          onChangeText={setQuery}
+        />
+        {normalizedQuery ? (
+          <Text style={styles.caption}>
+            Showing {filteredHighlights.length} of {highlightsCount} highlights
+          </Text>
+        ) : null}
         <View style={styles.row}>
           <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
@@ -374,13 +508,13 @@ export function HighlightsScreen({
         ) : null}
       </SurfaceCard>
       <FlatList
-        data={controller.highlights}
+        data={filteredHighlights}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshing={controller.highlightsLoading}
         onRefresh={() => void controller.loadHighlights()}
         ListHeaderComponent={
-          highlightsCount > 0 ? (
+          filteredHighlights.length > 0 ? (
             <Text style={styles.panelSubtitle}>
               Tap a highlight to edit color and note.
             </Text>
@@ -404,9 +538,15 @@ export function HighlightsScreen({
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No highlights yet</Text>
+              <Text style={styles.emptyTitle}>
+                {normalizedQuery
+                  ? "No matching highlights"
+                  : "No highlights yet"}
+              </Text>
               <Text style={styles.emptySubtitle}>
-                Use New highlight to create one, then pull down to sync.
+                {normalizedQuery
+                  ? "Try a broader search query."
+                  : "Use New highlight to create one, then pull down to sync."}
               </Text>
             </View>
           )
