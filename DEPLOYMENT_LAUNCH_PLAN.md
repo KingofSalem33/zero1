@@ -1155,6 +1155,11 @@ Status: In progress
     - `apps/mobile/scripts/runMobileProductionSmoke.mjs`
     - `apps/mobile/TESTFLIGHT_BETA_RUNBOOK.md`
     - `apps/mobile/TESTFLIGHT_RELEASE_NOTES_TEMPLATE.md`
+  - Latest TestFlight build (`25`) highlight-inclusive smoke run passed:
+    - `apps/mobile/reports/mobileProdSmoke-build25.json`
+    - `apps/mobile/reports/testflight-release-notes-build25.md`
+  - Exit criterion update:
+    - `Auth + library/map/highlight` on latest TestFlight build marked complete.
 
 ## 1) Launch Objective
 
@@ -1386,7 +1391,7 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 #### 2.5.5 Phase 2.5 Exit Criteria
 
 - [ ] Mobile launch success rate and crash-free session rate meet target thresholds
-- [ ] Auth + library/map/highlight core flows pass on latest TestFlight build
+- [x] Auth + library/map/highlight core flows pass on latest TestFlight build
 - [x] Product direction chosen and documented for Phase 2.6 (`web-shell-first` or `native-first`)
 
 ### Phase 2 Exit Criteria
