@@ -60,6 +60,24 @@ Expected:
 - Submission accepted by App Store Connect.
 - Build visible under TestFlight for `com.zero1.mobile`.
 
+## Step 3.5: Expand Internal Group + Assign Scripted Verification
+
+In App Store Connect TestFlight:
+
+- Confirm internal group includes active testers (`Team (Expo)`).
+- Add/confirm tester access for the target build before requesting verification.
+
+Assign the same scripted verification matrix to each tester:
+
+```bash
+npm --prefix apps/mobile run phase2:smoke:mobile:prod -- --build=<build-number> --version=<app-version> --tester="<tester-name>" --launch=pass --auth=pass --library=pass --map=pass
+```
+
+Verification evidence requirement per tester:
+
+- Attach generated report path: `apps/mobile/reports/mobileProdSmoke-build<build-number>.json`.
+- Record pass/fail + notes in that build's release notes file.
+
 ## Step 4: Run Mobile Production Smoke Gate
 
 Run after installing the TestFlight build on a real iPhone:
