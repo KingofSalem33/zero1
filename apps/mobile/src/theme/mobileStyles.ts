@@ -41,8 +41,10 @@ export const styles = StyleSheet.create({
     gap: T.spacing.md,
   },
   authHeroPanel: {
-    backgroundColor: T.colors.ink,
+    backgroundColor: T.colors.surface,
     borderRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: T.colors.border,
     padding: T.spacing.lg,
     gap: T.spacing.sm,
   },
@@ -54,6 +56,7 @@ export const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(9, 9, 11, 0.45)",
   },
   panel: {
     backgroundColor: T.colors.surfaceRaised,
@@ -63,10 +66,10 @@ export const styles = StyleSheet.create({
     padding: T.spacing.lg,
     gap: T.spacing.sm,
     shadowColor: T.colors.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 1,
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
   panelTitle: {
     color: T.colors.text,
@@ -129,7 +132,7 @@ export const styles = StyleSheet.create({
   },
   appleButton: {
     backgroundColor: T.colors.ink,
-    borderColor: T.colors.ink,
+    borderColor: T.colors.border,
   },
   providerButtonLabel: {
     color: T.colors.text,
@@ -137,13 +140,13 @@ export const styles = StyleSheet.create({
     fontSize: T.typography.body,
   },
   providerButtonLabelInverse: {
-    color: T.colors.canvas,
+    color: T.colors.text,
   },
   primaryButton: {
     flex: 1,
     borderRadius: T.radius.md,
     borderWidth: 1,
-    borderColor: T.colors.accentStrong,
+    borderColor: T.colors.accent,
     backgroundColor: T.colors.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -151,7 +154,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: T.spacing.md,
   },
   primaryButtonLabel: {
-    color: T.colors.canvas,
+    color: T.colors.ink,
     fontWeight: "700",
     fontSize: T.typography.body,
   },
@@ -175,7 +178,7 @@ export const styles = StyleSheet.create({
     borderRadius: T.radius.md,
     borderColor: T.colors.border,
     borderWidth: 1,
-    backgroundColor: T.colors.surface,
+    backgroundColor: T.colors.surfaceRaised,
     paddingHorizontal: T.spacing.md,
     paddingVertical: 10,
   },
@@ -185,7 +188,7 @@ export const styles = StyleSheet.create({
     fontSize: T.typography.body,
   },
   buttonDisabled: {
-    opacity: 0.55,
+    opacity: 0.5,
   },
   calloutMuted: {
     backgroundColor: T.colors.canvasMuted,
@@ -271,26 +274,28 @@ export const styles = StyleSheet.create({
     padding: T.spacing.lg,
   },
   heroCard: {
-    backgroundColor: T.colors.ink,
+    backgroundColor: T.colors.surface,
+    borderWidth: 1,
+    borderColor: T.colors.border,
     borderRadius: T.radius.lg,
     padding: T.spacing.lg,
     gap: T.spacing.sm,
   },
   heroEyebrow: {
-    color: "#D7C79E",
+    color: T.colors.accent,
     fontSize: T.typography.caption,
     textTransform: "uppercase",
     letterSpacing: 1,
     fontWeight: "700",
   },
   heroTitle: {
-    color: T.colors.canvas,
+    color: T.colors.text,
     fontSize: 22,
     lineHeight: 28,
     fontWeight: "800",
   },
   heroSubtitle: {
-    color: "#D8CCB8",
+    color: T.colors.textMuted,
     fontSize: T.typography.body,
     lineHeight: 20,
   },
@@ -330,7 +335,7 @@ export const styles = StyleSheet.create({
   },
   featureCardSelected: {
     borderColor: T.colors.accent,
-    backgroundColor: "#FFF4E3",
+    backgroundColor: T.colors.accentSoft,
   },
   connectionHeaderRow: {
     flexDirection: "row",
@@ -373,7 +378,7 @@ export const styles = StyleSheet.create({
     height: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.12)",
+    borderColor: T.colors.border,
   },
   highlightColorCode: {
     color: T.colors.textMuted,
@@ -467,7 +472,7 @@ export const styles = StyleSheet.create({
     height: 18,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.18)",
+    borderColor: T.colors.border,
   },
   dangerButton: {
     flex: 1,

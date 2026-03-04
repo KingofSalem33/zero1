@@ -13,11 +13,12 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { ActionButton } from "../components/native/ActionButton";
+import { SurfaceCard } from "../components/native/SurfaceCard";
 import { MOBILE_ENV } from "../lib/env";
 import { getOAuthRedirectUrl } from "../lib/authRedirect";
 import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
-import { formatRelativeDate } from "./common/EntityCards";
 
 export function AuthScreen() {
   const controller = useMobileApp();
@@ -57,7 +58,7 @@ export function AuthScreen() {
               </Text>
             </View>
 
-            <View style={styles.panel}>
+            <SurfaceCard>
               <Text style={styles.panelTitle}>Sign in to continue</Text>
               <Text style={styles.panelSubtitle}>
                 Continue with Google or Apple for the fastest flow.
@@ -125,30 +126,18 @@ export function AuthScreen() {
               />
 
               <View style={[styles.row, stackButtons && styles.rowStack]}>
-                <Pressable
+                <ActionButton
                   disabled={controller.busy}
+                  label={controller.busy ? "Signing in..." : "Sign in with email"}
                   onPress={() => void controller.signIn()}
-                  style={[
-                    styles.primaryButton,
-                    controller.busy && styles.buttonDisabled,
-                  ]}
-                >
-                  <Text style={styles.primaryButtonLabel}>
-                    {controller.busy ? "Signing in..." : "Sign in with email"}
-                  </Text>
-                </Pressable>
-                <Pressable
+                  variant="primary"
+                />
+                <ActionButton
                   disabled={controller.busy}
+                  label="Send magic link"
                   onPress={() => void controller.sendMagicLink()}
-                  style={[
-                    styles.secondaryButton,
-                    controller.busy && styles.buttonDisabled,
-                  ]}
-                >
-                  <Text style={styles.secondaryButtonLabel}>
-                    Send magic link
-                  </Text>
-                </Pressable>
+                  variant="secondary"
+                />
               </View>
 
               <View style={styles.calloutMuted}>
@@ -169,7 +158,7 @@ export function AuthScreen() {
                   <Text style={styles.infoCardText}>{controller.authInfo}</Text>
                 </View>
               ) : null}
-            </View>
+            </SurfaceCard>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -177,133 +166,17 @@ export function AuthScreen() {
   );
 }
 
-export function HomeScreen({
-  nav,
-}: {
-  nav: {
-    openLibrary: () => void;
-    openBookmarks: () => void;
-    openHighlights: () => void;
-  };
-}) {
-  const controller = useMobileApp();
-  return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
-      <View style={styles.heroCard}>
-        <Text style={styles.heroEyebrow}>Zero1 Mobile</Text>
-        <Text style={styles.heroTitle}>
-          Authenticated mobile shell is live.
-        </Text>
-        <Text style={styles.heroSubtitle}>
-          Provider login, session restore, and protected API access now work on
-          the iOS dev client.
-        </Text>
-        <View style={styles.row}>
-          <Pressable
-            disabled={controller.busy}
-            onPress={() => void controller.refreshDashboard()}
-            style={[
-              styles.primaryButton,
-              controller.busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>Refresh dashboard</Text>
-          </Pressable>
-          <Pressable
-            disabled={controller.busy}
-            onPress={nav.openLibrary}
-            style={[
-              styles.secondaryButton,
-              controller.busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>Open library</Text>
-          </Pressable>
-        </View>
-        <View style={styles.row}>
-          <Pressable
-            disabled={controller.busy}
-            onPress={nav.openBookmarks}
-            style={[
-              styles.secondaryButton,
-              controller.busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>Bookmarks</Text>
-          </Pressable>
-          <Pressable
-            disabled={controller.busy}
-            onPress={nav.openHighlights}
-            style={[
-              styles.secondaryButton,
-              controller.busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>Highlights</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Quick Stats</Text>
-        <View style={styles.statGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Bookmarks</Text>
-            <Text style={styles.statValue}>
-              {controller.probeResult?.bookmarksCount ?? "-"}
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Highlights</Text>
-            <Text style={styles.statValue}>
-              {controller.probeResult?.highlightsCount ?? "-"}
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Connections</Text>
-            <Text style={styles.statValue}>
-              {controller.probeResult?.libraryConnectionsCount ?? "-"}
-            </Text>
-          </View>
-        </View>
-        {controller.probeError ? (
-          <Text style={styles.error}>{controller.probeError}</Text>
-        ) : null}
-        {controller.libraryError ? (
-          <Text style={styles.error}>{controller.libraryError}</Text>
-        ) : null}
-        {controller.bookmarksError ? (
-          <Text style={styles.error}>{controller.bookmarksError}</Text>
-        ) : null}
-        {controller.highlightsError ? (
-          <Text style={styles.error}>{controller.highlightsError}</Text>
-        ) : null}
-        {controller.libraryLoadedAt ? (
-          <Text style={styles.caption}>
-            Library synced {formatRelativeDate(controller.libraryLoadedAt)}
-          </Text>
-        ) : null}
-      </View>
-    </ScrollView>
-  );
-}
-
 export function AccountScreen() {
   const controller = useMobileApp();
+  const showDiagnostics = MOBILE_ENV.MODE !== "production";
+
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <Text style={styles.panelTitle}>Account</Text>
-        <Text style={styles.meta}>{controller.authLabel}</Text>
+        <Text style={styles.meta}>Signed in as {controller.authLabel}</Text>
         <Text style={styles.meta}>
-          Session: {controller.session ? "active" : "none"} | Strict env:{" "}
-          {String(MOBILE_ENV.STRICT_ENV)}
-        </Text>
-        <Text style={styles.meta}>API: {MOBILE_ENV.API_URL}</Text>
-        <Text style={styles.meta}>Mode: {MOBILE_ENV.MODE}</Text>
-        <Text style={styles.meta}>
-          Google OAuth: {MOBILE_ENV.ENABLE_GOOGLE_OAUTH ? "enabled" : "off"} |
-          Apple OAuth: {MOBILE_ENV.ENABLE_APPLE_OAUTH ? "enabled" : "off"}
+          Session status: {controller.session ? "Active" : "Not signed in"}
         </Text>
         {controller.authError ? (
           <Text style={styles.error}>{controller.authError}</Text>
@@ -311,31 +184,23 @@ export function AccountScreen() {
         {controller.authInfo ? (
           <Text style={styles.info}>{controller.authInfo}</Text>
         ) : null}
-      </View>
+      </SurfaceCard>
 
-      <View style={styles.panel}>
-        <Text style={styles.panelTitle}>Session Actions</Text>
+      <SurfaceCard>
+        <Text style={styles.panelTitle}>Session actions</Text>
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.busy}
+            label="Run Protected Probe"
             onPress={() => void controller.runProbe()}
-            style={[
-              styles.primaryButton,
-              controller.busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>Run Protected Probe</Text>
-          </Pressable>
-          <Pressable
+            variant="primary"
+          />
+          <ActionButton
             disabled={controller.busy}
+            label="Sign out"
             onPress={() => void controller.signOut()}
-            style={[
-              styles.secondaryButton,
-              controller.busy && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>Sign out</Text>
-          </Pressable>
+            variant="secondary"
+          />
         </View>
         {controller.probeResult ? (
           <Text style={styles.caption}>
@@ -347,7 +212,23 @@ export function AccountScreen() {
         {controller.probeError ? (
           <Text style={styles.error}>{controller.probeError}</Text>
         ) : null}
-      </View>
+      </SurfaceCard>
+
+      {showDiagnostics ? (
+        <SurfaceCard>
+          <Text style={styles.panelTitle}>Diagnostics</Text>
+          <Text style={styles.meta}>Mode: {MOBILE_ENV.MODE}</Text>
+          <Text style={styles.meta}>API: {MOBILE_ENV.API_URL}</Text>
+          <Text style={styles.meta}>
+            Google OAuth:{" "}
+            {MOBILE_ENV.ENABLE_GOOGLE_OAUTH ? "enabled" : "off"} | Apple OAuth:{" "}
+            {MOBILE_ENV.ENABLE_APPLE_OAUTH ? "enabled" : "off"}
+          </Text>
+          <Text style={styles.meta}>
+            Strict env validation: {String(MOBILE_ENV.STRICT_ENV)}
+          </Text>
+        </SurfaceCard>
+      ) : null}
     </ScrollView>
   );
 }
@@ -359,7 +240,7 @@ export function MapFallbackScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <Text style={styles.panelTitle}>Map (Beta Fallback)</Text>
         <Text style={styles.panelSubtitle}>
           Native map UX is in progress. Use the web fallback for map workflows
@@ -369,27 +250,21 @@ export function MapFallbackScreen() {
           Fallback URL: {webLibraryUrl ?? "Not configured"}
         </Text>
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={!webLibraryUrl}
+            label="Open map fallback in browser"
             onPress={() => {
               if (!webLibraryUrl) return;
               void Linking.openURL(webLibraryUrl);
             }}
-            style={[
-              styles.primaryButton,
-              !webLibraryUrl && styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>
-              Open map fallback in browser
-            </Text>
-          </Pressable>
+            variant="primary"
+          />
         </View>
         <Text style={styles.caption}>
           This keeps core mobile flows native while map remains isolated to beta
           fallback.
         </Text>
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }

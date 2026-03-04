@@ -1,13 +1,22 @@
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActionButton } from "../components/native/ActionButton";
+import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
 import { formatRelativeDate } from "./common/EntityCards";
 
 export function BookmarkCreateScreen() {
   const controller = useMobileApp();
+  const clearDisabled =
+    controller.bookmarkMutationBusy ||
+    controller.busy ||
+    (!controller.bookmarkDraft.book.trim() &&
+      !controller.bookmarkDraft.chapter.trim() &&
+      !controller.bookmarkDraft.verse.trim());
+
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <Text style={styles.panelTitle}>New Bookmark</Text>
         <Text style={styles.panelSubtitle}>
           Save a verse reference with structured fields.
@@ -80,27 +89,15 @@ export function BookmarkCreateScreen() {
           <Text style={styles.error}>{controller.bookmarkMutationError}</Text>
         ) : null}
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.bookmarkMutationBusy || controller.busy}
+            label={controller.bookmarkMutationBusy ? "Saving..." : "Save bookmark"}
             onPress={() => void controller.handleCreateBookmark()}
-            style={[
-              styles.primaryButton,
-              (controller.bookmarkMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>
-              {controller.bookmarkMutationBusy ? "Saving..." : "Save bookmark"}
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={
-              controller.bookmarkMutationBusy ||
-              controller.busy ||
-              (!controller.bookmarkDraft.book.trim() &&
-                !controller.bookmarkDraft.chapter.trim() &&
-                !controller.bookmarkDraft.verse.trim())
-            }
+            variant="primary"
+          />
+          <ActionButton
+            disabled={clearDisabled}
+            label="Clear"
             onPress={() =>
               controller.setBookmarkDraft({
                 book: "",
@@ -108,20 +105,10 @@ export function BookmarkCreateScreen() {
                 verse: "",
               })
             }
-            style={[
-              styles.secondaryButton,
-              (controller.bookmarkMutationBusy ||
-                controller.busy ||
-                (!controller.bookmarkDraft.book.trim() &&
-                  !controller.bookmarkDraft.chapter.trim() &&
-                  !controller.bookmarkDraft.verse.trim())) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>Clear</Text>
-          </Pressable>
+            variant="secondary"
+          />
         </View>
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }
@@ -144,7 +131,7 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
 
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <Text style={styles.panelTitle}>Bookmark Detail</Text>
         <Text style={styles.bookmarkText}>{bookmark.text}</Text>
         {bookmark.createdAt ? (
@@ -156,21 +143,14 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
           <Text style={styles.error}>{controller.bookmarkMutationError}</Text>
         ) : null}
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.bookmarkMutationBusy || controller.busy}
+            label={controller.bookmarkMutationBusy ? "Deleting..." : "Delete"}
             onPress={() => void controller.handleDeleteBookmark(bookmark.id)}
-            style={[
-              styles.dangerButton,
-              (controller.bookmarkMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.dangerButtonLabel}>
-              {controller.bookmarkMutationBusy ? "Deleting..." : "Delete"}
-            </Text>
-          </Pressable>
+            variant="danger"
+          />
         </View>
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }
@@ -179,7 +159,7 @@ export function HighlightCreateScreen() {
   const controller = useMobileApp();
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <Text style={styles.panelTitle}>New Highlight</Text>
         <Text style={styles.panelSubtitle}>
           Create a highlight using the existing sync endpoint and shared auth.
@@ -280,23 +260,17 @@ export function HighlightCreateScreen() {
           <Text style={styles.error}>{controller.highlightMutationError}</Text>
         ) : null}
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
+            label={
+              controller.highlightMutationBusy ? "Saving..." : "Create highlight"
+            }
             onPress={() => void controller.handleCreateHighlight()}
-            style={[
-              styles.primaryButton,
-              (controller.highlightMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>
-              {controller.highlightMutationBusy
-                ? "Saving..."
-                : "Create highlight"}
-            </Text>
-          </Pressable>
-          <Pressable
+            variant="primary"
+          />
+          <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
+            label="Clear"
             onPress={() =>
               controller.setHighlightCreateDraft((current) => ({
                 ...current,
@@ -304,16 +278,10 @@ export function HighlightCreateScreen() {
                 note: "",
               }))
             }
-            style={[
-              styles.secondaryButton,
-              (controller.highlightMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>Clear</Text>
-          </Pressable>
+            variant="secondary"
+          />
         </View>
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }
@@ -342,7 +310,7 @@ export function HighlightDetailScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
-      <View style={styles.panel}>
+      <SurfaceCard>
         <Text style={styles.panelTitle}>Highlight Detail</Text>
         <Text style={styles.meta}>{highlight.referenceLabel}</Text>
         <Text style={styles.connectionSynopsis}>{highlight.text}</Text>
@@ -366,32 +334,20 @@ export function HighlightDetailScreen({
           <Text style={styles.error}>{controller.highlightMutationError}</Text>
         ) : null}
         <View style={styles.row}>
-          <Pressable
+          <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
+            label={controller.highlightMutationBusy ? "Saving..." : "Save changes"}
             onPress={() => void controller.handleSaveHighlightEdits()}
-            style={[
-              styles.primaryButton,
-              (controller.highlightMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>
-              {controller.highlightMutationBusy ? "Saving..." : "Save changes"}
-            </Text>
-          </Pressable>
-          <Pressable
+            variant="primary"
+          />
+          <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
+            label="Delete"
             onPress={() => void controller.handleDeleteHighlight(highlight.id)}
-            style={[
-              styles.dangerButton,
-              (controller.highlightMutationBusy || controller.busy) &&
-                styles.buttonDisabled,
-            ]}
-          >
-            <Text style={styles.dangerButtonLabel}>Delete</Text>
-          </Pressable>
+            variant="danger"
+          />
         </View>
-      </View>
+      </SurfaceCard>
     </ScrollView>
   );
 }

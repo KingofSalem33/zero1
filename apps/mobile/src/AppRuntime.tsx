@@ -51,7 +51,7 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
 
   return (
     <View style={styles.safeArea}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.appBackground}>
         <View style={styles.backdropBlobA} />
         <View style={styles.backdropBlobB} />

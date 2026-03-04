@@ -1,6 +1,6 @@
 # Zero1 Deployment Launch Plan
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 Owner: Product + Engineering
 Status: In progress
 
@@ -1160,6 +1160,23 @@ Status: In progress
     - `apps/mobile/reports/testflight-release-notes-build26.md`
   - Exit criterion update:
     - `Auth + library/map/highlight` on latest TestFlight build marked complete.
+- Phase 2.5.2 native parity foundation started (2026-03-04):
+  - Added explicit parity spec and execution checklist:
+    - `apps/mobile/MOBILE_PARITY_SPEC.md`
+    - `apps/mobile/MOBILE_PARITY_CHECKLIST.md`
+  - Shifted mobile visual system to web-aligned dark theme tokens and glass cards:
+    - `apps/mobile/src/theme/tokens.ts`
+    - `apps/mobile/src/theme/mobileStyles.ts`
+  - Introduced reusable UI primitives and applied them across auth + feature screens:
+    - `apps/mobile/src/components/native/ActionButton.tsx`
+    - `apps/mobile/src/components/native/SurfaceCard.tsx`
+    - `apps/mobile/src/screens/AuthHomeAccountScreens.tsx`
+    - `apps/mobile/src/screens/DataListScreens.tsx`
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+    - `apps/mobile/src/screens/common/EntityCards.tsx`
+  - Navigation IA updated for clarity:
+    - Library-first tabs, explicit labels (`Bookmarks`, `Highlights`), no active Home route.
+    - `apps/mobile/src/navigation/MobileRootNavigator.tsx`
 
 ## 1) Launch Objective
 
@@ -1370,10 +1387,10 @@ Exit gate: stable mobile UX with clear product direction (`web-shell-first` vs `
 
 #### 2.5.2 Native Recovery Path (Parallel Track)
 
-- [ ] Define native parity scope for v1 (auth, library, highlights, maps, chat entry points)
-- [ ] Split native screens into production-grade route groups (Home, Library, Highlights, Account)
-- [ ] Add native UX parity checklist against current web flows (screen-by-screen)
-- [ ] Decide keep/deprecate plan for web-shell mode after native parity milestone
+- [x] Define native parity scope for v1 (auth, library, highlights, maps, chat entry points)
+- [x] Split native screens into production-grade route groups (Library, Bookmarks, Highlights, Account, map fallback)
+- [x] Add native UX parity checklist against current web flows (screen-by-screen)
+- [x] Decide keep/deprecate plan for web-shell mode after native parity milestone (`native-first`: retire web-shell per-feature, then remove)
 
 #### 2.5.3 Release and Observability Hardening
 
@@ -1493,7 +1510,7 @@ Recommended status labels:
 
 ## 11) Immediate Next Actions (This Week)
 
-- [ ] Execute Phase 2.5.1 web-shell stabilization checklist on current TestFlight build
+- [ ] Execute next native parity TestFlight pass (Library/Bookmarks/Highlights/Account visual parity validation)
 - [x] Decide and document Phase 2.5 product direction (`web-shell-first` vs `native-first`)
 - [x] Run one full internal beta verification round with evidence attached
 - [ ] Approve this plan as source of truth
