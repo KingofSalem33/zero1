@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import {
+  View,
+  type StyleProp,
+  type ViewProps,
+  type ViewStyle,
+} from "react-native";
 import { styles } from "../../theme/mobileStyles";
 
 interface SurfaceCardProps extends ViewProps {

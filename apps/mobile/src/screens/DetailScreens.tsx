@@ -91,7 +91,9 @@ export function BookmarkCreateScreen() {
         <View style={styles.row}>
           <ActionButton
             disabled={controller.bookmarkMutationBusy || controller.busy}
-            label={controller.bookmarkMutationBusy ? "Saving..." : "Save bookmark"}
+            label={
+              controller.bookmarkMutationBusy ? "Saving..." : "Save bookmark"
+            }
             onPress={() => void controller.handleCreateBookmark()}
             variant="primary"
           />
@@ -263,7 +265,9 @@ export function HighlightCreateScreen() {
           <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
             label={
-              controller.highlightMutationBusy ? "Saving..." : "Create highlight"
+              controller.highlightMutationBusy
+                ? "Saving..."
+                : "Create highlight"
             }
             onPress={() => void controller.handleCreateHighlight()}
             variant="primary"
@@ -336,7 +340,9 @@ export function HighlightDetailScreen({
         <View style={styles.row}>
           <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
-            label={controller.highlightMutationBusy ? "Saving..." : "Save changes"}
+            label={
+              controller.highlightMutationBusy ? "Saving..." : "Save changes"
+            }
             onPress={() => void controller.handleSaveHighlightEdits()}
             variant="primary"
           />

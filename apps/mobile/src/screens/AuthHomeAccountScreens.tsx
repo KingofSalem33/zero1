@@ -128,7 +128,9 @@ export function AuthScreen() {
               <View style={[styles.row, stackButtons && styles.rowStack]}>
                 <ActionButton
                   disabled={controller.busy}
-                  label={controller.busy ? "Signing in..." : "Sign in with email"}
+                  label={
+                    controller.busy ? "Signing in..." : "Sign in with email"
+                  }
                   onPress={() => void controller.signIn()}
                   variant="primary"
                 />
@@ -220,9 +222,8 @@ export function AccountScreen() {
           <Text style={styles.meta}>Mode: {MOBILE_ENV.MODE}</Text>
           <Text style={styles.meta}>API: {MOBILE_ENV.API_URL}</Text>
           <Text style={styles.meta}>
-            Google OAuth:{" "}
-            {MOBILE_ENV.ENABLE_GOOGLE_OAUTH ? "enabled" : "off"} | Apple OAuth:{" "}
-            {MOBILE_ENV.ENABLE_APPLE_OAUTH ? "enabled" : "off"}
+            Google OAuth: {MOBILE_ENV.ENABLE_GOOGLE_OAUTH ? "enabled" : "off"} |
+            Apple OAuth: {MOBILE_ENV.ENABLE_APPLE_OAUTH ? "enabled" : "off"}
           </Text>
           <Text style={styles.meta}>
             Strict env validation: {String(MOBILE_ENV.STRICT_ENV)}

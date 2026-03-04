@@ -138,7 +138,9 @@ export function LibraryScreen() {
             <View style={styles.row}>
               <ActionButton
                 disabled={controller.libraryMapMutationBusy || controller.busy}
-                label={controller.libraryMapMutationBusy ? "Saving..." : "Save map"}
+                label={
+                  controller.libraryMapMutationBusy ? "Saving..." : "Save map"
+                }
                 onPress={() => void controller.handleCreateLibraryMap()}
                 variant="primary"
               />
