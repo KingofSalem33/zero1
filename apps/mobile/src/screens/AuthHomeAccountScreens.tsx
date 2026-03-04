@@ -1,4 +1,5 @@
 import {
+  Linking,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -346,6 +347,48 @@ export function AccountScreen() {
         {controller.probeError ? (
           <Text style={styles.error}>{controller.probeError}</Text>
         ) : null}
+      </View>
+    </ScrollView>
+  );
+}
+
+export function MapFallbackScreen() {
+  const webLibraryUrl = MOBILE_ENV.WEB_APP_URL
+    ? `${MOBILE_ENV.WEB_APP_URL}/library`
+    : null;
+
+  return (
+    <ScrollView contentContainerStyle={styles.tabContent}>
+      <View style={styles.panel}>
+        <Text style={styles.panelTitle}>Map (Beta Fallback)</Text>
+        <Text style={styles.panelSubtitle}>
+          Native map UX is in progress. Use the web fallback for map workflows
+          while native routes land.
+        </Text>
+        <Text style={styles.meta}>
+          Fallback URL: {webLibraryUrl ?? "Not configured"}
+        </Text>
+        <View style={styles.row}>
+          <Pressable
+            disabled={!webLibraryUrl}
+            onPress={() => {
+              if (!webLibraryUrl) return;
+              void Linking.openURL(webLibraryUrl);
+            }}
+            style={[
+              styles.primaryButton,
+              !webLibraryUrl && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.primaryButtonLabel}>
+              Open map fallback in browser
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.caption}>
+          This keeps core mobile flows native while map remains isolated to beta
+          fallback.
+        </Text>
       </View>
     </ScrollView>
   );

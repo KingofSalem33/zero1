@@ -9,7 +9,7 @@ import { useMobileAppController } from "./hooks/useMobileAppController";
 import {
   AccountScreen,
   AuthScreen,
-  HomeScreen,
+  MapFallbackScreen,
 } from "./screens/AuthHomeAccountScreens";
 import {
   BookmarksScreen,
@@ -59,11 +59,11 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
           <MobileRootNavigator
             isAuthenticated={Boolean(controller.user)}
             renderAuth={() => <AuthScreen />}
-            renderHome={(nav) => <HomeScreen nav={nav} />}
             renderLibrary={() => <LibraryScreen />}
             renderBookmarks={(nav) => <BookmarksScreen nav={nav} />}
             renderHighlights={(nav) => <HighlightsScreen nav={nav} />}
             renderAccount={() => <AccountScreen />}
+            renderMapFallback={() => <MapFallbackScreen />}
             renderBookmarkCreate={() => <BookmarkCreateScreen />}
             renderBookmarkDetail={(bookmarkId) => (
               <BookmarkDetailScreen bookmarkId={bookmarkId} />
@@ -86,6 +86,7 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
 
 export default function AppRuntime() {
   const [forceNativeShell, setForceNativeShell] = useState(false);
+  const [launchWebShell, setLaunchWebShell] = useState(false);
   const [webShellSession, setWebShellSession] = useState<Session | null>(null);
   const webShellEnabled = MOBILE_ENV.WEB_SHELL_ENABLED;
   const webAppUrl = MOBILE_ENV.WEB_APP_URL;
@@ -125,7 +126,10 @@ export default function AppRuntime() {
   }, [forceNativeShell, webShellConfigured]);
 
   const canRenderWebShell =
-    webShellConfigured && !forceNativeShell && Boolean(webShellAuthSession);
+    webShellConfigured &&
+    launchWebShell &&
+    !forceNativeShell &&
+    Boolean(webShellAuthSession);
 
   if (canRenderWebShell) {
     return (
@@ -137,6 +141,7 @@ export default function AppRuntime() {
         authSession={webShellAuthSession}
         onFallbackToNative={() => {
           setForceNativeShell(true);
+          setLaunchWebShell(false);
         }}
         onInteractive={() => {
           markColdStartInteractive({ mode: "web_shell" });
@@ -149,11 +154,7 @@ export default function AppRuntime() {
     <NativeAppRuntime
       onInteractive={() => {
         markColdStartInteractive({
-          mode: forceNativeShell
-            ? "native_shell_fallback"
-            : webShellConfigured
-              ? "native_shell_auth_bootstrap"
-              : "native_shell",
+          mode: forceNativeShell ? "native_shell_fallback" : "native_shell",
         });
       }}
     />

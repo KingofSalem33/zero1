@@ -18,21 +18,16 @@ type AppStackParamList = {
 };
 
 type AppTabsParamList = {
-  Home: undefined;
   Library: undefined;
   Bookmarks: undefined;
   Highlights: undefined;
   Account: undefined;
+  MapFallback: undefined;
 };
 
 export interface MobileRootNavigatorProps {
   isAuthenticated: boolean;
   renderAuth: () => ReactNode;
-  renderHome: (nav: {
-    openLibrary: () => void;
-    openBookmarks: () => void;
-    openHighlights: () => void;
-  }) => ReactNode;
   renderLibrary: () => ReactNode;
   renderBookmarks: (nav: {
     openCreate: () => void;
@@ -47,6 +42,7 @@ export interface MobileRootNavigatorProps {
   renderBookmarkDetail: (bookmarkId: string) => ReactNode;
   renderHighlightCreate: () => ReactNode;
   renderHighlightDetail: (highlightId: string) => ReactNode;
+  renderMapFallback: () => ReactNode;
 }
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -85,6 +81,7 @@ function AppTabsNavigator(
 ) {
   return (
     <Tabs.Navigator
+      initialRouteName="Library"
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -102,15 +99,6 @@ function AppTabsNavigator(
         tabBarInactiveTintColor: T.colors.textMuted,
       }}
     >
-      <Tabs.Screen name="Home" options={{ tabBarLabel: "Home" }}>
-        {({ navigation }) =>
-          props.renderHome({
-            openLibrary: () => navigation.navigate("Library"),
-            openBookmarks: () => navigation.navigate("Bookmarks"),
-            openHighlights: () => navigation.navigate("Highlights"),
-          })
-        }
-      </Tabs.Screen>
       <Tabs.Screen name="Library" options={{ tabBarLabel: "Library" }}>
         {() => props.renderLibrary()}
       </Tabs.Screen>
@@ -143,6 +131,9 @@ function AppTabsNavigator(
       </Tabs.Screen>
       <Tabs.Screen name="Account" options={{ tabBarLabel: "Account" }}>
         {() => props.renderAccount()}
+      </Tabs.Screen>
+      <Tabs.Screen name="MapFallback" options={{ tabBarLabel: "Map (Beta)" }}>
+        {() => props.renderMapFallback()}
       </Tabs.Screen>
     </Tabs.Navigator>
   );
@@ -200,7 +191,6 @@ function AppStackNavigator(
 export function MobileRootNavigator(props: MobileRootNavigatorProps) {
   const rootFlow = resolveRootFlow(props.isAuthenticated);
   const appProps = {
-    renderHome: props.renderHome,
     renderLibrary: props.renderLibrary,
     renderBookmarks: props.renderBookmarks,
     renderHighlights: props.renderHighlights,
@@ -209,6 +199,7 @@ export function MobileRootNavigator(props: MobileRootNavigatorProps) {
     renderBookmarkDetail: props.renderBookmarkDetail,
     renderHighlightCreate: props.renderHighlightCreate,
     renderHighlightDetail: props.renderHighlightDetail,
+    renderMapFallback: props.renderMapFallback,
   };
 
   return (

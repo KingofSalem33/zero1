@@ -40,8 +40,8 @@ export const MOBILE_TOKENS = {
 } as const;
 
 export type MobileTabKey =
-  | "home"
   | "library"
   | "bookmarks"
   | "highlights"
-  | "account";
+  | "account"
+  | "mapFallback";
