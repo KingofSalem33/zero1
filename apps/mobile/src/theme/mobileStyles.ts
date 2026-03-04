@@ -91,6 +91,21 @@ export const styles = StyleSheet.create({
     color: T.colors.text,
     fontSize: T.typography.body,
   },
+  fieldLabel: {
+    color: T.colors.text,
+    fontSize: T.typography.caption,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  fieldGroup: {
+    gap: T.spacing.xs,
+  },
+  helperText: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    lineHeight: 17,
+  },
   textAreaInput: {
     minHeight: 88,
     textAlignVertical: "top",
@@ -108,6 +123,11 @@ export const styles = StyleSheet.create({
   },
   rowStack: {
     flexDirection: "column",
+  },
+  rowAlignCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
   },
   spaceBetweenRow: {
     flexDirection: "row",
@@ -261,7 +281,7 @@ export const styles = StyleSheet.create({
   tabContent: {
     gap: T.spacing.md,
     padding: T.spacing.lg,
-    paddingBottom: T.spacing.md,
+    paddingBottom: T.spacing.xl,
   },
   routeScrollContent: {
     gap: T.spacing.md,
@@ -272,6 +292,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     gap: T.spacing.md,
     padding: T.spacing.lg,
+    paddingBottom: T.spacing.sm,
   },
   heroCard: {
     backgroundColor: T.colors.surface,
@@ -455,6 +476,23 @@ export const styles = StyleSheet.create({
     fontSize: T.typography.caption,
     fontWeight: "600",
   },
+  outlineChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: 7,
+  },
+  outlineChipActive: {
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accentSoft,
+  },
+  outlineChipLabel: {
+    color: T.colors.text,
+    fontSize: T.typography.caption,
+    fontWeight: "700",
+  },
   colorPreviewWrap: {
     minWidth: 92,
     borderRadius: T.radius.md,
@@ -473,6 +511,22 @@ export const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: T.colors.border,
+  },
+  colorChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: T.spacing.xs,
+  },
+  colorChip: {
+    width: 30,
+    height: 30,
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+  },
+  colorChipActive: {
+    borderColor: T.colors.accentStrong,
+    borderWidth: 2,
   },
   dangerButton: {
     flex: 1,

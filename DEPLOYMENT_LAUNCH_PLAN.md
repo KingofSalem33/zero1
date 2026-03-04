@@ -1164,6 +1164,13 @@ Status: In progress
 - Phase 2.6 native-first execution started (2026-03-04):
   - First UX polish slice applied to core native tabs:
     - `apps/mobile/src/screens/DataListScreens.tsx`
+  - Additional UX parity slices applied to navigation, detail flows, and account/map surfaces:
+    - `apps/mobile/src/navigation/MobileRootNavigator.tsx`
+    - `apps/mobile/src/screens/DetailScreens.tsx`
+    - `apps/mobile/src/screens/AuthHomeAccountScreens.tsx`
+    - `apps/mobile/src/theme/mobileStyles.ts`
+  - Runtime path aligned to native-first by removing web-shell bootstrap logic from app entry:
+    - `apps/mobile/src/AppRuntime.tsx`
   - Updated native parity gate tracker:
     - `apps/mobile/MOBILE_PARITY_CHECKLIST.md`
   - Updated phase-exit tracker for completed baseline evidence:

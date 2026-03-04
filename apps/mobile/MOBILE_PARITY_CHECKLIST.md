@@ -24,8 +24,8 @@ Date: 2026-03-04
 
 ## Retirement
 
-- [ ] Web-shell per-feature retirement complete
-- [ ] `AppRuntime` web-shell machinery removed
+- [x] Web-shell per-feature retirement complete
+- [x] `AppRuntime` web-shell machinery removed
 
 ## Build Gates
 

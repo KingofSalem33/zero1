@@ -171,45 +171,62 @@ export function AuthScreen() {
 export function AccountScreen() {
   const controller = useMobileApp();
   const showDiagnostics = MOBILE_ENV.MODE !== "production";
+  const { width } = useWindowDimensions();
+  const stackButtons = width < 390;
 
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
       <SurfaceCard>
-        <Text style={styles.panelTitle}>Account</Text>
-        <Text style={styles.meta}>Signed in as {controller.authLabel}</Text>
-        <Text style={styles.meta}>
-          Session status: {controller.session ? "Active" : "Not signed in"}
+        <Text style={styles.panelTitle}>Profile</Text>
+        <Text style={styles.panelSubtitle}>
+          Manage your active mobile session and verify account connectivity.
         </Text>
+        <Text style={styles.meta}>Signed in as {controller.authLabel}</Text>
+        <View style={styles.connectionMetaWrap}>
+          <Text style={styles.metaPill}>
+            Session {controller.session ? "Active" : "Not signed in"}
+          </Text>
+          <Text style={styles.metaPill}>Mode {MOBILE_ENV.MODE}</Text>
+        </View>
         {controller.authError ? (
-          <Text style={styles.error}>{controller.authError}</Text>
+          <View style={styles.errorCard}>
+            <Text style={styles.errorCardText}>{controller.authError}</Text>
+          </View>
         ) : null}
         {controller.authInfo ? (
-          <Text style={styles.info}>{controller.authInfo}</Text>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardText}>{controller.authInfo}</Text>
+          </View>
         ) : null}
       </SurfaceCard>
 
       <SurfaceCard>
         <Text style={styles.panelTitle}>Session actions</Text>
-        <View style={styles.row}>
+        <Text style={styles.panelSubtitle}>
+          Confirm protected API access, then sign out when needed.
+        </Text>
+        <View style={[styles.row, stackButtons && styles.rowStack]}>
           <ActionButton
             disabled={controller.busy}
-            label="Run Protected Probe"
+            label="Run protected check"
             onPress={() => void controller.runProbe()}
-            variant="primary"
+            variant="secondary"
           />
           <ActionButton
             disabled={controller.busy}
             label="Sign out"
             onPress={() => void controller.signOut()}
-            variant="secondary"
+            variant="danger"
           />
         </View>
         {controller.probeResult ? (
-          <Text style={styles.caption}>
-            Probe: {controller.probeResult.bookmarksCount} bookmarks,{" "}
-            {controller.probeResult.highlightsCount} highlights,{" "}
-            {controller.probeResult.libraryConnectionsCount} connections
-          </Text>
+          <View style={styles.calloutMuted}>
+            <Text style={styles.calloutMutedText}>
+              Protected check: {controller.probeResult.bookmarksCount} bookmarks,{" "}
+              {controller.probeResult.highlightsCount} highlights,{" "}
+              {controller.probeResult.libraryConnectionsCount} connections.
+            </Text>
+          </View>
         ) : null}
         {controller.probeError ? (
           <Text style={styles.error}>{controller.probeError}</Text>
@@ -219,6 +236,9 @@ export function AccountScreen() {
       {showDiagnostics ? (
         <SurfaceCard>
           <Text style={styles.panelTitle}>Diagnostics</Text>
+          <Text style={styles.panelSubtitle}>
+            Visible in non-production builds for environment verification.
+          </Text>
           <Text style={styles.meta}>Mode: {MOBILE_ENV.MODE}</Text>
           <Text style={styles.meta}>API: {MOBILE_ENV.API_URL}</Text>
           <Text style={styles.meta}>
@@ -242,18 +262,27 @@ export function MapFallbackScreen() {
   return (
     <ScrollView contentContainerStyle={styles.tabContent}>
       <SurfaceCard>
-        <Text style={styles.panelTitle}>Map (Beta Fallback)</Text>
+        <Text style={styles.panelTitle}>Map (Beta)</Text>
         <Text style={styles.panelSubtitle}>
-          Native map UX is in progress. Use the web fallback for map workflows
-          while native routes land.
+          Native map routes are still in progress. Use browser fallback for map
+          workflows until native map is released.
         </Text>
-        <Text style={styles.meta}>
-          Fallback URL: {webLibraryUrl ?? "Not configured"}
-        </Text>
+        <View style={styles.calloutMuted}>
+          <Text style={styles.calloutMutedText}>
+            1. Tap the button below.
+          </Text>
+          <Text style={styles.calloutMutedText}>
+            2. Complete map actions in browser.
+          </Text>
+          <Text style={styles.calloutMutedText}>
+            3. Return to the app for native library/highlight flows.
+          </Text>
+        </View>
+        <Text style={styles.meta}>Fallback URL: {webLibraryUrl ?? "Not configured"}</Text>
         <View style={styles.row}>
           <ActionButton
             disabled={!webLibraryUrl}
-            label="Open map fallback in browser"
+            label="Open map in browser"
             onPress={() => {
               if (!webLibraryUrl) return;
               void Linking.openURL(webLibraryUrl);
@@ -261,10 +290,6 @@ export function MapFallbackScreen() {
             variant="primary"
           />
         </View>
-        <Text style={styles.caption}>
-          This keeps core mobile flows native while map remains isolated to beta
-          fallback.
-        </Text>
       </SurfaceCard>
     </ScrollView>
   );

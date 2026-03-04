@@ -19,6 +19,12 @@
 - Implement native-first flows for library read/write, map interactions, and highlight creation/review.
 - Use web-shell only for non-critical screens that are not yet migrated.
 
+## Current execution status
+
+- Native runtime path is now default-only in `apps/mobile/src/AppRuntime.tsx` (web-shell bootstrap removed).
+- Core mobile UI parity slices landed for tabs, auth/account, and detail/create flows.
+- Map remains browser fallback until native map route implementation is complete.
+
 ## Exit signal for deprecating web-shell default
 
 - Native `auth + library + map + highlight` flows pass TestFlight smoke checks for two consecutive builds.

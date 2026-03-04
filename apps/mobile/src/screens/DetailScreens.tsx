@@ -1,12 +1,30 @@
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { ActionButton } from "../components/native/ActionButton";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
 import { formatRelativeDate } from "./common/EntityCards";
 
+const HIGHLIGHT_PRESET_COLORS = [
+  "#FACC15",
+  "#F97316",
+  "#22C55E",
+  "#38BDF8",
+  "#A78BFA",
+  "#F43F5E",
+];
+
 export function BookmarkCreateScreen() {
   const controller = useMobileApp();
+  const { width } = useWindowDimensions();
+  const stackReferenceInputs = width < 390;
   const clearDisabled =
     controller.bookmarkMutationBusy ||
     controller.busy ||
@@ -21,33 +39,44 @@ export function BookmarkCreateScreen() {
         <Text style={styles.panelSubtitle}>
           Save a verse reference with structured fields.
         </Text>
-        <View style={styles.row}>
-          <TextInput
-            autoCapitalize="words"
-            placeholder="Book"
-            placeholderTextColor={T.colors.textMuted}
-            style={[styles.input, styles.flex1]}
-            value={controller.bookmarkDraft.book}
-            onChangeText={(value) =>
-              controller.setBookmarkDraft((current) => ({
-                ...current,
-                book: value,
-              }))
-            }
-          />
-          <TextInput
-            keyboardType="number-pad"
-            placeholder="Chapter"
-            placeholderTextColor={T.colors.textMuted}
-            style={[styles.input, styles.inputCompact]}
-            value={controller.bookmarkDraft.chapter}
-            onChangeText={(value) =>
-              controller.setBookmarkDraft((current) => ({
-                ...current,
-                chapter: value,
-              }))
-            }
-          />
+        <Text style={styles.fieldLabel}>Reference</Text>
+        <View style={[styles.row, stackReferenceInputs && styles.rowStack]}>
+          <View style={[styles.fieldGroup, styles.flex1]}>
+            <Text style={styles.helperText}>Book</Text>
+            <TextInput
+              autoCapitalize="words"
+              placeholder="Book"
+              placeholderTextColor={T.colors.textMuted}
+              style={styles.input}
+              value={controller.bookmarkDraft.book}
+              onChangeText={(value) =>
+                controller.setBookmarkDraft((current) => ({
+                  ...current,
+                  book: value,
+                }))
+              }
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.helperText}>Chapter</Text>
+            <TextInput
+              keyboardType="number-pad"
+              placeholder="Chapter"
+              placeholderTextColor={T.colors.textMuted}
+              style={[
+                styles.input,
+                !stackReferenceInputs && styles.inputCompact,
+                stackReferenceInputs && styles.flex1,
+              ]}
+              value={controller.bookmarkDraft.chapter}
+              onChangeText={(value) =>
+                controller.setBookmarkDraft((current) => ({
+                  ...current,
+                  chapter: value,
+                }))
+              }
+            />
+          </View>
         </View>
         {controller.bookmarkChapterHint ? (
           <Text style={styles.caption}>{controller.bookmarkChapterHint}</Text>
@@ -72,19 +101,22 @@ export function BookmarkCreateScreen() {
             ))}
           </View>
         ) : null}
-        <TextInput
-          keyboardType="number-pad"
-          placeholder="Verse (optional)"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
-          value={controller.bookmarkDraft.verse}
-          onChangeText={(value) =>
-            controller.setBookmarkDraft((current) => ({
-              ...current,
-              verse: value,
-            }))
-          }
-        />
+        <View style={styles.fieldGroup}>
+          <Text style={styles.helperText}>Verse (optional)</Text>
+          <TextInput
+            keyboardType="number-pad"
+            placeholder="Verse"
+            placeholderTextColor={T.colors.textMuted}
+            style={styles.input}
+            value={controller.bookmarkDraft.verse}
+            onChangeText={(value) =>
+              controller.setBookmarkDraft((current) => ({
+                ...current,
+                verse: value,
+              }))
+            }
+          />
+        </View>
         {controller.bookmarkMutationError ? (
           <Text style={styles.error}>{controller.bookmarkMutationError}</Text>
         ) : null}
@@ -159,65 +191,107 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
 
 export function HighlightCreateScreen() {
   const controller = useMobileApp();
+  const { width } = useWindowDimensions();
+  const stackReferenceInputs = width < 390;
+
   return (
     <ScrollView contentContainerStyle={styles.routeScrollContent}>
       <SurfaceCard>
         <Text style={styles.panelTitle}>New Highlight</Text>
         <Text style={styles.panelSubtitle}>
-          Create a highlight using the existing sync endpoint and shared auth.
+          Capture verses, assign a color, and keep optional notes for context.
         </Text>
-        <View style={styles.row}>
+        <Text style={styles.fieldLabel}>Reference</Text>
+        <View style={[styles.row, stackReferenceInputs && styles.rowStack]}>
+          <View style={[styles.fieldGroup, styles.flex1]}>
+            <Text style={styles.helperText}>Book</Text>
+            <TextInput
+              placeholder="Book"
+              placeholderTextColor={T.colors.textMuted}
+              style={styles.input}
+              value={controller.highlightCreateDraft.book}
+              onChangeText={(value) =>
+                controller.setHighlightCreateDraft((current) => ({
+                  ...current,
+                  book: value,
+                }))
+              }
+            />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.helperText}>Chapter</Text>
+            <TextInput
+              keyboardType="number-pad"
+              placeholder="Chapter"
+              placeholderTextColor={T.colors.textMuted}
+              style={[
+                styles.input,
+                !stackReferenceInputs && styles.inputCompact,
+                stackReferenceInputs && styles.flex1,
+              ]}
+              value={controller.highlightCreateDraft.chapter}
+              onChangeText={(value) =>
+                controller.setHighlightCreateDraft((current) => ({
+                  ...current,
+                  chapter: value,
+                }))
+              }
+            />
+          </View>
+        </View>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.helperText}>Verses</Text>
           <TextInput
-            placeholder="Book"
+            placeholder="Comma-separated, e.g. 1,2,3"
             placeholderTextColor={T.colors.textMuted}
-            style={[styles.input, styles.flex1]}
-            value={controller.highlightCreateDraft.book}
+            style={styles.input}
+            value={controller.highlightCreateDraft.verses}
             onChangeText={(value) =>
               controller.setHighlightCreateDraft((current) => ({
                 ...current,
-                book: value,
-              }))
-            }
-          />
-          <TextInput
-            keyboardType="number-pad"
-            placeholder="Chapter"
-            placeholderTextColor={T.colors.textMuted}
-            style={[styles.input, styles.inputCompact]}
-            value={controller.highlightCreateDraft.chapter}
-            onChangeText={(value) =>
-              controller.setHighlightCreateDraft((current) => ({
-                ...current,
-                chapter: value,
+                verses: value,
               }))
             }
           />
         </View>
-        <TextInput
-          placeholder="Verses (comma-separated, e.g. 1,2,3)"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
-          value={controller.highlightCreateDraft.verses}
-          onChangeText={(value) =>
-            controller.setHighlightCreateDraft((current) => ({
-              ...current,
-              verses: value,
-            }))
-          }
-        />
-        <TextInput
-          multiline
-          placeholder="Highlight text"
-          placeholderTextColor={T.colors.textMuted}
-          style={[styles.input, styles.textAreaInput]}
-          value={controller.highlightCreateDraft.text}
-          onChangeText={(value) =>
-            controller.setHighlightCreateDraft((current) => ({
-              ...current,
-              text: value,
-            }))
-          }
-        />
+        <View style={styles.fieldGroup}>
+          <Text style={styles.helperText}>Highlight text</Text>
+          <TextInput
+            multiline
+            placeholder="Highlight text"
+            placeholderTextColor={T.colors.textMuted}
+            style={[styles.input, styles.textAreaInput]}
+            value={controller.highlightCreateDraft.text}
+            onChangeText={(value) =>
+              controller.setHighlightCreateDraft((current) => ({
+                ...current,
+                text: value,
+              }))
+            }
+          />
+        </View>
+        <Text style={styles.fieldLabel}>Color</Text>
+        <View style={styles.colorChipRow}>
+          {HIGHLIGHT_PRESET_COLORS.map((color) => (
+            <Pressable
+              key={color}
+              onPress={() =>
+                controller.setHighlightCreateDraft((current) => ({
+                  ...current,
+                  color,
+                }))
+              }
+              style={[
+                styles.colorChip,
+                { backgroundColor: color },
+                controller.highlightCreateDraft.color.trim().toLowerCase() ===
+                color.toLowerCase()
+                  ? styles.colorChipActive
+                  : null,
+              ]}
+            />
+          ))}
+        </View>
         <View style={styles.row}>
           <TextInput
             autoCapitalize="none"
@@ -245,19 +319,22 @@ export function HighlightCreateScreen() {
             <Text style={styles.caption}>Preview</Text>
           </View>
         </View>
-        <TextInput
-          multiline
-          placeholder="Optional note"
-          placeholderTextColor={T.colors.textMuted}
-          style={[styles.input, styles.textAreaInputSmall]}
-          value={controller.highlightCreateDraft.note}
-          onChangeText={(value) =>
-            controller.setHighlightCreateDraft((current) => ({
-              ...current,
-              note: value,
-            }))
-          }
-        />
+        <View style={styles.fieldGroup}>
+          <Text style={styles.helperText}>Note (optional)</Text>
+          <TextInput
+            multiline
+            placeholder="Optional note"
+            placeholderTextColor={T.colors.textMuted}
+            style={[styles.input, styles.textAreaInputSmall]}
+            value={controller.highlightCreateDraft.note}
+            onChangeText={(value) =>
+              controller.setHighlightCreateDraft((current) => ({
+                ...current,
+                note: value,
+              }))
+            }
+          />
+        </View>
         {controller.highlightMutationError ? (
           <Text style={styles.error}>{controller.highlightMutationError}</Text>
         ) : null}
@@ -318,6 +395,23 @@ export function HighlightDetailScreen({
         <Text style={styles.panelTitle}>Highlight Detail</Text>
         <Text style={styles.meta}>{highlight.referenceLabel}</Text>
         <Text style={styles.connectionSynopsis}>{highlight.text}</Text>
+        <Text style={styles.fieldLabel}>Color</Text>
+        <View style={styles.colorChipRow}>
+          {HIGHLIGHT_PRESET_COLORS.map((color) => (
+            <Pressable
+              key={color}
+              onPress={() => controller.setHighlightEditColor(color)}
+              style={[
+                styles.colorChip,
+                { backgroundColor: color },
+                controller.highlightEditColor.trim().toLowerCase() ===
+                color.toLowerCase()
+                  ? styles.colorChipActive
+                  : null,
+              ]}
+            />
+          ))}
+        </View>
         <TextInput
           autoCapitalize="none"
           placeholder="#facc15"
@@ -326,6 +420,7 @@ export function HighlightDetailScreen({
           value={controller.highlightEditColor}
           onChangeText={controller.setHighlightEditColor}
         />
+        <Text style={styles.fieldLabel}>Note</Text>
         <TextInput
           multiline
           placeholder="Note"
