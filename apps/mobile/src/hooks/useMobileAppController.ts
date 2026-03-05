@@ -75,6 +75,25 @@ function parseVersesInput(value: string): number[] {
   return Array.from(new Set(numbers)).sort((a, b) => a - b);
 }
 
+function formatVerseRangeLabel(verses: number[]): string {
+  const normalized = Array.from(new Set(verses))
+    .filter((entry) => Number.isInteger(entry) && entry > 0)
+    .sort((a, b) => a - b);
+  if (normalized.length === 0) {
+    return "";
+  }
+  if (normalized.length === 1) {
+    return String(normalized[0]);
+  }
+  const contiguous = normalized.every(
+    (entry, index) => index === 0 || entry === normalized[index - 1] + 1,
+  );
+  if (contiguous) {
+    return `${normalized[0]}-${normalized[normalized.length - 1]}`;
+  }
+  return normalized.join(",");
+}
+
 function makeUuidLike(): string {
   const hex = "0123456789abcdef";
   const segment = (length: number) =>
@@ -207,6 +226,11 @@ export interface MobileAppController {
   clearReaderVerseSelection: () => void;
   handleReaderBookmarkVerse: (verse: number) => Promise<void>;
   handleReaderHighlightVerse: (verse: number, text: string) => Promise<void>;
+  handleReaderHighlightSelection: (
+    verses: number[],
+    text: string,
+    color?: string,
+  ) => Promise<void>;
   handleCreateBookmark: () => Promise<void>;
   handleDeleteBookmark: (id: string) => Promise<void>;
   handleCreateHighlight: () => Promise<void>;
@@ -951,16 +975,23 @@ export function useMobileAppController(
     }
   }
 
-  async function handleReaderHighlightVerse(verse: number, text: string) {
+  async function handleReaderHighlightSelection(
+    verses: number[],
+    text: string,
+    color = "#facc15",
+  ) {
     const trimmedText = text.trim();
     const canonicalBook = resolveBibleBookName(reader.book);
+    const normalizedVerses = Array.from(new Set(verses))
+      .filter((entry) => Number.isInteger(entry) && entry > 0)
+      .sort((a, b) => a - b);
 
     if (!canonicalBook) {
       setHighlightMutationError("Reader book could not be resolved.");
       return;
     }
-    if (!Number.isInteger(verse) || verse <= 0) {
-      setHighlightMutationError("Verse must be a positive whole number.");
+    if (normalizedVerses.length === 0) {
+      setHighlightMutationError("Select at least one verse.");
       return;
     }
     if (!trimmedText) {
@@ -969,17 +1000,18 @@ export function useMobileAppController(
     }
 
     const nowIso = new Date().toISOString();
+    const verseLabel = formatVerseRangeLabel(normalizedVerses);
     const newItem: MobileHighlightItem = {
       id: makeUuidLike(),
       book: canonicalBook,
       chapter: reader.chapter,
-      verses: [verse],
+      verses: normalizedVerses,
       text: trimmedText,
-      color: "#facc15",
+      color: color.trim() || "#facc15",
       note: undefined,
       createdAt: nowIso,
       updatedAt: nowIso,
-      referenceLabel: `${canonicalBook} ${reader.chapter}:${verse}`,
+      referenceLabel: `${canonicalBook} ${reader.chapter}:${verseLabel}`,
     };
 
     setHighlightMutationBusy(true);
@@ -1008,6 +1040,10 @@ export function useMobileAppController(
     } finally {
       setHighlightMutationBusy(false);
     }
+  }
+
+  async function handleReaderHighlightVerse(verse: number, text: string) {
+    await handleReaderHighlightSelection([verse], text, "#facc15");
   }
 
   async function loadBookmarks() {
@@ -1459,6 +1495,7 @@ export function useMobileAppController(
     clearReaderVerseSelection,
     handleReaderBookmarkVerse,
     handleReaderHighlightVerse,
+    handleReaderHighlightSelection,
     handleCreateBookmark,
     handleDeleteBookmark,
     handleCreateHighlight,

@@ -45,6 +45,14 @@ export interface VerseCrossReferencesResult {
   count: number;
 }
 
+export interface VerseTextResult {
+  reference: string;
+  text: string;
+  book: string;
+  chapter: number;
+  verse: number;
+}
+
 export interface ChapterFooterCard {
   lens: string;
   title: string;
@@ -55,6 +63,39 @@ export interface ChapterFooterResult {
   orientation: string;
   cards: ChapterFooterCard[];
   _version?: string;
+}
+
+export interface SynopsisResponse {
+  synopsis: string;
+  wordCount: number;
+  verse?: {
+    book: string;
+    chapter: number;
+    verse: number;
+    reference: string;
+  };
+  verses?: {
+    book: string;
+    chapter: number;
+    verses: number[];
+    reference: string;
+  };
+}
+
+export interface RootTranslationWord {
+  english: string;
+  original: string;
+  strongs: string | null;
+  definition: string;
+}
+
+export interface RootTranslationResponse {
+  words: RootTranslationWord[];
+  lostContext: string;
+  language: string;
+  strongsUsed: string[];
+  versesIncluded?: number;
+  totalWords?: number;
 }
 
 export type LibraryConnectionItem = LibraryConnection;
@@ -126,6 +167,97 @@ export async function fetchTraceBundle({
   return (await response.json()) as VisualContextBundle;
 }
 
+export async function fetchSynopsis({
+  apiBaseUrl,
+  text,
+  maxWords = 34,
+  book,
+  chapter,
+  verse,
+  verses,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  text: string;
+  maxWords?: number;
+  book?: string;
+  chapter?: number;
+  verse?: number;
+  verses?: number[];
+  accessToken?: string;
+}): Promise<SynopsisResponse> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(`${normalizeBaseUrl(apiBaseUrl)}/api/synopsis`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      text,
+      maxWords,
+      ...(book ? { book } : {}),
+      ...(chapter ? { chapter } : {}),
+      ...(verse ? { verse } : {}),
+      ...(verses && verses.length > 0 ? { verses } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Synopsis request failed (${response.status})`);
+  }
+
+  return (await response.json()) as SynopsisResponse;
+}
+
+export async function fetchRootTranslation({
+  apiBaseUrl,
+  selectedText,
+  maxWords = 140,
+  book,
+  chapter,
+  verse,
+  verses,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  selectedText: string;
+  maxWords?: number;
+  book?: string;
+  chapter?: number;
+  verse?: number;
+  verses?: number[];
+  accessToken?: string;
+}): Promise<RootTranslationResponse> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/root-translation`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        selectedText,
+        maxWords,
+        ...(book ? { book } : {}),
+        ...(chapter ? { chapter } : {}),
+        ...(verse ? { verse } : {}),
+        ...(verses && verses.length > 0 ? { verses } : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Root translation request failed (${response.status})`);
+  }
+
+  return (await response.json()) as RootTranslationResponse;
+}
+
 export async function fetchProtectedProbe({
   apiBaseUrl,
   accessToken,
@@ -157,6 +289,19 @@ export async function fetchVerseCrossReferences({
   const encodedReference = encodeURIComponent(reference);
   return fetchPublicJson<VerseCrossReferencesResult>(
     `${normalizeBaseUrl(apiBaseUrl)}/api/verse/${encodedReference}/cross-references`,
+  );
+}
+
+export async function fetchVerseText({
+  apiBaseUrl,
+  reference,
+}: {
+  apiBaseUrl: string;
+  reference: string;
+}): Promise<VerseTextResult> {
+  const encodedReference = encodeURIComponent(reference);
+  return fetchPublicJson<VerseTextResult>(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/verse/${encodedReference}`,
   );
 }
 

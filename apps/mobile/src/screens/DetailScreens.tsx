@@ -268,7 +268,7 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
                   reference.book,
                   reference.chapter,
                 );
-                navigation.navigate("Tabs", { screen: "Reader" });
+                navigation.navigate("Tabs", { mode: "Reader" } as never);
               } catch {
                 // Bookmark string is malformed; keep user on detail view.
               }
@@ -567,7 +567,7 @@ export function HighlightDetailScreen({
                 highlight.book,
                 highlight.chapter,
               );
-              navigation.navigate("Tabs", { screen: "Reader" });
+              navigation.navigate("Tabs", { mode: "Reader" } as never);
             }}
             variant="secondary"
           />

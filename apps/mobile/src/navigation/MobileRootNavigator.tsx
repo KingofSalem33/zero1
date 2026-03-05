@@ -1,8 +1,23 @@
-import type { ReactNode } from "react";
-import { NavigationContainer, DarkTheme } from "@react-navigation/native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  NavigationContainer,
+  DarkTheme,
+  type RouteProp,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { MOBILE_TOKENS } from "../theme/tokens";
 
 type RootStackParamList = {
@@ -10,26 +25,16 @@ type RootStackParamList = {
   App: undefined;
 };
 
+type AppMode = "Reader" | "Chat" | "Library" | "Account";
+
 type AppStackParamList = {
-  Tabs: undefined;
+  Tabs: { mode?: AppMode; prompt?: string; autoSend?: boolean } | undefined;
   MapViewer: { title?: string; bundle?: unknown } | undefined;
   LibraryMapCreate: undefined;
   BookmarkCreate: undefined;
   BookmarkDetail: { bookmarkId: string };
   HighlightCreate: undefined;
   HighlightDetail: { highlightId: string };
-};
-
-type ChatRouteParams = {
-  prompt?: string;
-  autoSend?: boolean;
-};
-
-type AppTabsParamList = {
-  Reader: undefined;
-  Chat: ChatRouteParams | undefined;
-  Library: undefined;
-  Account: undefined;
 };
 
 export interface MobileRootNavigatorProps {
@@ -66,7 +71,6 @@ export interface MobileRootNavigatorProps {
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
-const Tabs = createBottomTabNavigator<AppTabsParamList>();
 
 const T = MOBILE_TOKENS;
 
@@ -82,23 +86,14 @@ const navTheme = {
   },
 };
 
-function resolveTabIcon(
-  route: keyof AppTabsParamList,
-  focused: boolean,
-): keyof typeof Ionicons.glyphMap {
-  switch (route) {
-    case "Reader":
-      return focused ? "document-text" : "document-text-outline";
-    case "Chat":
-      return focused ? "chatbubble" : "chatbubble-outline";
-    case "Library":
-      return focused ? "book" : "book-outline";
-    case "Account":
-      return focused ? "person-circle" : "person-circle-outline";
-    default:
-      return "ellipse";
-  }
-}
+const MODE_META: Record<
+  Exclude<AppMode, "Account">,
+  { label: string; icon: keyof typeof Ionicons.glyphMap }
+> = {
+  Reader: { label: "Bible", icon: "book-outline" },
+  Chat: { label: "Chat", icon: "chatbubble-outline" },
+  Library: { label: "Library", icon: "library-outline" },
+};
 
 export function resolveRootFlow(
   isAuthenticated: boolean,
@@ -115,105 +110,223 @@ export const APP_DETAIL_ROUTES: Array<keyof AppStackParamList> = [
   "HighlightDetail",
 ];
 
-function AppTabsNavigator(
-  props: Omit<MobileRootNavigatorProps, "isAuthenticated" | "renderAuth">,
-) {
+function drawerButtonStyle(active: boolean): ViewStyle {
+  return {
+    ...localStyles.drawerButton,
+    ...(active
+      ? {
+          borderColor: T.colors.accent,
+          backgroundColor: T.colors.accentSoft,
+        }
+      : null),
+  };
+}
+
+function ModeShellScreen({
+  route,
+  navigation,
+  props,
+}: {
+  route: RouteProp<AppStackParamList, "Tabs">;
+  navigation: NativeStackNavigationProp<AppStackParamList, "Tabs">;
+  props: Omit<MobileRootNavigatorProps, "isAuthenticated" | "renderAuth">;
+}) {
+  const insets = useSafeAreaInsets();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeMode, setActiveMode] = useState<AppMode>(
+    route.params?.mode ?? "Reader",
+  );
+  const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(
+    route.params?.prompt,
+  );
+  const [pendingAutoSend, setPendingAutoSend] = useState<boolean | undefined>(
+    route.params?.autoSend,
+  );
+
+  useEffect(() => {
+    if (route.params?.mode) {
+      setActiveMode(route.params.mode);
+    }
+    if (route.params?.prompt !== undefined) {
+      setPendingPrompt(route.params.prompt);
+      setPendingAutoSend(route.params?.autoSend);
+      setActiveMode("Chat");
+    }
+  }, [route.params?.mode, route.params?.prompt, route.params?.autoSend]);
+
+  const viewTitle = useMemo(() => {
+    if (activeMode === "Reader") return "Bible";
+    if (activeMode === "Chat") return "Chat";
+    if (activeMode === "Library") return "Library";
+    return "Account";
+  }, [activeMode]);
+
+  function openChat(prompt: string, autoSend = true) {
+    setPendingPrompt(prompt);
+    setPendingAutoSend(autoSend);
+    setActiveMode("Chat");
+  }
+
+  function openMapViewer(title?: string, bundle?: unknown) {
+    navigation.navigate("MapViewer", { title, bundle });
+  }
+
   return (
-    <Tabs.Navigator
-      initialRouteName="Reader"
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: T.colors.surfaceRaised,
-          borderTopColor: T.colors.border,
-          height: 66,
-          paddingTop: 6,
-          paddingBottom: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: T.typography.caption,
-          fontWeight: "700",
-        },
-        tabBarIconStyle: {
-          marginBottom: -2,
-        },
-        tabBarItemStyle: {
-          paddingTop: 2,
-        },
-        tabBarIcon: ({ color, focused, size }) => (
-          <Ionicons
-            name={resolveTabIcon(route.name, focused)}
-            size={size}
-            color={color}
-          />
-        ),
-        tabBarActiveTintColor: T.colors.accent,
-        tabBarInactiveTintColor: T.colors.textMuted,
-      })}
-    >
-      <Tabs.Screen name="Reader" options={{ tabBarLabel: "Reader" }}>
-        {({ navigation }) =>
-          props.renderReader({
-            openChat: (prompt, autoSend = true) =>
-              navigation.navigate("Chat", { prompt, autoSend }),
-            openMapViewer: (title, bundle) =>
-              navigation
-                .getParent()
-                ?.navigate("MapViewer", { title, bundle } as never),
-          })
-        }
-      </Tabs.Screen>
-      <Tabs.Screen name="Chat" options={{ tabBarLabel: "Chat" }}>
-        {({ navigation, route }) =>
-          props.renderChat({
-            openMapViewer: (title, bundle) =>
-              navigation
-                .getParent()
-                ?.navigate("MapViewer", { title, bundle } as never),
-            openReader: (_book, _chapter) => navigation.navigate("Reader"),
-            pendingPrompt: route.params?.prompt,
-            autoSend: route.params?.autoSend,
-            clearPendingPrompt: () =>
-              navigation.setParams({
-                prompt: undefined,
-                autoSend: undefined,
-              }),
-          })
-        }
-      </Tabs.Screen>
-      <Tabs.Screen name="Library" options={{ tabBarLabel: "Library" }}>
-        {({ navigation }) =>
-          props.renderLibrary({
-            openMapCreate: () =>
-              navigation.getParent()?.navigate("LibraryMapCreate" as never),
-            openBookmarkCreate: () =>
-              navigation.getParent()?.navigate("BookmarkCreate" as never),
-            openBookmarkDetail: (bookmarkId) =>
-              navigation
-                .getParent()
-                ?.navigate("BookmarkDetail" as never, { bookmarkId } as never),
-            openHighlightCreate: () =>
-              navigation.getParent()?.navigate("HighlightCreate" as never),
-            openHighlightDetail: (highlightId) =>
-              navigation
-                .getParent()
-                ?.navigate(
-                  "HighlightDetail" as never,
-                  { highlightId } as never,
-                ),
-            openMapViewer: (title, bundle) =>
-              navigation
-                .getParent()
-                ?.navigate("MapViewer", { title, bundle } as never),
-            openChat: (prompt, autoSend = true) =>
-              navigation.navigate("Chat", { prompt, autoSend }),
-          })
-        }
-      </Tabs.Screen>
-      <Tabs.Screen name="Account" options={{ tabBarLabel: "Account" }}>
-        {() => props.renderAccount()}
-      </Tabs.Screen>
-    </Tabs.Navigator>
+    <SafeAreaView edges={["top", "bottom"]} style={localStyles.shellSafeArea}>
+      <View style={localStyles.shellRoot}>
+        <View
+          style={[
+            localStyles.topBar,
+            {
+              paddingTop: Math.max(T.spacing.xs, insets.top),
+            },
+          ]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open mode menu"
+            onPress={() => setDrawerOpen(true)}
+            style={localStyles.topBarIconButton}
+          >
+            <Ionicons color={T.colors.textMuted} name="menu" size={20} />
+          </Pressable>
+          <Text style={localStyles.topBarTitle}>{viewTitle}</Text>
+          <View style={localStyles.topBarSpacer} />
+        </View>
+
+        <View style={localStyles.modeContentWrap}>
+          {activeMode === "Reader"
+            ? props.renderReader({
+                openChat,
+                openMapViewer,
+              })
+            : null}
+
+          {activeMode === "Chat"
+            ? props.renderChat({
+                openMapViewer,
+                openReader: () => setActiveMode("Reader"),
+                pendingPrompt,
+                autoSend: pendingAutoSend,
+                clearPendingPrompt: () => {
+                  setPendingPrompt(undefined);
+                  setPendingAutoSend(undefined);
+                },
+              })
+            : null}
+
+          {activeMode === "Library"
+            ? props.renderLibrary({
+                openMapCreate: () => navigation.navigate("LibraryMapCreate"),
+                openBookmarkCreate: () => navigation.navigate("BookmarkCreate"),
+                openBookmarkDetail: (bookmarkId) =>
+                  navigation.navigate("BookmarkDetail", { bookmarkId }),
+                openHighlightCreate: () =>
+                  navigation.navigate("HighlightCreate"),
+                openHighlightDetail: (highlightId) =>
+                  navigation.navigate("HighlightDetail", { highlightId }),
+                openMapViewer,
+                openChat,
+              })
+            : null}
+
+          {activeMode === "Account" ? props.renderAccount() : null}
+        </View>
+
+        {drawerOpen ? (
+          <View style={localStyles.drawerOverlay}>
+            <View
+              style={[localStyles.drawerPanel, { paddingTop: insets.top + 8 }]}
+            >
+              <View style={localStyles.drawerHeaderRow}>
+                <Text style={localStyles.drawerTitle}>Biblelot</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close mode menu"
+                  onPress={() => setDrawerOpen(false)}
+                  style={localStyles.drawerCloseButton}
+                >
+                  <Ionicons color={T.colors.textMuted} name="close" size={20} />
+                </Pressable>
+              </View>
+
+              <View style={localStyles.drawerModesWrap}>
+                {Object.entries(MODE_META).map(([key, meta]) => {
+                  const modeKey = key as Exclude<AppMode, "Account">;
+                  const active = activeMode === modeKey;
+                  return (
+                    <Pressable
+                      key={modeKey}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Open ${meta.label}`}
+                      onPress={() => {
+                        setActiveMode(modeKey);
+                        setDrawerOpen(false);
+                      }}
+                      style={drawerButtonStyle(active)}
+                    >
+                      <Ionicons
+                        color={active ? T.colors.accent : T.colors.textMuted}
+                        name={meta.icon}
+                        size={18}
+                      />
+                      <Text
+                        style={[
+                          localStyles.drawerButtonLabel,
+                          active ? localStyles.drawerButtonLabelActive : null,
+                        ]}
+                      >
+                        {meta.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={localStyles.drawerFooter}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activeMode === "Account" }}
+                  accessibilityLabel="Open account"
+                  onPress={() => {
+                    setActiveMode("Account");
+                    setDrawerOpen(false);
+                  }}
+                  style={drawerButtonStyle(activeMode === "Account")}
+                >
+                  <Ionicons
+                    color={
+                      activeMode === "Account"
+                        ? T.colors.accent
+                        : T.colors.textMuted
+                    }
+                    name="person-circle-outline"
+                    size={18}
+                  />
+                  <Text
+                    style={[
+                      localStyles.drawerButtonLabel,
+                      activeMode === "Account"
+                        ? localStyles.drawerButtonLabelActive
+                        : null,
+                    ]}
+                  >
+                    Account
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close mode menu"
+              onPress={() => setDrawerOpen(false)}
+              style={localStyles.drawerBackdrop}
+            />
+          </View>
+        ) : null}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -236,7 +349,13 @@ function AppStackNavigator(
       }}
     >
       <AppStack.Screen name="Tabs" options={{ headerShown: false }}>
-        {() => <AppTabsNavigator {...props} />}
+        {({ navigation, route }) => (
+          <ModeShellScreen
+            navigation={navigation}
+            props={props}
+            route={route}
+          />
+        )}
       </AppStack.Screen>
       <AppStack.Screen
         name="MapViewer"
@@ -311,3 +430,115 @@ export function MobileRootNavigator(props: MobileRootNavigatorProps) {
     </NavigationContainer>
   );
 }
+
+const localStyles = StyleSheet.create({
+  shellSafeArea: {
+    flex: 1,
+    backgroundColor: T.colors.canvas,
+  },
+  shellRoot: {
+    flex: 1,
+    backgroundColor: T.colors.canvas,
+  },
+  topBar: {
+    borderBottomWidth: 1,
+    borderBottomColor: T.colors.border,
+    minHeight: 56,
+    paddingHorizontal: T.spacing.md,
+    paddingBottom: T.spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
+    backgroundColor: "rgba(24,24,27,0.94)",
+  },
+  topBarIconButton: {
+    width: T.touchTarget.min,
+    height: T.touchTarget.min,
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topBarTitle: {
+    flex: 1,
+    textAlign: "center",
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    fontWeight: "700",
+  },
+  topBarSpacer: {
+    width: T.touchTarget.min,
+    height: T.touchTarget.min,
+  },
+  modeContentWrap: {
+    flex: 1,
+  },
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: "row",
+    zIndex: 50,
+  },
+  drawerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  drawerPanel: {
+    width: "84%",
+    maxWidth: 340,
+    backgroundColor: T.colors.ink,
+    borderRightWidth: 1,
+    borderColor: T.colors.border,
+    paddingHorizontal: T.spacing.md,
+    paddingBottom: T.spacing.lg,
+  },
+  drawerHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: T.spacing.sm,
+    marginBottom: T.spacing.md,
+  },
+  drawerTitle: {
+    color: T.colors.text,
+    fontWeight: "800",
+    fontSize: T.typography.subheading,
+  },
+  drawerCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: T.colors.surface,
+  },
+  drawerModesWrap: {
+    gap: T.spacing.sm,
+  },
+  drawerButton: {
+    minHeight: T.touchTarget.min,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
+  },
+  drawerButtonLabel: {
+    color: T.colors.text,
+    fontWeight: "700",
+    fontSize: T.typography.body,
+  },
+  drawerButtonLabelActive: {
+    color: T.colors.accent,
+  },
+  drawerFooter: {
+    marginTop: "auto",
+    paddingTop: T.spacing.lg,
+  },
+});
