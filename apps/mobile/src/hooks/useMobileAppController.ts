@@ -3,12 +3,14 @@ import { Linking } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
 import {
+  BIBLE_BOOKS,
   formatBookmarkReference,
   getBibleBookSuggestions,
   getBibleChapterCount,
   resolveBibleBookName,
 } from "@zero1/shared";
 import {
+  fetchChapterFooter,
   createBookmark,
   createHighlightViaSync,
   createLibraryMap,
@@ -20,13 +22,17 @@ import {
   fetchLibraryConnections,
   fetchLibraryMaps,
   fetchProtectedProbe,
+  fetchVerseCrossReferences,
+  type ChapterFooterResult,
   type LibraryConnectionItem,
   type LibraryMapItem,
   type MobileBookmarkItem,
   type MobileHighlightItem,
   type ProtectedProbeResult,
+  type VerseCrossReferenceItem,
   updateHighlight,
 } from "../lib/api";
+import { getBibleBook, type BibleChapterVerse } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
 import {
   getOAuthRedirectUrl,
@@ -53,6 +59,12 @@ export interface BookmarkDraftForm {
 export interface LibraryMapDraftForm {
   bundleId: string;
   title: string;
+}
+
+export interface ReaderState {
+  book: string;
+  chapter: number;
+  verses: BibleChapterVerse[];
 }
 
 function parseVersesInput(value: string): number[] {
@@ -89,6 +101,14 @@ function createDefaultLibraryMapDraft(): LibraryMapDraftForm {
   };
 }
 
+function createDefaultReaderState(): ReaderState {
+  return {
+    book: "Matthew",
+    chapter: 1,
+    verses: [],
+  };
+}
+
 export interface MobileAppController {
   session: Session | null;
   user: User | null;
@@ -119,6 +139,17 @@ export interface MobileAppController {
   selectLibraryMapBundleSuggestion: (bundleId: string) => void;
   libraryMapMutationBusy: boolean;
   libraryMapMutationError: string | null;
+  reader: ReaderState;
+  readerLoading: boolean;
+  readerError: string | null;
+  readerLoadedAt: string | null;
+  readerSelectedVerse: number | null;
+  readerCrossReferences: VerseCrossReferenceItem[];
+  readerCrossReferencesLoading: boolean;
+  readerCrossReferencesError: string | null;
+  readerFooter: ChapterFooterResult | null;
+  readerFooterLoading: boolean;
+  readerFooterError: string | null;
   bookmarks: MobileBookmarkItem[];
   bookmarksLoading: boolean;
   bookmarksError: string | null;
@@ -169,6 +200,13 @@ export interface MobileAppController {
   refreshDashboard: () => Promise<void>;
   handleCreateLibraryMap: () => Promise<void>;
   handleDeleteLibraryMap: (id: string) => Promise<void>;
+  navigateReaderTo: (book: string, chapter: number) => Promise<void>;
+  goToPreviousReaderChapter: () => Promise<void>;
+  goToNextReaderChapter: () => Promise<void>;
+  selectReaderVerse: (verse: number) => Promise<void>;
+  clearReaderVerseSelection: () => void;
+  handleReaderBookmarkVerse: (verse: number) => Promise<void>;
+  handleReaderHighlightVerse: (verse: number, text: string) => Promise<void>;
   handleCreateBookmark: () => Promise<void>;
   handleDeleteBookmark: (id: string) => Promise<void>;
   handleCreateHighlight: () => Promise<void>;
@@ -176,7 +214,17 @@ export interface MobileAppController {
   handleDeleteHighlight: (id: string) => Promise<void>;
 }
 
-export function useMobileAppController(): MobileAppController {
+interface UseMobileAppControllerOptions {
+  onToast?: (toast: {
+    tone: "success" | "error" | "info";
+    title: string;
+  }) => void;
+}
+
+export function useMobileAppController(
+  options: UseMobileAppControllerOptions = {},
+): MobileAppController {
+  const { onToast } = options;
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
@@ -207,6 +255,28 @@ export function useMobileAppController(): MobileAppController {
   const [libraryMapMutationError, setLibraryMapMutationError] = useState<
     string | null
   >(null);
+  const [reader, setReader] = useState<ReaderState>(createDefaultReaderState());
+  const [readerLoading, setReaderLoading] = useState(false);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [readerLoadedAt, setReaderLoadedAt] = useState<string | null>(null);
+  const [readerSelectedVerse, setReaderSelectedVerse] = useState<number | null>(
+    null,
+  );
+  const [readerCrossReferences, setReaderCrossReferences] = useState<
+    VerseCrossReferenceItem[]
+  >([]);
+  const [readerCrossReferencesLoading, setReaderCrossReferencesLoading] =
+    useState(false);
+  const [readerCrossReferencesError, setReaderCrossReferencesError] = useState<
+    string | null
+  >(null);
+  const [readerFooter, setReaderFooter] = useState<ChapterFooterResult | null>(
+    null,
+  );
+  const [readerFooterLoading, setReaderFooterLoading] = useState(false);
+  const [readerFooterError, setReaderFooterError] = useState<string | null>(
+    null,
+  );
   const [bookmarks, setBookmarks] = useState<MobileBookmarkItem[]>([]);
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
   const [bookmarksError, setBookmarksError] = useState<string | null>(null);
@@ -249,6 +319,10 @@ export function useMobileAppController(): MobileAppController {
     });
   const processedAuthUrlsRef = useRef<Set<string>>(new Set());
   const oauthPerfSpanRef = useRef<string | null>(null);
+
+  function notify(tone: "success" | "error" | "info", title: string) {
+    onToast?.({ tone, title });
+  }
 
   const selectedHighlight = useMemo(
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
@@ -432,6 +506,14 @@ export function useMobileAppController(): MobileAppController {
       setLibraryMapsLoadedAt(null);
       setLibraryMapDraft(createDefaultLibraryMapDraft());
       setLibraryMapMutationError(null);
+      setReader(createDefaultReaderState());
+      setReaderError(null);
+      setReaderLoadedAt(null);
+      setReaderSelectedVerse(null);
+      setReaderCrossReferences([]);
+      setReaderCrossReferencesError(null);
+      setReaderFooter(null);
+      setReaderFooterError(null);
       setBookmarks([]);
       setBookmarksError(null);
       setBookmarksLoadedAt(null);
@@ -674,6 +756,260 @@ export function useMobileAppController(): MobileAppController {
     }
   }
 
+  async function navigateReaderTo(rawBook: string, rawChapter: number) {
+    const canonicalBook = resolveBibleBookName(rawBook);
+    if (!canonicalBook) {
+      setReaderError("Select a valid Bible book.");
+      return;
+    }
+
+    if (!Number.isInteger(rawChapter) || rawChapter <= 0) {
+      setReaderError("Chapter must be a positive whole number.");
+      return;
+    }
+
+    const maxChapter = getBibleChapterCount(canonicalBook) ?? 1;
+    const boundedChapter = Math.min(Math.max(rawChapter, 1), maxChapter);
+
+    setReaderLoading(true);
+    setReaderError(null);
+    setReaderSelectedVerse(null);
+    setReaderCrossReferences([]);
+    setReaderCrossReferencesError(null);
+    setReaderFooterLoading(true);
+    setReaderFooterError(null);
+
+    try {
+      const [bookResult, footerResult] = await Promise.allSettled([
+        getBibleBook(canonicalBook),
+        fetchChapterFooter({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          book: canonicalBook,
+          chapter: boundedChapter,
+        }),
+      ]);
+
+      if (bookResult.status !== "fulfilled") {
+        throw bookResult.reason;
+      }
+
+      const chapterData = bookResult.value.chapters.find(
+        (entry) => entry.chapter === boundedChapter,
+      );
+
+      if (!chapterData) {
+        throw new Error(
+          `${canonicalBook} chapter ${boundedChapter} could not be loaded.`,
+        );
+      }
+
+      setReader({
+        book: canonicalBook,
+        chapter: boundedChapter,
+        verses: chapterData.verses,
+      });
+      setReaderLoadedAt(new Date().toISOString());
+
+      if (footerResult.status === "fulfilled") {
+        setReaderFooter(footerResult.value);
+        setReaderFooterError(null);
+      } else {
+        setReaderFooter(null);
+        setReaderFooterError(
+          footerResult.reason instanceof Error
+            ? footerResult.reason.message
+            : String(footerResult.reason),
+        );
+      }
+    } catch (error) {
+      setReaderError(error instanceof Error ? error.message : String(error));
+      setReaderFooter(null);
+    } finally {
+      setReaderLoading(false);
+      setReaderFooterLoading(false);
+    }
+  }
+
+  async function goToPreviousReaderChapter() {
+    const currentBookIndex = BIBLE_BOOKS.indexOf(
+      reader.book as (typeof BIBLE_BOOKS)[number],
+    );
+    if (currentBookIndex < 0) {
+      return;
+    }
+
+    if (reader.chapter > 1) {
+      await navigateReaderTo(reader.book, reader.chapter - 1);
+      return;
+    }
+
+    if (currentBookIndex === 0) {
+      return;
+    }
+
+    const previousBook = BIBLE_BOOKS[currentBookIndex - 1];
+    const previousBookChapterCount = getBibleChapterCount(previousBook) ?? 1;
+    await navigateReaderTo(previousBook, previousBookChapterCount);
+  }
+
+  async function goToNextReaderChapter() {
+    const currentBookIndex = BIBLE_BOOKS.indexOf(
+      reader.book as (typeof BIBLE_BOOKS)[number],
+    );
+    if (currentBookIndex < 0) {
+      return;
+    }
+
+    const currentBookChapterCount = getBibleChapterCount(reader.book) ?? 1;
+    if (reader.chapter < currentBookChapterCount) {
+      await navigateReaderTo(reader.book, reader.chapter + 1);
+      return;
+    }
+
+    if (currentBookIndex >= BIBLE_BOOKS.length - 1) {
+      return;
+    }
+
+    const nextBook = BIBLE_BOOKS[currentBookIndex + 1];
+    await navigateReaderTo(nextBook, 1);
+  }
+
+  async function selectReaderVerse(verse: number) {
+    if (!Number.isInteger(verse) || verse <= 0) {
+      setReaderCrossReferencesError("Verse must be a positive whole number.");
+      return;
+    }
+
+    setReaderSelectedVerse(verse);
+    setReaderCrossReferencesLoading(true);
+    setReaderCrossReferencesError(null);
+
+    try {
+      const reference = `${reader.book} ${reader.chapter}:${verse}`;
+      const result = await fetchVerseCrossReferences({
+        apiBaseUrl: MOBILE_ENV.API_URL,
+        reference,
+      });
+      setReaderCrossReferences(result.crossReferences);
+    } catch (error) {
+      setReaderCrossReferencesError(
+        error instanceof Error ? error.message : String(error),
+      );
+      setReaderCrossReferences([]);
+    } finally {
+      setReaderCrossReferencesLoading(false);
+    }
+  }
+
+  function clearReaderVerseSelection() {
+    setReaderSelectedVerse(null);
+    setReaderCrossReferences([]);
+    setReaderCrossReferencesError(null);
+  }
+
+  async function handleReaderBookmarkVerse(verse: number) {
+    const canonicalBook = resolveBibleBookName(reader.book);
+    if (!canonicalBook) {
+      setBookmarkMutationError("Reader book could not be resolved.");
+      return;
+    }
+    if (!Number.isInteger(verse) || verse <= 0) {
+      setBookmarkMutationError("Verse must be a positive whole number.");
+      return;
+    }
+
+    const normalizedText = formatBookmarkReference({
+      book: canonicalBook,
+      chapter: reader.chapter,
+      verse,
+    });
+
+    setBookmarkMutationBusy(true);
+    setBookmarkMutationError(null);
+    try {
+      const created = await withAccessToken((accessToken) =>
+        createBookmark({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          text: normalizedText,
+        }),
+      );
+      setBookmarks((current) => [created, ...current]);
+      setBookmarksLoadedAt(new Date().toISOString());
+      setSelectedBookmarkId(created.id);
+      notify("success", "Bookmark saved.");
+    } catch (error) {
+      setBookmarkMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to save bookmark.",
+      );
+    } finally {
+      setBookmarkMutationBusy(false);
+    }
+  }
+
+  async function handleReaderHighlightVerse(verse: number, text: string) {
+    const trimmedText = text.trim();
+    const canonicalBook = resolveBibleBookName(reader.book);
+
+    if (!canonicalBook) {
+      setHighlightMutationError("Reader book could not be resolved.");
+      return;
+    }
+    if (!Number.isInteger(verse) || verse <= 0) {
+      setHighlightMutationError("Verse must be a positive whole number.");
+      return;
+    }
+    if (!trimmedText) {
+      setHighlightMutationError("Highlight text is required.");
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const newItem: MobileHighlightItem = {
+      id: makeUuidLike(),
+      book: canonicalBook,
+      chapter: reader.chapter,
+      verses: [verse],
+      text: trimmedText,
+      color: "#facc15",
+      note: undefined,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      referenceLabel: `${canonicalBook} ${reader.chapter}:${verse}`,
+    };
+
+    setHighlightMutationBusy(true);
+    setHighlightMutationError(null);
+    try {
+      const nextHighlights = await withAccessToken((accessToken) =>
+        createHighlightViaSync({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          currentHighlights: highlights,
+          newHighlight: newItem,
+        }),
+      );
+      setHighlights(nextHighlights);
+      setHighlightsLoadedAt(new Date().toISOString());
+      setSelectedHighlightId(newItem.id);
+      notify("success", "Highlight saved.");
+    } catch (error) {
+      setHighlightMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to save highlight.",
+      );
+    } finally {
+      setHighlightMutationBusy(false);
+    }
+  }
+
   async function loadBookmarks() {
     setBookmarksLoading(true);
     setBookmarksError(null);
@@ -721,6 +1057,7 @@ export function useMobileAppController(): MobileAppController {
       loadLibraryMaps(),
       loadBookmarks(),
       loadHighlights(),
+      navigateReaderTo(reader.book, reader.chapter),
     ]);
   }
 
@@ -752,9 +1089,14 @@ export function useMobileAppController(): MobileAppController {
         ...current,
         title: "",
       }));
+      notify("success", "Map saved.");
     } catch (error) {
       setLibraryMapMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to save map.",
       );
     } finally {
       setLibraryMapMutationBusy(false);
@@ -774,9 +1116,14 @@ export function useMobileAppController(): MobileAppController {
       );
       setLibraryMaps((current) => current.filter((item) => item.id !== id));
       setLibraryMapsLoadedAt(new Date().toISOString());
+      notify("success", "Map deleted.");
     } catch (error) {
       setLibraryMapMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to delete map.",
       );
     } finally {
       setLibraryMapMutationBusy(false);
@@ -848,10 +1195,14 @@ export function useMobileAppController(): MobileAppController {
         verse: "",
       }));
       setSelectedBookmarkId(created.id);
-      await runProbe();
+      notify("success", "Bookmark saved.");
     } catch (error) {
       setBookmarkMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to save bookmark.",
       );
     } finally {
       finishPerfSpan(bookmarkSaveSpanId, bookmarkSaveStatus, {
@@ -875,10 +1226,14 @@ export function useMobileAppController(): MobileAppController {
       setBookmarks((current) => current.filter((item) => item.id !== id));
       setSelectedBookmarkId((current) => (current === id ? null : current));
       setBookmarksLoadedAt(new Date().toISOString());
-      await runProbe();
+      notify("success", "Bookmark deleted.");
     } catch (error) {
       setBookmarkMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to delete bookmark.",
       );
     } finally {
       setBookmarkMutationBusy(false);
@@ -937,10 +1292,14 @@ export function useMobileAppController(): MobileAppController {
         text: "",
         note: "",
       }));
-      await runProbe();
+      notify("success", "Highlight saved.");
     } catch (error) {
       setHighlightMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to save highlight.",
       );
     } finally {
       setHighlightMutationBusy(false);
@@ -972,10 +1331,14 @@ export function useMobileAppController(): MobileAppController {
         current.map((item) => (item.id === updated.id ? updated : item)),
       );
       setHighlightsLoadedAt(new Date().toISOString());
-      await runProbe();
+      notify("success", "Highlight updated.");
     } catch (error) {
       setHighlightMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to update highlight.",
       );
     } finally {
       setHighlightMutationBusy(false);
@@ -996,10 +1359,14 @@ export function useMobileAppController(): MobileAppController {
       setHighlights((current) => current.filter((item) => item.id !== id));
       setSelectedHighlightId((current) => (current === id ? null : current));
       setHighlightsLoadedAt(new Date().toISOString());
-      await runProbe();
+      notify("success", "Highlight deleted.");
     } catch (error) {
       setHighlightMutationError(
         error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to delete highlight.",
       );
     } finally {
       setHighlightMutationBusy(false);
@@ -1032,6 +1399,17 @@ export function useMobileAppController(): MobileAppController {
     selectLibraryMapBundleSuggestion,
     libraryMapMutationBusy,
     libraryMapMutationError,
+    reader,
+    readerLoading,
+    readerError,
+    readerLoadedAt,
+    readerSelectedVerse,
+    readerCrossReferences,
+    readerCrossReferencesLoading,
+    readerCrossReferencesError,
+    readerFooter,
+    readerFooterLoading,
+    readerFooterError,
     bookmarks,
     bookmarksLoading,
     bookmarksError,
@@ -1074,6 +1452,13 @@ export function useMobileAppController(): MobileAppController {
     refreshDashboard,
     handleCreateLibraryMap,
     handleDeleteLibraryMap,
+    navigateReaderTo,
+    goToPreviousReaderChapter,
+    goToNextReaderChapter,
+    selectReaderVerse,
+    clearReaderVerseSelection,
+    handleReaderBookmarkVerse,
+    handleReaderHighlightVerse,
     handleCreateBookmark,
     handleDeleteBookmark,
     handleCreateHighlight,

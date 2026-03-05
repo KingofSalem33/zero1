@@ -1,4 +1,8 @@
 export const MOBILE_TOKENS = {
+  fonts: {
+    sans: "System",
+    serif: "Georgia",
+  },
   colors: {
     ink: "#09090B",
     canvas: "#18181B",
@@ -25,6 +29,12 @@ export const MOBILE_TOKENS = {
     xl: 24,
     xxl: 32,
   },
+  touchTarget: {
+    min: 44,
+  },
+  motion: {
+    pressScale: 0.98,
+  },
   radius: {
     sm: 8,
     md: 12,
@@ -32,16 +42,13 @@ export const MOBILE_TOKENS = {
     pill: 999,
   },
   typography: {
-    title: 30,
-    heading: 20,
-    body: 14,
+    title: 32,
+    heading: 22,
+    subheading: 18,
+    body: 16,
+    bodySm: 14,
     caption: 12,
   },
 } as const;
 
-export type MobileTabKey =
-  | "library"
-  | "bookmarks"
-  | "highlights"
-  | "account"
-  | "mapFallback";
+export type MobileTabKey = "reader" | "chat" | "library" | "account";

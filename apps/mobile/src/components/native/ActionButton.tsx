@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import {
-  Pressable,
   Text,
   type PressableProps,
   type StyleProp,
@@ -8,6 +7,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { styles } from "../../theme/mobileStyles";
+import { PressableScale } from "./PressableScale";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -40,12 +40,16 @@ export function ActionButton({
   style,
   labelStyle,
   leftIcon,
+  accessibilityLabel,
   ...rest
 }: ActionButtonProps) {
   return (
-    <Pressable
+    <PressableScale
       {...rest}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled: Boolean(disabled) }}
       style={[
         CONTAINER_VARIANTS[variant],
         disabled ? styles.buttonDisabled : null,
@@ -54,6 +58,6 @@ export function ActionButton({
     >
       {leftIcon}
       <Text style={[LABEL_VARIANTS[variant], labelStyle]}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }

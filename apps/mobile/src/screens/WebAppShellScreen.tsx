@@ -1,7 +1,6 @@
 import {
   ActivityIndicator,
   Linking,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -17,6 +16,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { PressableScale } from "../components/native/PressableScale";
 
 type WebShellErrorType = "network" | "http" | "timeout";
 
@@ -244,24 +244,33 @@ export function WebAppShellScreen({
             ))}
           </View>
           <View style={styles.buttonRow}>
-            <Pressable onPress={handleReload} style={styles.reloadButton}>
+            <PressableScale
+              onPress={handleReload}
+              style={styles.reloadButton}
+              accessibilityRole="button"
+              accessibilityLabel="Retry web app load"
+            >
               <Text style={styles.reloadButtonLabel}>Retry</Text>
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               onPress={() => {
                 void handleExternalRequest(webUrl);
               }}
               style={styles.browserButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open web app in browser"
             >
               <Text style={styles.browserButtonLabel}>Open in Browser</Text>
-            </Pressable>
+            </PressableScale>
             {allowFallbackToNative && onFallbackToNative ? (
-              <Pressable
+              <PressableScale
                 onPress={onFallbackToNative}
                 style={styles.fallbackButton}
+                accessibilityRole="button"
+                accessibilityLabel="Use native shell"
               >
                 <Text style={styles.fallbackButtonLabel}>Use Native Shell</Text>
-              </Pressable>
+              </PressableScale>
             ) : null}
           </View>
         </View>
@@ -380,15 +389,15 @@ export function WebAppShellScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#18181B",
   },
   container: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#18181B",
   },
   webView: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#18181B",
   },
   loadingBanner: {
     position: "absolute",
@@ -396,9 +405,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    backgroundColor: "rgba(24,24,27,0.96)",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e2e8f0",
+    borderBottomColor: "rgba(255,255,255,0.1)",
     paddingHorizontal: 14,
     paddingBottom: 10,
     gap: 7,
@@ -409,63 +418,64 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   loadingTitle: {
-    color: "#1f2937",
+    color: "#E4E4E7",
     fontSize: 12,
     fontWeight: "700",
   },
   loadingMeta: {
-    color: "#475569",
+    color: "#A1A1AA",
     fontSize: 12,
     fontWeight: "600",
   },
   loadingTrack: {
     height: 4,
     borderRadius: 999,
-    backgroundColor: "#e2e8f0",
+    backgroundColor: "rgba(255,255,255,0.12)",
     overflow: "hidden",
   },
   loadingFill: {
     height: 4,
     borderRadius: 999,
-    backgroundColor: "#0f766e",
+    backgroundColor: "#D4AF37",
   },
   loadingContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: "#18181B",
   },
   errorContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 20,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#18181B",
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 12,
+    color: "#E4E4E7",
   },
   errorMessage: {
     fontSize: 14,
     textAlign: "center",
-    color: "#334155",
+    color: "#A1A1AA",
     marginBottom: 14,
   },
   diagnosticsPanel: {
     width: "100%",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#cbd5e1",
+    borderColor: "rgba(255,255,255,0.12)",
     borderRadius: 10,
     padding: 10,
     marginBottom: 14,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   diagnosticsLine: {
     fontSize: 12,
     lineHeight: 18,
-    color: "#0f172a",
+    color: "#E4E4E7",
     fontFamily: "monospace",
   },
   buttonRow: {
@@ -473,39 +483,45 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   reloadButton: {
-    backgroundColor: "#111827",
+    backgroundColor: "#D4AF37",
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 10,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   reloadButtonLabel: {
-    color: "#ffffff",
+    color: "#09090B",
     fontWeight: "600",
   },
   browserButton: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#0f766e",
-    backgroundColor: "#f0fdfa",
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     paddingHorizontal: 18,
     paddingVertical: 10,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   browserButtonLabel: {
-    color: "#115e59",
+    color: "#E4E4E7",
     fontWeight: "700",
   },
   fallbackButton: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "rgba(255,255,255,0.14)",
     paddingHorizontal: 18,
     paddingVertical: 10,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   fallbackButtonLabel: {
-    color: "#0f172a",
+    color: "#E4E4E7",
     fontWeight: "600",
   },
 });

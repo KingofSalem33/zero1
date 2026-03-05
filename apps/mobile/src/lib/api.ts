@@ -14,6 +14,7 @@ import {
   type LibraryMapCreatePayload,
   type LibraryMapUpdatePayload,
 } from "@zero1/shared-client";
+import type { VisualContextBundle } from "../types/visualization";
 
 interface ProtectedProbeOptions {
   apiBaseUrl: string;
@@ -30,6 +31,30 @@ export interface ProtectedProbeResult {
   bookmarksCount: number;
   highlightsCount: number;
   libraryConnectionsCount: number;
+}
+
+export interface VerseCrossReferenceItem {
+  book: string;
+  chapter: number;
+  verse: number;
+}
+
+export interface VerseCrossReferencesResult {
+  reference: string;
+  crossReferences: VerseCrossReferenceItem[];
+  count: number;
+}
+
+export interface ChapterFooterCard {
+  lens: string;
+  title: string;
+  prompt: string;
+}
+
+export interface ChapterFooterResult {
+  orientation: string;
+  cards: ChapterFooterCard[];
+  _version?: string;
 }
 
 export type LibraryConnectionItem = LibraryConnection;
@@ -66,6 +91,41 @@ function createMobileProtectedApiClient({
   });
 }
 
+async function fetchPublicJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`API request failed (${response.status})`);
+  }
+  return (await response.json()) as T;
+}
+
+export async function fetchTraceBundle({
+  apiBaseUrl,
+  text,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  text: string;
+  accessToken?: string;
+}): Promise<VisualContextBundle> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(`${normalizeBaseUrl(apiBaseUrl)}/api/trace`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ text }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Trace request failed (${response.status})`);
+  }
+
+  return (await response.json()) as VisualContextBundle;
+}
+
 export async function fetchProtectedProbe({
   apiBaseUrl,
   accessToken,
@@ -85,6 +145,34 @@ export async function fetchProtectedProbe({
     highlightsCount: highlights.length,
     libraryConnectionsCount: connections.length,
   };
+}
+
+export async function fetchVerseCrossReferences({
+  apiBaseUrl,
+  reference,
+}: {
+  apiBaseUrl: string;
+  reference: string;
+}): Promise<VerseCrossReferencesResult> {
+  const encodedReference = encodeURIComponent(reference);
+  return fetchPublicJson<VerseCrossReferencesResult>(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/verse/${encodedReference}/cross-references`,
+  );
+}
+
+export async function fetchChapterFooter({
+  apiBaseUrl,
+  book,
+  chapter,
+}: {
+  apiBaseUrl: string;
+  book: string;
+  chapter: number;
+}): Promise<ChapterFooterResult> {
+  const params = `book=${encodeURIComponent(book)}&chapter=${encodeURIComponent(String(chapter))}`;
+  return fetchPublicJson<ChapterFooterResult>(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/bible/chapter-footer?${params}`,
+  );
 }
 
 export async function fetchLibraryConnections({
