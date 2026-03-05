@@ -1,12 +1,15 @@
 import {
+  ActivityIndicator,
   FlatList,
   type GestureResponderEvent,
   type PanResponderGestureState,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,10 +20,9 @@ import {
 } from "@react-navigation/native";
 import { ActionButton } from "../components/native/ActionButton";
 import { PressableScale } from "../components/native/PressableScale";
-import { SearchInput } from "../components/native/SearchInput";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
-import { fetchTraceBundle } from "../lib/api";
+import { fetchTraceBundle, fetchVerseText } from "../lib/api";
 import { MOBILE_ENV } from "../lib/env";
 import {
   type VisualContextBundle,
@@ -54,6 +56,127 @@ interface ParsedBibleStudyResult {
 
 const MAP_CANVAS_SIZE = 1200;
 const MAP_CENTER = MAP_CANVAS_SIZE / 2;
+const REFERENCE_PARTS_REGEX =
+  /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g;
+const REFERENCE_MATCH_REGEX =
+  /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/;
+const CHAT_QUICK_PROMPTS = [
+  {
+    key: "random",
+    label: "Surprise Me",
+    prompt:
+      "Surprise me with a rich Bible study prompt and start with one passage.",
+  },
+  {
+    key: "ot",
+    label: "Old Testament",
+    prompt:
+      "Give me an Old Testament passage to study with context and key themes.",
+  },
+  {
+    key: "nt",
+    label: "New Testament",
+    prompt:
+      "Give me a New Testament passage to study with context and key themes.",
+  },
+] as const;
+
+type AssistantBlock =
+  | { kind: "heading"; text: string }
+  | { kind: "paragraph"; text: string }
+  | { kind: "bullet"; text: string };
+
+function stripMarkdownInline(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/~~(.*?)~~/g, "$1");
+}
+
+function containsScriptureReference(text: string): boolean {
+  const pattern =
+    /(?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?/;
+  return pattern.test(text);
+}
+
+function parseScriptureReference(reference: string) {
+  const cleaned = reference.replace(/^\[/, "").replace(/\]$/, "").trim();
+  const parsed = cleaned.match(/^(.+?)\s+(\d+):(\d+)(?:-\d+)?$/);
+  if (!parsed) return null;
+  const book = parsed[1].trim();
+  const chapter = Number(parsed[2]);
+  const verse = Number(parsed[3]);
+  if (!book || !Number.isFinite(chapter) || !Number.isFinite(verse)) {
+    return null;
+  }
+  return {
+    label: cleaned,
+    book,
+    chapter,
+    verse,
+    normalizedReference: `${book} ${chapter}:${verse}`,
+  };
+}
+
+function parseAssistantBlocks(content: string): AssistantBlock[] {
+  const normalized = content.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return [];
+  const lines = normalized.split("\n");
+  const blocks: AssistantBlock[] = [];
+  let paragraphBuffer = "";
+
+  function flushParagraph() {
+    const text = stripMarkdownInline(paragraphBuffer.trim());
+    if (text) {
+      blocks.push({ kind: "paragraph", text });
+    }
+    paragraphBuffer = "";
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+
+    const headingMatch = line.match(/^#{1,3}\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      const heading = stripMarkdownInline(headingMatch[1].trim());
+      if (heading) {
+        blocks.push({ kind: "heading", text: heading });
+      }
+      continue;
+    }
+
+    const bulletMatch = line.match(/^[-*]\s+(.*)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      const bullet = stripMarkdownInline(bulletMatch[1].trim());
+      if (bullet) {
+        blocks.push({ kind: "bullet", text: bullet });
+      }
+      continue;
+    }
+
+    const numberedMatch = line.match(/^\d+\.\s+(.*)$/);
+    if (numberedMatch) {
+      flushParagraph();
+      const numbered = stripMarkdownInline(numberedMatch[1].trim());
+      if (numbered) {
+        blocks.push({ kind: "bullet", text: numbered });
+      }
+      continue;
+    }
+
+    paragraphBuffer = paragraphBuffer ? `${paragraphBuffer} ${line}` : line;
+  }
+
+  flushParagraph();
+  return blocks;
+}
 
 function toMapNodeLayouts(bundle: VisualContextBundle): MapNodeLayout[] {
   const byDepth = new Map<number, VisualNode[]>();
@@ -165,12 +288,175 @@ async function streamBibleStudy({
     throw new Error(`Chat request failed (${response.status})`);
   }
 
+  const streamReader = response.body?.getReader?.();
+  if (streamReader) {
+    const decoder = new globalThis.TextDecoder();
+    let buffer = "";
+    let currentEvent = "";
+    let content = "";
+    let citations: string[] = [];
+
+    while (true) {
+      const { done, value } = await streamReader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) {
+          currentEvent = "";
+          continue;
+        }
+        if (line.startsWith("event:")) {
+          currentEvent = line.slice(6).trim();
+          continue;
+        }
+        if (!line.startsWith("data:")) {
+          continue;
+        }
+
+        const json = line.slice(5).trim();
+        if (!json) continue;
+
+        try {
+          const parsed = JSON.parse(json) as Record<string, unknown>;
+          if (currentEvent === "content") {
+            const delta = typeof parsed.delta === "string" ? parsed.delta : "";
+            if (delta) {
+              content += delta;
+              onDelta(delta);
+            }
+          }
+          if (currentEvent === "done" && Array.isArray(parsed.citations)) {
+            citations = parsed.citations.filter(
+              (entry): entry is string => typeof entry === "string",
+            );
+          }
+        } catch {
+          // Ignore malformed SSE event and continue streaming.
+        }
+      }
+    }
+
+    return { content, citations };
+  }
+
   const raw = await response.text();
   const parsed = parseSsePayload(raw);
   if (parsed.content) {
     onDelta(parsed.content);
   }
   return parsed;
+}
+
+function AssistantRichText({
+  content,
+  onReferencePress,
+}: {
+  content: string;
+  onReferencePress: (reference: string) => void;
+}) {
+  const blocks = useMemo(() => parseAssistantBlocks(content), [content]);
+
+  if (!blocks.length) {
+    return <Text style={localStyles.messageText}>{content}</Text>;
+  }
+
+  return (
+    <View style={localStyles.assistantBlocks}>
+      {blocks.map((block, index) => {
+        const parts = block.text.split(REFERENCE_PARTS_REGEX);
+        if (block.kind === "heading") {
+          return (
+            <Text key={`heading-${index}`} style={localStyles.assistantHeading}>
+              {parts.map((part, partIndex) => {
+                const match = part.match(REFERENCE_MATCH_REGEX);
+                if (match) {
+                  const reference = match[1];
+                  return (
+                    <Text
+                      key={`heading-ref-${index}-${partIndex}`}
+                      onPress={() => onReferencePress(reference)}
+                      style={localStyles.inlineReference}
+                    >
+                      {reference}
+                    </Text>
+                  );
+                }
+                return (
+                  <Text key={`heading-text-${index}-${partIndex}`}>
+                    {stripMarkdownInline(part)}
+                  </Text>
+                );
+              })}
+            </Text>
+          );
+        }
+
+        if (block.kind === "bullet") {
+          return (
+            <View
+              key={`bullet-${index}`}
+              style={localStyles.assistantBulletRow}
+            >
+              <Text style={localStyles.assistantBulletMarker}>*</Text>
+              <Text style={localStyles.assistantBulletText}>
+                {parts.map((part, partIndex) => {
+                  const match = part.match(REFERENCE_MATCH_REGEX);
+                  if (match) {
+                    const reference = match[1];
+                    return (
+                      <Text
+                        key={`bullet-ref-${index}-${partIndex}`}
+                        onPress={() => onReferencePress(reference)}
+                        style={localStyles.inlineReference}
+                      >
+                        {reference}
+                      </Text>
+                    );
+                  }
+                  return (
+                    <Text key={`bullet-text-${index}-${partIndex}`}>
+                      {stripMarkdownInline(part)}
+                    </Text>
+                  );
+                })}
+              </Text>
+            </View>
+          );
+        }
+
+        return (
+          <Text key={`paragraph-${index}`} style={localStyles.messageText}>
+            {parts.map((part, partIndex) => {
+              const match = part.match(REFERENCE_MATCH_REGEX);
+              if (match) {
+                const reference = match[1];
+                return (
+                  <Text
+                    key={`paragraph-ref-${index}-${partIndex}`}
+                    onPress={() => onReferencePress(reference)}
+                    style={localStyles.inlineReference}
+                  >
+                    {reference}
+                  </Text>
+                );
+              }
+              return (
+                <Text key={`paragraph-text-${index}-${partIndex}`}>
+                  {stripMarkdownInline(part)}
+                </Text>
+              );
+            })}
+          </Text>
+        );
+      })}
+    </View>
+  );
 }
 
 export function ChatScreen({
@@ -190,8 +476,22 @@ export function ChatScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapBusyMessageId, setMapBusyMessageId] = useState<string | null>(null);
+  const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
+    null,
+  );
+  const [versePreviewReference, setVersePreviewReference] = useState<
+    string | null
+  >(null);
+  const [versePreviewText, setVersePreviewText] = useState<string>("");
+  const [versePreviewLoading, setVersePreviewLoading] = useState(false);
+  const [versePreviewError, setVersePreviewError] = useState<string | null>(
+    null,
+  );
+  const [versePreviewTraceLoading, setVersePreviewTraceLoading] =
+    useState(false);
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const handledPromptRef = useRef<string | null>(null);
+  const isEmptyState = messages.length === 0;
 
   const history = useMemo<ChatHistoryMessage[]>(
     () =>
@@ -217,6 +517,9 @@ export function ChatScreen({
         { id: userMessageId, role: "user", content: prompt },
         { id: assistantMessageId, role: "assistant", content: "" },
       ]);
+      setTimeout(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      }, 0);
 
       try {
         const result = await streamBibleStudy({
@@ -275,6 +578,45 @@ export function ChatScreen({
     }
   }, [nav.pendingPrompt, nav.autoSend, handleSend]);
 
+  useEffect(() => {
+    if (!versePreviewReference) return;
+    const parsed = parseScriptureReference(versePreviewReference);
+    if (!parsed) {
+      setVersePreviewError("Reference format was invalid.");
+      setVersePreviewText("");
+      setVersePreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setVersePreviewLoading(true);
+    setVersePreviewError(null);
+    setVersePreviewText("");
+
+    fetchVerseText({
+      apiBaseUrl: MOBILE_ENV.API_URL,
+      reference: parsed.normalizedReference,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setVersePreviewText(result.text || "");
+      })
+      .catch((nextError) => {
+        if (cancelled) return;
+        setVersePreviewError(
+          nextError instanceof Error ? nextError.message : String(nextError),
+        );
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setVersePreviewLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [versePreviewReference]);
+
   async function handleGenerateMap(message: ChatMessage) {
     if (mapBusyMessageId) return;
     setMapBusyMessageId(message.id);
@@ -305,120 +647,292 @@ export function ChatScreen({
     }
   }
 
-  return (
-    <View style={styles.tabScreen}>
-      <SurfaceCard>
-        <Text style={styles.panelTitle}>Chat</Text>
-        <Text style={styles.panelSubtitle}>
-          Ask questions, deepen study, and open relationship maps from answers.
-        </Text>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-      </SurfaceCard>
+  async function handleQuickPrompt(prompt: string, key: string) {
+    if (busy) return;
+    setQuickPromptBusyKey(key);
+    try {
+      await handleSend(prompt);
+    } finally {
+      setQuickPromptBusyKey(null);
+    }
+  }
 
+  function closeVersePreview() {
+    setVersePreviewReference(null);
+    setVersePreviewText("");
+    setVersePreviewError(null);
+    setVersePreviewLoading(false);
+    setVersePreviewTraceLoading(false);
+  }
+
+  function openVersePreviewInReader() {
+    if (!versePreviewReference) return;
+    const parsed = parseScriptureReference(versePreviewReference);
+    if (!parsed) return;
+    void controller.navigateReaderTo(parsed.book, parsed.chapter);
+    nav.openReader(parsed.book, parsed.chapter);
+    closeVersePreview();
+  }
+
+  async function handleTraceVersePreview() {
+    if (!versePreviewReference || versePreviewTraceLoading) return;
+    setVersePreviewTraceLoading(true);
+    try {
+      const bundle = await fetchTraceBundle({
+        apiBaseUrl: MOBILE_ENV.API_URL,
+        text: versePreviewReference,
+        accessToken: controller.session?.access_token,
+      });
+      if (!isVisualContextBundle(bundle)) {
+        throw new Error("Map response was malformed.");
+      }
+      nav.openMapViewer(versePreviewReference, bundle);
+      closeVersePreview();
+    } catch (nextError) {
+      setVersePreviewError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    } finally {
+      setVersePreviewTraceLoading(false);
+    }
+  }
+
+  const handleInlineReferencePress = useCallback((reference: string) => {
+    if (!parseScriptureReference(reference)) return;
+    setVersePreviewReference(reference);
+  }, []);
+
+  return (
+    <View style={localStyles.chatRoot}>
       <FlatList
         ref={listRef}
         data={messages}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        style={localStyles.chatList}
+        contentContainerStyle={localStyles.chatListContent}
         renderItem={({ item }) => (
           <View
             style={[
-              localStyles.messageBubble,
+              localStyles.messageRow,
               item.role === "user"
-                ? localStyles.userBubble
-                : localStyles.assistantBubble,
+                ? localStyles.messageRowUser
+                : localStyles.messageRowAssistant,
             ]}
           >
-            <Text style={localStyles.messageRole}>
-              {item.role === "user" ? "You" : "Zero1"}
-            </Text>
-            <Text style={localStyles.messageText}>
-              {item.content || (busy && item.role === "assistant" ? "..." : "")}
-            </Text>
+            <View
+              style={[
+                localStyles.messageBubble,
+                item.role === "user"
+                  ? localStyles.userBubble
+                  : localStyles.assistantBubble,
+              ]}
+            >
+              {item.role !== "assistant" ? (
+                <Text style={localStyles.messageText}>{item.content}</Text>
+              ) : null}
 
-            {item.citations && item.citations.length > 0 ? (
-              <View style={styles.suggestionRow}>
-                {item.citations.slice(0, 6).map((citation) => (
-                  <PressableScale
-                    key={`${item.id}-${citation}`}
-                    onPress={() => {
-                      const parts = citation.match(/^(.+)\s+(\d+):(\d+)$/);
-                      if (!parts) return;
-                      void controller.navigateReaderTo(
-                        parts[1],
-                        Number(parts[2]),
-                      );
-                      nav.openReader(parts[1], Number(parts[2]));
-                    }}
-                    style={styles.suggestionChip}
-                  >
-                    <Text style={styles.suggestionChipLabel}>{citation}</Text>
-                  </PressableScale>
-                ))}
-              </View>
-            ) : null}
-
-            {item.role === "assistant" && item.content.trim().length > 0 ? (
-              <View style={styles.row}>
-                <ActionButton
-                  variant="secondary"
-                  disabled={mapBusyMessageId === item.id}
-                  label={
-                    mapBusyMessageId === item.id ? "Mapping..." : "Open map"
-                  }
-                  onPress={() => void handleGenerateMap(item)}
+              {item.role === "assistant" ? (
+                <AssistantRichText
+                  content={item.content || (busy ? "..." : "")}
+                  onReferencePress={handleInlineReferencePress}
                 />
-                {item.mapBundle ? (
+              ) : null}
+
+              {item.citations &&
+              item.citations.length > 0 &&
+              !containsScriptureReference(item.content) ? (
+                <View style={localStyles.citationRow}>
+                  {item.citations.slice(0, 6).map((citation) => (
+                    <PressableScale
+                      key={`${item.id}-${citation}`}
+                      onPress={() => handleInlineReferencePress(citation)}
+                      style={localStyles.citationChip}
+                    >
+                      <Text style={localStyles.citationChipLabel}>
+                        {citation}
+                      </Text>
+                    </PressableScale>
+                  ))}
+                </View>
+              ) : null}
+
+              {item.role === "assistant" && item.content.trim().length > 0 ? (
+                <View style={localStyles.messageActionRow}>
                   <ActionButton
-                    variant="ghost"
-                    label="View map"
-                    onPress={() =>
-                      nav.openMapViewer(
-                        `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
-                        item.mapBundle,
-                      )
+                    variant="secondary"
+                    disabled={mapBusyMessageId === item.id}
+                    label={
+                      mapBusyMessageId === item.id ? "Mapping..." : "Open map"
                     }
+                    onPress={() => void handleGenerateMap(item)}
+                    style={localStyles.compactAction}
+                    labelStyle={localStyles.compactActionLabel}
                   />
-                ) : null}
-              </View>
-            ) : null}
+                  {item.mapBundle ? (
+                    <ActionButton
+                      variant="ghost"
+                      label="View map"
+                      onPress={() =>
+                        nav.openMapViewer(
+                          `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
+                          item.mapBundle,
+                        )
+                      }
+                      style={localStyles.compactAction}
+                      labelStyle={localStyles.compactActionLabel}
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
           </View>
         )}
         ListEmptyComponent={
-          <SurfaceCard>
-            <Text style={styles.emptyTitle}>Start a conversation</Text>
-            <Text style={styles.emptySubtitle}>
+          <View style={localStyles.emptyState}>
+            <Text style={localStyles.emptyStateTitle}>
+              Start a conversation
+            </Text>
+            <Text style={localStyles.emptyStateSubtitle}>
               Ask about a verse, doctrine, or relationship between passages.
             </Text>
-          </SurfaceCard>
+          </View>
         }
       />
 
-      <SurfaceCard>
-        <SearchInput
-          multiline
-          placeholder="Ask a Bible study question..."
-          value={draft}
-          onChangeText={setDraft}
-        />
-        <View style={styles.row}>
-          <ActionButton
-            label={busy ? "Sending..." : "Send"}
-            variant="primary"
+      <View style={localStyles.chatComposerWrap}>
+        {error ? (
+          <View style={localStyles.errorBanner}>
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : null}
+        <View style={localStyles.chatComposer}>
+          <TextInput
+            multiline
+            placeholder="Ask a Bible study question..."
+            placeholderTextColor={T.colors.textMuted}
+            value={draft}
+            onChangeText={setDraft}
+            style={localStyles.chatInput}
+          />
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={busy ? "Sending message" : "Send message"}
             disabled={busy || !draft.trim()}
             onPress={() => void handleSend()}
-          />
-          <ActionButton
-            label="Clear"
-            variant="secondary"
-            disabled={busy || messages.length === 0}
+            style={[
+              localStyles.sendButton,
+              busy || !draft.trim() ? localStyles.sendButtonDisabled : null,
+            ]}
+          >
+            <Text style={localStyles.sendButtonLabel}>
+              {busy ? "..." : "Send"}
+            </Text>
+          </PressableScale>
+        </View>
+
+        <View style={localStyles.quickPromptRow}>
+          {CHAT_QUICK_PROMPTS.map((entry) => (
+            <PressableScale
+              key={entry.key}
+              accessibilityRole="button"
+              accessibilityLabel={entry.label}
+              disabled={busy}
+              onPress={() => void handleQuickPrompt(entry.prompt, entry.key)}
+              style={[
+                localStyles.quickPromptButton,
+                quickPromptBusyKey === entry.key
+                  ? localStyles.quickPromptButtonBusy
+                  : null,
+              ]}
+            >
+              <Text style={localStyles.quickPromptLabel}>
+                {quickPromptBusyKey === entry.key ? "Sending..." : entry.label}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+
+        {!isEmptyState ? (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Start a new session"
+            disabled={busy}
             onPress={() => {
               setMessages([]);
               setError(null);
             }}
+            style={localStyles.newSessionButton}
+          >
+            <Text style={localStyles.newSessionButtonLabel}>New Session</Text>
+          </PressableScale>
+        ) : null}
+      </View>
+
+      <Modal
+        visible={Boolean(versePreviewReference)}
+        animationType="fade"
+        transparent
+        onRequestClose={closeVersePreview}
+      >
+        <View style={localStyles.referenceModalOverlay}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close verse preview"
+            onPress={closeVersePreview}
+            style={localStyles.referenceModalBackdrop}
           />
+          <View style={localStyles.referenceModalCard}>
+            <View style={localStyles.referenceModalHeader}>
+              <Text style={localStyles.referenceModalTitle}>
+                {versePreviewReference || "Verse"}
+              </Text>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Close verse preview"
+                onPress={closeVersePreview}
+                style={localStyles.referenceModalCloseButton}
+              >
+                <Text style={localStyles.referenceModalCloseLabel}>Close</Text>
+              </PressableScale>
+            </View>
+
+            <View style={localStyles.referenceModalBody}>
+              {versePreviewLoading ? (
+                <View style={localStyles.referenceModalLoadingRow}>
+                  <ActivityIndicator color={T.colors.accent} />
+                  <Text style={styles.caption}>Loading verse...</Text>
+                </View>
+              ) : null}
+              {versePreviewError ? (
+                <Text style={styles.error}>{versePreviewError}</Text>
+              ) : null}
+              {!versePreviewLoading && !versePreviewError ? (
+                <Text style={localStyles.referenceModalVerseText}>
+                  {versePreviewText || "Verse text unavailable."}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={localStyles.referenceModalActions}>
+              <ActionButton
+                label={versePreviewTraceLoading ? "Tracing..." : "Trace"}
+                variant="primary"
+                disabled={versePreviewTraceLoading}
+                onPress={() => void handleTraceVersePreview()}
+                style={localStyles.compactAction}
+                labelStyle={localStyles.compactActionLabel}
+              />
+              <ActionButton
+                label="View"
+                variant="secondary"
+                onPress={openVersePreviewInReader}
+                style={localStyles.compactAction}
+                labelStyle={localStyles.compactActionLabel}
+              />
+            </View>
+          </View>
         </View>
-      </SurfaceCard>
+      </Modal>
     </View>
   );
 }
@@ -603,7 +1117,7 @@ export function MapViewerScreen({
                   selectedNode.book_name,
                   selectedNode.chapter,
                 );
-                navigation.navigate("Tabs", { screen: "Reader" });
+                navigation.navigate("Tabs", { mode: "Reader" } as never);
               }}
             />
           </View>
@@ -620,28 +1134,307 @@ export function MapViewerScreen({
 }
 
 const localStyles = StyleSheet.create({
+  chatRoot: {
+    flex: 1,
+    backgroundColor: T.colors.canvas,
+  },
+  chatList: {
+    flex: 1,
+  },
+  chatListContent: {
+    flexGrow: 1,
+    paddingHorizontal: T.spacing.md,
+    paddingTop: T.spacing.sm,
+    paddingBottom: T.spacing.md,
+    gap: T.spacing.sm,
+  },
+  messageRow: {
+    width: "100%",
+  },
+  messageRowUser: {
+    alignItems: "flex-end",
+  },
+  messageRowAssistant: {
+    alignItems: "flex-start",
+  },
   messageBubble: {
     borderWidth: 1,
     borderColor: T.colors.border,
-    borderRadius: T.radius.lg,
-    padding: T.spacing.md,
-    gap: T.spacing.xs,
+    borderRadius: T.radius.md,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+    gap: 6,
+    maxWidth: "92%",
   },
   userBubble: {
-    backgroundColor: T.colors.surface,
+    backgroundColor: T.colors.surfaceRaised,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   assistantBubble: {
-    backgroundColor: T.colors.surfaceRaised,
-  },
-  messageRole: {
-    color: T.colors.accent,
-    fontSize: T.typography.caption,
-    fontWeight: "700",
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    maxWidth: "100%",
   },
   messageText: {
     color: T.colors.text,
     fontSize: T.typography.body,
+    lineHeight: 25,
+  },
+  assistantBlocks: {
+    gap: 10,
+  },
+  assistantHeading: {
+    color: "rgba(232,232,232,0.95)",
+    fontSize: 19,
+    lineHeight: 26,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  assistantBulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+  },
+  assistantBulletMarker: {
+    color: T.colors.accent,
+    fontSize: 13,
     lineHeight: 24,
+    fontWeight: "700",
+  },
+  assistantBulletText: {
+    flex: 1,
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 25,
+  },
+  inlineReference: {
+    color: T.colors.accent,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+  referenceModalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  referenceModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  referenceModalCard: {
+    borderTopLeftRadius: T.radius.lg,
+    borderTopRightRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.ink,
+    padding: T.spacing.md,
+    gap: T.spacing.sm,
+    maxHeight: "72%",
+  },
+  referenceModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: T.spacing.sm,
+  },
+  referenceModalTitle: {
+    flex: 1,
+    color: T.colors.accent,
+    fontSize: T.typography.caption,
+    fontWeight: "700",
+  },
+  referenceModalCloseButton: {
+    minHeight: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  referenceModalCloseLabel: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  referenceModalBody: {
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+    minHeight: 120,
+    gap: T.spacing.xs,
+  },
+  referenceModalLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
+  },
+  referenceModalVerseText: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 27,
+    fontFamily: T.fonts.serif,
+  },
+  referenceModalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: T.spacing.sm,
+  },
+  citationRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  citationChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: "rgba(39,39,42,0.5)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  citationChipLabel: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  messageActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 2,
+  },
+  compactAction: {
+    flex: 0,
+    minHeight: 32,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  compactActionLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    paddingTop: 10,
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  emptyStateTitle: {
+    color: T.colors.text,
+    fontSize: T.typography.subheading,
+    fontWeight: "700",
+  },
+  emptyStateSubtitle: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.bodySm,
+    lineHeight: 21,
+  },
+  chatComposerWrap: {
+    borderTopWidth: 1,
+    borderTopColor: T.colors.border,
+    backgroundColor: "rgba(12,12,14,0.97)",
+    paddingHorizontal: T.spacing.md,
+    paddingTop: T.spacing.sm,
+    paddingBottom: T.spacing.sm,
+    gap: 8,
+  },
+  errorBanner: {
+    borderWidth: 1,
+    borderColor: T.colors.danger,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.dangerSoft,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: 6,
+  },
+  chatComposer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: T.radius.lg,
+    backgroundColor: "rgba(39,39,42,0.45)",
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  chatInput: {
+    flex: 1,
+    maxHeight: 124,
+    minHeight: 26,
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 22,
+    paddingVertical: 0,
+  },
+  sendButton: {
+    minHeight: 32,
+    minWidth: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  sendButtonLabel: {
+    color: T.colors.ink,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  quickPromptRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  quickPromptButton: {
+    flex: 1,
+    minHeight: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(39,39,42,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  quickPromptButtonBusy: {
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accentSoft,
+  },
+  quickPromptLabel: {
+    color: T.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  newSessionButton: {
+    alignSelf: "center",
+    minHeight: 30,
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  newSessionButtonLabel: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
   },
   mapViewport: {
     flex: 1,
