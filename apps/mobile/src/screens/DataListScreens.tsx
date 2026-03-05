@@ -1,14 +1,10 @@
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, FlatList, Text, View } from "react-native";
 import { useMemo, useState } from "react";
 import { ActionButton } from "../components/native/ActionButton";
+import { EmptyState } from "../components/native/EmptyState";
+import { PressableScale } from "../components/native/PressableScale";
+import { SearchInput } from "../components/native/SearchInput";
+import { StatCard } from "../components/native/StatCard";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import { styles, T } from "../theme/mobileStyles";
@@ -32,8 +28,28 @@ function includesQuery(
   return haystack.includes(normalizedQuery);
 }
 
-export function LibraryScreen() {
+type LibraryMode =
+  | "connections"
+  | "maps"
+  | "bookmarks"
+  | "highlights"
+  | "notes";
+
+export function LibraryScreen({
+  nav,
+}: {
+  nav: {
+    openMapCreate: () => void;
+    openBookmarkCreate: () => void;
+    openBookmarkDetail: (bookmarkId: string) => void;
+    openHighlightCreate: () => void;
+    openHighlightDetail: (highlightId: string) => void;
+    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openChat: (prompt: string, autoSend?: boolean) => void;
+  };
+}) {
   const controller = useMobileApp();
+  const [mode, setMode] = useState<LibraryMode>("connections");
   const refreshing = controller.libraryLoading || controller.libraryMapsLoading;
   const [connectionQuery, setConnectionQuery] = useState("");
   const [mapQuery, setMapQuery] = useState("");
@@ -75,234 +91,307 @@ export function LibraryScreen() {
   );
   const connectionsCount = controller.libraryConnections.length;
   const mapsCount = controller.libraryMaps.length;
+  const bookmarksCount = controller.bookmarks.length;
+  const highlightsCount = controller.highlights.length;
 
   async function handleRefreshLibrary() {
     await Promise.all([
       controller.loadLibraryConnections(),
       controller.loadLibraryMaps(),
+      controller.loadBookmarks(),
+      controller.loadHighlights(),
     ]);
   }
 
   return (
     <View style={styles.tabScreen}>
       <SurfaceCard>
-        <View style={styles.spaceBetweenRow}>
-          <View style={styles.flex1}>
-            <Text style={styles.panelTitle}>Library</Text>
-            <Text style={styles.panelSubtitle}>
-              Explore your saved scripture connections and related map bundles.
+        <Text style={styles.panelTitle}>Library</Text>
+        <Text style={styles.panelSubtitle}>
+          Review connections, maps, bookmarks, highlights, and notes in one
+          native workspace.
+        </Text>
+        <View style={styles.suggestionRow}>
+          <PressableScale
+            onPress={() => setMode("connections")}
+            style={[
+              styles.outlineChip,
+              mode === "connections" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show connections"
+          >
+            <Text style={styles.outlineChipLabel}>
+              Connections ({connectionsCount})
             </Text>
-          </View>
+          </PressableScale>
+          <PressableScale
+            onPress={() => setMode("maps")}
+            style={[
+              styles.outlineChip,
+              mode === "maps" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show maps"
+          >
+            <Text style={styles.outlineChipLabel}>Maps ({mapsCount})</Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => setMode("bookmarks")}
+            style={[
+              styles.outlineChip,
+              mode === "bookmarks" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show bookmarks"
+          >
+            <Text style={styles.outlineChipLabel}>
+              Bookmarks ({bookmarksCount})
+            </Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => setMode("highlights")}
+            style={[
+              styles.outlineChip,
+              mode === "highlights" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show highlights"
+          >
+            <Text style={styles.outlineChipLabel}>
+              Highlights ({highlightsCount})
+            </Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => setMode("notes")}
+            style={[
+              styles.outlineChip,
+              mode === "notes" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show notes"
+          >
+            <Text style={styles.outlineChipLabel}>Notes</Text>
+          </PressableScale>
+        </View>
+        <View style={styles.row}>
           <ActionButton
             disabled={refreshing || controller.busy}
-            label={refreshing ? "Loading..." : "Refresh"}
+            label={refreshing ? "Refreshing..." : "Refresh all"}
             onPress={() => void handleRefreshLibrary()}
             variant="ghost"
           />
         </View>
-        <View style={styles.statGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Connections</Text>
-            <Text style={styles.statValue}>{filteredConnections.length}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Maps</Text>
-            <Text style={styles.statValue}>{filteredMaps.length}</Text>
-          </View>
-        </View>
-        <TextInput
-          placeholder="Search connections (verse, type, tag, note)"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
-          value={connectionQuery}
-          onChangeText={setConnectionQuery}
-        />
-        {normalizedConnectionQuery ? (
-          <Text style={styles.caption}>
-            Showing {filteredConnections.length} of {connectionsCount}{" "}
-            connections
-          </Text>
-        ) : null}
-        {controller.libraryError ? (
-          <Text style={styles.error}>{controller.libraryError}</Text>
-        ) : null}
-        {controller.libraryLoadedAt ? (
-          <Text style={styles.caption}>
-            Last sync {formatRelativeDate(controller.libraryLoadedAt)}
-          </Text>
-        ) : null}
       </SurfaceCard>
-      <FlatList
-        data={filteredConnections}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        refreshing={refreshing}
-        onRefresh={() => void handleRefreshLibrary()}
-        ListHeaderComponent={
-          filteredConnections.length > 0 ? (
-            <Text style={styles.panelSubtitle}>Recent connections</Text>
-          ) : null
-        }
-        renderItem={({ item }) => <ConnectionCard item={item} />}
-        ListEmptyComponent={
-          controller.libraryLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator color={T.colors.accent} />
-              <Text style={styles.emptyTitle}>Loading connections...</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>
-                {normalizedConnectionQuery
-                  ? "No matching connections"
-                  : "No saved connections yet"}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                {normalizedConnectionQuery
-                  ? "Try a broader search query."
-                  : "Save your first connection from discovery, then pull to refresh this view."}
-              </Text>
-            </View>
-          )
-        }
-        ListFooterComponent={
+
+      {mode === "connections" ? (
+        <>
           <SurfaceCard>
-            <View style={styles.spaceBetweenRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Maps</Text>
-                <Text style={styles.panelSubtitle}>
-                  Create and manage map entries for your existing bundle IDs.
-                </Text>
-              </View>
-              <ActionButton
-                disabled={controller.libraryMapsLoading || controller.busy}
-                label={controller.libraryMapsLoading ? "Loading..." : "Refresh"}
-                onPress={() => void controller.loadLibraryMaps()}
-                variant="ghost"
-              />
-            </View>
             <View style={styles.statGrid}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Saved maps</Text>
-                <Text style={styles.statValue}>{filteredMaps.length}</Text>
-              </View>
-            </View>
-            <TextInput
-              placeholder="Search maps (title, bundle, note)"
-              placeholderTextColor={T.colors.textMuted}
-              style={styles.input}
-              value={mapQuery}
-              onChangeText={setMapQuery}
-            />
-            {normalizedMapQuery ? (
-              <Text style={styles.caption}>
-                Showing {filteredMaps.length} of {mapsCount} maps
-              </Text>
-            ) : null}
-            <Text style={styles.caption}>Create map</Text>
-            <TextInput
-              autoCapitalize="none"
-              placeholder="Bundle ID"
-              placeholderTextColor={T.colors.textMuted}
-              style={styles.input}
-              value={controller.libraryMapDraft.bundleId}
-              onChangeText={(value) =>
-                controller.setLibraryMapDraft((current) => ({
-                  ...current,
-                  bundleId: value,
-                }))
-              }
-            />
-            {controller.libraryMapBundleSuggestions.length > 0 ? (
-              <View style={styles.suggestionRow}>
-                {controller.libraryMapBundleSuggestions.map((bundleId) => (
-                  <Pressable
-                    key={bundleId}
-                    onPress={() =>
-                      controller.selectLibraryMapBundleSuggestion(bundleId)
-                    }
-                    style={styles.suggestionChip}
-                  >
-                    <Text style={styles.suggestionChipLabel}>{bundleId}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            <TextInput
-              placeholder="Map title (optional)"
-              placeholderTextColor={T.colors.textMuted}
-              style={styles.input}
-              value={controller.libraryMapDraft.title}
-              onChangeText={(value) =>
-                controller.setLibraryMapDraft((current) => ({
-                  ...current,
-                  title: value,
-                }))
-              }
-            />
-            <View style={styles.row}>
-              <ActionButton
-                disabled={controller.libraryMapMutationBusy || controller.busy}
-                label={
-                  controller.libraryMapMutationBusy ? "Saving..." : "Save map"
-                }
-                onPress={() => void controller.handleCreateLibraryMap()}
-                variant="primary"
+              <StatCard
+                label="Connections"
+                value={filteredConnections.length}
               />
             </View>
-            {controller.libraryMapsError ? (
-              <Text style={styles.error}>{controller.libraryMapsError}</Text>
-            ) : null}
-            {controller.libraryMapMutationError ? (
-              <Text style={styles.error}>
-                {controller.libraryMapMutationError}
-              </Text>
-            ) : null}
-            {controller.libraryMapsLoadedAt ? (
+            <SearchInput
+              placeholder="Search connections (verse, type, tag, note)"
+              value={connectionQuery}
+              onChangeText={setConnectionQuery}
+            />
+            {normalizedConnectionQuery ? (
               <Text style={styles.caption}>
-                Last sync {formatRelativeDate(controller.libraryMapsLoadedAt)}
+                Showing {filteredConnections.length} of {connectionsCount}{" "}
+                connections
               </Text>
             ) : null}
-            {filteredMaps.length === 0 ? (
+            {controller.libraryError ? (
+              <Text style={styles.error}>{controller.libraryError}</Text>
+            ) : null}
+            {controller.libraryLoadedAt ? (
+              <Text style={styles.caption}>
+                Last sync {formatRelativeDate(controller.libraryLoadedAt)}
+              </Text>
+            ) : null}
+          </SurfaceCard>
+          <FlatList
+            data={filteredConnections}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            refreshing={controller.libraryLoading}
+            onRefresh={() => void controller.loadLibraryConnections()}
+            renderItem={({ item }) => (
+              <ConnectionCard
+                item={item}
+                onGoDeeper={() =>
+                  nav.openChat(
+                    item.goDeeperPrompt ||
+                      `Explain the connection between ${item.fromVerse.reference} and ${item.toVerse.reference}.`,
+                    true,
+                  )
+                }
+                onOpenMap={
+                  item.bundle
+                    ? () =>
+                        nav.openMapViewer(
+                          item.bundleMeta?.anchorRef || "Connection map",
+                          item.bundle,
+                        )
+                    : undefined
+                }
+              />
+            )}
+            ListEmptyComponent={
+              controller.libraryLoading ? (
+                <View style={styles.emptyState}>
+                  <ActivityIndicator color={T.colors.accent} />
+                  <Text style={styles.emptyTitle}>Loading connections...</Text>
+                </View>
+              ) : (
+                <EmptyState
+                  title={
+                    normalizedConnectionQuery
+                      ? "No matching connections"
+                      : "No saved connections yet"
+                  }
+                  subtitle={
+                    normalizedConnectionQuery
+                      ? "Try a broader search query."
+                      : "Save a connection from discovery or chat to build your library."
+                  }
+                />
+              )
+            }
+          />
+        </>
+      ) : null}
+
+      {mode === "maps" ? (
+        <FlatList
+          data={filteredMaps}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshing={controller.libraryMapsLoading}
+          onRefresh={() => void controller.loadLibraryMaps()}
+          ListHeaderComponent={
+            <SurfaceCard>
+              <View style={styles.statGrid}>
+                <StatCard label="Saved maps" value={filteredMaps.length} />
+              </View>
+              <SearchInput
+                placeholder="Search maps (title, bundle, note)"
+                value={mapQuery}
+                onChangeText={setMapQuery}
+              />
+              {normalizedMapQuery ? (
+                <Text style={styles.caption}>
+                  Showing {filteredMaps.length} of {mapsCount} maps
+                </Text>
+              ) : null}
+              <View style={styles.row}>
+                <ActionButton
+                  disabled={controller.busy}
+                  label="Create map"
+                  onPress={nav.openMapCreate}
+                  variant="primary"
+                />
+              </View>
+              {controller.libraryMapsError ? (
+                <Text style={styles.error}>{controller.libraryMapsError}</Text>
+              ) : null}
+              {controller.libraryMapMutationError ? (
+                <Text style={styles.error}>
+                  {controller.libraryMapMutationError}
+                </Text>
+              ) : null}
+              {controller.libraryMapsLoadedAt ? (
+                <Text style={styles.caption}>
+                  Last sync {formatRelativeDate(controller.libraryMapsLoadedAt)}
+                </Text>
+              ) : null}
+            </SurfaceCard>
+          }
+          renderItem={({ item }) => (
+            <LibraryMapCard
+              item={item}
+              mutationBusy={controller.libraryMapMutationBusy}
+              onOpen={
+                item.bundle
+                  ? () =>
+                      nav.openMapViewer(
+                        item.title || item.bundleId || "Map",
+                        item.bundle,
+                      )
+                  : undefined
+              }
+              onDelete={() => void controller.handleDeleteLibraryMap(item.id)}
+            />
+          )}
+          ListEmptyComponent={
+            controller.libraryMapsLoading ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyTitle}>
-                  {normalizedMapQuery ? "No matching maps" : "No maps yet"}
-                </Text>
-                <Text style={styles.emptySubtitle}>
-                  {normalizedMapQuery
-                    ? "Try a broader search query."
-                    : "Enter a bundle ID and save your first map."}
-                </Text>
+                <ActivityIndicator color={T.colors.accent} />
+                <Text style={styles.emptyTitle}>Loading maps...</Text>
               </View>
             ) : (
-              <View style={styles.listContent}>
-                <Text style={styles.panelSubtitle}>Saved maps</Text>
-                {filteredMaps.map((map) => (
-                  <LibraryMapCard
-                    key={map.id}
-                    item={map}
-                    mutationBusy={controller.libraryMapMutationBusy}
-                    onDelete={() =>
-                      void controller.handleDeleteLibraryMap(map.id)
-                    }
-                  />
-                ))}
-              </View>
-            )}
-          </SurfaceCard>
-        }
-      />
+              <EmptyState
+                title={normalizedMapQuery ? "No matching maps" : "No maps yet"}
+                subtitle={
+                  normalizedMapQuery
+                    ? "Try a broader search query."
+                    : "Create a map from your saved bundles."
+                }
+              />
+            )
+          }
+        />
+      ) : null}
+
+      {mode === "bookmarks" ? (
+        <BookmarksScreen
+          nav={{
+            openCreate: nav.openBookmarkCreate,
+            openDetail: nav.openBookmarkDetail,
+          }}
+          embedded
+        />
+      ) : null}
+
+      {mode === "highlights" ? (
+        <HighlightsScreen
+          nav={{
+            openCreate: nav.openHighlightCreate,
+            openDetail: nav.openHighlightDetail,
+          }}
+          embedded
+        />
+      ) : null}
+
+      {mode === "notes" ? (
+        <SurfaceCard>
+          <Text style={styles.panelTitle}>Notes</Text>
+          <Text style={styles.panelSubtitle}>
+            Notes parity is queued next. This section will consolidate verse
+            notes into the same library model.
+          </Text>
+          <EmptyState
+            title="Notes coming next"
+            subtitle="Core native parity is live for reader, chat, maps, bookmarks, and highlights."
+          />
+        </SurfaceCard>
+      ) : null}
     </View>
   );
 }
 
 export function BookmarksScreen({
   nav,
+  embedded = false,
 }: {
   nav: {
     openCreate: () => void;
     openDetail: (bookmarkId: string) => void;
   };
+  embedded?: boolean;
 }) {
   const controller = useMobileApp();
   const [query, setQuery] = useState("");
@@ -338,7 +427,7 @@ export function BookmarksScreen({
   }
 
   return (
-    <View style={styles.tabScreen}>
+    <View style={embedded ? styles.savedListContainer : styles.tabScreen}>
       <SurfaceCard>
         <View style={styles.spaceBetweenRow}>
           <View style={styles.flex1}>
@@ -355,21 +444,10 @@ export function BookmarksScreen({
           />
         </View>
         <View style={styles.statGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Saved</Text>
-            <Text style={styles.statValue}>{filteredBookmarks.length}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Selected</Text>
-            <Text style={styles.statValue}>
-              {controller.selectedBookmarkId ? 1 : 0}
-            </Text>
-          </View>
+          <StatCard label="Saved" value={filteredBookmarks.length} />
         </View>
-        <TextInput
+        <SearchInput
           placeholder="Search bookmarks"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
           value={query}
           onChangeText={setQuery}
         />
@@ -442,16 +520,16 @@ export function BookmarksScreen({
               <Text style={styles.emptyTitle}>Loading bookmarks...</Text>
             </View>
           ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>
-                {normalizedQuery ? "No matching bookmarks" : "No bookmarks yet"}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                {normalizedQuery
+            <EmptyState
+              title={
+                normalizedQuery ? "No matching bookmarks" : "No bookmarks yet"
+              }
+              subtitle={
+                normalizedQuery
                   ? "Try a broader search query."
-                  : "Use New bookmark to create one, then pull down to sync."}
-              </Text>
-            </View>
+                  : "Use New bookmark to create one, then pull down to sync."
+              }
+            />
           )
         }
       />
@@ -461,11 +539,13 @@ export function BookmarksScreen({
 
 export function HighlightsScreen({
   nav,
+  embedded = false,
 }: {
   nav: {
     openCreate: () => void;
     openDetail: (highlightId: string) => void;
   };
+  embedded?: boolean;
 }) {
   const controller = useMobileApp();
   const [query, setQuery] = useState("");
@@ -506,7 +586,7 @@ export function HighlightsScreen({
   }
 
   return (
-    <View style={styles.tabScreen}>
+    <View style={embedded ? styles.savedListContainer : styles.tabScreen}>
       <SurfaceCard>
         <View style={styles.spaceBetweenRow}>
           <View style={styles.flex1}>
@@ -523,21 +603,10 @@ export function HighlightsScreen({
           />
         </View>
         <View style={styles.statGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Saved</Text>
-            <Text style={styles.statValue}>{filteredHighlights.length}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Selected</Text>
-            <Text style={styles.statValue}>
-              {controller.selectedHighlightId ? 1 : 0}
-            </Text>
-          </View>
+          <StatCard label="Saved" value={filteredHighlights.length} />
         </View>
-        <TextInput
+        <SearchInput
           placeholder="Search highlights"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
           value={query}
           onChangeText={setQuery}
         />
@@ -610,21 +679,86 @@ export function HighlightsScreen({
               <Text style={styles.emptyTitle}>Loading highlights...</Text>
             </View>
           ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>
-                {normalizedQuery
-                  ? "No matching highlights"
-                  : "No highlights yet"}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                {normalizedQuery
+            <EmptyState
+              title={
+                normalizedQuery ? "No matching highlights" : "No highlights yet"
+              }
+              subtitle={
+                normalizedQuery
                   ? "Try a broader search query."
-                  : "Use New highlight to create one, then pull down to sync."}
-              </Text>
-            </View>
+                  : "Use New highlight to create one, then pull down to sync."
+              }
+            />
           )
         }
       />
+    </View>
+  );
+}
+
+export function SavedScreen({
+  nav,
+}: {
+  nav: {
+    openBookmarkCreate: () => void;
+    openBookmarkDetail: (bookmarkId: string) => void;
+    openHighlightCreate: () => void;
+    openHighlightDetail: (highlightId: string) => void;
+  };
+}) {
+  const [mode, setMode] = useState<"bookmarks" | "highlights">("bookmarks");
+
+  return (
+    <View style={styles.tabScreen}>
+      <SurfaceCard>
+        <Text style={styles.panelTitle}>Saved</Text>
+        <Text style={styles.panelSubtitle}>
+          Switch between bookmarks and highlights.
+        </Text>
+        <View style={styles.row}>
+          <PressableScale
+            onPress={() => setMode("bookmarks")}
+            style={[
+              styles.outlineChip,
+              mode === "bookmarks" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show bookmarks"
+            accessibilityState={{ selected: mode === "bookmarks" }}
+          >
+            <Text style={styles.outlineChipLabel}>Bookmarks</Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => setMode("highlights")}
+            style={[
+              styles.outlineChip,
+              mode === "highlights" ? styles.outlineChipActive : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Show highlights"
+            accessibilityState={{ selected: mode === "highlights" }}
+          >
+            <Text style={styles.outlineChipLabel}>Highlights</Text>
+          </PressableScale>
+        </View>
+      </SurfaceCard>
+      {mode === "bookmarks" ? (
+        <BookmarksScreen
+          nav={{
+            openCreate: nav.openBookmarkCreate,
+            openDetail: nav.openBookmarkDetail,
+          }}
+          embedded
+        />
+      ) : (
+        <HighlightsScreen
+          nav={{
+            openCreate: nav.openHighlightCreate,
+            openDetail: nav.openHighlightDetail,
+          }}
+          embedded
+        />
+      )}
     </View>
   );
 }

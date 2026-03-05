@@ -1,27 +1,24 @@
 import { useEffect } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { MobileRootNavigator } from "./navigation/MobileRootNavigator";
 import { MobileAppProvider } from "./context/MobileAppContext";
+import { ToastProvider, useToast } from "./context/ToastContext";
 import { useMobileAppController } from "./hooks/useMobileAppController";
-import {
-  AccountScreen,
-  AuthScreen,
-  MapFallbackScreen,
-} from "./screens/AuthHomeAccountScreens";
-import {
-  BookmarksScreen,
-  HighlightsScreen,
-  LibraryScreen,
-} from "./screens/DataListScreens";
+import { ToastViewport } from "./components/native/ToastViewport";
+import { AccountScreen, AuthScreen } from "./screens/AuthHomeAccountScreens";
+import { LibraryScreen } from "./screens/DataListScreens";
+import { ReaderScreen } from "./screens/ReaderScreen";
+import { ChatScreen, MapViewerScreen } from "./screens/ChatMapScreens";
 import {
   BookmarkCreateScreen,
   BookmarkDetailScreen,
   HighlightCreateScreen,
   HighlightDetailScreen,
+  LibraryMapCreateScreen,
 } from "./screens/DetailScreens";
-import { styles, T } from "./theme/mobileStyles";
+import { styles } from "./theme/mobileStyles";
 import { finishPerfSpan, startPerfSpan } from "./lib/perfTelemetry";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -35,7 +32,10 @@ function markColdStartInteractive(meta?: Record<string, unknown>) {
 }
 
 function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
-  const controller = useMobileAppController();
+  const { showToast } = useToast();
+  const controller = useMobileAppController({
+    onToast: showToast,
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -55,11 +55,14 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
           <MobileRootNavigator
             isAuthenticated={Boolean(controller.user)}
             renderAuth={() => <AuthScreen />}
-            renderLibrary={() => <LibraryScreen />}
-            renderBookmarks={(nav) => <BookmarksScreen nav={nav} />}
-            renderHighlights={(nav) => <HighlightsScreen nav={nav} />}
+            renderReader={(nav) => <ReaderScreen nav={nav} />}
+            renderChat={(nav) => <ChatScreen nav={nav} />}
+            renderLibrary={(nav) => <LibraryScreen nav={nav} />}
             renderAccount={() => <AccountScreen />}
-            renderMapFallback={() => <MapFallbackScreen />}
+            renderMapViewer={(payload) => (
+              <MapViewerScreen title={payload.title} bundle={payload.bundle} />
+            )}
+            renderLibraryMapCreate={() => <LibraryMapCreateScreen />}
             renderBookmarkCreate={() => <BookmarkCreateScreen />}
             renderBookmarkDetail={(bookmarkId) => (
               <BookmarkDetailScreen bookmarkId={bookmarkId} />
@@ -70,11 +73,7 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
             )}
           />
         </MobileAppProvider>
-        {controller.busy ? (
-          <View style={styles.globalBusyOverlay} pointerEvents="none">
-            <ActivityIndicator color={T.colors.accentStrong} />
-          </View>
-        ) : null}
+        <ToastViewport />
       </View>
     </View>
   );
@@ -82,10 +81,12 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
 
 export default function AppRuntime() {
   return (
-    <NativeAppRuntime
-      onInteractive={() => {
-        markColdStartInteractive({ mode: "native_shell" });
-      }}
-    />
+    <ToastProvider>
+      <NativeAppRuntime
+        onInteractive={() => {
+          markColdStartInteractive({ mode: "native_shell" });
+        }}
+      />
+    </ToastProvider>
   );
 }

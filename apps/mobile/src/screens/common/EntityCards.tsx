@@ -1,5 +1,6 @@
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { ActionButton } from "../../components/native/ActionButton";
+import { PressableScale } from "../../components/native/PressableScale";
 import type {
   LibraryConnectionItem,
   LibraryMapItem,
@@ -9,13 +10,31 @@ import type {
 import { styles } from "../../theme/mobileStyles";
 
 export function formatRelativeDate(value?: string): string {
-  if (!value) return "";
+  if (!value) return "Unknown";
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toLocaleString();
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  const nowMs = Date.now();
+  const deltaMs = nowMs - parsed.getTime();
+  const seconds = Math.floor(deltaMs / 1000);
+  if (seconds < 45) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return parsed.toLocaleDateString();
 }
 
-export function ConnectionCard({ item }: { item: LibraryConnectionItem }) {
+export function ConnectionCard({
+  item,
+  onGoDeeper,
+  onOpenMap,
+}: {
+  item: LibraryConnectionItem;
+  onGoDeeper?: () => void;
+  onOpenMap?: () => void;
+}) {
   return (
     <View style={styles.featureCard}>
       <View style={styles.connectionHeaderRow}>
@@ -48,6 +67,24 @@ export function ConnectionCard({ item }: { item: LibraryConnectionItem }) {
           {formatRelativeDate(item.createdAt)}
         </Text>
       ) : null}
+      {onGoDeeper || onOpenMap ? (
+        <View style={styles.row}>
+          {onGoDeeper ? (
+            <ActionButton
+              label="Go deeper"
+              onPress={onGoDeeper}
+              variant="secondary"
+            />
+          ) : null}
+          {onOpenMap ? (
+            <ActionButton
+              label="Open map"
+              onPress={onOpenMap}
+              variant="ghost"
+            />
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -70,10 +107,12 @@ export function BookmarkCard({
   showQuickActions?: boolean;
 }) {
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       onLongPress={onLongPress}
       style={[styles.featureCard, selected && styles.featureCardSelected]}
+      accessibilityRole="button"
+      accessibilityLabel={`Bookmark ${item.text || "entry"}`}
     >
       <Text style={styles.bookmarkText} numberOfLines={4}>
         {item.text || "Empty bookmark"}
@@ -85,12 +124,19 @@ export function BookmarkCard({
       ) : null}
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
-          <Pressable onPress={onEdit} style={styles.quickActionButton}>
+          <PressableScale
+            onPress={onEdit}
+            style={styles.quickActionButton}
+            accessibilityRole="button"
+            accessibilityLabel="Edit bookmark"
+          >
             <Text style={styles.quickActionButtonLabel}>Edit</Text>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             onPress={onDelete}
             style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+            accessibilityRole="button"
+            accessibilityLabel="Delete bookmark"
           >
             <Text
               style={[
@@ -100,10 +146,10 @@ export function BookmarkCard({
             >
               Delete
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
       ) : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -125,10 +171,12 @@ export function HighlightCard({
   showQuickActions?: boolean;
 }) {
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       onLongPress={onLongPress}
       style={[styles.featureCard, selected && styles.featureCardSelected]}
+      accessibilityRole="button"
+      accessibilityLabel={`Highlight ${item.referenceLabel}`}
     >
       <View style={styles.connectionHeaderRow}>
         <Text style={styles.connectionRoute} numberOfLines={1}>
@@ -156,12 +204,19 @@ export function HighlightCard({
       ) : null}
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
-          <Pressable onPress={onEdit} style={styles.quickActionButton}>
+          <PressableScale
+            onPress={onEdit}
+            style={styles.quickActionButton}
+            accessibilityRole="button"
+            accessibilityLabel="Edit highlight"
+          >
             <Text style={styles.quickActionButtonLabel}>Edit</Text>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             onPress={onDelete}
             style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+            accessibilityRole="button"
+            accessibilityLabel="Delete highlight"
           >
             <Text
               style={[
@@ -171,20 +226,22 @@ export function HighlightCard({
             >
               Delete
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
       ) : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
 export function LibraryMapCard({
   item,
   mutationBusy,
+  onOpen,
   onDelete,
 }: {
   item: LibraryMapItem;
   mutationBusy?: boolean;
+  onOpen?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -215,14 +272,24 @@ export function LibraryMapCard({
           Updated {formatRelativeDate(item.updatedAt)}
         </Text>
       ) : null}
-      {onDelete ? (
+      {onOpen || onDelete ? (
         <View style={styles.row}>
-          <ActionButton
-            disabled={mutationBusy}
-            label={mutationBusy ? "Deleting..." : "Delete map"}
-            onPress={onDelete}
-            variant="danger"
-          />
+          {onOpen ? (
+            <ActionButton
+              disabled={mutationBusy}
+              label="Open map"
+              onPress={onOpen}
+              variant="secondary"
+            />
+          ) : null}
+          {onDelete ? (
+            <ActionButton
+              disabled={mutationBusy}
+              label={mutationBusy ? "Deleting..." : "Delete map"}
+              onPress={onDelete}
+              variant="danger"
+            />
+          ) : null}
         </View>
       ) : null}
     </View>

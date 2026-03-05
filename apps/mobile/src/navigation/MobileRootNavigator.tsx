@@ -12,38 +12,56 @@ type RootStackParamList = {
 
 type AppStackParamList = {
   Tabs: undefined;
+  MapViewer: { title?: string; bundle?: unknown } | undefined;
+  LibraryMapCreate: undefined;
   BookmarkCreate: undefined;
   BookmarkDetail: { bookmarkId: string };
   HighlightCreate: undefined;
   HighlightDetail: { highlightId: string };
 };
 
+type ChatRouteParams = {
+  prompt?: string;
+  autoSend?: boolean;
+};
+
 type AppTabsParamList = {
+  Reader: undefined;
+  Chat: ChatRouteParams | undefined;
   Library: undefined;
-  Bookmarks: undefined;
-  Highlights: undefined;
   Account: undefined;
-  MapFallback: undefined;
 };
 
 export interface MobileRootNavigatorProps {
   isAuthenticated: boolean;
   renderAuth: () => ReactNode;
-  renderLibrary: () => ReactNode;
-  renderBookmarks: (nav: {
-    openCreate: () => void;
-    openDetail: (bookmarkId: string) => void;
+  renderReader: (nav: {
+    openChat: (prompt: string, autoSend?: boolean) => void;
+    openMapViewer: (title?: string, bundle?: unknown) => void;
   }) => ReactNode;
-  renderHighlights: (nav: {
-    openCreate: () => void;
-    openDetail: (highlightId: string) => void;
+  renderChat: (nav: {
+    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openReader: (book: string, chapter: number) => void;
+    pendingPrompt?: string;
+    autoSend?: boolean;
+    clearPendingPrompt: () => void;
+  }) => ReactNode;
+  renderLibrary: (nav: {
+    openMapCreate: () => void;
+    openBookmarkCreate: () => void;
+    openBookmarkDetail: (bookmarkId: string) => void;
+    openHighlightCreate: () => void;
+    openHighlightDetail: (highlightId: string) => void;
+    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openChat: (prompt: string, autoSend?: boolean) => void;
   }) => ReactNode;
   renderAccount: () => ReactNode;
+  renderMapViewer: (payload: { title?: string; bundle?: unknown }) => ReactNode;
+  renderLibraryMapCreate: () => ReactNode;
   renderBookmarkCreate: () => ReactNode;
   renderBookmarkDetail: (bookmarkId: string) => ReactNode;
   renderHighlightCreate: () => ReactNode;
   renderHighlightDetail: (highlightId: string) => ReactNode;
-  renderMapFallback: () => ReactNode;
 }
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -69,16 +87,14 @@ function resolveTabIcon(
   focused: boolean,
 ): keyof typeof Ionicons.glyphMap {
   switch (route) {
+    case "Reader":
+      return focused ? "document-text" : "document-text-outline";
+    case "Chat":
+      return focused ? "chatbubble" : "chatbubble-outline";
     case "Library":
       return focused ? "book" : "book-outline";
-    case "Bookmarks":
-      return focused ? "bookmark" : "bookmark-outline";
-    case "Highlights":
-      return focused ? "sparkles" : "sparkles-outline";
     case "Account":
       return focused ? "person-circle" : "person-circle-outline";
-    case "MapFallback":
-      return focused ? "map" : "map-outline";
     default:
       return "ellipse";
   }
@@ -91,6 +107,8 @@ export function resolveRootFlow(
 }
 
 export const APP_DETAIL_ROUTES: Array<keyof AppStackParamList> = [
+  "MapViewer",
+  "LibraryMapCreate",
   "BookmarkCreate",
   "BookmarkDetail",
   "HighlightCreate",
@@ -102,7 +120,7 @@ function AppTabsNavigator(
 ) {
   return (
     <Tabs.Navigator
-      initialRouteName="Library"
+      initialRouteName="Reader"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarStyle: {
@@ -133,41 +151,67 @@ function AppTabsNavigator(
         tabBarInactiveTintColor: T.colors.textMuted,
       })}
     >
-      <Tabs.Screen name="Library" options={{ tabBarLabel: "Library" }}>
-        {() => props.renderLibrary()}
-      </Tabs.Screen>
-      <Tabs.Screen name="Bookmarks" options={{ tabBarLabel: "Bookmarks" }}>
+      <Tabs.Screen name="Reader" options={{ tabBarLabel: "Reader" }}>
         {({ navigation }) =>
-          props.renderBookmarks({
-            openCreate: () =>
-              navigation.getParent()?.navigate("BookmarkCreate" as never),
-            openDetail: (bookmarkId) =>
+          props.renderReader({
+            openChat: (prompt, autoSend = true) =>
+              navigation.navigate("Chat", { prompt, autoSend }),
+            openMapViewer: (title, bundle) =>
               navigation
                 .getParent()
-                ?.navigate("BookmarkDetail" as never, { bookmarkId } as never),
+                ?.navigate("MapViewer", { title, bundle } as never),
           })
         }
       </Tabs.Screen>
-      <Tabs.Screen name="Highlights" options={{ tabBarLabel: "Highlights" }}>
+      <Tabs.Screen name="Chat" options={{ tabBarLabel: "Chat" }}>
+        {({ navigation, route }) =>
+          props.renderChat({
+            openMapViewer: (title, bundle) =>
+              navigation
+                .getParent()
+                ?.navigate("MapViewer", { title, bundle } as never),
+            openReader: (_book, _chapter) => navigation.navigate("Reader"),
+            pendingPrompt: route.params?.prompt,
+            autoSend: route.params?.autoSend,
+            clearPendingPrompt: () =>
+              navigation.setParams({
+                prompt: undefined,
+                autoSend: undefined,
+              }),
+          })
+        }
+      </Tabs.Screen>
+      <Tabs.Screen name="Library" options={{ tabBarLabel: "Library" }}>
         {({ navigation }) =>
-          props.renderHighlights({
-            openCreate: () =>
+          props.renderLibrary({
+            openMapCreate: () =>
+              navigation.getParent()?.navigate("LibraryMapCreate" as never),
+            openBookmarkCreate: () =>
+              navigation.getParent()?.navigate("BookmarkCreate" as never),
+            openBookmarkDetail: (bookmarkId) =>
+              navigation
+                .getParent()
+                ?.navigate("BookmarkDetail" as never, { bookmarkId } as never),
+            openHighlightCreate: () =>
               navigation.getParent()?.navigate("HighlightCreate" as never),
-            openDetail: (highlightId) =>
+            openHighlightDetail: (highlightId) =>
               navigation
                 .getParent()
                 ?.navigate(
                   "HighlightDetail" as never,
                   { highlightId } as never,
                 ),
+            openMapViewer: (title, bundle) =>
+              navigation
+                .getParent()
+                ?.navigate("MapViewer", { title, bundle } as never),
+            openChat: (prompt, autoSend = true) =>
+              navigation.navigate("Chat", { prompt, autoSend }),
           })
         }
       </Tabs.Screen>
       <Tabs.Screen name="Account" options={{ tabBarLabel: "Account" }}>
         {() => props.renderAccount()}
-      </Tabs.Screen>
-      <Tabs.Screen name="MapFallback" options={{ tabBarLabel: "Map" }}>
-        {() => props.renderMapFallback()}
       </Tabs.Screen>
     </Tabs.Navigator>
   );
@@ -193,6 +237,20 @@ function AppStackNavigator(
     >
       <AppStack.Screen name="Tabs" options={{ headerShown: false }}>
         {() => <AppTabsNavigator {...props} />}
+      </AppStack.Screen>
+      <AppStack.Screen
+        name="MapViewer"
+        options={({ route }) => ({ title: route.params?.title || "Map" })}
+      >
+        {({ route }) =>
+          props.renderMapViewer({
+            title: route.params?.title,
+            bundle: route.params?.bundle,
+          })
+        }
+      </AppStack.Screen>
+      <AppStack.Screen name="LibraryMapCreate" options={{ title: "New Map" }}>
+        {() => props.renderLibraryMapCreate()}
       </AppStack.Screen>
       <AppStack.Screen
         name="BookmarkCreate"
@@ -225,15 +283,16 @@ function AppStackNavigator(
 export function MobileRootNavigator(props: MobileRootNavigatorProps) {
   const rootFlow = resolveRootFlow(props.isAuthenticated);
   const appProps = {
+    renderReader: props.renderReader,
+    renderChat: props.renderChat,
     renderLibrary: props.renderLibrary,
-    renderBookmarks: props.renderBookmarks,
-    renderHighlights: props.renderHighlights,
     renderAccount: props.renderAccount,
+    renderMapViewer: props.renderMapViewer,
+    renderLibraryMapCreate: props.renderLibraryMapCreate,
     renderBookmarkCreate: props.renderBookmarkCreate,
     renderBookmarkDetail: props.renderBookmarkDetail,
     renderHighlightCreate: props.renderHighlightCreate,
     renderHighlightDetail: props.renderHighlightDetail,
-    renderMapFallback: props.renderMapFallback,
   };
 
   return (

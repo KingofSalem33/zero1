@@ -1,8 +1,6 @@
 import {
-  Linking,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -14,6 +12,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
+import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { MOBILE_ENV } from "../lib/env";
 import { getOAuthRedirectUrl } from "../lib/authRedirect";
@@ -65,7 +64,7 @@ export function AuthScreen() {
               </Text>
 
               <View style={[styles.row, stackButtons && styles.rowStack]}>
-                <Pressable
+                <PressableScale
                   disabled={controller.busy}
                   onPress={() => void controller.startOAuth("google")}
                   style={[
@@ -73,12 +72,14 @@ export function AuthScreen() {
                     styles.googleButton,
                     controller.busy && styles.buttonDisabled,
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue with Google"
                 >
                   <Text style={styles.providerButtonLabel}>
                     Continue with Google
                   </Text>
-                </Pressable>
-                <Pressable
+                </PressableScale>
+                <PressableScale
                   disabled={controller.busy}
                   onPress={() => void controller.startOAuth("apple")}
                   style={[
@@ -86,6 +87,8 @@ export function AuthScreen() {
                     styles.appleButton,
                     controller.busy && styles.buttonDisabled,
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue with Apple"
                 >
                   <Text
                     style={[
@@ -95,7 +98,7 @@ export function AuthScreen() {
                   >
                     Continue with Apple
                   </Text>
-                </Pressable>
+                </PressableScale>
               </View>
 
               <View style={styles.authDividerRow}>
@@ -109,6 +112,7 @@ export function AuthScreen() {
                 autoComplete="email"
                 keyboardType="email-address"
                 placeholder="Email"
+                accessibilityLabel="Email"
                 placeholderTextColor={T.colors.textMuted}
                 style={styles.input}
                 value={controller.email}
@@ -118,6 +122,7 @@ export function AuthScreen() {
                 autoCapitalize="none"
                 autoComplete="password"
                 placeholder="Password"
+                accessibilityLabel="Password"
                 placeholderTextColor={T.colors.textMuted}
                 secureTextEntry
                 style={styles.input}
@@ -142,11 +147,13 @@ export function AuthScreen() {
                 />
               </View>
 
-              <View style={styles.calloutMuted}>
-                <Text style={styles.calloutMutedText}>
-                  Callback: {getOAuthRedirectUrl()}
-                </Text>
-              </View>
+              {!MOBILE_ENV.IS_PRODUCTION ? (
+                <View style={styles.calloutMuted}>
+                  <Text style={styles.calloutMutedText}>
+                    Callback: {getOAuthRedirectUrl()}
+                  </Text>
+                </View>
+              ) : null}
 
               {controller.authError ? (
                 <View style={styles.errorCard}>
@@ -250,47 +257,6 @@ export function AccountScreen() {
           </Text>
         </SurfaceCard>
       ) : null}
-    </ScrollView>
-  );
-}
-
-export function MapFallbackScreen() {
-  const webLibraryUrl = MOBILE_ENV.WEB_APP_URL
-    ? `${MOBILE_ENV.WEB_APP_URL}/library`
-    : null;
-
-  return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
-      <SurfaceCard>
-        <Text style={styles.panelTitle}>Map (Beta)</Text>
-        <Text style={styles.panelSubtitle}>
-          Native map routes are still in progress. Use browser fallback for map
-          workflows until native map is released.
-        </Text>
-        <View style={styles.calloutMuted}>
-          <Text style={styles.calloutMutedText}>1. Tap the button below.</Text>
-          <Text style={styles.calloutMutedText}>
-            2. Complete map actions in browser.
-          </Text>
-          <Text style={styles.calloutMutedText}>
-            3. Return to the app for native library/highlight flows.
-          </Text>
-        </View>
-        <Text style={styles.meta}>
-          Fallback URL: {webLibraryUrl ?? "Not configured"}
-        </Text>
-        <View style={styles.row}>
-          <ActionButton
-            disabled={!webLibraryUrl}
-            label="Open map in browser"
-            onPress={() => {
-              if (!webLibraryUrl) return;
-              void Linking.openURL(webLibraryUrl);
-            }}
-            variant="primary"
-          />
-        </View>
-      </SurfaceCard>
     </ScrollView>
   );
 }

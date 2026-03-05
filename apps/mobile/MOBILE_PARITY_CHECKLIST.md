@@ -10,8 +10,8 @@ Date: 2026-03-04
 
 ## Navigation / IA
 
-- [x] Library-first tab shell
-- [x] Clear tab labels (`Bookmarks`, `Highlights`)
+- [x] Native core tab shell (`Reader`, `Chat`, `Library`, `Account`)
+- [x] Saved content moved under Library sections
 - [x] Home removed from active flow
 
 ## Screens
@@ -20,7 +20,8 @@ Date: 2026-03-04
 - [x] Bookmarks parity pass
 - [x] Highlights parity pass
 - [x] Account parity pass
-- [ ] Map native implementation (fallback removed)
+- [x] Chat native implementation (no web shell dependency in core flow)
+- [x] Map native implementation (fallback removed from core flow)
 
 ## Retirement
 

@@ -66,20 +66,25 @@ export const styles = StyleSheet.create({
     padding: T.spacing.lg,
     gap: T.spacing.sm,
     shadowColor: T.colors.shadow,
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  pressableScalePressed: {
+    opacity: 0.9,
   },
   panelTitle: {
     color: T.colors.text,
     fontSize: T.typography.heading,
     fontWeight: "700",
+    fontFamily: T.fonts.sans,
   },
   panelSubtitle: {
     color: T.colors.textMuted,
-    fontSize: T.typography.body,
-    lineHeight: 20,
+    fontSize: T.typography.bodySm,
+    lineHeight: 22,
+    fontFamily: T.fonts.sans,
   },
   input: {
     backgroundColor: T.colors.surface,
@@ -90,6 +95,11 @@ export const styles = StyleSheet.create({
     paddingVertical: T.spacing.md,
     color: T.colors.text,
     fontSize: T.typography.body,
+    minHeight: T.touchTarget.min,
+    fontFamily: T.fonts.sans,
+  },
+  searchInput: {
+    paddingLeft: T.spacing.lg,
   },
   fieldLabel: {
     color: T.colors.text,
@@ -105,6 +115,7 @@ export const styles = StyleSheet.create({
     color: T.colors.textMuted,
     fontSize: T.typography.caption,
     lineHeight: 17,
+    fontFamily: T.fonts.sans,
   },
   textAreaInput: {
     minHeight: 88,
@@ -144,6 +155,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: T.touchTarget.min,
     paddingVertical: 12,
   },
   googleButton: {
@@ -170,6 +182,7 @@ export const styles = StyleSheet.create({
     backgroundColor: T.colors.accent,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: T.touchTarget.min,
     paddingVertical: 12,
     paddingHorizontal: T.spacing.md,
   },
@@ -186,6 +199,7 @@ export const styles = StyleSheet.create({
     backgroundColor: T.colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: T.touchTarget.min,
     paddingVertical: 12,
     paddingHorizontal: T.spacing.md,
   },
@@ -200,7 +214,9 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: T.colors.surfaceRaised,
     paddingHorizontal: T.spacing.md,
+    minHeight: T.touchTarget.min,
     paddingVertical: 10,
+    justifyContent: "center",
   },
   ghostButtonLabel: {
     color: T.colors.text,
@@ -294,6 +310,12 @@ export const styles = StyleSheet.create({
     padding: T.spacing.lg,
     paddingBottom: T.spacing.sm,
   },
+  savedListContainer: {
+    flex: 1,
+    gap: T.spacing.md,
+    paddingHorizontal: T.spacing.lg,
+    paddingBottom: T.spacing.sm,
+  },
   heroCard: {
     backgroundColor: T.colors.surface,
     borderWidth: 1,
@@ -311,14 +333,16 @@ export const styles = StyleSheet.create({
   },
   heroTitle: {
     color: T.colors.text,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: "800",
+    fontFamily: T.fonts.sans,
   },
   heroSubtitle: {
     color: T.colors.textMuted,
-    fontSize: T.typography.body,
-    lineHeight: 20,
+    fontSize: T.typography.bodySm,
+    lineHeight: 22,
+    fontFamily: T.fonts.sans,
   },
   statGrid: {
     flexDirection: "row",
@@ -339,12 +363,84 @@ export const styles = StyleSheet.create({
   },
   statValue: {
     color: T.colors.text,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
+    fontFamily: T.fonts.sans,
   },
   listContent: {
     gap: T.spacing.md,
     paddingBottom: T.spacing.xl,
+  },
+  readerFooterWrap: {
+    gap: T.spacing.sm,
+  },
+  readerOrientationText: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.body,
+    lineHeight: 20,
+    fontStyle: "italic",
+  },
+  readerToolCardRow: {
+    gap: T.spacing.sm,
+    paddingVertical: 2,
+    paddingRight: T.spacing.sm,
+  },
+  readerToolCard: {
+    width: 220,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+    gap: 6,
+  },
+  readerToolLens: {
+    color: T.colors.accent,
+    fontSize: T.typography.caption,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+  },
+  readerToolTitle: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    fontWeight: "700",
+  },
+  readerToolPrompt: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    lineHeight: 18,
+  },
+  readerVerseCard: {
+    backgroundColor: T.colors.surfaceRaised,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    paddingHorizontal: T.spacing.md,
+    paddingVertical: T.spacing.sm,
+    gap: T.spacing.xs,
+  },
+  readerVerseCardSelected: {
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accentSoft,
+  },
+  readerVerseHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: T.spacing.sm,
+  },
+  readerVerseNumber: {
+    color: T.colors.accent,
+    fontSize: T.typography.bodySm,
+    fontWeight: "800",
+    fontFamily: T.fonts.sans,
+  },
+  readerVerseText: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 28,
+    fontFamily: T.fonts.serif,
   },
   featureCard: {
     backgroundColor: T.colors.surfaceRaised,
@@ -367,8 +463,9 @@ export const styles = StyleSheet.create({
   connectionRoute: {
     flex: 1,
     color: T.colors.text,
-    fontSize: 15,
+    fontSize: T.typography.body,
     fontWeight: "700",
+    fontFamily: T.fonts.sans,
   },
   connectionType: {
     color: T.colors.pine,
@@ -382,7 +479,8 @@ export const styles = StyleSheet.create({
   bookmarkText: {
     color: T.colors.text,
     fontSize: T.typography.body,
-    lineHeight: 20,
+    lineHeight: 24,
+    fontFamily: T.fonts.sans,
   },
   highlightColorBadgeWrap: {
     flexDirection: "row",
@@ -409,7 +507,8 @@ export const styles = StyleSheet.create({
   connectionSynopsis: {
     color: T.colors.text,
     fontSize: T.typography.body,
-    lineHeight: 20,
+    lineHeight: 24,
+    fontFamily: T.fonts.sans,
   },
   connectionMetaWrap: {
     flexDirection: "row",
@@ -445,15 +544,17 @@ export const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: T.colors.text,
-    fontSize: 16,
+    fontSize: T.typography.subheading,
     fontWeight: "700",
     textAlign: "center",
+    fontFamily: T.fonts.sans,
   },
   emptySubtitle: {
     color: T.colors.textMuted,
-    fontSize: T.typography.body,
+    fontSize: T.typography.bodySm,
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 22,
+    fontFamily: T.fonts.sans,
   },
   listHintRow: {
     paddingHorizontal: T.spacing.xs,
@@ -470,6 +571,8 @@ export const styles = StyleSheet.create({
     backgroundColor: T.colors.canvasMuted,
     paddingHorizontal: T.spacing.sm,
     paddingVertical: 6,
+    minHeight: T.touchTarget.min,
+    justifyContent: "center",
   },
   suggestionChipLabel: {
     color: T.colors.text,
@@ -518,8 +621,8 @@ export const styles = StyleSheet.create({
     gap: T.spacing.xs,
   },
   colorChip: {
-    width: 30,
-    height: 30,
+    width: T.touchTarget.min,
+    height: T.touchTarget.min,
     borderRadius: T.radius.pill,
     borderWidth: 1,
     borderColor: T.colors.border,
@@ -530,6 +633,7 @@ export const styles = StyleSheet.create({
   },
   quickActionsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: T.spacing.sm,
     marginTop: T.spacing.xs,
   },
@@ -539,7 +643,9 @@ export const styles = StyleSheet.create({
     borderColor: T.colors.border,
     backgroundColor: T.colors.surface,
     paddingHorizontal: T.spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    minHeight: T.touchTarget.min,
+    justifyContent: "center",
   },
   quickActionButtonDanger: {
     borderColor: T.colors.danger,
@@ -561,6 +667,7 @@ export const styles = StyleSheet.create({
     backgroundColor: T.colors.dangerSoft,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: T.touchTarget.min,
     paddingVertical: 12,
     paddingHorizontal: T.spacing.md,
   },
@@ -568,5 +675,40 @@ export const styles = StyleSheet.create({
     color: T.colors.danger,
     fontWeight: "700",
     fontSize: T.typography.body,
+    fontFamily: T.fonts.sans,
+  },
+  toastViewport: {
+    position: "absolute",
+    top: 56,
+    left: T.spacing.md,
+    right: T.spacing.md,
+    gap: T.spacing.sm,
+    zIndex: 50,
+  },
+  toastCard: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    paddingHorizontal: T.spacing.md,
+    paddingVertical: T.spacing.sm,
+    minHeight: T.touchTarget.min,
+    justifyContent: "center",
+  },
+  toastCardSuccess: {
+    backgroundColor: T.colors.pineSoft,
+    borderColor: T.colors.pine,
+  },
+  toastCardError: {
+    backgroundColor: T.colors.dangerSoft,
+    borderColor: T.colors.danger,
+  },
+  toastCardInfo: {
+    backgroundColor: T.colors.canvasMuted,
+    borderColor: T.colors.border,
+  },
+  toastText: {
+    color: T.colors.text,
+    fontSize: T.typography.bodySm,
+    fontWeight: "600",
+    fontFamily: T.fonts.sans,
   },
 });
