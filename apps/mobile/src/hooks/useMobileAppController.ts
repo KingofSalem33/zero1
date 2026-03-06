@@ -1118,6 +1118,7 @@ export function useMobileAppController(
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
           currentHighlights: adjustedHighlights,
+          currentHighlights: adjustedHighlights,
           newHighlight: newItem,
         }),
       );
@@ -1504,6 +1505,7 @@ export function useMobileAppController(
         createHighlightViaSync({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
+          currentHighlights: adjustedHighlights,
           currentHighlights: adjustedHighlights,
           newHighlight: newItem,
         }),
