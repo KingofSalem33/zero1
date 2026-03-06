@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +13,8 @@ import {
   View,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import {
   getBibleBookSuggestions,
   getBibleChapterCount,
@@ -30,18 +34,59 @@ import { MOBILE_ENV } from "../lib/env";
 import { styles, T } from "../theme/mobileStyles";
 import { isVisualContextBundle } from "../types/visualization";
 
-const HIGHLIGHT_COLORS = [
-  "#FEF3C7",
-  "#D1FAE5",
-  "#DBEAFE",
-  "#FCE7F3",
-  "#EDE9FE",
-];
+const DOUBLE_TAP_WINDOW_MS = 280;
+const HIGHLIGHT_FEEDBACK_IN_MS = 120;
+const HIGHLIGHT_FEEDBACK_OUT_MS = 220;
+const HIGHLIGHT_FEEDBACK_SCALE_MAX = 1.0035;
 
 type SelectionDraft = {
   startVerse: number;
   endVerse: number;
 };
+
+type SelectionPayload = {
+  verses: number[];
+  text: string;
+};
+
+type HighlightTone = {
+  fill: string;
+  stroke: string;
+  bar: string;
+};
+
+function parseHexColor(input: string): { r: number; g: number; b: number } | null {
+  const value = input.trim().replace("#", "");
+  if (!/^[0-9a-fA-F]{3,8}$/.test(value)) return null;
+  const normalized =
+    value.length === 3
+      ? value
+          .split("")
+          .map((char) => `${char}${char}`)
+          .join("")
+      : value.slice(0, 6);
+  const parsed = Number.parseInt(normalized, 16);
+  if (!Number.isFinite(parsed)) return null;
+  return {
+    r: (parsed >> 16) & 255,
+    g: (parsed >> 8) & 255,
+    b: parsed & 255,
+  };
+}
+
+function rgba(color: { r: number; g: number; b: number }, alpha: number): string {
+  return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+}
+
+function buildHighlightTone(color: string): HighlightTone | null {
+  const parsed = parseHexColor(color);
+  if (!parsed) return null;
+  return {
+    fill: rgba(parsed, 0.24),
+    stroke: rgba(parsed, 0.78),
+    bar: rgba(parsed, 1),
+  };
+}
 
 function normalizeVerseRange(startVerse: number, endVerse: number): number[] {
   const min = Math.min(startVerse, endVerse);
@@ -92,8 +137,17 @@ export function ReaderScreen({
   const [selectionView, setSelectionView] = useState<"synopsis" | "root">(
     "synopsis",
   );
+  const [activeModalChip, setActiveModalChip] = useState<"synopsis" | "root">(
+    "synopsis",
+  );
   const [selectionMapLoading, setSelectionMapLoading] = useState(false);
   const [selectionCopySuccess, setSelectionCopySuccess] = useState(false);
+  const [selectionShareSuccess, setSelectionShareSuccess] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const lastVerseTapRef = useRef<{ verse: number; at: number } | null>(null);
+  const suppressNextVersePressRef = useRef(false);
+  const [feedbackVerse, setFeedbackVerse] = useState<number | null>(null);
+  const feedbackPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     setBookInput(controller.reader.book);
@@ -150,14 +204,20 @@ export function ReaderScreen({
   }, [controller.reader.verses, selectedVerses]);
 
   const verseHighlightMap = useMemo(() => {
-    const map = new Map<number, string>();
+    const map = new Map<number, { color: string; tone: HighlightTone | null }>();
     controller.highlights.forEach((highlight) => {
       if (
         highlight.book.toLowerCase() === controller.reader.book.toLowerCase() &&
         highlight.chapter === controller.reader.chapter
       ) {
         highlight.verses.forEach((verse) => {
-          if (!map.has(verse)) map.set(verse, highlight.color || "#facc15");
+          if (!map.has(verse)) {
+            const color = highlight.color || "#facc15";
+            map.set(verse, {
+              color,
+              tone: buildHighlightTone(color),
+            });
+          }
         });
       }
     });
@@ -167,6 +227,43 @@ export function ReaderScreen({
     controller.reader.book,
     controller.reader.chapter,
   ]);
+
+  function triggerSelectionHaptic() {
+    Haptics.selectionAsync().catch(() => {});
+  }
+
+  function runHighlightFeedbackPulse(verse: number) {
+    setFeedbackVerse(verse);
+    feedbackPulse.setValue(0);
+    Animated.sequence([
+      Animated.timing(feedbackPulse, {
+        toValue: 1,
+        duration: HIGHLIGHT_FEEDBACK_IN_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(feedbackPulse, {
+        toValue: 0,
+        duration: HIGHLIGHT_FEEDBACK_OUT_MS,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setFeedbackVerse((current) => (current === verse ? null : current));
+    });
+  }
+
+  function buildSelectionPayload(draft: SelectionDraft): SelectionPayload {
+    const verses = normalizeVerseRange(draft.startVerse, draft.endVerse);
+    const textByVerse = new Map(
+      controller.reader.verses.map((entry) => [entry.verse, entry.text]),
+    );
+    const text = verses
+      .map((verse) => `${verse}. ${textByVerse.get(verse) ?? ""}`.trim())
+      .join(" ")
+      .trim();
+    return { verses, text };
+  }
 
   async function handleGoToChapter() {
     const canonical = resolveBibleBookName(bookInput);
@@ -183,21 +280,26 @@ export function ReaderScreen({
     setSelectionSynopsisError(null);
     setSelectionRootError(null);
     setSelectionView("synopsis");
+    setActiveModalChip("synopsis");
     setSelectionCopySuccess(false);
+    setSelectionShareSuccess(false);
+    lastVerseTapRef.current = null;
   }
 
-  async function loadSelectionSynopsis() {
-    if (!selectedText || selectedVerses.length === 0) return;
+  async function loadSelectionSynopsis(payload?: SelectionPayload) {
+    const activePayload =
+      payload ?? { text: selectedText, verses: selectedVerses };
+    if (!activePayload.text || activePayload.verses.length === 0) return;
     setSelectionSynopsisLoading(true);
     setSelectionSynopsisError(null);
     try {
       const result = await fetchSynopsis({
         apiBaseUrl: MOBILE_ENV.API_URL,
-        text: selectedText,
+        text: activePayload.text,
         maxWords: 34,
         book: controller.reader.book,
         chapter: controller.reader.chapter,
-        verses: selectedVerses,
+        verses: activePayload.verses,
       });
       setSelectionSynopsis(result);
     } catch (error) {
@@ -210,18 +312,20 @@ export function ReaderScreen({
     }
   }
 
-  async function loadSelectionRootTranslation() {
-    if (!selectedText || selectedVerses.length === 0) return;
+  async function loadSelectionRootTranslation(payload?: SelectionPayload) {
+    const activePayload =
+      payload ?? { text: selectedText, verses: selectedVerses };
+    if (!activePayload.text || activePayload.verses.length === 0) return;
     setSelectionRootLoading(true);
     setSelectionRootError(null);
     try {
       const result = await fetchRootTranslation({
         apiBaseUrl: MOBILE_ENV.API_URL,
-        selectedText,
+        selectedText: activePayload.text,
         maxWords: 140,
         book: controller.reader.book,
         chapter: controller.reader.chapter,
-        verses: selectedVerses,
+        verses: activePayload.verses,
       });
       setSelectionRoot(result);
     } catch (error) {
@@ -234,11 +338,17 @@ export function ReaderScreen({
     }
   }
 
-  async function openSelectionTools() {
-    if (!selectedText || selectedVerses.length === 0) return;
+  async function openSelectionTools(draft?: SelectionDraft) {
+    const payload = draft
+      ? buildSelectionPayload(draft)
+      : { text: selectedText, verses: selectedVerses };
+    if (!payload.text || payload.verses.length === 0) return;
     setSelectionModalVisible(true);
     setSelectionView("synopsis");
-    await loadSelectionSynopsis();
+    setActiveModalChip("synopsis");
+    setSelectionCopySuccess(false);
+    setSelectionShareSuccess(false);
+    await loadSelectionSynopsis(payload);
   }
 
   async function handleTraceSelection() {
@@ -254,7 +364,7 @@ export function ReaderScreen({
         throw new Error("Map response was malformed.");
       }
       nav.openMapViewer(selectedVerseLabel, bundle);
-      setSelectionModalVisible(false);
+      clearSelection();
     } catch (error) {
       setSelectionSynopsisError(
         error instanceof Error ? error.message : String(error),
@@ -270,6 +380,7 @@ export function ReaderScreen({
       `"${selectedText}"\n\n- ${selectedVerseLabel} (KJV)`,
     );
     setSelectionCopySuccess(true);
+    setSelectionShareSuccess(false);
     setTimeout(() => setSelectionCopySuccess(false), 1600);
   }
 
@@ -278,118 +389,178 @@ export function ReaderScreen({
     await Share.share({
       message: `"${selectedText}"\n\n- ${selectedVerseLabel} (KJV)`,
     });
+    setSelectionShareSuccess(true);
+    setSelectionCopySuccess(false);
+    setTimeout(() => setSelectionShareSuccess(false), 1600);
   }
 
-  async function handleSaveSelectionHighlight(color: string) {
-    if (!selectedText || selectedVerses.length === 0) return;
-    await controller.handleReaderHighlightSelection(
-      selectedVerses,
-      selectedText,
-      color,
-    );
-    clearSelection();
+  const modalFeedbackLabel = selectionMapLoading
+    ? "Tracing..."
+    : selectionCopySuccess
+      ? "Copied"
+      : selectionShareSuccess
+        ? "Shared"
+        : null;
+
+  function handleVerseTextPress(verse: number, text: string) {
+    if (suppressNextVersePressRef.current) {
+      suppressNextVersePressRef.current = false;
+      return;
+    }
+
+    if (selectionDraft) {
+      setSelectionDraft((current) =>
+        current
+          ? { ...current, endVerse: verse }
+          : { startVerse: verse, endVerse: verse },
+      );
+      return;
+    }
+
+    const now = Date.now();
+    const lastTap = lastVerseTapRef.current;
+    if (
+      lastTap &&
+      lastTap.verse === verse &&
+      now - lastTap.at <= DOUBLE_TAP_WINDOW_MS
+    ) {
+      lastVerseTapRef.current = null;
+      triggerSelectionHaptic();
+      runHighlightFeedbackPulse(verse);
+      if (verseHighlightMap.has(verse)) {
+        void controller.handleReaderRemoveHighlightSelection([verse]);
+      } else {
+        void controller.handleReaderHighlightSelection(
+          [verse],
+          text.trim(),
+          controller.readerHighlightColor,
+        );
+      }
+      return;
+    }
+
+    lastVerseTapRef.current = { verse, at: now };
   }
 
   return (
     <View style={localStyles.root}>
-      <View style={localStyles.headerBar}>
-        <View style={localStyles.headerControlsRow}>
-          <TextInput
-            autoCapitalize="words"
-            placeholder="Book"
-            accessibilityLabel="Reader book"
-            placeholderTextColor={T.colors.textMuted}
-            style={localStyles.bookInput}
-            value={bookInput}
-            onChangeText={setBookInput}
-          />
-          <TextInput
-            keyboardType="number-pad"
-            placeholder="Ch"
-            accessibilityLabel="Reader chapter"
-            placeholderTextColor={T.colors.textMuted}
-            style={localStyles.chapterInput}
-            value={chapterInput}
-            onChangeText={setChapterInput}
-          />
-          <ActionButton
-            disabled={controller.readerLoading}
-            label="Go"
-            onPress={() => void handleGoToChapter()}
-            variant="primary"
-            style={localStyles.compactPrimaryButton}
-            labelStyle={localStyles.compactPrimaryButtonLabel}
-          />
-          <ActionButton
-            disabled={controller.readerLoading}
-            label="Prev"
-            onPress={() => void controller.goToPreviousReaderChapter()}
-            variant="ghost"
-            style={localStyles.compactHeaderAction}
-            labelStyle={localStyles.compactHeaderActionLabel}
-          />
-          <ActionButton
-            disabled={controller.readerLoading}
-            label="Next"
-            onPress={() => void controller.goToNextReaderChapter()}
-            variant="ghost"
-            style={localStyles.compactHeaderAction}
-            labelStyle={localStyles.compactHeaderActionLabel}
-          />
-        </View>
-
-        <View style={localStyles.headerMetaRow}>
-          <Text style={styles.caption}>
-            {controller.reader.book} {controller.reader.chapter}
-            {chapterHint ? ` - Chapters ${chapterHint}` : ""}
-          </Text>
-        </View>
-
-        {bookSuggestions.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={localStyles.headerSuggestionRow}
-          >
-            {bookSuggestions.map((book) => (
-              <PressableScale
-                key={book}
-                onPress={() => setBookInput(book)}
-                style={localStyles.headerSuggestionChip}
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${book}`}
-              >
-                <Text style={styles.suggestionChipLabel}>{book}</Text>
-              </PressableScale>
-            ))}
-          </ScrollView>
-        ) : null}
-
-        {selectionDraft ? (
-          <View style={localStyles.selectionStatusRow}>
-            <Text style={styles.caption} numberOfLines={1}>
-              Selection: {selectedVerseLabel}
+      <View style={localStyles.headerShell}>
+        {headerCollapsed ? (
+          <View style={localStyles.headerCollapsedBar}>
+            <Text style={localStyles.headerCollapsedLabel} numberOfLines={1}>
+              {controller.reader.book} {controller.reader.chapter}
             </Text>
-            <ActionButton
-              label="Tools"
-              variant="secondary"
-              onPress={() => void openSelectionTools()}
-              style={localStyles.compactHeaderAction}
-              labelStyle={localStyles.compactHeaderActionLabel}
-            />
-            <ActionButton
-              label="Clear"
-              variant="ghost"
-              onPress={clearSelection}
-              style={localStyles.compactHeaderAction}
-              labelStyle={localStyles.compactHeaderActionLabel}
-            />
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Show reader controls"
+              onPress={() => setHeaderCollapsed(false)}
+              style={localStyles.headerToggleButton}
+            >
+              <Ionicons color={T.colors.textMuted} name="chevron-down" size={16} />
+            </PressableScale>
           </View>
-        ) : null}
+        ) : (
+          <View style={localStyles.headerBar}>
+            <View style={localStyles.headerControlsTopRow}>
+              <Text style={styles.caption}>
+                {controller.reader.book} {controller.reader.chapter}
+                {chapterHint ? ` - Chapters ${chapterHint}` : ""}
+              </Text>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Hide reader controls"
+                onPress={() => setHeaderCollapsed(true)}
+                style={localStyles.headerToggleButton}
+              >
+                <Ionicons color={T.colors.textMuted} name="chevron-up" size={16} />
+              </PressableScale>
+            </View>
 
-        {controller.readerError ? (
-          <Text style={styles.error}>{controller.readerError}</Text>
-        ) : null}
+            <View style={localStyles.headerControlsRow}>
+              <TextInput
+                autoCapitalize="words"
+                placeholder="Book"
+                accessibilityLabel="Reader book"
+                placeholderTextColor={T.colors.textMuted}
+                style={localStyles.bookInput}
+                value={bookInput}
+                onChangeText={setBookInput}
+              />
+              <TextInput
+                keyboardType="number-pad"
+                placeholder="Ch"
+                accessibilityLabel="Reader chapter"
+                placeholderTextColor={T.colors.textMuted}
+                style={localStyles.chapterInput}
+                value={chapterInput}
+                onChangeText={setChapterInput}
+              />
+              <ActionButton
+                disabled={controller.readerLoading}
+                label="Go"
+                onPress={() => void handleGoToChapter()}
+                variant="primary"
+                style={localStyles.compactPrimaryButton}
+                labelStyle={localStyles.compactPrimaryButtonLabel}
+              />
+              <ActionButton
+                disabled={controller.readerLoading}
+                label="Prev"
+                onPress={() => void controller.goToPreviousReaderChapter()}
+                variant="ghost"
+                style={localStyles.compactHeaderAction}
+                labelStyle={localStyles.compactHeaderActionLabel}
+              />
+              <ActionButton
+                disabled={controller.readerLoading}
+                label="Next"
+                onPress={() => void controller.goToNextReaderChapter()}
+                variant="ghost"
+                style={localStyles.compactHeaderAction}
+                labelStyle={localStyles.compactHeaderActionLabel}
+              />
+            </View>
+
+            {bookSuggestions.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={localStyles.headerSuggestionRow}
+              >
+                {bookSuggestions.map((book) => (
+                  <PressableScale
+                    key={book}
+                    onPress={() => setBookInput(book)}
+                    style={localStyles.headerSuggestionChip}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${book}`}
+                  >
+                    <Text style={styles.suggestionChipLabel}>{book}</Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
+            ) : null}
+
+            {selectionDraft ? (
+              <View style={localStyles.selectionStatusRow}>
+                <Text style={styles.caption} numberOfLines={1}>
+                  Selection: {selectedVerseLabel}
+                </Text>
+                <ActionButton
+                  label="Clear"
+                  variant="ghost"
+                  onPress={clearSelection}
+                  style={localStyles.compactHeaderAction}
+                  labelStyle={localStyles.compactHeaderActionLabel}
+                />
+              </View>
+            ) : null}
+
+            {controller.readerError ? (
+              <Text style={styles.error}>{controller.readerError}</Text>
+            ) : null}
+          </View>
+        )}
       </View>
 
       <ScrollView
@@ -407,22 +578,50 @@ export function ReaderScreen({
 
           {controller.reader.verses.map((item) => {
             const inSelection = selectedVerses.includes(item.verse);
-            const highlightColor = verseHighlightMap.get(item.verse);
+            const highlightVisual = verseHighlightMap.get(item.verse);
             const selectedVerse = controller.readerSelectedVerse === item.verse;
             const startsParagraph = item.verse > 1 && item.verse % 4 === 1;
             return (
-              <View
+              <Animated.View
                 key={`${controller.reader.book}-${controller.reader.chapter}-${item.verse}`}
                 style={[
                   localStyles.verseRow,
                   startsParagraph ? localStyles.verseParagraphStart : null,
-                  inSelection ? localStyles.verseRowSelection : null,
-                  selectedVerse ? localStyles.verseRowFocused : null,
-                  highlightColor
+                  feedbackVerse === item.verse
                     ? {
-                        backgroundColor: `${highlightColor}30`,
-                        borderColor: `${highlightColor}70`,
+                        transform: [
+                          {
+                            scale: feedbackPulse.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, HIGHLIGHT_FEEDBACK_SCALE_MAX],
+                            }),
+                          },
+                        ],
                       }
+                    : null,
+                  highlightVisual
+                    ? [
+                        localStyles.verseRowHighlightBase,
+                        {
+                          backgroundColor:
+                            highlightVisual.tone?.fill ??
+                            "rgba(212, 175, 55, 0.22)",
+                          borderColor:
+                            highlightVisual.tone?.stroke ??
+                            "rgba(128, 90, 8, 0.85)",
+                          borderLeftColor:
+                            highlightVisual.tone?.bar ??
+                            T.colors.accent,
+                          shadowColor:
+                            highlightVisual.tone?.bar ?? T.colors.accent,
+                        },
+                      ]
+                    : null,
+                  selectedVerse && !highlightVisual
+                    ? localStyles.verseRowFocused
+                    : null,
+                  inSelection && !highlightVisual
+                    ? localStyles.verseRowSelection
                     : null,
                 ]}
               >
@@ -436,21 +635,18 @@ export function ReaderScreen({
                 </PressableScale>
 
                 <Pressable
-                  onLongPress={() =>
-                    setSelectionDraft({
+                  onLongPress={() => {
+                    triggerSelectionHaptic();
+                    suppressNextVersePressRef.current = true;
+                    lastVerseTapRef.current = null;
+                    const draft = {
                       startVerse: item.verse,
                       endVerse: item.verse,
-                    })
-                  }
-                  onPress={() => {
-                    if (selectionDraft) {
-                      setSelectionDraft((current) =>
-                        current
-                          ? { ...current, endVerse: item.verse }
-                          : { startVerse: item.verse, endVerse: item.verse },
-                      );
-                    }
+                    };
+                    setSelectionDraft(draft);
+                    void openSelectionTools(draft);
                   }}
+                  onPress={() => handleVerseTextPress(item.verse, item.text)}
                   style={localStyles.verseTextPressable}
                 >
                   <Text
@@ -464,7 +660,7 @@ export function ReaderScreen({
                     {item.text}
                   </Text>
                 </Pressable>
-              </View>
+              </Animated.View>
             );
           })}
 
@@ -556,13 +752,10 @@ export function ReaderScreen({
         visible={selectionModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setSelectionModalVisible(false)}
+        onRequestClose={clearSelection}
       >
         <View style={localStyles.modalOverlay}>
-          <Pressable
-            onPress={() => setSelectionModalVisible(false)}
-            style={localStyles.modalBackdrop}
-          />
+          <Pressable onPress={clearSelection} style={localStyles.modalBackdrop} />
           <View style={localStyles.modalCard}>
             <View style={localStyles.modalHeaderRow}>
               <View style={styles.flex1}>
@@ -572,23 +765,20 @@ export function ReaderScreen({
               <ActionButton
                 label="Close"
                 variant="ghost"
-                onPress={() => setSelectionModalVisible(false)}
+                onPress={clearSelection}
               />
             </View>
 
             <ScrollView style={localStyles.modalContent}>
-              <View style={localStyles.selectionPreviewCard}>
-                <Text style={localStyles.selectionPreviewText}>
-                  {selectedText}
-                </Text>
-              </View>
-
               <View style={localStyles.modalTabRow}>
                 <PressableScale
-                  onPress={() => setSelectionView("synopsis")}
+                  onPress={() => {
+                    setSelectionView("synopsis");
+                    setActiveModalChip("synopsis");
+                  }}
                   style={[
                     styles.outlineChip,
-                    selectionView === "synopsis"
+                    activeModalChip === "synopsis"
                       ? styles.outlineChipActive
                       : null,
                   ]}
@@ -598,18 +788,25 @@ export function ReaderScreen({
                 <PressableScale
                   onPress={() => {
                     setSelectionView("root");
+                    setActiveModalChip("root");
                     if (!selectionRoot && !selectionRootLoading) {
                       void loadSelectionRootTranslation();
                     }
                   }}
                   style={[
                     styles.outlineChip,
-                    selectionView === "root" ? styles.outlineChipActive : null,
+                    activeModalChip === "root" ? styles.outlineChipActive : null,
                   ]}
                 >
                   <Text style={styles.outlineChipLabel}>Root</Text>
                 </PressableScale>
               </View>
+
+              {modalFeedbackLabel ? (
+                <Text style={localStyles.modalFeedbackText}>
+                  {modalFeedbackLabel}
+                </Text>
+              ) : null}
 
               {selectionView === "synopsis" ? (
                 <View style={localStyles.modalPanel}>
@@ -690,27 +887,12 @@ export function ReaderScreen({
                   labelStyle={localStyles.compactHeaderActionLabel}
                 />
                 <ActionButton
-                  label="Share"
+                  label={selectionShareSuccess ? "Shared" : "Share"}
                   variant="ghost"
                   onPress={() => void handleShareSelection()}
                   style={localStyles.compactHeaderAction}
                   labelStyle={localStyles.compactHeaderActionLabel}
                 />
-              </View>
-
-              <View style={localStyles.highlightRow}>
-                {HIGHLIGHT_COLORS.map((color) => (
-                  <PressableScale
-                    key={color}
-                    onPress={() => void handleSaveSelectionHighlight(color)}
-                    style={[
-                      localStyles.highlightColorButton,
-                      { backgroundColor: color },
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Save highlight color"
-                  />
-                ))}
               </View>
             </ScrollView>
           </View>
@@ -725,13 +907,47 @@ const localStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.colors.canvas,
   },
-  headerBar: {
+  headerShell: {
     borderBottomWidth: 1,
     borderBottomColor: T.colors.border,
-    backgroundColor: "rgba(24,24,27,0.92)",
+    backgroundColor: "rgba(24,24,27,0.94)",
+  },
+  headerBar: {
     paddingHorizontal: 6,
-    paddingVertical: 5,
+    paddingVertical: 3,
     gap: 5,
+  },
+  headerControlsTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 28,
+    gap: 8,
+  },
+  headerCollapsedBar: {
+    minHeight: 34,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  headerCollapsedLabel: {
+    flex: 1,
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    fontWeight: "600",
+  },
+  headerToggleButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerControlsRow: {
     flexDirection: "row",
@@ -783,13 +999,6 @@ const localStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
-  headerMetaRow: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 2,
-  },
   headerSuggestionRow: {
     gap: 6,
     paddingVertical: 2,
@@ -837,6 +1046,15 @@ const localStyles = StyleSheet.create({
   },
   verseParagraphStart: {
     marginTop: 14,
+  },
+  verseRowHighlightBase: {
+    borderWidth: 1.5,
+    borderLeftWidth: 3,
+    borderRadius: 8,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 1,
   },
   verseRowSelection: {
     borderWidth: 1,
@@ -980,6 +1198,11 @@ const localStyles = StyleSheet.create({
   modalTabRow: {
     flexDirection: "row",
     gap: T.spacing.sm,
+    marginBottom: T.spacing.sm,
+  },
+  modalFeedbackText: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
     marginBottom: T.spacing.sm,
   },
   modalPanel: {

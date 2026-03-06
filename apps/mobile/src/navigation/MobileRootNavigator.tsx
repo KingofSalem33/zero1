@@ -158,7 +158,7 @@ function ModeShellScreen({
     if (activeMode === "Reader") return "Bible";
     if (activeMode === "Chat") return "Chat";
     if (activeMode === "Library") return "Library";
-    return "Account";
+    return "Settings";
   }, [activeMode]);
 
   function openChat(prompt: string, autoSend = true) {
@@ -178,7 +178,7 @@ function ModeShellScreen({
           style={[
             localStyles.topBar,
             {
-              paddingTop: Math.max(T.spacing.xs, insets.top),
+              paddingTop: T.spacing.xs,
             },
           ]}
         >
@@ -288,7 +288,7 @@ function ModeShellScreen({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: activeMode === "Account" }}
-                  accessibilityLabel="Open account"
+                  accessibilityLabel="Open settings"
                   onPress={() => {
                     setActiveMode("Account");
                     setDrawerOpen(false);
@@ -312,7 +312,7 @@ function ModeShellScreen({
                         : null,
                     ]}
                   >
-                    Account
+                    Settings
                   </Text>
                 </Pressable>
               </View>
