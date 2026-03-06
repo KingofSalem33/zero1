@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Linking, Text } from "react-native";
 import { act, render, waitFor } from "@testing-library/react-native";
+import AsyncStorageMock from "@react-native-async-storage/async-storage/jest/async-storage-mock";
 import type { MobileHighlightItem, ProtectedProbeResult } from "../../lib/api";
 import {
   createLibraryMap,
@@ -21,9 +22,7 @@ import {
   type MobileAppController,
 } from "../useMobileAppController";
 
-jest.mock("@react-native-async-storage/async-storage", () =>
-  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
-);
+jest.mock("@react-native-async-storage/async-storage", () => AsyncStorageMock);
 
 const mockSupabaseSession = {
   access_token: "test-access-token",
