@@ -17,6 +17,7 @@ import { SurfaceCard } from "../components/native/SurfaceCard";
 import { MOBILE_ENV } from "../lib/env";
 import { getOAuthRedirectUrl } from "../lib/authRedirect";
 import { useMobileApp } from "../context/MobileAppContext";
+import { READER_HIGHLIGHT_COLORS } from "../constants/highlightColors";
 import { styles, T } from "../theme/mobileStyles";
 
 export function AuthScreen() {
@@ -238,6 +239,42 @@ export function AccountScreen() {
         {controller.probeError ? (
           <Text style={styles.error}>{controller.probeError}</Text>
         ) : null}
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.panelTitle}>Reader preferences</Text>
+        <Text style={styles.panelSubtitle}>
+          Double tap in the reader uses this default highlight color.
+        </Text>
+        <View style={styles.highlightColorBadgeWrap}>
+          <View
+            style={[
+              styles.highlightColorDot,
+              { backgroundColor: controller.readerHighlightColor },
+            ]}
+          />
+          <Text style={styles.highlightColorCode}>
+            {controller.readerHighlightColor}
+          </Text>
+        </View>
+        <View style={styles.colorChipRow}>
+          {READER_HIGHLIGHT_COLORS.map((color) => (
+            <PressableScale
+              key={color}
+              onPress={() => controller.setReaderHighlightColor(color)}
+              style={[
+                styles.colorChip,
+                { backgroundColor: color },
+                controller.readerHighlightColor.toLowerCase() ===
+                color.toLowerCase()
+                  ? styles.colorChipActive
+                  : null,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Set default highlight color ${color}`}
+            />
+          ))}
+        </View>
       </SurfaceCard>
 
       {showDiagnostics ? (

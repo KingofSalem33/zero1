@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import * as WebBrowser from "expo-web-browser";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   BIBLE_BOOKS,
   formatBookmarkReference,
@@ -34,6 +35,11 @@ import {
 } from "../lib/api";
 import { getBibleBook, type BibleChapterVerse } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
+import {
+  DEFAULT_READER_HIGHLIGHT_COLOR,
+  isReaderHighlightColor,
+  READER_HIGHLIGHT_COLOR_STORAGE_KEY,
+} from "../constants/highlightColors";
 import {
   getOAuthRedirectUrl,
   handleSupabaseAuthRedirect,
@@ -169,6 +175,8 @@ export interface MobileAppController {
   readerFooter: ChapterFooterResult | null;
   readerFooterLoading: boolean;
   readerFooterError: string | null;
+  readerHighlightColor: string;
+  setReaderHighlightColor: (value: string) => void;
   bookmarks: MobileBookmarkItem[];
   bookmarksLoading: boolean;
   bookmarksError: string | null;
@@ -231,6 +239,7 @@ export interface MobileAppController {
     text: string,
     color?: string,
   ) => Promise<void>;
+  handleReaderRemoveHighlightSelection: (verses: number[]) => Promise<void>;
   handleCreateBookmark: () => Promise<void>;
   handleDeleteBookmark: (id: string) => Promise<void>;
   handleCreateHighlight: () => Promise<void>;
@@ -301,6 +310,9 @@ export function useMobileAppController(
   const [readerFooterError, setReaderFooterError] = useState<string | null>(
     null,
   );
+  const [readerHighlightColor, setReaderHighlightColorState] = useState<string>(
+    DEFAULT_READER_HIGHLIGHT_COLOR,
+  );
   const [bookmarks, setBookmarks] = useState<MobileBookmarkItem[]>([]);
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
   const [bookmarksError, setBookmarksError] = useState<string | null>(null);
@@ -352,6 +364,33 @@ export function useMobileAppController(
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
     [highlights, selectedHighlightId],
   );
+
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(READER_HIGHLIGHT_COLOR_STORAGE_KEY)
+      .then((value) => {
+        if (!active || !value) return;
+        if (isReaderHighlightColor(value)) {
+          setReaderHighlightColorState(value);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    void AsyncStorage.setItem(
+      READER_HIGHLIGHT_COLOR_STORAGE_KEY,
+      readerHighlightColor,
+    ).catch(() => {});
+  }, [readerHighlightColor]);
+
+  function setReaderHighlightColor(value: string) {
+    if (!isReaderHighlightColor(value)) return;
+    setReaderHighlightColorState(value);
+  }
   const bookmarkBookSuggestions = useMemo(() => {
     const query = bookmarkDraft.book.trim();
     if (!query) {
@@ -978,7 +1017,7 @@ export function useMobileAppController(
   async function handleReaderHighlightSelection(
     verses: number[],
     text: string,
-    color = "#facc15",
+    color = readerHighlightColor,
   ) {
     const trimmedText = text.trim();
     const canonicalBook = resolveBibleBookName(reader.book);
@@ -1001,6 +1040,7 @@ export function useMobileAppController(
 
     const nowIso = new Date().toISOString();
     const verseLabel = formatVerseRangeLabel(normalizedVerses);
+    const selectedVerseSet = new Set(normalizedVerses);
     const newItem: MobileHighlightItem = {
       id: makeUuidLike(),
       book: canonicalBook,
@@ -1017,25 +1057,118 @@ export function useMobileAppController(
     setHighlightMutationBusy(true);
     setHighlightMutationError(null);
     try {
+      const filteredHighlights = highlights.filter(
+        (item) =>
+          !(
+            item.book.toLowerCase() === canonicalBook.toLowerCase() &&
+            item.chapter === reader.chapter &&
+            item.verses.some((verse) => selectedVerseSet.has(verse))
+          ),
+      );
       const nextHighlights = await withAccessToken((accessToken) =>
         createHighlightViaSync({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
-          currentHighlights: highlights,
+          currentHighlights: filteredHighlights,
           newHighlight: newItem,
         }),
       );
       setHighlights(nextHighlights);
       setHighlightsLoadedAt(new Date().toISOString());
       setSelectedHighlightId(newItem.id);
-      notify("success", "Highlight saved.");
     } catch (error) {
       setHighlightMutationError(
         error instanceof Error ? error.message : String(error),
       );
-      notify(
-        "error",
-        error instanceof Error ? error.message : "Failed to save highlight.",
+    } finally {
+      setHighlightMutationBusy(false);
+    }
+  }
+
+  async function handleReaderRemoveHighlightSelection(verses: number[]) {
+    const canonicalBook = resolveBibleBookName(reader.book);
+    const normalizedVerses = Array.from(new Set(verses))
+      .filter((entry) => Number.isInteger(entry) && entry > 0)
+      .sort((a, b) => a - b);
+
+    if (!canonicalBook) {
+      setHighlightMutationError("Reader book could not be resolved.");
+      return;
+    }
+    if (normalizedVerses.length === 0) {
+      setHighlightMutationError("Select at least one verse.");
+      return;
+    }
+
+    const selectedVerseSet = new Set(normalizedVerses);
+    const matchingHighlights = highlights.filter(
+      (item) =>
+        item.book.toLowerCase() === canonicalBook.toLowerCase() &&
+        item.chapter === reader.chapter &&
+        item.verses.some((verse) => selectedVerseSet.has(verse)),
+    );
+
+    if (matchingHighlights.length === 0) {
+      return;
+    }
+
+    const textByVerse = new Map(
+      reader.verses.map((entry) => [entry.verse, entry.text]),
+    );
+    const deletedIds = new Set<string>();
+    const updatedById = new Map<string, MobileHighlightItem>();
+
+    setHighlightMutationBusy(true);
+    setHighlightMutationError(null);
+    try {
+      await withAccessToken(async (accessToken) => {
+        for (const item of matchingHighlights) {
+          const remainingVerses = item.verses
+            .filter((verse) => !selectedVerseSet.has(verse))
+            .sort((a, b) => a - b);
+
+          if (remainingVerses.length === 0) {
+            await deleteHighlight({
+              apiBaseUrl: MOBILE_ENV.API_URL,
+              accessToken,
+              id: item.id,
+            });
+            deletedIds.add(item.id);
+            continue;
+          }
+
+          const rebuiltText = remainingVerses
+            .map((verse) => `${verse}. ${textByVerse.get(verse) ?? ""}`.trim())
+            .join(" ")
+            .trim();
+          const updated = await updateHighlight({
+            apiBaseUrl: MOBILE_ENV.API_URL,
+            accessToken,
+            id: item.id,
+            updates: {
+              verses: remainingVerses,
+              text: rebuiltText.length > 0 ? rebuiltText : item.text,
+            },
+          });
+          updatedById.set(item.id, {
+            ...updated,
+            referenceLabel: `${canonicalBook} ${reader.chapter}:${formatVerseRangeLabel(remainingVerses)}`,
+          });
+        }
+      });
+
+      setHighlights((current) =>
+        current
+          .filter((item) => !deletedIds.has(item.id))
+          .map((item) => updatedById.get(item.id) ?? item),
+      );
+      setSelectedHighlightId((current) =>
+        current && deletedIds.has(current) ? null : current,
+      );
+      setHighlightsLoadedAt(new Date().toISOString());
+    } catch (error) {
+      setHighlightMutationError(
+        error instanceof Error ? error.message : String(error),
       );
     } finally {
       setHighlightMutationBusy(false);
@@ -1043,7 +1176,7 @@ export function useMobileAppController(
   }
 
   async function handleReaderHighlightVerse(verse: number, text: string) {
-    await handleReaderHighlightSelection([verse], text, "#facc15");
+    await handleReaderHighlightSelection([verse], text, readerHighlightColor);
   }
 
   async function loadBookmarks() {
@@ -1312,11 +1445,20 @@ export function useMobileAppController(
     setHighlightMutationBusy(true);
     setHighlightMutationError(null);
     try {
+      const selectedVerseSet = new Set(verses);
+      const filteredHighlights = highlights.filter(
+        (item) =>
+          !(
+            item.book.toLowerCase() === book.toLowerCase() &&
+            item.chapter === chapter &&
+            item.verses.some((verse) => selectedVerseSet.has(verse))
+          ),
+      );
       const nextHighlights = await withAccessToken((accessToken) =>
         createHighlightViaSync({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
-          currentHighlights: highlights,
+          currentHighlights: filteredHighlights,
           newHighlight: newItem,
         }),
       );
@@ -1446,6 +1588,8 @@ export function useMobileAppController(
     readerFooter,
     readerFooterLoading,
     readerFooterError,
+    readerHighlightColor,
+    setReaderHighlightColor,
     bookmarks,
     bookmarksLoading,
     bookmarksError,
@@ -1496,6 +1640,7 @@ export function useMobileAppController(
     handleReaderBookmarkVerse,
     handleReaderHighlightVerse,
     handleReaderHighlightSelection,
+    handleReaderRemoveHighlightSelection,
     handleCreateBookmark,
     handleDeleteBookmark,
     handleCreateHighlight,

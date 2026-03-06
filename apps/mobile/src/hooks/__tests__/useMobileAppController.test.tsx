@@ -21,6 +21,10 @@ import {
   type MobileAppController,
 } from "../useMobileAppController";
 
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+);
+
 const mockSupabaseSession = {
   access_token: "test-access-token",
   user: { id: "user-1", email: "user@example.com" },
