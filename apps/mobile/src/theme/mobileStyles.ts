@@ -71,9 +71,6 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
   },
-  pressableScalePressed: {
-    opacity: 0.9,
-  },
   panelTitle: {
     color: T.colors.text,
     fontSize: T.typography.heading,

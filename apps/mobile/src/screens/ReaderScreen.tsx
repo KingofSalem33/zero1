@@ -12,22 +12,23 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  getBibleBookSuggestions,
+  BIBLE_BOOKS,
   getBibleChapterCount,
-  resolveBibleBookName,
 } from "@zero1/shared";
 import { ActionButton } from "../components/native/ActionButton";
 import { PressableScale } from "../components/native/PressableScale";
+import { RootTranslationPanel } from "../components/native/RootTranslationPanel";
 import { useMobileApp } from "../context/MobileAppContext";
+import { useRootTranslationMobile } from "../hooks/useRootTranslationMobile";
 import {
-  fetchRootTranslation,
   fetchSynopsis,
   fetchTraceBundle,
-  type RootTranslationResponse,
   type SynopsisResponse,
 } from "../lib/api";
 import { MOBILE_ENV } from "../lib/env";
@@ -38,6 +39,10 @@ const DOUBLE_TAP_WINDOW_MS = 280;
 const HIGHLIGHT_FEEDBACK_IN_MS = 120;
 const HIGHLIGHT_FEEDBACK_OUT_MS = 220;
 const HIGHLIGHT_FEEDBACK_SCALE_MAX = 1.0035;
+const HEADER_HIDE_SCROLL_DISTANCE = 34;
+const HEADER_TOGGLE_ANIMATION_MS = 180;
+const READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY =
+  "biblelot:mobile:reader:last-chapters-by-book";
 
 type SelectionDraft = {
   startVerse: number;
@@ -104,19 +109,43 @@ function formatVerseRangeLabel(verses: number[]): string {
   return `${verses[0]}-${verses[verses.length - 1]}`;
 }
 
+type LastChapterByBookMap = Record<string, number>;
+
+function sanitizeLastChapterMap(raw: unknown): LastChapterByBookMap {
+  if (!raw || typeof raw !== "object") return {};
+  const entries = Object.entries(raw as Record<string, unknown>);
+  const next: LastChapterByBookMap = {};
+  entries.forEach(([book, value]) => {
+    if (
+      typeof book === "string" &&
+      Number.isInteger(value) &&
+      (value as number) > 0
+    ) {
+      next[book] = value as number;
+    }
+  });
+  return next;
+}
+
 export function ReaderScreen({
   nav,
 }: {
   nav: {
     openChat: (prompt: string, autoSend?: boolean) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
+    openModeMenu: () => void;
   };
 }) {
   const controller = useMobileApp();
-  const [bookInput, setBookInput] = useState(controller.reader.book);
-  const [chapterInput, setChapterInput] = useState(
-    String(controller.reader.chapter),
-  );
+  const insets = useSafeAreaInsets();
+  const [bookSelectorVisible, setBookSelectorVisible] = useState(false);
+  const [chapterSelectorVisible, setChapterSelectorVisible] = useState(false);
+  const [chapterSelectionBook, setChapterSelectionBook] = useState<
+    string | null
+  >(null);
+  const [bookFilter, setBookFilter] = useState("");
+  const [lastChapterByBook, setLastChapterByBook] =
+    useState<LastChapterByBookMap>({});
   const [selectionDraft, setSelectionDraft] = useState<SelectionDraft | null>(
     null,
   );
@@ -128,56 +157,139 @@ export function ReaderScreen({
   const [selectionSynopsisError, setSelectionSynopsisError] = useState<
     string | null
   >(null);
-  const [selectionRoot, setSelectionRoot] =
-    useState<RootTranslationResponse | null>(null);
-  const [selectionRootLoading, setSelectionRootLoading] = useState(false);
-  const [selectionRootError, setSelectionRootError] = useState<string | null>(
-    null,
-  );
   const [selectionView, setSelectionView] = useState<"synopsis" | "root">(
     "synopsis",
   );
-  const [activeModalChip, setActiveModalChip] = useState<"synopsis" | "root">(
-    "synopsis",
-  );
+  const {
+    isLoading: rootLoading,
+    language: rootLanguage,
+    words: rootWords,
+    lostContext: rootLostContext,
+    fallbackText: rootFallbackText,
+    selectedWordIndex: rootSelectedWordIndex,
+    setSelectedWordIndex: setRootSelectedWordIndex,
+    generate: generateRootTranslation,
+    reset: resetRootTranslation,
+  } = useRootTranslationMobile({
+    apiBaseUrl: MOBILE_ENV.API_URL,
+    accessToken: controller.session?.access_token,
+  });
   const [selectionMapLoading, setSelectionMapLoading] = useState(false);
   const [selectionCopySuccess, setSelectionCopySuccess] = useState(false);
   const [selectionShareSuccess, setSelectionShareSuccess] = useState(false);
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const [headerMeasuredHeight, setHeaderMeasuredHeight] = useState(56);
   const lastVerseTapRef = useRef<{ verse: number; at: number } | null>(null);
   const suppressNextVersePressRef = useRef(false);
+  const currentScrollYRef = useRef(0);
+  const lastScrollYRef = useRef(0);
+  const headerScrollDeltaRef = useRef(0);
   const [feedbackVerse, setFeedbackVerse] = useState<number | null>(null);
   const feedbackPulse = useRef(new Animated.Value(0)).current;
+  const headerVisibilityAnim = useRef(new Animated.Value(1)).current;
+  const selectorDropAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    setBookInput(controller.reader.book);
-    setChapterInput(String(controller.reader.chapter));
     setSelectionDraft(null);
     setSelectionModalVisible(false);
     setSelectionSynopsis(null);
-    setSelectionRoot(null);
     setSelectionSynopsisError(null);
-    setSelectionRootError(null);
+    resetRootTranslation();
+  }, [controller.reader.book, controller.reader.chapter, resetRootTranslation]);
+
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY)
+      .then((raw) => {
+        if (!active || !raw) return;
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          setLastChapterByBook(sanitizeLastChapterMap(parsed));
+        } catch {
+          setLastChapterByBook({});
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const book = controller.reader.book;
+    const chapter = controller.reader.chapter;
+    setLastChapterByBook((current) => {
+      if (current[book] === chapter) return current;
+      const next = { ...current, [book]: chapter };
+      void AsyncStorage.setItem(
+        READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY,
+        JSON.stringify(next),
+      ).catch(() => {});
+      return next;
+    });
   }, [controller.reader.book, controller.reader.chapter]);
 
-  const bookSuggestions = useMemo(() => {
-    const query = bookInput.trim();
-    if (!query) return [];
-    const suggestions = getBibleBookSuggestions(query, 6);
-    if (
-      suggestions.length === 1 &&
-      suggestions[0].toLowerCase() === query.toLowerCase()
-    ) {
-      return [];
+  useEffect(() => {
+    const selectorVisible = bookSelectorVisible || chapterSelectorVisible;
+    if (!selectorVisible) {
+      selectorDropAnim.setValue(0);
+      return;
     }
-    return suggestions;
-  }, [bookInput]);
 
-  const chapterHint = useMemo(() => {
-    const canonical = resolveBibleBookName(bookInput);
-    const maxChapter = canonical ? getBibleChapterCount(canonical) : null;
-    return maxChapter ? `1-${maxChapter}` : null;
-  }, [bookInput]);
+    selectorDropAnim.setValue(0);
+    Animated.timing(selectorDropAnim, {
+      toValue: 1,
+      duration: 170,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [bookSelectorVisible, chapterSelectorVisible, selectorDropAnim]);
+
+  useEffect(() => {
+    Animated.timing(headerVisibilityAnim, {
+      toValue: headerVisible ? 1 : 0,
+      duration: HEADER_TOGGLE_ANIMATION_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [headerVisible, headerVisibilityAnim]);
+
+  const filteredBooks = useMemo(() => {
+    const query = bookFilter.trim().toLowerCase();
+    if (!query) return [...BIBLE_BOOKS];
+    return BIBLE_BOOKS.filter((book) => book.toLowerCase().includes(query));
+  }, [bookFilter]);
+
+  const filteredOldTestamentBooks = useMemo(
+    () => filteredBooks.filter((book) => BIBLE_BOOKS.indexOf(book) < 39),
+    [filteredBooks],
+  );
+  const filteredNewTestamentBooks = useMemo(
+    () => filteredBooks.filter((book) => BIBLE_BOOKS.indexOf(book) >= 39),
+    [filteredBooks],
+  );
+
+  const chapterSelectionBookName = chapterSelectionBook ?? controller.reader.book;
+  const maxChapterForSelectedBook =
+    getBibleChapterCount(chapterSelectionBookName) ?? 1;
+  const chapterOptions = useMemo(
+    () =>
+      Array.from({ length: maxChapterForSelectedBook }, (_, index) => index + 1),
+    [maxChapterForSelectedBook],
+  );
+  const suggestedChapterForSelectedBook = useMemo(() => {
+    if (chapterSelectionBookName === controller.reader.book) {
+      return controller.reader.chapter;
+    }
+    const saved = lastChapterByBook[chapterSelectionBookName] ?? 1;
+    return Math.min(Math.max(saved, 1), maxChapterForSelectedBook);
+  }, [
+    chapterSelectionBookName,
+    controller.reader.book,
+    controller.reader.chapter,
+    lastChapterByBook,
+    maxChapterForSelectedBook,
+  ]);
 
   const selectedVerses = useMemo(() => {
     if (!selectionDraft) return [];
@@ -265,22 +377,32 @@ export function ReaderScreen({
     return { verses, text };
   }
 
-  async function handleGoToChapter() {
-    const canonical = resolveBibleBookName(bookInput);
-    const parsedChapter = Number(chapterInput.trim());
-    if (!canonical || !Number.isInteger(parsedChapter)) return;
-    await controller.navigateReaderTo(canonical, parsedChapter);
+  async function handleSelectBook(book: string) {
+    setBookSelectorVisible(false);
+    setBookFilter("");
+    setChapterSelectionBook(book);
+    setChapterSelectorVisible(true);
+  }
+
+  function closeChapterSelector() {
+    setChapterSelectorVisible(false);
+    setChapterSelectionBook(null);
+  }
+
+  async function handleSelectChapter(chapter: number) {
+    if (!Number.isInteger(chapter) || chapter <= 0) return;
+    const targetBook = chapterSelectionBook ?? controller.reader.book;
+    closeChapterSelector();
+    await controller.navigateReaderTo(targetBook, chapter);
   }
 
   function clearSelection() {
     setSelectionDraft(null);
     setSelectionModalVisible(false);
     setSelectionSynopsis(null);
-    setSelectionRoot(null);
     setSelectionSynopsisError(null);
-    setSelectionRootError(null);
     setSelectionView("synopsis");
-    setActiveModalChip("synopsis");
+    resetRootTranslation();
     setSelectionCopySuccess(false);
     setSelectionShareSuccess(false);
     lastVerseTapRef.current = null;
@@ -312,32 +434,6 @@ export function ReaderScreen({
     }
   }
 
-  async function loadSelectionRootTranslation(payload?: SelectionPayload) {
-    const activePayload =
-      payload ?? { text: selectedText, verses: selectedVerses };
-    if (!activePayload.text || activePayload.verses.length === 0) return;
-    setSelectionRootLoading(true);
-    setSelectionRootError(null);
-    try {
-      const result = await fetchRootTranslation({
-        apiBaseUrl: MOBILE_ENV.API_URL,
-        selectedText: activePayload.text,
-        maxWords: 140,
-        book: controller.reader.book,
-        chapter: controller.reader.chapter,
-        verses: activePayload.verses,
-      });
-      setSelectionRoot(result);
-    } catch (error) {
-      setSelectionRootError(
-        error instanceof Error ? error.message : String(error),
-      );
-      setSelectionRoot(null);
-    } finally {
-      setSelectionRootLoading(false);
-    }
-  }
-
   async function openSelectionTools(draft?: SelectionDraft) {
     const payload = draft
       ? buildSelectionPayload(draft)
@@ -345,10 +441,26 @@ export function ReaderScreen({
     if (!payload.text || payload.verses.length === 0) return;
     setSelectionModalVisible(true);
     setSelectionView("synopsis");
-    setActiveModalChip("synopsis");
+    resetRootTranslation();
     setSelectionCopySuccess(false);
     setSelectionShareSuccess(false);
     await loadSelectionSynopsis(payload);
+  }
+
+  async function handleRootTranslation() {
+    const payload = { text: selectedText, verses: selectedVerses };
+    if (!payload.text || payload.verses.length === 0) return;
+    setSelectionView("root");
+    await generateRootTranslation(payload.text, {
+      book: controller.reader.book,
+      chapter: controller.reader.chapter,
+      verses: payload.verses,
+    });
+  }
+
+  function handleBackToSynopsis() {
+    resetRootTranslation();
+    setSelectionView("synopsis");
   }
 
   async function handleTraceSelection() {
@@ -402,6 +514,53 @@ export function ReaderScreen({
         ? "Shared"
         : null;
 
+  const headerContainerAnimatedStyle = {
+    opacity: headerVisibilityAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+    }),
+    transform: [
+      {
+        translateY: headerVisibilityAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-headerMeasuredHeight, 0],
+        }),
+      },
+    ],
+    marginBottom: headerVisibilityAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [-headerMeasuredHeight, 0],
+    }),
+  } as const;
+
+  function handleReaderScroll(yOffset: number) {
+    const clampedY = Math.max(0, yOffset);
+    const delta = Math.abs(clampedY - lastScrollYRef.current);
+    lastScrollYRef.current = clampedY;
+    currentScrollYRef.current = clampedY;
+
+    if (!headerVisible) return;
+    if (bookSelectorVisible || chapterSelectorVisible || selectionModalVisible) {
+      return;
+    }
+    if (clampedY <= 0) {
+      headerScrollDeltaRef.current = 0;
+      return;
+    }
+
+    headerScrollDeltaRef.current += delta;
+    if (headerScrollDeltaRef.current >= HEADER_HIDE_SCROLL_DISTANCE) {
+      setHeaderVisible(false);
+      headerScrollDeltaRef.current = 0;
+    }
+  }
+
+  function revealHeader() {
+    setHeaderVisible(true);
+    headerScrollDeltaRef.current = 0;
+    lastScrollYRef.current = currentScrollYRef.current;
+  }
+
   function handleVerseTextPress(verse: number, text: string) {
     if (suppressNextVersePressRef.current) {
       suppressNextVersePressRef.current = false;
@@ -444,129 +603,120 @@ export function ReaderScreen({
 
   return (
     <View style={localStyles.root}>
-      <View style={localStyles.headerShell}>
-        {headerCollapsed ? (
-          <View style={localStyles.headerCollapsedBar}>
-            <Text style={localStyles.headerCollapsedLabel} numberOfLines={1}>
-              {controller.reader.book} {controller.reader.chapter}
-            </Text>
+      <Animated.View
+        pointerEvents={headerVisible ? "auto" : "none"}
+        onLayout={(event) => {
+          const measured = Math.round(event.nativeEvent.layout.height);
+          if (measured > 0 && measured !== headerMeasuredHeight) {
+            setHeaderMeasuredHeight(measured);
+          }
+        }}
+        style={[localStyles.headerShell, headerContainerAnimatedStyle]}
+      >
+        <View style={localStyles.headerBar}>
+          <View style={localStyles.headerControlsTopRow}>
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel="Show reader controls"
-              onPress={() => setHeaderCollapsed(false)}
-              style={localStyles.headerToggleButton}
+              accessibilityLabel="Open mode menu"
+              motionPreset="quiet"
+              onPress={nav.openModeMenu}
+              style={localStyles.headerMenuButton}
             >
-              <Ionicons color={T.colors.textMuted} name="chevron-down" size={16} />
+              <Ionicons color={T.colors.textMuted} name="menu" size={18} />
             </PressableScale>
-          </View>
-        ) : (
-          <View style={localStyles.headerBar}>
-            <View style={localStyles.headerControlsTopRow}>
-              <Text style={styles.caption}>
-                {controller.reader.book} {controller.reader.chapter}
-                {chapterHint ? ` - Chapters ${chapterHint}` : ""}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Open book selector"
+              motionPreset="quiet"
+              disabled={controller.readerLoading}
+              onPress={() => {
+                setBookFilter("");
+                setBookSelectorVisible(true);
+              }}
+              style={[
+                localStyles.headerPickerButton,
+                localStyles.headerBookPickerButton,
+              ]}
+            >
+              <Text
+                style={localStyles.headerPickerLabel}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {controller.reader.book}
               </Text>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel="Hide reader controls"
-                onPress={() => setHeaderCollapsed(true)}
-                style={localStyles.headerToggleButton}
-              >
-                <Ionicons color={T.colors.textMuted} name="chevron-up" size={16} />
-              </PressableScale>
-            </View>
-
-            <View style={localStyles.headerControlsRow}>
-              <TextInput
-                autoCapitalize="words"
-                placeholder="Book"
-                accessibilityLabel="Reader book"
-                placeholderTextColor={T.colors.textMuted}
-                style={localStyles.bookInput}
-                value={bookInput}
-                onChangeText={setBookInput}
-              />
-              <TextInput
-                keyboardType="number-pad"
-                placeholder="Ch"
-                accessibilityLabel="Reader chapter"
-                placeholderTextColor={T.colors.textMuted}
-                style={localStyles.chapterInput}
-                value={chapterInput}
-                onChangeText={setChapterInput}
-              />
-              <ActionButton
-                disabled={controller.readerLoading}
-                label="Go"
-                onPress={() => void handleGoToChapter()}
-                variant="primary"
-                style={localStyles.compactPrimaryButton}
-                labelStyle={localStyles.compactPrimaryButtonLabel}
-              />
-              <ActionButton
-                disabled={controller.readerLoading}
-                label="Prev"
-                onPress={() => void controller.goToPreviousReaderChapter()}
-                variant="ghost"
-                style={localStyles.compactHeaderAction}
-                labelStyle={localStyles.compactHeaderActionLabel}
-              />
-              <ActionButton
-                disabled={controller.readerLoading}
-                label="Next"
-                onPress={() => void controller.goToNextReaderChapter()}
-                variant="ghost"
-                style={localStyles.compactHeaderAction}
-                labelStyle={localStyles.compactHeaderActionLabel}
-              />
-            </View>
-
-            {bookSuggestions.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={localStyles.headerSuggestionRow}
-              >
-                {bookSuggestions.map((book) => (
-                  <PressableScale
-                    key={book}
-                    onPress={() => setBookInput(book)}
-                    style={localStyles.headerSuggestionChip}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Select ${book}`}
-                  >
-                    <Text style={styles.suggestionChipLabel}>{book}</Text>
-                  </PressableScale>
-                ))}
-              </ScrollView>
-            ) : null}
-
-            {selectionDraft ? (
-              <View style={localStyles.selectionStatusRow}>
-                <Text style={styles.caption} numberOfLines={1}>
-                  Selection: {selectedVerseLabel}
-                </Text>
-                <ActionButton
-                  label="Clear"
-                  variant="ghost"
-                  onPress={clearSelection}
-                  style={localStyles.compactHeaderAction}
-                  labelStyle={localStyles.compactHeaderActionLabel}
-                />
-              </View>
-            ) : null}
-
-            {controller.readerError ? (
-              <Text style={styles.error}>{controller.readerError}</Text>
-            ) : null}
+              <Ionicons color={T.colors.textMuted} name="chevron-down" size={14} />
+            </PressableScale>
+            <ActionButton
+              disabled={controller.readerLoading}
+              label="Prev"
+              motionPreset="quiet"
+              onPress={() => void controller.goToPreviousReaderChapter()}
+              variant="ghost"
+              style={localStyles.headerNavButton}
+              labelStyle={localStyles.compactHeaderActionLabel}
+            />
+            <ActionButton
+              disabled={controller.readerLoading}
+              label="Next"
+              motionPreset="quiet"
+              onPress={() => void controller.goToNextReaderChapter()}
+              variant="ghost"
+              style={localStyles.headerNavButton}
+              labelStyle={localStyles.compactHeaderActionLabel}
+            />
           </View>
-        )}
-      </View>
+
+          {selectionDraft ? (
+            <View style={localStyles.selectionStatusRow}>
+              <Text style={styles.caption} numberOfLines={1}>
+                Selection: {selectedVerseLabel}
+              </Text>
+              <ActionButton
+                label="Clear"
+                variant="ghost"
+                motionPreset="quiet"
+                onPress={clearSelection}
+                style={localStyles.compactHeaderAction}
+                labelStyle={localStyles.compactHeaderActionLabel}
+              />
+            </View>
+          ) : null}
+
+          {controller.readerError ? (
+            <Text style={styles.error}>{controller.readerError}</Text>
+          ) : null}
+        </View>
+      </Animated.View>
+
+      {!headerVisible ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            localStyles.headerRevealOverlay,
+            { top: Math.max(insets.top + 4, 8) },
+          ]}
+        >
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Show reader header"
+            motionPreset="quiet"
+            onPress={revealHeader}
+            style={localStyles.headerRevealButton}
+          >
+            <Ionicons color={T.colors.textMuted} name="chevron-down" size={16} />
+          </PressableScale>
+        </View>
+      ) : null}
 
       <ScrollView
         style={localStyles.readerScroll}
         contentContainerStyle={localStyles.readerContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          handleReaderScroll(event.nativeEvent.contentOffset.y);
+        }}
       >
         <View style={localStyles.readingSurface}>
           {controller.readerLoading && controller.reader.verses.length === 0 ? (
@@ -628,6 +778,7 @@ export function ReaderScreen({
                 <PressableScale
                   accessibilityRole="button"
                   accessibilityLabel={`Verse ${item.verse} references`}
+                  motionPreset="quiet"
                   onPress={() => void controller.selectReaderVerse(item.verse)}
                   style={localStyles.verseNumberButton}
                 >
@@ -693,6 +844,7 @@ export function ReaderScreen({
                           reference.chapter,
                         )
                       }
+                      motionPreset="quiet"
                       style={styles.suggestionChip}
                       accessibilityRole="button"
                       accessibilityLabel={`Open ${label}`}
@@ -726,6 +878,7 @@ export function ReaderScreen({
                     <PressableScale
                       key={`${card.lens}-${card.title}-${index}`}
                       onPress={() => nav.openChat(card.prompt, true)}
+                      motionPreset="quiet"
                       style={localStyles.footerCardButton}
                       accessibilityRole="button"
                       accessibilityLabel={`Open ${card.title} in chat`}
@@ -749,6 +902,222 @@ export function ReaderScreen({
       </ScrollView>
 
       <Modal
+        visible={bookSelectorVisible}
+        animationType="none"
+        transparent
+        onRequestClose={() => setBookSelectorVisible(false)}
+      >
+        <View style={localStyles.selectorOverlayTop}>
+          <Pressable
+            onPress={() => setBookSelectorVisible(false)}
+            style={localStyles.modalBackdrop}
+          />
+          <Animated.View
+            style={[
+              localStyles.selectorDropdownCard,
+              {
+                opacity: selectorDropAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+                transform: [
+                  {
+                    translateY: selectorDropAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-20, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={localStyles.modalHeaderRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.panelTitle}>Select Book</Text>
+              </View>
+              <ActionButton
+                label="Close"
+                variant="ghost"
+                motionPreset="quiet"
+                onPress={() => setBookSelectorVisible(false)}
+              />
+            </View>
+            <TextInput
+              autoCapitalize="words"
+              autoCorrect={false}
+              placeholder="Search books..."
+              placeholderTextColor={T.colors.textMuted}
+              style={localStyles.bookSearchInput}
+              value={bookFilter}
+              onChangeText={setBookFilter}
+            />
+            <ScrollView
+              style={localStyles.selectorScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {filteredOldTestamentBooks.length > 0 ? (
+                <View style={localStyles.selectorSection}>
+                  <Text style={localStyles.selectorSectionLabel}>
+                    Old Testament
+                  </Text>
+                  {filteredOldTestamentBooks.map((book) => (
+                    <PressableScale
+                      key={book}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${book}`}
+                      motionPreset="quiet"
+                      disabled={controller.readerLoading}
+                      onPress={() => void handleSelectBook(book)}
+                      style={[
+                        localStyles.selectorRowButton,
+                        book === controller.reader.book
+                          ? localStyles.selectorRowButtonActive
+                          : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          localStyles.selectorRowLabel,
+                          book === controller.reader.book
+                            ? localStyles.selectorRowLabelActive
+                            : null,
+                        ]}
+                      >
+                        {book}
+                      </Text>
+                      <Text style={localStyles.selectorRowMeta}>
+                        Ch {lastChapterByBook[book] ?? 1}
+                      </Text>
+                    </PressableScale>
+                  ))}
+                </View>
+              ) : null}
+              {filteredNewTestamentBooks.length > 0 ? (
+                <View style={localStyles.selectorSection}>
+                  <Text style={localStyles.selectorSectionLabel}>
+                    New Testament
+                  </Text>
+                  {filteredNewTestamentBooks.map((book) => (
+                    <PressableScale
+                      key={book}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${book}`}
+                      motionPreset="quiet"
+                      disabled={controller.readerLoading}
+                      onPress={() => void handleSelectBook(book)}
+                      style={[
+                        localStyles.selectorRowButton,
+                        book === controller.reader.book
+                          ? localStyles.selectorRowButtonActive
+                          : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          localStyles.selectorRowLabel,
+                          book === controller.reader.book
+                            ? localStyles.selectorRowLabelActive
+                            : null,
+                        ]}
+                      >
+                        {book}
+                      </Text>
+                      <Text style={localStyles.selectorRowMeta}>
+                        Ch {lastChapterByBook[book] ?? 1}
+                      </Text>
+                    </PressableScale>
+                  ))}
+                </View>
+              ) : null}
+              {filteredBooks.length === 0 ? (
+                <Text style={styles.caption}>No books match "{bookFilter}".</Text>
+              ) : null}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={chapterSelectorVisible}
+        animationType="none"
+        transparent
+        onRequestClose={closeChapterSelector}
+      >
+        <View style={localStyles.selectorOverlayTop}>
+          <Pressable
+            onPress={closeChapterSelector}
+            style={localStyles.modalBackdrop}
+          />
+          <Animated.View
+            style={[
+              localStyles.selectorDropdownCard,
+              {
+                opacity: selectorDropAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+                transform: [
+                  {
+                    translateY: selectorDropAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-20, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={localStyles.modalHeaderRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.panelTitle}>Select Chapter</Text>
+                <Text style={styles.caption}>{chapterSelectionBookName}</Text>
+              </View>
+              <ActionButton
+                label="Close"
+                variant="ghost"
+                motionPreset="quiet"
+                onPress={closeChapterSelector}
+              />
+            </View>
+            <ScrollView
+              style={localStyles.selectorScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={localStyles.chapterGrid}>
+                {chapterOptions.map((chapter) => (
+                  <PressableScale
+                    key={`chapter-${chapter}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open chapter ${chapter}`}
+                    motionPreset="quiet"
+                    disabled={controller.readerLoading}
+                    onPress={() => void handleSelectChapter(chapter)}
+                    style={[
+                      localStyles.chapterChip,
+                      chapter === suggestedChapterForSelectedBook
+                        ? localStyles.chapterChipActive
+                        : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        localStyles.chapterChipLabel,
+                        chapter === suggestedChapterForSelectedBook
+                          ? localStyles.chapterChipLabelActive
+                          : null,
+                      ]}
+                    >
+                      {chapter}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={selectionModalVisible}
         animationType="slide"
         transparent
@@ -765,135 +1134,89 @@ export function ReaderScreen({
               <ActionButton
                 label="Close"
                 variant="ghost"
+                motionPreset="quiet"
                 onPress={clearSelection}
               />
             </View>
 
             <ScrollView style={localStyles.modalContent}>
-              <View style={localStyles.modalTabRow}>
-                <PressableScale
-                  onPress={() => {
-                    setSelectionView("synopsis");
-                    setActiveModalChip("synopsis");
-                  }}
-                  style={[
-                    styles.outlineChip,
-                    activeModalChip === "synopsis"
-                      ? styles.outlineChipActive
-                      : null,
-                  ]}
-                >
-                  <Text style={styles.outlineChipLabel}>Synopsis</Text>
-                </PressableScale>
-                <PressableScale
-                  onPress={() => {
-                    setSelectionView("root");
-                    setActiveModalChip("root");
-                    if (!selectionRoot && !selectionRootLoading) {
-                      void loadSelectionRootTranslation();
-                    }
-                  }}
-                  style={[
-                    styles.outlineChip,
-                    activeModalChip === "root" ? styles.outlineChipActive : null,
-                  ]}
-                >
-                  <Text style={styles.outlineChipLabel}>Root</Text>
-                </PressableScale>
-              </View>
-
-              {modalFeedbackLabel ? (
+              {selectionView === "synopsis" && modalFeedbackLabel ? (
                 <Text style={localStyles.modalFeedbackText}>
                   {modalFeedbackLabel}
                 </Text>
               ) : null}
 
               {selectionView === "synopsis" ? (
-                <View style={localStyles.modalPanel}>
-                  {selectionSynopsisLoading ? (
-                    <View style={styles.rowAlignCenter}>
-                      <ActivityIndicator color={T.colors.accent} />
-                      <Text style={styles.caption}>Analyzing selection...</Text>
-                    </View>
-                  ) : null}
-                  {selectionSynopsisError ? (
-                    <Text style={styles.error}>{selectionSynopsisError}</Text>
-                  ) : null}
-                  {selectionSynopsis && !selectionSynopsisLoading ? (
-                    <Text style={styles.connectionSynopsis}>
-                      {selectionSynopsis.synopsis}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={localStyles.modalPanel}>
-                  {selectionRootLoading ? (
-                    <View style={styles.rowAlignCenter}>
-                      <ActivityIndicator color={T.colors.accent} />
-                      <Text style={styles.caption}>
-                        Loading root translation...
-                      </Text>
-                    </View>
-                  ) : null}
-                  {selectionRootError ? (
-                    <Text style={styles.error}>{selectionRootError}</Text>
-                  ) : null}
-                  {selectionRoot ? (
-                    <>
-                      <Text style={styles.caption}>
-                        Language: {selectionRoot.language || "unknown"}
-                      </Text>
+                <>
+                  <View style={localStyles.modalPanel}>
+                    {selectionSynopsisLoading ? (
+                      <View style={styles.rowAlignCenter}>
+                        <ActivityIndicator color={T.colors.accent} />
+                        <Text style={styles.caption}>Analyzing selection...</Text>
+                      </View>
+                    ) : null}
+                    {selectionSynopsisError ? (
+                      <Text style={styles.error}>{selectionSynopsisError}</Text>
+                    ) : null}
+                    {selectionSynopsis && !selectionSynopsisLoading ? (
                       <Text style={styles.connectionSynopsis}>
-                        {selectionRoot.lostContext}
+                        {selectionSynopsis.synopsis}
                       </Text>
-                      {selectionRoot.words.length > 0 ? (
-                        <View style={localStyles.rootWordsWrap}>
-                          {selectionRoot.words
-                            .slice(0, 12)
-                            .map((word, index) => (
-                              <View
-                                key={`${word.english}-${word.strongs}-${index}`}
-                                style={localStyles.rootWordChip}
-                              >
-                                <Text style={localStyles.rootWordTitle}>
-                                  {word.english}
-                                </Text>
-                                <Text style={localStyles.rootWordBody}>
-                                  {word.original || word.strongs || "-"}
-                                </Text>
-                              </View>
-                            ))}
-                        </View>
-                      ) : null}
-                    </>
-                  ) : null}
-                </View>
-              )}
+                    ) : null}
+                  </View>
 
-              <View style={localStyles.modalActionRow}>
-                <ActionButton
-                  label={selectionMapLoading ? "Tracing..." : "Trace"}
-                  variant="primary"
-                  disabled={selectionMapLoading}
-                  onPress={() => void handleTraceSelection()}
-                  style={localStyles.compactPrimaryButton}
-                  labelStyle={localStyles.compactPrimaryButtonLabel}
+                  <View style={localStyles.modalActionRow}>
+                    <ActionButton
+                      label={selectionMapLoading ? "Tracing..." : "Trace"}
+                      variant="primary"
+                      motionPreset="quiet"
+                      disabled={selectionMapLoading}
+                      onPress={() => void handleTraceSelection()}
+                      style={localStyles.compactPrimaryButton}
+                      labelStyle={localStyles.compactPrimaryButtonLabel}
+                    />
+                    <ActionButton
+                      label={selectionCopySuccess ? "Copied" : "Copy"}
+                      variant="ghost"
+                      motionPreset="quiet"
+                      onPress={() => void handleCopySelection()}
+                      style={localStyles.compactHeaderAction}
+                      labelStyle={localStyles.compactHeaderActionLabel}
+                    />
+                    <ActionButton
+                      label={selectionShareSuccess ? "Shared" : "Share"}
+                      variant="ghost"
+                      motionPreset="quiet"
+                      onPress={() => void handleShareSelection()}
+                      style={localStyles.compactHeaderAction}
+                      labelStyle={localStyles.compactHeaderActionLabel}
+                    />
+                    <ActionButton
+                      label={rootLoading ? "ROOT..." : "ROOT"}
+                      variant="ghost"
+                      motionPreset="quiet"
+                      disabled={selectionSynopsisLoading || rootLoading}
+                      onPress={() => void handleRootTranslation()}
+                      style={localStyles.compactHeaderAction}
+                      labelStyle={[
+                        localStyles.compactHeaderActionLabel,
+                        localStyles.rootActionLabel,
+                      ]}
+                    />
+                  </View>
+                </>
+              ) : (
+                <RootTranslationPanel
+                  isLoading={rootLoading}
+                  language={rootLanguage}
+                  words={rootWords}
+                  lostContext={rootLostContext}
+                  fallbackText={rootFallbackText}
+                  selectedWordIndex={rootSelectedWordIndex}
+                  onSelectWord={setRootSelectedWordIndex}
+                  onBack={handleBackToSynopsis}
                 />
-                <ActionButton
-                  label={selectionCopySuccess ? "Copied" : "Copy"}
-                  variant="ghost"
-                  onPress={() => void handleCopySelection()}
-                  style={localStyles.compactHeaderAction}
-                  labelStyle={localStyles.compactHeaderActionLabel}
-                />
-                <ActionButton
-                  label={selectionShareSuccess ? "Shared" : "Share"}
-                  variant="ghost"
-                  onPress={() => void handleShareSelection()}
-                  style={localStyles.compactHeaderAction}
-                  labelStyle={localStyles.compactHeaderActionLabel}
-                />
-              </View>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -911,6 +1234,7 @@ const localStyles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: T.colors.border,
     backgroundColor: "rgba(24,24,27,0.94)",
+    zIndex: 12,
   },
   headerBar: {
     paddingHorizontal: 6,
@@ -920,62 +1244,46 @@ const localStyles = StyleSheet.create({
   headerControlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 28,
-    gap: 8,
+    gap: 6,
+    minHeight: 36,
   },
-  headerCollapsedBar: {
-    minHeight: 34,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  headerCollapsedLabel: {
-    flex: 1,
-    color: T.colors.textMuted,
-    fontSize: T.typography.caption,
-    fontWeight: "600",
-  },
-  headerToggleButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 28,
+  headerMenuButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: T.colors.border,
     backgroundColor: T.colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerControlsRow: {
+  headerPickerButton: {
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: 8,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 4,
   },
-  bookInput: {
+  headerBookPickerButton: {
     flex: 1,
-    minHeight: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
-    color: T.colors.text,
-    fontSize: T.typography.caption,
-    paddingHorizontal: 8,
+    minWidth: 114,
   },
-  chapterInput: {
-    width: 44,
-    minHeight: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
+  headerPickerLabel: {
     color: T.colors.text,
     fontSize: T.typography.caption,
-    textAlign: "center",
-    paddingHorizontal: 2,
+    fontWeight: "600",
+  },
+  headerNavButton: {
+    width: 52,
+    minHeight: 34,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
   },
   compactPrimaryButton: {
     flex: 0,
@@ -999,22 +1307,27 @@ const localStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
-  headerSuggestionRow: {
-    gap: 6,
-    paddingVertical: 2,
-  },
-  headerSuggestionChip: {
-    borderRadius: T.radius.pill,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.canvasMuted,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
   selectionStatusRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+  },
+  headerRevealOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 24,
+  },
+  headerRevealButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
   readerScroll: {
     flex: 1,
@@ -1173,6 +1486,103 @@ const localStyles = StyleSheet.create({
     padding: T.spacing.md,
     gap: T.spacing.sm,
   },
+  selectorOverlayTop: {
+    flex: 1,
+    justifyContent: "flex-start",
+  },
+  selectorDropdownCard: {
+    maxHeight: "78%",
+    borderBottomLeftRadius: T.radius.lg,
+    borderBottomRightRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.ink,
+    padding: T.spacing.md,
+    gap: T.spacing.sm,
+    paddingTop: T.spacing.sm,
+  },
+  bookSearchInput: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.surface,
+    color: T.colors.text,
+    paddingHorizontal: T.spacing.sm,
+    fontSize: T.typography.caption,
+  },
+  selectorScroll: {
+    maxHeight: 520,
+  },
+  selectorSection: {
+    gap: 6,
+    paddingBottom: 10,
+  },
+  selectorSectionLabel: {
+    color: T.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginTop: 4,
+  },
+  selectorRowButton: {
+    minHeight: 40,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  selectorRowButtonActive: {
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accentSoft,
+  },
+  selectorRowLabel: {
+    color: T.colors.text,
+    fontSize: T.typography.bodySm,
+    fontWeight: "600",
+  },
+  selectorRowLabelActive: {
+    color: T.colors.accentStrong,
+  },
+  selectorRowMeta: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    fontWeight: "600",
+  },
+  chapterGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingBottom: T.spacing.md,
+  },
+  chapterChip: {
+    width: 56,
+    minHeight: 40,
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chapterChipActive: {
+    borderColor: T.colors.accent,
+    backgroundColor: T.colors.accentSoft,
+  },
+  chapterChipLabel: {
+    color: T.colors.text,
+    fontSize: T.typography.bodySm,
+    fontWeight: "700",
+  },
+  chapterChipLabelActive: {
+    color: T.colors.accentStrong,
+  },
   modalHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1195,11 +1605,6 @@ const localStyles = StyleSheet.create({
     fontSize: T.typography.body,
     lineHeight: 28,
   },
-  modalTabRow: {
-    flexDirection: "row",
-    gap: T.spacing.sm,
-    marginBottom: T.spacing.sm,
-  },
   modalFeedbackText: {
     color: T.colors.textMuted,
     fontSize: T.typography.caption,
@@ -1220,6 +1625,10 @@ const localStyles = StyleSheet.create({
     gap: 6,
     marginBottom: T.spacing.sm,
   },
+  rootActionLabel: {
+    color: T.colors.accent,
+    fontWeight: "700",
+  },
   highlightRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1233,28 +1642,5 @@ const localStyles = StyleSheet.create({
     borderRadius: T.touchTarget.min,
     borderWidth: 1,
     borderColor: T.colors.border,
-  },
-  rootWordsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: T.spacing.xs,
-  },
-  rootWordChip: {
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    borderRadius: T.radius.md,
-    backgroundColor: T.colors.canvasMuted,
-    paddingHorizontal: T.spacing.sm,
-    paddingVertical: 6,
-    minWidth: 96,
-  },
-  rootWordTitle: {
-    color: T.colors.text,
-    fontSize: T.typography.caption,
-    fontWeight: "700",
-  },
-  rootWordBody: {
-    color: T.colors.textMuted,
-    fontSize: T.typography.caption,
   },
 });

@@ -7,7 +7,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { styles } from "../../theme/mobileStyles";
-import { PressableScale } from "./PressableScale";
+import { PressableScale, type PressMotionPreset } from "./PressableScale";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -31,6 +31,7 @@ interface ActionButtonProps extends PressableProps {
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
   leftIcon?: ReactNode;
+  motionPreset?: PressMotionPreset;
 }
 
 export function ActionButton({
@@ -40,6 +41,7 @@ export function ActionButton({
   style,
   labelStyle,
   leftIcon,
+  motionPreset,
   accessibilityLabel,
   ...rest
 }: ActionButtonProps) {
@@ -47,6 +49,7 @@ export function ActionButton({
     <PressableScale
       {...rest}
       disabled={disabled}
+      motionPreset={motionPreset}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: Boolean(disabled) }}
