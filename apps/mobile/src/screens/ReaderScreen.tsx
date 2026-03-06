@@ -17,10 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  BIBLE_BOOKS,
-  getBibleChapterCount,
-} from "@zero1/shared";
+import { BIBLE_BOOKS, getBibleChapterCount } from "@zero1/shared";
 import { ActionButton } from "../components/native/ActionButton";
 import { PressableScale } from "../components/native/PressableScale";
 import { RootTranslationPanel } from "../components/native/RootTranslationPanel";
@@ -60,7 +57,9 @@ type HighlightTone = {
   bar: string;
 };
 
-function parseHexColor(input: string): { r: number; g: number; b: number } | null {
+function parseHexColor(
+  input: string,
+): { r: number; g: number; b: number } | null {
   const value = input.trim().replace("#", "");
   if (!/^[0-9a-fA-F]{3,8}$/.test(value)) return null;
   const normalized =
@@ -79,7 +78,10 @@ function parseHexColor(input: string): { r: number; g: number; b: number } | nul
   };
 }
 
-function rgba(color: { r: number; g: number; b: number }, alpha: number): string {
+function rgba(
+  color: { r: number; g: number; b: number },
+  alpha: number,
+): string {
   return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
 }
 
@@ -269,12 +271,16 @@ export function ReaderScreen({
     [filteredBooks],
   );
 
-  const chapterSelectionBookName = chapterSelectionBook ?? controller.reader.book;
+  const chapterSelectionBookName =
+    chapterSelectionBook ?? controller.reader.book;
   const maxChapterForSelectedBook =
     getBibleChapterCount(chapterSelectionBookName) ?? 1;
   const chapterOptions = useMemo(
     () =>
-      Array.from({ length: maxChapterForSelectedBook }, (_, index) => index + 1),
+      Array.from(
+        { length: maxChapterForSelectedBook },
+        (_, index) => index + 1,
+      ),
     [maxChapterForSelectedBook],
   );
   const suggestedChapterForSelectedBook = useMemo(() => {
@@ -316,7 +322,10 @@ export function ReaderScreen({
   }, [controller.reader.verses, selectedVerses]);
 
   const verseHighlightMap = useMemo(() => {
-    const map = new Map<number, { color: string; tone: HighlightTone | null }>();
+    const map = new Map<
+      number,
+      { color: string; tone: HighlightTone | null }
+    >();
     controller.highlights.forEach((highlight) => {
       if (
         highlight.book.toLowerCase() === controller.reader.book.toLowerCase() &&
@@ -409,8 +418,10 @@ export function ReaderScreen({
   }
 
   async function loadSelectionSynopsis(payload?: SelectionPayload) {
-    const activePayload =
-      payload ?? { text: selectedText, verses: selectedVerses };
+    const activePayload = payload ?? {
+      text: selectedText,
+      verses: selectedVerses,
+    };
     if (!activePayload.text || activePayload.verses.length === 0) return;
     setSelectionSynopsisLoading(true);
     setSelectionSynopsisError(null);
@@ -540,7 +551,11 @@ export function ReaderScreen({
     currentScrollYRef.current = clampedY;
 
     if (!headerVisible) return;
-    if (bookSelectorVisible || chapterSelectorVisible || selectionModalVisible) {
+    if (
+      bookSelectorVisible ||
+      chapterSelectorVisible ||
+      selectionModalVisible
+    ) {
       return;
     }
     if (clampedY <= 0) {
@@ -645,7 +660,11 @@ export function ReaderScreen({
               >
                 {controller.reader.book}
               </Text>
-              <Ionicons color={T.colors.textMuted} name="chevron-down" size={14} />
+              <Ionicons
+                color={T.colors.textMuted}
+                name="chevron-down"
+                size={14}
+              />
             </PressableScale>
             <ActionButton
               disabled={controller.readerLoading}
@@ -704,7 +723,11 @@ export function ReaderScreen({
             onPress={revealHeader}
             style={localStyles.headerRevealButton}
           >
-            <Ionicons color={T.colors.textMuted} name="chevron-down" size={16} />
+            <Ionicons
+              color={T.colors.textMuted}
+              name="chevron-down"
+              size={16}
+            />
           </PressableScale>
         </View>
       ) : null}
@@ -760,8 +783,7 @@ export function ReaderScreen({
                             highlightVisual.tone?.stroke ??
                             "rgba(128, 90, 8, 0.85)",
                           borderLeftColor:
-                            highlightVisual.tone?.bar ??
-                            T.colors.accent,
+                            highlightVisual.tone?.bar ?? T.colors.accent,
                           shadowColor:
                             highlightVisual.tone?.bar ?? T.colors.accent,
                         },
@@ -1030,7 +1052,9 @@ export function ReaderScreen({
                 </View>
               ) : null}
               {filteredBooks.length === 0 ? (
-                <Text style={styles.caption}>No books match "{bookFilter}".</Text>
+                <Text style={styles.caption}>
+                  No books match "{bookFilter}".
+                </Text>
               ) : null}
             </ScrollView>
           </Animated.View>
@@ -1124,7 +1148,10 @@ export function ReaderScreen({
         onRequestClose={clearSelection}
       >
         <View style={localStyles.modalOverlay}>
-          <Pressable onPress={clearSelection} style={localStyles.modalBackdrop} />
+          <Pressable
+            onPress={clearSelection}
+            style={localStyles.modalBackdrop}
+          />
           <View style={localStyles.modalCard}>
             <View style={localStyles.modalHeaderRow}>
               <View style={styles.flex1}>
@@ -1152,7 +1179,9 @@ export function ReaderScreen({
                     {selectionSynopsisLoading ? (
                       <View style={styles.rowAlignCenter}>
                         <ActivityIndicator color={T.colors.accent} />
-                        <Text style={styles.caption}>Analyzing selection...</Text>
+                        <Text style={styles.caption}>
+                          Analyzing selection...
+                        </Text>
                       </View>
                     ) : null}
                     {selectionSynopsisError ? (

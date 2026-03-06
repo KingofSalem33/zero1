@@ -25,7 +25,12 @@ export function chunkLostContext(
 
     const chunks: string[] = [];
     for (let i = 0; i < words.length; i += maxWords) {
-      chunks.push(words.slice(i, i + maxWords).join(" ").trim());
+      chunks.push(
+        words
+          .slice(i, i + maxWords)
+          .join(" ")
+          .trim(),
+      );
     }
     return chunks;
   }

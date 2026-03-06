@@ -3,7 +3,9 @@
 Last updated: 2026-03-06
 
 ## Thread Purpose
+
 Continuous reconciliation between:
+
 - Mobile UX Expert
 - Mobile UI Expert
 - Web UI/UX Source-of-Truth Expert
@@ -12,6 +14,7 @@ Continuous reconciliation between:
 ## Thread Log
 
 ### Round 1 - Baseline extraction
+
 - Web UI/UX Expert:
   - Sidebar-first navigation and selection-driven reader experience are primary identity elements.
   - Reader must prioritize reading surface and text selection modal over card interactions.
@@ -26,9 +29,11 @@ Continuous reconciliation between:
   - Reader and chat need cleaner, lower-friction surfaces.
 
 Consensus:
+
 - P0 must be sidebar shell + reader highlight/trace modal parity.
 
 ### Round 2 - Plan reconciliation
+
 - Web UI/UX Expert accepted native concessions:
   - Full-screen map route is acceptable on mobile.
   - Native selection mechanics are acceptable if actions and sequence remain web-equivalent.
@@ -39,6 +44,7 @@ Consensus:
   - Implement selection action model with loading states and continuation into chat/map.
 
 Consensus:
+
 - Begin implementation in this order:
   1. Shell refactor
   2. Reader flow parity
@@ -46,6 +52,7 @@ Consensus:
   4. Library parity pass
 
 ### Round 3 - Implementation pass completed
+
 - Mobile UX/UI Experts:
   - Replaced bottom-tab shell with sidebar-first mode shell.
   - Added account entry at drawer bottom as requested.
@@ -59,26 +66,33 @@ Consensus:
   - Remaining gap: true drag text-selection parity; current native concession is verse-range selection via long-press + tap range.
 
 Consensus:
+
 - P0 delivered with one documented concession (selection granularity).
 - Next pass should focus on deeper chat event parity and library visual refinements.
 
 ## Open Questions (to resolve during implementation)
+
 1. Selection granularity on native:
+
 - Target word-level first if stable, fallback to verse-range with explicit UX note.
 
 2. Map handoff behavior:
+
 - Keep full-screen native route, with direct return to prior context and "open in reader" continuity.
 
 3. Chat event parity depth:
+
 - Minimum: streaming deltas + done + map_data.
 - Preferred: include tool lifecycle and verse_search indicators.
 
 ## Decision Register
+
 1. Web is source-of-truth for behavior and pipelines.
 2. Mobile remains native-first for layout and interactions.
 3. Any behavioral deviation requires explicit entry here and in shared doc.
 
 ### Round 4 - Root function parity (deep dive)
+
 - Web UI/UX Expert:
   - Root is a dedicated modal view state entered via `ROOT` action from Synopsis, not a static secondary tab.
   - Required interactions: Strong's word taps, definition card, lost-context pager, explicit back to Synopsis.
@@ -98,14 +112,18 @@ Consensus:
     - low-noise pager controls
 
 Consensus:
+
 1. Ship Root P0 as:
+
 - new mobile root hook
 - new native Root panel
 - Reader modal refactor to dedicated root view
+
 2. Keep native concessions only for layout and gesture implementation.
 3. Preserve web action order and pipeline behavior.
 
 ### Round 5 - Reader header + selector parity
+
 - Web UI/UX Expert:
   - Reader shell should not waste vertical space on redundant mode title text.
   - Book/chapter controls should be immediate dropdown interactions.
@@ -120,6 +138,7 @@ Consensus:
   - Prioritize readability by reducing chrome height and keeping controls dense.
 
 Consensus:
+
 1. Remove Reader mode "Bible" shell title footprint.
 2. Replace reader Book/Chapter text inputs with dropdown selectors.
 3. Remove `Go`, apply immediate navigation on selection.

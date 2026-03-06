@@ -45,7 +45,7 @@ export function RootTranslationPanel({
   }, [lostContext]);
 
   const selectedWord =
-    selectedWordIndex !== null ? words[selectedWordIndex] ?? null : null;
+    selectedWordIndex !== null ? (words[selectedWordIndex] ?? null) : null;
 
   return (
     <View style={localStyles.rootWrap}>
@@ -151,7 +151,9 @@ export function RootTranslationPanel({
               }}
             >
               <Text style={localStyles.lostTitle}>Lost in translation</Text>
-              <Text style={styles.connectionSynopsis}>{lostContextCurrent}</Text>
+              <Text style={styles.connectionSynopsis}>
+                {lostContextCurrent}
+              </Text>
 
               {lostContextTotal > 1 ? (
                 <View style={localStyles.lostPagerRow}>
@@ -165,7 +167,9 @@ export function RootTranslationPanel({
                     }
                     style={[
                       styles.outlineChip,
-                      !canPrevLostContext ? localStyles.pagerButtonDisabled : null,
+                      !canPrevLostContext
+                        ? localStyles.pagerButtonDisabled
+                        : null,
                     ]}
                   >
                     <Text style={styles.outlineChipLabel}>Prev</Text>
@@ -185,7 +189,9 @@ export function RootTranslationPanel({
                     }
                     style={[
                       styles.outlineChip,
-                      !canNextLostContext ? localStyles.pagerButtonDisabled : null,
+                      !canNextLostContext
+                        ? localStyles.pagerButtonDisabled
+                        : null,
                     ]}
                   >
                     <Text style={styles.outlineChipLabel}>
