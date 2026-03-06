@@ -111,6 +111,48 @@ function makeUuidLike(): string {
   return `${segment(8)}-${segment(4)}-4${segment(3)}-a${segment(3)}-${segment(12)}`;
 }
 
+function trimHighlightOverlaps({
+  highlights,
+  book,
+  chapter,
+  selectedVerses,
+  buildTextForVerses,
+}: {
+  highlights: MobileHighlightItem[];
+  book: string;
+  chapter: number;
+  selectedVerses: Set<number>;
+  buildTextForVerses?: (verses: number[]) => string;
+}): MobileHighlightItem[] {
+  const nowIso = new Date().toISOString();
+  return highlights.flatMap((item) => {
+    const sameLocation =
+      item.book.toLowerCase() === book.toLowerCase() &&
+      item.chapter === chapter;
+    if (!sameLocation) return [item];
+
+    const hasOverlap = item.verses.some((verse) => selectedVerses.has(verse));
+    if (!hasOverlap) return [item];
+
+    const remainingVerses = item.verses
+      .filter((verse) => !selectedVerses.has(verse))
+      .sort((a, b) => a - b);
+    if (remainingVerses.length === 0) return [];
+
+    const rebuiltText =
+      buildTextForVerses?.(remainingVerses).trim() ?? item.text.trim();
+    return [
+      {
+        ...item,
+        verses: remainingVerses,
+        text: rebuiltText.length > 0 ? rebuiltText : item.text,
+        referenceLabel: `${item.book} ${item.chapter}:${formatVerseRangeLabel(remainingVerses)}`,
+        updatedAt: nowIso,
+      },
+    ];
+  });
+}
+
 function createDefaultBookmarkDraft(): BookmarkDraftForm {
   return {
     book: "Genesis",
@@ -1041,6 +1083,9 @@ export function useMobileAppController(
     const nowIso = new Date().toISOString();
     const verseLabel = formatVerseRangeLabel(normalizedVerses);
     const selectedVerseSet = new Set(normalizedVerses);
+    const textByVerse = new Map(
+      reader.verses.map((entry) => [entry.verse, entry.text]),
+    );
     const newItem: MobileHighlightItem = {
       id: makeUuidLike(),
       book: canonicalBook,
@@ -1057,19 +1102,22 @@ export function useMobileAppController(
     setHighlightMutationBusy(true);
     setHighlightMutationError(null);
     try {
-      const filteredHighlights = highlights.filter(
-        (item) =>
-          !(
-            item.book.toLowerCase() === canonicalBook.toLowerCase() &&
-            item.chapter === reader.chapter &&
-            item.verses.some((verse) => selectedVerseSet.has(verse))
-          ),
-      );
+      const adjustedHighlights = trimHighlightOverlaps({
+        highlights,
+        book: canonicalBook,
+        chapter: reader.chapter,
+        selectedVerses: selectedVerseSet,
+        buildTextForVerses: (verses) =>
+          verses
+            .map((verse) => `${verse}. ${textByVerse.get(verse) ?? ""}`.trim())
+            .join(" ")
+            .trim(),
+      });
       const nextHighlights = await withAccessToken((accessToken) =>
         createHighlightViaSync({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
-          currentHighlights: filteredHighlights,
+          currentHighlights: adjustedHighlights,
           newHighlight: newItem,
         }),
       );
@@ -1446,19 +1494,17 @@ export function useMobileAppController(
     setHighlightMutationError(null);
     try {
       const selectedVerseSet = new Set(verses);
-      const filteredHighlights = highlights.filter(
-        (item) =>
-          !(
-            item.book.toLowerCase() === book.toLowerCase() &&
-            item.chapter === chapter &&
-            item.verses.some((verse) => selectedVerseSet.has(verse))
-          ),
-      );
+      const adjustedHighlights = trimHighlightOverlaps({
+        highlights,
+        book,
+        chapter,
+        selectedVerses: selectedVerseSet,
+      });
       const nextHighlights = await withAccessToken((accessToken) =>
         createHighlightViaSync({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
-          currentHighlights: filteredHighlights,
+          currentHighlights: adjustedHighlights,
           newHighlight: newItem,
         }),
       );

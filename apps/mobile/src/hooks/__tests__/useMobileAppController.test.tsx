@@ -400,6 +400,67 @@ describe("useMobileAppController", () => {
     expect(latest?.highlights.some((item) => item.id === "hl-2")).toBe(true);
   });
 
+  it("preserves non-overlapping verses when reader highlight overlaps existing highlight", async () => {
+    (fetchHighlights as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-overlap",
+        book: "Matthew",
+        chapter: 1,
+        verses: [1, 2, 3],
+        text: "Blessed are they...",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:1-3",
+      } as MobileHighlightItem,
+    ]);
+    (createHighlightViaSync as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-overlap",
+        book: "Matthew",
+        chapter: 1,
+        verses: [1, 2],
+        text: "Blessed are they...",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:1-2",
+      },
+      {
+        id: "hl-new",
+        book: "Matthew",
+        chapter: 1,
+        verses: [3, 4],
+        text: "Created highlight",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:3-4",
+      },
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.highlights.length).toBe(1);
+    });
+
+    await act(async () => {
+      await latest?.handleReaderHighlightSelection(
+        [3, 4],
+        "Created highlight",
+        "#facc15",
+      );
+    });
+
+    await waitFor(() => {
+      expect(createHighlightViaSync).toHaveBeenCalledTimes(1);
+    });
+
+    const syncCall = (createHighlightViaSync as jest.Mock).mock.calls[0]?.[0];
+    expect(syncCall.currentHighlights).toHaveLength(1);
+    expect(syncCall.currentHighlights[0]).toEqual(
+      expect.objectContaining({
+        id: "hl-overlap",
+        verses: [1, 2],
+      }),
+    );
+  });
+
   it("updates selected highlight via controller action", async () => {
     (updateHighlight as jest.Mock).mockResolvedValue({
       id: "hl-1",
