@@ -1300,8 +1300,9 @@ export function ChatScreen({
       const displayText = (normalizedOverride?.displayText ?? draft).trim();
       const promptText = (normalizedOverride?.prompt ?? displayText).trim();
       if (!displayText || !promptText) return;
+      const traceModeForRequest = traceModeEnabled;
 
-      const endpoint = traceModeEnabled
+      const endpoint = traceModeForRequest
         ? `${MOBILE_ENV.API_URL}/api/chat/stream`
         : `${MOBILE_ENV.API_URL}/api/bible-study`;
       const seededBundle = normalizedOverride?.visualBundle;
@@ -1352,7 +1353,7 @@ export function ChatScreen({
         ? undefined
         : bundleForMap || undefined;
       const mapMode = shouldReanchor ? "fast" : undefined;
-      const showMapPrepForRequest = traceModeEnabled;
+      const showMapPrepForRequest = traceModeForRequest;
       const requestHistory = history;
 
       const userMessageId = `user-${Date.now()}`;
@@ -1514,6 +1515,9 @@ export function ChatScreen({
         setBusy(false);
         setMapPrepActive(false);
         setStreamPromptLabel("");
+        if (traceModeForRequest) {
+          setTraceModeEnabled(false);
+        }
       }
     },
     [
@@ -1789,6 +1793,7 @@ export function ChatScreen({
                   accessibilityLabel={entry.label}
                   disabled={busy || randomTopicsLoading}
                   onPress={() => void handleQuickPrompt(entry)}
+                  pressedStyle={localStyles.quickPromptButtonPressed}
                   style={[
                     localStyles.quickPromptButton,
                     entry.key === "ot"
@@ -2663,8 +2668,8 @@ const localStyles = StyleSheet.create({
     width: 164,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(39,39,42,0.36)",
+    borderColor: T.colors.border,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     alignItems: "flex-start",
     justifyContent: "center",
     paddingHorizontal: 10,
@@ -2672,38 +2677,42 @@ const localStyles = StyleSheet.create({
     gap: 2,
   },
   quickPromptButtonRandom: {
-    borderColor: "rgba(148,163,184,0.32)",
-    backgroundColor: "rgba(71,85,105,0.12)",
+    borderColor: "rgba(203, 213, 225, 0.32)",
+    backgroundColor: "rgba(100, 116, 139, 0.14)",
   },
   quickPromptButtonOT: {
-    borderColor: "rgba(251,191,36,0.35)",
-    backgroundColor: "rgba(217,119,6,0.14)",
+    borderColor: "rgba(252, 211, 77, 0.34)",
+    backgroundColor: "rgba(245, 158, 11, 0.16)",
   },
   quickPromptButtonNT: {
-    borderColor: "rgba(168,85,247,0.35)",
-    backgroundColor: "rgba(124,58,237,0.14)",
+    borderColor: "rgba(216, 180, 254, 0.34)",
+    backgroundColor: "rgba(168, 85, 247, 0.14)",
+  },
+  quickPromptButtonPressed: {
+    borderColor: "rgba(255, 255, 255, 0.32)",
+    backgroundColor: "rgba(255, 255, 255, 0.10)",
   },
   quickPromptButtonBusy: {
-    borderColor: T.colors.accent,
-    backgroundColor: T.colors.accentSoft,
+    opacity: 0.82,
   },
   quickPromptLabel: {
     fontSize: 9,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.35,
+    color: "rgba(212, 212, 216, 0.72)",
   },
   quickPromptLabelRandom: {
-    color: "rgba(203,213,225,0.85)",
+    color: "#CBD5E1",
   },
   quickPromptLabelOT: {
-    color: "rgba(253,230,138,0.95)",
+    color: "#FCD34D",
   },
   quickPromptLabelNT: {
-    color: "rgba(216,180,254,0.95)",
+    color: "#D8B4FE",
   },
   quickPromptTopic: {
-    color: T.colors.textMuted,
+    color: T.colors.text,
     fontSize: 10.5,
     lineHeight: 13,
     fontWeight: "500",
