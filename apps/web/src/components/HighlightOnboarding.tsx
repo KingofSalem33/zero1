@@ -12,19 +12,28 @@ export function HighlightOnboarding() {
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
-    if (preferences.hasSeenHighlightOnboarding) return;
+    if (
+      preferences.hasSeenHighlightOnboarding ||
+      !preferences.hasSeenOnboarding
+    )
+      return;
 
     // Delay appearance so it doesn't compete with initial load
-    const showTimer = setTimeout(() => setVisible(true), 3000);
+    const SHOW_DELAY = 3000;
+    const VISIBLE_DURATION = 12000;
+    const showTimer = setTimeout(() => setVisible(true), SHOW_DELAY);
 
-    // Auto-dismiss after 12s
-    const hideTimer = setTimeout(() => dismiss(), 15000);
+    // Auto-dismiss after visible duration
+    const hideTimer = setTimeout(
+      () => dismiss(),
+      SHOW_DELAY + VISIBLE_DURATION,
+    );
 
     return () => {
       clearTimeout(showTimer);
       clearTimeout(hideTimer);
     };
-  }, [preferences.hasSeenHighlightOnboarding]);
+  }, [preferences.hasSeenHighlightOnboarding, preferences.hasSeenOnboarding]);
 
   const dismiss = () => {
     setExiting(true);
@@ -34,7 +43,12 @@ export function HighlightOnboarding() {
     }, 300);
   };
 
-  if (preferences.hasSeenHighlightOnboarding || !visible) return null;
+  if (
+    preferences.hasSeenHighlightOnboarding ||
+    !preferences.hasSeenOnboarding ||
+    !visible
+  )
+    return null;
 
   return (
     <div
@@ -103,7 +117,7 @@ export function HighlightOnboarding() {
           <div
             className="h-full bg-[#D4AF37]/40 rounded-full"
             style={{
-              animation: "highlight-onboarding-progress 12s linear 3s forwards",
+              animation: "highlight-onboarding-progress 12s linear forwards",
             }}
           />
         </div>
