@@ -15,6 +15,7 @@ import {
   LibraryMapCard,
   formatRelativeDate,
 } from "./common/EntityCards";
+import type { MobileGoDeeperPayload } from "../types/chat";
 
 function includesQuery(
   fields: Array<string | null | undefined>,
@@ -45,7 +46,7 @@ export function LibraryScreen({
     openHighlightCreate: () => void;
     openHighlightDetail: (highlightId: string) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
-    openChat: (prompt: string, autoSend?: boolean) => void;
+    openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
   };
 }) {
   const controller = useMobileApp();

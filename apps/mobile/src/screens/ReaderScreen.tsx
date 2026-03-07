@@ -27,6 +27,7 @@ import {
 } from "../lib/api";
 import { MOBILE_ENV } from "../lib/env";
 import { styles, T } from "../theme/mobileStyles";
+import type { MobileGoDeeperPayload } from "../types/chat";
 import { isVisualContextBundle } from "../types/visualization";
 
 const DOUBLE_TAP_WINDOW_MS = 380;
@@ -208,7 +209,7 @@ export function ReaderScreen({
   nav,
 }: {
   nav: {
-    openChat: (prompt: string, autoSend?: boolean) => void;
+    openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
     openModeMenu: () => void;
   };
@@ -677,7 +678,11 @@ export function ReaderScreen({
 
   function handleGoDeeperSelection() {
     if (!selectedVerseLabel) return;
-    const prompt = `${selectedVerseLabel}\n\nHelp me understand this passage.`;
+    const prompt: MobileGoDeeperPayload = {
+      displayText: selectedVerseLabel,
+      prompt: `${selectedVerseLabel}\n\nHelp me understand this passage.`,
+      mode: "go_deeper_short",
+    };
     nav.openChat(prompt, true);
     clearSelection();
   }
@@ -1553,8 +1558,6 @@ const localStyles = StyleSheet.create({
     backgroundColor: T.colors.canvas,
   },
   headerShell: {
-    borderBottomWidth: 1,
-    borderBottomColor: T.colors.border,
     backgroundColor: "rgba(24,24,27,0.94)",
     zIndex: 12,
   },
