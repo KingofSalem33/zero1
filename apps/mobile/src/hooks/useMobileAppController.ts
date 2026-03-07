@@ -352,6 +352,9 @@ export function useMobileAppController(
   const [readerFooterError, setReaderFooterError] = useState<string | null>(
     null,
   );
+  const readerFooterCacheRef = useRef<Map<string, ChapterFooterResult>>(
+    new Map(),
+  );
   const [readerHighlightColor, setReaderHighlightColorState] = useState<string>(
     DEFAULT_READER_HIGHLIGHT_COLOR,
   );
@@ -601,6 +604,7 @@ export function useMobileAppController(
 
   useEffect(() => {
     if (!user) {
+      readerFooterCacheRef.current.clear();
       setProbeResult(null);
       setProbeError(null);
       setLibraryConnections([]);
@@ -875,6 +879,9 @@ export function useMobileAppController(
 
     const maxChapter = getBibleChapterCount(canonicalBook) ?? 1;
     const boundedChapter = Math.min(Math.max(rawChapter, 1), maxChapter);
+    const footerCacheKey = `${canonicalBook}:${boundedChapter}`;
+    const cachedFooter =
+      readerFooterCacheRef.current.get(footerCacheKey) ?? null;
 
     setReaderLoading(true);
     setReaderError(null);
@@ -882,16 +889,19 @@ export function useMobileAppController(
     setReaderCrossReferences([]);
     setReaderCrossReferencesError(null);
     setReaderFooterLoading(true);
+    setReaderFooter(cachedFooter);
     setReaderFooterError(null);
 
     try {
       const [bookResult, footerResult] = await Promise.allSettled([
         getBibleBook(canonicalBook),
-        fetchChapterFooter({
-          apiBaseUrl: MOBILE_ENV.API_URL,
-          book: canonicalBook,
-          chapter: boundedChapter,
-        }),
+        cachedFooter
+          ? Promise.resolve(cachedFooter)
+          : fetchChapterFooter({
+              apiBaseUrl: MOBILE_ENV.API_URL,
+              book: canonicalBook,
+              chapter: boundedChapter,
+            }),
       ]);
 
       if (bookResult.status !== "fulfilled") {
@@ -917,6 +927,7 @@ export function useMobileAppController(
 
       if (footerResult.status === "fulfilled") {
         setReaderFooter(footerResult.value);
+        readerFooterCacheRef.current.set(footerCacheKey, footerResult.value);
         setReaderFooterError(null);
       } else {
         setReaderFooter(null);

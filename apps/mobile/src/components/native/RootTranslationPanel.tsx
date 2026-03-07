@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import type { RootTranslationWord } from "../../lib/api";
 import { chunkLostContext } from "../../utils/lostContextChunker";
 import { styles, T } from "../../theme/mobileStyles";
@@ -166,15 +167,23 @@ export function RootTranslationPanel({
                       setLostContextPage((current) => Math.max(current - 1, 0))
                     }
                     style={[
-                      styles.outlineChip,
+                      localStyles.pagerArrowButton,
                       !canPrevLostContext
                         ? localStyles.pagerButtonDisabled
                         : null,
                     ]}
                   >
-                    <Text style={styles.outlineChipLabel}>Prev</Text>
+                    <Ionicons
+                      name="chevron-back"
+                      size={14}
+                      color={
+                        canPrevLostContext
+                          ? "rgba(228, 228, 231, 0.88)"
+                          : "rgba(228, 228, 231, 0.36)"
+                      }
+                    />
                   </PressableScale>
-                  <Text style={styles.caption}>
+                  <Text style={localStyles.pagerCounterLabel}>
                     {lostContextPage + 1}/{lostContextTotal}
                   </Text>
                   <PressableScale
@@ -188,15 +197,21 @@ export function RootTranslationPanel({
                       )
                     }
                     style={[
-                      styles.outlineChip,
+                      localStyles.pagerArrowButton,
                       !canNextLostContext
                         ? localStyles.pagerButtonDisabled
                         : null,
                     ]}
                   >
-                    <Text style={styles.outlineChipLabel}>
-                      {canNextLostContext ? "Read more" : "Next"}
-                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={14}
+                      color={
+                        canNextLostContext
+                          ? "rgba(228, 228, 231, 0.88)"
+                          : "rgba(228, 228, 231, 0.36)"
+                      }
+                    />
                   </PressableScale>
                 </View>
               ) : null}
@@ -308,8 +323,24 @@ const localStyles = StyleSheet.create({
   lostPagerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: T.spacing.sm,
+    justifyContent: "center",
+    gap: 10,
+  },
+  pagerArrowButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    backgroundColor: "rgba(39, 39, 42, 0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pagerCounterLabel: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    minWidth: 34,
+    textAlign: "center",
   },
   pagerButtonDisabled: {
     opacity: 0.45,
