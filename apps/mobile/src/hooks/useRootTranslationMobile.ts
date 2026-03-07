@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { fetchRootTranslation, type RootTranslationWord } from "../lib/api";
+import { ensureMinLoaderDuration } from "../utils/ensureMinLoaderDuration";
 
 interface RootContext {
   book?: string;
@@ -29,6 +30,7 @@ export function useRootTranslationMobile({
   apiBaseUrl,
   accessToken,
 }: UseRootTranslationMobileOptions): RootTranslationMobileState {
+  const MIN_ROOT_LOADING_MS = 240;
   const [isLoading, setIsLoading] = useState(false);
   const [language, setLanguage] = useState("");
   const [words, setWords] = useState<RootTranslationWord[]>([]);
@@ -53,6 +55,7 @@ export function useRootTranslationMobile({
     async (selectedText: string, context?: RootContext) => {
       const trimmedText = selectedText.trim();
       if (!trimmedText) return;
+      const loadStartedAt = Date.now();
 
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
@@ -98,6 +101,9 @@ export function useRootTranslationMobile({
           error instanceof Error ? error.message : "Unknown error.";
         setFallbackText(`Root translation unavailable: ${message}`);
       } finally {
+        if (requestIdRef.current === requestId) {
+          await ensureMinLoaderDuration(loadStartedAt, MIN_ROOT_LOADING_MS);
+        }
         if (requestIdRef.current === requestId) {
           setIsLoading(false);
         }

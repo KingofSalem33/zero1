@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { RootTranslationWord } from "../../lib/api";
 import { chunkLostContext } from "../../utils/lostContextChunker";
 import { styles, T } from "../../theme/mobileStyles";
 import { PressableScale } from "./PressableScale";
+import { LoadingDotsNative } from "./loading/LoadingDotsNative";
 
 interface RootTranslationPanelProps {
   isLoading: boolean;
@@ -61,12 +62,9 @@ export function RootTranslationPanel({
       </PressableScale>
 
       {isLoading ? (
-        <View style={styles.rowAlignCenter}>
-          <ActivityIndicator color={T.colors.accent} />
-          <Text style={styles.caption}>
-            Translating from original {language || "Hebrew/Greek"}...
-          </Text>
-        </View>
+        <LoadingDotsNative
+          label={`Translating from original ${language || "Hebrew/Greek"}...`}
+        />
       ) : words.length > 0 || lostContext.length > 0 ? (
         <View style={localStyles.contentWrap}>
           {words.length > 0 ? (

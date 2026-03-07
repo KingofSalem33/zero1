@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Easing,
   Modal,
@@ -18,6 +17,8 @@ import { BIBLE_BOOKS, getBibleChapterCount } from "@zero1/shared";
 import { ActionButton } from "../components/native/ActionButton";
 import { PressableScale } from "../components/native/PressableScale";
 import { RootTranslationPanel } from "../components/native/RootTranslationPanel";
+import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNative";
+import { ReaderChapterSkeleton } from "../components/native/loading/ReaderChapterSkeleton";
 import { useMobileApp } from "../context/MobileAppContext";
 import { useRootTranslationMobile } from "../hooks/useRootTranslationMobile";
 import {
@@ -29,6 +30,7 @@ import { MOBILE_ENV } from "../lib/env";
 import { styles, T } from "../theme/mobileStyles";
 import type { MobileGoDeeperPayload } from "../types/chat";
 import { isVisualContextBundle } from "../types/visualization";
+import { ensureMinLoaderDuration } from "../utils/ensureMinLoaderDuration";
 
 const DOUBLE_TAP_WINDOW_MS = 380;
 const HEADER_HIDE_SCROLL_DISTANCE = 34;
@@ -37,6 +39,7 @@ const READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY =
   "biblelot:mobile:reader:last-chapters-by-book";
 const DEFAULT_MARKER_COLOR = "#D4AF37";
 const PARAGRAPH_INDENT = "\u2003";
+const MIN_SELECTION_SYNOPSIS_LOADING_MS = 220;
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
 type FooterLensMeta = {
@@ -604,6 +607,7 @@ export function ReaderScreen({
       verses: selectedVerses,
     };
     if (!activePayload.text || activePayload.verses.length === 0) return;
+    const loadStartedAt = Date.now();
     setSelectionSynopsisLoading(true);
     setSelectionSynopsisError(null);
     try {
@@ -622,6 +626,10 @@ export function ReaderScreen({
       );
       setSelectionSynopsis(null);
     } finally {
+      await ensureMinLoaderDuration(
+        loadStartedAt,
+        MIN_SELECTION_SYNOPSIS_LOADING_MS,
+      );
       setSelectionSynopsisLoading(false);
     }
   }
@@ -909,110 +917,109 @@ export function ReaderScreen({
         }}
       >
         <View style={localStyles.readingSurface}>
-          {controller.readerLoading && controller.reader.verses.length === 0 ? (
-            <View style={localStyles.loadingState}>
-              <ActivityIndicator color={T.colors.accent} />
-              <Text style={styles.caption}>Loading chapter...</Text>
+          {controller.readerLoading ? <ReaderChapterSkeleton /> : null}
+
+          {!controller.readerLoading ? (
+            <View style={localStyles.chapterTextFlow}>
+              <View style={localStyles.chapterHeading}>
+                <Text style={localStyles.chapterHeadingBook}>
+                  {controller.reader.book}
+                </Text>
+                <Text style={localStyles.chapterHeadingNumber}>
+                  {controller.reader.chapter}
+                </Text>
+              </View>
+              <Text style={localStyles.verseText}>
+                {controller.reader.verses.map((item, index) => {
+                  const inSelection = selectedVerses.includes(item.verse);
+                  const highlightVisual = verseHighlightMap.get(item.verse);
+                  const selectedVerse =
+                    controller.readerSelectedVerse === item.verse;
+                  const addFeedbackActive = feedbackVerse === item.verse;
+                  const removePending = pendingRemovalVerseSet.has(item.verse);
+                  const isParagraphStart =
+                    item.verse === 1 || item.verse % 4 === 1;
+                  const leadSpacing =
+                    index === 0
+                      ? PARAGRAPH_INDENT
+                      : isParagraphStart
+                        ? `\n\n${PARAGRAPH_INDENT}`
+                        : " ";
+                  const addFeedbackTone =
+                    buildHighlightTone(feedbackVerseColorRef.current) ??
+                    defaultMarkerTone;
+                  const hasPersistentHighlight =
+                    Boolean(highlightVisual) && !removePending;
+                  const markerTone = addFeedbackActive
+                    ? addFeedbackTone
+                    : hasPersistentHighlight
+                      ? (highlightVisual?.tone ?? null)
+                      : null;
+                  const markerVisible = Boolean(markerTone);
+                  const handleVerseLongPress = () => {
+                    triggerSelectionHaptic();
+                    suppressNextVersePressRef.current = true;
+                    lastVerseTapRef.current = null;
+                    const draft = {
+                      startVerse: item.verse,
+                      endVerse: item.verse,
+                    };
+                    setSelectionDraft(draft);
+                    void openSelectionTools(draft);
+                  };
+                  return (
+                    <Text
+                      key={`${controller.reader.book}-${controller.reader.chapter}-${item.verse}`}
+                    >
+                      {leadSpacing}
+                      <Text
+                        accessibilityRole="button"
+                        accessibilityLabel={`Verse ${item.verse} references`}
+                        onPress={() =>
+                          void controller.selectReaderVerse(item.verse)
+                        }
+                        suppressHighlighting
+                        style={localStyles.verseNumberInlineText}
+                      >
+                        {item.verse}
+                      </Text>{" "}
+                      <Text
+                        onLongPress={handleVerseLongPress}
+                        onPress={() =>
+                          handleVerseTextPress(item.verse, item.text)
+                        }
+                        suppressHighlighting
+                        style={[
+                          markerVisible
+                            ? localStyles.verseTextHighlighted
+                            : null,
+                          markerVisible && markerTone
+                            ? {
+                                textDecorationLine: "underline",
+                                textDecorationStyle: "solid",
+                                textDecorationColor: markerTone.underline,
+                              }
+                            : null,
+                          selectedVerse &&
+                          !hasPersistentHighlight &&
+                          !addFeedbackActive
+                            ? localStyles.inlineVerseFocused
+                            : null,
+                          inSelection &&
+                          !hasPersistentHighlight &&
+                          !addFeedbackActive
+                            ? localStyles.inlineVerseSelection
+                            : null,
+                        ]}
+                      >
+                        {item.text}
+                      </Text>
+                    </Text>
+                  );
+                })}
+              </Text>
             </View>
           ) : null}
-
-          <View style={localStyles.chapterTextFlow}>
-            <View style={localStyles.chapterHeading}>
-              <Text style={localStyles.chapterHeadingBook}>
-                {controller.reader.book}
-              </Text>
-              <Text style={localStyles.chapterHeadingNumber}>
-                {controller.reader.chapter}
-              </Text>
-            </View>
-            <Text style={localStyles.verseText}>
-              {controller.reader.verses.map((item, index) => {
-                const inSelection = selectedVerses.includes(item.verse);
-                const highlightVisual = verseHighlightMap.get(item.verse);
-                const selectedVerse =
-                  controller.readerSelectedVerse === item.verse;
-                const addFeedbackActive = feedbackVerse === item.verse;
-                const removePending = pendingRemovalVerseSet.has(item.verse);
-                const isParagraphStart =
-                  item.verse === 1 || item.verse % 4 === 1;
-                const leadSpacing =
-                  index === 0
-                    ? PARAGRAPH_INDENT
-                    : isParagraphStart
-                      ? `\n\n${PARAGRAPH_INDENT}`
-                      : " ";
-                const addFeedbackTone =
-                  buildHighlightTone(feedbackVerseColorRef.current) ??
-                  defaultMarkerTone;
-                const hasPersistentHighlight =
-                  Boolean(highlightVisual) && !removePending;
-                const markerTone = addFeedbackActive
-                  ? addFeedbackTone
-                  : hasPersistentHighlight
-                    ? (highlightVisual?.tone ?? null)
-                    : null;
-                const markerVisible = Boolean(markerTone);
-                const handleVerseLongPress = () => {
-                  triggerSelectionHaptic();
-                  suppressNextVersePressRef.current = true;
-                  lastVerseTapRef.current = null;
-                  const draft = {
-                    startVerse: item.verse,
-                    endVerse: item.verse,
-                  };
-                  setSelectionDraft(draft);
-                  void openSelectionTools(draft);
-                };
-                return (
-                  <Text
-                    key={`${controller.reader.book}-${controller.reader.chapter}-${item.verse}`}
-                  >
-                    {leadSpacing}
-                    <Text
-                      accessibilityRole="button"
-                      accessibilityLabel={`Verse ${item.verse} references`}
-                      onPress={() =>
-                        void controller.selectReaderVerse(item.verse)
-                      }
-                      suppressHighlighting
-                      style={localStyles.verseNumberInlineText}
-                    >
-                      {item.verse}
-                    </Text>{" "}
-                    <Text
-                      onLongPress={handleVerseLongPress}
-                      onPress={() =>
-                        handleVerseTextPress(item.verse, item.text)
-                      }
-                      suppressHighlighting
-                      style={[
-                        markerVisible ? localStyles.verseTextHighlighted : null,
-                        markerVisible && markerTone
-                          ? {
-                              textDecorationLine: "underline",
-                              textDecorationStyle: "solid",
-                              textDecorationColor: markerTone.underline,
-                            }
-                          : null,
-                        selectedVerse &&
-                        !hasPersistentHighlight &&
-                        !addFeedbackActive
-                          ? localStyles.inlineVerseFocused
-                          : null,
-                        inSelection &&
-                        !hasPersistentHighlight &&
-                        !addFeedbackActive
-                          ? localStyles.inlineVerseSelection
-                          : null,
-                      ]}
-                    >
-                      {item.text}
-                    </Text>
-                  </Text>
-                );
-              })}
-            </Text>
-          </View>
 
           {controller.readerSelectedVerse ? (
             <View style={localStyles.crossRefSection}>
@@ -1021,10 +1028,7 @@ export function ReaderScreen({
                 {controller.reader.chapter}:{controller.readerSelectedVerse}
               </Text>
               {controller.readerCrossReferencesLoading ? (
-                <View style={styles.rowAlignCenter}>
-                  <ActivityIndicator color={T.colors.accent} />
-                  <Text style={styles.caption}>Loading references...</Text>
-                </View>
+                <LoadingDotsNative label="Loading references..." />
               ) : null}
               {controller.readerCrossReferencesError ? (
                 <Text style={styles.error}>
@@ -1483,12 +1487,7 @@ export function ReaderScreen({
                 <>
                   <View style={localStyles.modalPanel}>
                     {selectionSynopsisLoading ? (
-                      <View style={styles.rowAlignCenter}>
-                        <ActivityIndicator color={T.colors.accent} />
-                        <Text style={styles.caption}>
-                          Analyzing selection...
-                        </Text>
-                      </View>
+                      <LoadingDotsNative label="Analyzing selection..." />
                     ) : null}
                     {selectionSynopsisError ? (
                       <Text style={styles.error}>{selectionSynopsisError}</Text>
