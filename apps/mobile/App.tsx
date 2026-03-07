@@ -1,6 +1,7 @@
 import { Component, type ReactNode, Suspense, lazy } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { LoadingDotsNative } from "./src/components/native/loading/LoadingDotsNative";
 import { styles } from "./src/theme/mobileStyles";
 
 const AppRuntime = lazy(() => import("./src/AppRuntime"));
@@ -45,7 +46,9 @@ class BootErrorBoundary extends Component<
 function BootFallback() {
   return (
     <View style={styles.globalBusyOverlay}>
-      <ActivityIndicator />
+      <View style={styles.panel}>
+        <LoadingDotsNative label="Loading app experience..." />
+      </View>
     </View>
   );
 }

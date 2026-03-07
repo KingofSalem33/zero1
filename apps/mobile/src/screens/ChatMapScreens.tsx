@@ -1,5 +1,6 @@
 import {
-  ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
   Keyboard,
   type GestureResponderEvent,
@@ -23,6 +24,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
+import { ChatThinkingState } from "../components/native/loading/ChatThinkingState";
+import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNative";
 import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
@@ -42,6 +45,7 @@ import {
   isVisualContextBundle,
 } from "../types/visualization";
 import { styles, T } from "../theme/mobileStyles";
+import { ensureMinLoaderDuration } from "../utils/ensureMinLoaderDuration";
 
 interface ChatMessage {
   id: string;
@@ -86,6 +90,7 @@ interface RandomPericopeTopic {
 }
 
 let hasPrimedInitialEmptyChatAutofocus = false;
+const MIN_VERSE_PREVIEW_LOADING_MS = 220;
 
 const MAP_CANVAS_SIZE = 1200;
 const MAP_CENTER = MAP_CANVAS_SIZE / 2;
@@ -1088,11 +1093,14 @@ export function ChatScreen({
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
   );
+  const [streamPromptLabel, setStreamPromptLabel] = useState<string>("");
   const [traceModeEnabled, setTraceModeEnabled] = useState(false);
   const [activeTools, setActiveTools] = useState<string[]>([]);
   const [completedTools, setCompletedTools] = useState<string[]>([]);
   const [searchingVerses, setSearchingVerses] = useState<string[]>([]);
   const [erroredTools, setErroredTools] = useState<string[]>([]);
+  const [mapPrepActive, setMapPrepActive] = useState(false);
+  const [mapPrepCount, setMapPrepCount] = useState<number | null>(null);
   const [mapSession, setMapSession] = useState<MobileMapSession | null>(null);
   const [activeVisualBundle, setActiveVisualBundle] =
     useState<VisualContextBundle | null>(null);
@@ -1127,6 +1135,7 @@ export function ChatScreen({
   const keyboardLift = keyboardVisible
     ? Math.max(8, keyboardHeight - insets.bottom)
     : 0;
+  const statusPulse = useRef(new Animated.Value(1)).current;
 
   const history = useMemo<ChatHistoryMessage[]>(
     () =>
@@ -1192,6 +1201,45 @@ export function ChatScreen({
       streamAbortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const shouldPulse =
+      busy &&
+      (mapPrepActive || searchingVerses.length > 0 || activeTools.length > 0);
+    if (!shouldPulse) {
+      statusPulse.stopAnimation();
+      statusPulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(statusPulse, {
+          toValue: 0.82,
+          duration: 680,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(statusPulse, {
+          toValue: 1,
+          duration: 680,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      statusPulse.stopAnimation();
+      statusPulse.setValue(1);
+    };
+  }, [
+    activeTools.length,
+    busy,
+    mapPrepActive,
+    searchingVerses.length,
+    statusPulse,
+  ]);
 
   useEffect(() => {
     const showEvent =
@@ -1304,6 +1352,7 @@ export function ChatScreen({
         ? undefined
         : bundleForMap || undefined;
       const mapMode = shouldReanchor ? "fast" : undefined;
+      const showMapPrepForRequest = traceModeEnabled;
       const requestHistory = history;
 
       const userMessageId = `user-${Date.now()}`;
@@ -1314,10 +1363,13 @@ export function ChatScreen({
       setError(null);
       setBusy(true);
       setDraft("");
+      setStreamPromptLabel(displayText);
       setSearchingVerses([]);
       setActiveTools([]);
       setCompletedTools([]);
       setErroredTools([]);
+      setMapPrepActive(showMapPrepForRequest);
+      setMapPrepCount(showMapPrepForRequest ? 0 : null);
       setMessages((current) => [
         ...current,
         {
@@ -1353,7 +1405,13 @@ export function ChatScreen({
             );
           },
           onVerseSearch: (verse) => {
-            setSearchingVerses((current) => appendUnique(current, verse));
+            setSearchingVerses((current) => {
+              const next = appendUnique(current, verse);
+              if (showMapPrepForRequest) {
+                setMapPrepCount(next.length);
+              }
+              return next;
+            });
           },
           onToolCall: (tool) => {
             setActiveTools((current) => appendUnique(current, tool));
@@ -1390,6 +1448,9 @@ export function ChatScreen({
                   : item,
               ),
             );
+            if (showMapPrepForRequest) {
+              setMapPrepActive(false);
+            }
           },
         });
 
@@ -1451,6 +1512,8 @@ export function ChatScreen({
           streamAbortRef.current = null;
         }
         setBusy(false);
+        setMapPrepActive(false);
+        setStreamPromptLabel("");
       }
     },
     [
@@ -1501,6 +1564,7 @@ export function ChatScreen({
     }
 
     let cancelled = false;
+    const loadStartedAt = Date.now();
     setVersePreviewLoading(true);
     setVersePreviewError(null);
     setVersePreviewText("");
@@ -1521,7 +1585,13 @@ export function ChatScreen({
       })
       .finally(() => {
         if (cancelled) return;
-        setVersePreviewLoading(false);
+        void ensureMinLoaderDuration(
+          loadStartedAt,
+          MIN_VERSE_PREVIEW_LOADING_MS,
+        ).then(() => {
+          if (cancelled) return;
+          setVersePreviewLoading(false);
+        });
       });
 
     return () => {
@@ -1645,24 +1715,43 @@ export function ChatScreen({
         </View>
       ) : null}
       {busy &&
-      (searchingVerses.length > 0 ||
+      (mapPrepActive ||
+        searchingVerses.length > 0 ||
         activeTools.length > 0 ||
         completedTools.length > 0 ||
         erroredTools.length > 0) ? (
         <View style={localStyles.streamStatusRow}>
+          {mapPrepActive ? (
+            <Animated.View
+              style={[localStyles.statusChipMapPrep, { opacity: statusPulse }]}
+            >
+              <Text style={localStyles.statusChipMapPrepLabel}>
+                Preparing map...
+                {mapPrepCount !== null && mapPrepCount > 0
+                  ? ` (${mapPrepCount} verses found)`
+                  : ""}
+              </Text>
+            </Animated.View>
+          ) : null}
           {searchingVerses.slice(-1).map((reference) => (
-            <View key={`search-${reference}`} style={localStyles.statusChip}>
+            <Animated.View
+              key={`search-${reference}`}
+              style={[localStyles.statusChip, { opacity: statusPulse }]}
+            >
               <Text style={localStyles.statusChipLabel}>
                 Searching {reference}
               </Text>
-            </View>
+            </Animated.View>
           ))}
           {activeTools.slice(-2).map((tool) => (
-            <View key={`tool-${tool}`} style={localStyles.statusChip}>
+            <Animated.View
+              key={`tool-${tool}`}
+              style={[localStyles.statusChip, { opacity: statusPulse }]}
+            >
               <Text style={localStyles.statusChipLabel}>
                 {formatToolLabel(tool)}
               </Text>
-            </View>
+            </Animated.View>
           ))}
           {completedTools.slice(-1).map((tool) => (
             <View
@@ -1829,86 +1918,103 @@ export function ChatScreen({
             keyExtractor={(item) => item.id}
             style={localStyles.chatList}
             contentContainerStyle={localStyles.chatListContent}
-            renderItem={({ item }) => (
-              <View
-                style={[
-                  localStyles.messageRow,
-                  item.role === "user"
-                    ? localStyles.messageRowUser
-                    : localStyles.messageRowAssistant,
-                ]}
-              >
+            renderItem={({ item }) => {
+              const isThinkingMessage =
+                item.role === "assistant" &&
+                busy &&
+                item.content.trim().length === 0;
+              return (
                 <View
                   style={[
-                    localStyles.messageBubble,
+                    localStyles.messageRow,
                     item.role === "user"
-                      ? localStyles.userBubble
-                      : localStyles.assistantBubble,
+                      ? localStyles.messageRowUser
+                      : localStyles.messageRowAssistant,
                   ]}
                 >
-                  {item.role !== "assistant" ? (
-                    <Text style={localStyles.messageText}>{item.content}</Text>
-                  ) : null}
+                  <View
+                    style={[
+                      localStyles.messageBubble,
+                      item.role === "user"
+                        ? localStyles.userBubble
+                        : localStyles.assistantBubble,
+                    ]}
+                  >
+                    {item.role !== "assistant" ? (
+                      <Text style={localStyles.messageText}>
+                        {item.content}
+                      </Text>
+                    ) : null}
 
-                  {item.role === "assistant" ? (
-                    <AssistantRichText
-                      content={item.content || (busy ? "..." : "")}
-                      onReferencePress={handleInlineReferencePress}
-                    />
-                  ) : null}
-
-                  {item.citations &&
-                  item.citations.length > 0 &&
-                  !containsScriptureReference(item.content) ? (
-                    <View style={localStyles.citationRow}>
-                      {item.citations.slice(0, 6).map((citation) => (
-                        <PressableScale
-                          key={`${item.id}-${citation}`}
-                          onPress={() => handleInlineReferencePress(citation)}
-                          style={localStyles.citationChip}
-                        >
-                          <Text style={localStyles.citationChipLabel}>
-                            {citation}
-                          </Text>
-                        </PressableScale>
-                      ))}
-                    </View>
-                  ) : null}
-
-                  {item.role === "assistant" &&
-                  item.content.trim().length > 0 ? (
-                    <View style={localStyles.messageActionRow}>
-                      <ActionButton
-                        variant="secondary"
-                        disabled={mapBusyMessageId === item.id}
-                        label={
-                          mapBusyMessageId === item.id
-                            ? "Mapping..."
-                            : "Open map"
-                        }
-                        onPress={() => void handleGenerateMap(item)}
-                        style={localStyles.compactAction}
-                        labelStyle={localStyles.compactActionLabel}
+                    {item.role === "assistant" && !isThinkingMessage ? (
+                      <AssistantRichText
+                        content={item.content || (busy ? "..." : "")}
+                        onReferencePress={handleInlineReferencePress}
                       />
-                      {item.mapBundle ? (
+                    ) : null}
+
+                    {isThinkingMessage ? (
+                      <ChatThinkingState
+                        verses={searchingVerses}
+                        tracedText={streamPromptLabel}
+                        activeTools={activeTools}
+                        completedTools={completedTools}
+                      />
+                    ) : null}
+
+                    {item.citations &&
+                    item.citations.length > 0 &&
+                    !containsScriptureReference(item.content) ? (
+                      <View style={localStyles.citationRow}>
+                        {item.citations.slice(0, 6).map((citation) => (
+                          <PressableScale
+                            key={`${item.id}-${citation}`}
+                            onPress={() => handleInlineReferencePress(citation)}
+                            style={localStyles.citationChip}
+                          >
+                            <Text style={localStyles.citationChipLabel}>
+                              {citation}
+                            </Text>
+                          </PressableScale>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {item.role === "assistant" &&
+                    item.content.trim().length > 0 ? (
+                      <View style={localStyles.messageActionRow}>
                         <ActionButton
-                          variant="ghost"
-                          label="View map"
-                          onPress={() =>
-                            nav.openMapViewer(
-                              `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
-                              item.mapBundle,
-                            )
+                          variant="secondary"
+                          disabled={mapBusyMessageId === item.id}
+                          label={
+                            mapBusyMessageId === item.id
+                              ? "Mapping..."
+                              : "Open map"
                           }
+                          onPress={() => void handleGenerateMap(item)}
                           style={localStyles.compactAction}
                           labelStyle={localStyles.compactActionLabel}
                         />
-                      ) : null}
-                    </View>
-                  ) : null}
+                        {item.mapBundle ? (
+                          <ActionButton
+                            variant="ghost"
+                            label="View map"
+                            onPress={() =>
+                              nav.openMapViewer(
+                                `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
+                                item.mapBundle,
+                              )
+                            }
+                            style={localStyles.compactAction}
+                            labelStyle={localStyles.compactActionLabel}
+                          />
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            )}
+              );
+            }}
           />
           {composerBlock}
         </>
@@ -1944,10 +2050,7 @@ export function ChatScreen({
 
             <View style={localStyles.referenceModalBody}>
               {versePreviewLoading ? (
-                <View style={localStyles.referenceModalLoadingRow}>
-                  <ActivityIndicator color={T.colors.accent} />
-                  <Text style={styles.caption}>Loading verse...</Text>
-                </View>
+                <LoadingDotsNative label="Loading verse..." />
               ) : null}
               {versePreviewError ? (
                 <Text style={styles.error}>{versePreviewError}</Text>
@@ -2456,8 +2559,21 @@ const localStyles = StyleSheet.create({
     borderColor: "rgba(34,197,94,0.45)",
     backgroundColor: "rgba(34,197,94,0.14)",
   },
+  statusChipMapPrep: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.3)",
+    backgroundColor: "rgba(6,182,212,0.14)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   statusChipLabel: {
     color: T.colors.textMuted,
+    fontSize: 10.5,
+    fontWeight: "600",
+  },
+  statusChipMapPrepLabel: {
+    color: "rgba(207,250,254,0.92)",
     fontSize: 10.5,
     fontWeight: "600",
   },

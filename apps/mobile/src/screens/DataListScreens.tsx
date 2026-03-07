@@ -1,13 +1,19 @@
-import { ActivityIndicator, Alert, FlatList, Text, View } from "react-native";
+import { Alert, FlatList, Text, View } from "react-native";
 import { useMemo, useState } from "react";
 import { ActionButton } from "../components/native/ActionButton";
 import { EmptyState } from "../components/native/EmptyState";
+import {
+  BookmarkCardSkeleton,
+  ConnectionCardSkeleton,
+  HighlightCardSkeleton,
+  LibraryMapSkeleton,
+} from "../components/native/loading/LibrarySkeletons";
 import { PressableScale } from "../components/native/PressableScale";
 import { SearchInput } from "../components/native/SearchInput";
 import { StatCard } from "../components/native/StatCard";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
-import { styles, T } from "../theme/mobileStyles";
+import { styles } from "../theme/mobileStyles";
 import {
   BookmarkCard,
   ConnectionCard,
@@ -243,9 +249,12 @@ export function LibraryScreen({
             )}
             ListEmptyComponent={
               controller.libraryLoading ? (
-                <View style={styles.emptyState}>
-                  <ActivityIndicator color={T.colors.accent} />
-                  <Text style={styles.emptyTitle}>Loading connections...</Text>
+                <View style={styles.listContent}>
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <ConnectionCardSkeleton
+                      key={`connection-skeleton-${index}`}
+                    />
+                  ))}
                 </View>
               ) : (
                 <EmptyState
@@ -329,9 +338,10 @@ export function LibraryScreen({
           )}
           ListEmptyComponent={
             controller.libraryMapsLoading ? (
-              <View style={styles.emptyState}>
-                <ActivityIndicator color={T.colors.accent} />
-                <Text style={styles.emptyTitle}>Loading maps...</Text>
+              <View style={styles.listContent}>
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <LibraryMapSkeleton key={`map-skeleton-${index}`} />
+                ))}
               </View>
             ) : (
               <EmptyState
@@ -516,9 +526,10 @@ export function BookmarksScreen({
         )}
         ListEmptyComponent={
           controller.bookmarksLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator color={T.colors.accent} />
-              <Text style={styles.emptyTitle}>Loading bookmarks...</Text>
+            <View style={styles.listContent}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <BookmarkCardSkeleton key={`bookmark-skeleton-${index}`} />
+              ))}
             </View>
           ) : (
             <EmptyState
@@ -675,9 +686,10 @@ export function HighlightsScreen({
         )}
         ListEmptyComponent={
           controller.highlightsLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator color={T.colors.accent} />
-              <Text style={styles.emptyTitle}>Loading highlights...</Text>
+            <View style={styles.listContent}>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <HighlightCardSkeleton key={`highlight-skeleton-${index}`} />
+              ))}
             </View>
           ) : (
             <EmptyState
