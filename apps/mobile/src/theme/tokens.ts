@@ -33,7 +33,26 @@ export const MOBILE_TOKENS = {
     min: 44,
   },
   motion: {
-    pressScale: 0.98,
+    press: {
+      quiet: {
+        scale: 0.985,
+        opacity: 0.92,
+        inMs: 80,
+        outMs: 120,
+      },
+      default: {
+        scale: 0.98,
+        opacity: 0.9,
+        inMs: 90,
+        outMs: 130,
+      },
+      strong: {
+        scale: 0.97,
+        opacity: 0.88,
+        inMs: 100,
+        outMs: 150,
+      },
+    },
   },
   radius: {
     sm: 8,

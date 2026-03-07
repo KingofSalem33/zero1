@@ -43,6 +43,7 @@ export interface MobileRootNavigatorProps {
   renderReader: (nav: {
     openChat: (prompt: string, autoSend?: boolean) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
+    openModeMenu: () => void;
   }) => ReactNode;
   renderChat: (nav: {
     openMapViewer: (title?: string, bundle?: unknown) => void;
@@ -155,7 +156,7 @@ function ModeShellScreen({
   }, [route.params?.mode, route.params?.prompt, route.params?.autoSend]);
 
   const viewTitle = useMemo(() => {
-    if (activeMode === "Reader") return "Bible";
+    if (activeMode === "Reader") return "";
     if (activeMode === "Chat") return "Chat";
     if (activeMode === "Library") return "Library";
     return "Settings";
@@ -174,31 +175,36 @@ function ModeShellScreen({
   return (
     <SafeAreaView edges={["top", "bottom"]} style={localStyles.shellSafeArea}>
       <View style={localStyles.shellRoot}>
-        <View
-          style={[
-            localStyles.topBar,
-            {
-              paddingTop: T.spacing.xs,
-            },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open mode menu"
-            onPress={() => setDrawerOpen(true)}
-            style={localStyles.topBarIconButton}
+        {activeMode === "Reader" ? (
+          <View style={localStyles.readerTopDivider} />
+        ) : (
+          <View
+            style={[
+              localStyles.topBar,
+              {
+                paddingTop: T.spacing.xs,
+              },
+            ]}
           >
-            <Ionicons color={T.colors.textMuted} name="menu" size={20} />
-          </Pressable>
-          <Text style={localStyles.topBarTitle}>{viewTitle}</Text>
-          <View style={localStyles.topBarSpacer} />
-        </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open mode menu"
+              onPress={() => setDrawerOpen(true)}
+              style={localStyles.topBarIconButton}
+            >
+              <Ionicons color={T.colors.textMuted} name="menu" size={20} />
+            </Pressable>
+            <Text style={localStyles.topBarTitle}>{viewTitle}</Text>
+            <View style={localStyles.topBarSpacer} />
+          </View>
+        )}
 
         <View style={localStyles.modeContentWrap}>
           {activeMode === "Reader"
             ? props.renderReader({
                 openChat,
                 openMapViewer,
+                openModeMenu: () => setDrawerOpen(true),
               })
             : null}
 
@@ -449,6 +455,11 @@ const localStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: T.spacing.sm,
+    backgroundColor: "rgba(24,24,27,0.94)",
+  },
+  readerTopDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: T.colors.border,
     backgroundColor: "rgba(24,24,27,0.94)",
   },
   topBarIconButton: {
