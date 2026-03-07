@@ -7,6 +7,7 @@ import {
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -19,6 +20,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { MOBILE_TOKENS } from "../theme/tokens";
+import type { MobileGoDeeperPayload } from "../types/chat";
 
 type RootStackParamList = {
   Auth: undefined;
@@ -28,7 +30,9 @@ type RootStackParamList = {
 type AppMode = "Reader" | "Chat" | "Library" | "Account";
 
 type AppStackParamList = {
-  Tabs: { mode?: AppMode; prompt?: string; autoSend?: boolean } | undefined;
+  Tabs:
+    | { mode?: AppMode; prompt?: MobileGoDeeperPayload; autoSend?: boolean }
+    | undefined;
   MapViewer: { title?: string; bundle?: unknown } | undefined;
   LibraryMapCreate: undefined;
   BookmarkCreate: undefined;
@@ -41,14 +45,14 @@ export interface MobileRootNavigatorProps {
   isAuthenticated: boolean;
   renderAuth: () => ReactNode;
   renderReader: (nav: {
-    openChat: (prompt: string, autoSend?: boolean) => void;
+    openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
     openModeMenu: () => void;
   }) => ReactNode;
   renderChat: (nav: {
     openMapViewer: (title?: string, bundle?: unknown) => void;
     openReader: (book: string, chapter: number) => void;
-    pendingPrompt?: string;
+    pendingPrompt?: MobileGoDeeperPayload;
     autoSend?: boolean;
     clearPendingPrompt: () => void;
   }) => ReactNode;
@@ -59,7 +63,7 @@ export interface MobileRootNavigatorProps {
     openHighlightCreate: () => void;
     openHighlightDetail: (highlightId: string) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
-    openChat: (prompt: string, autoSend?: boolean) => void;
+    openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
   }) => ReactNode;
   renderAccount: () => ReactNode;
   renderMapViewer: (payload: { title?: string; bundle?: unknown }) => ReactNode;
@@ -137,9 +141,9 @@ function ModeShellScreen({
   const [activeMode, setActiveMode] = useState<AppMode>(
     route.params?.mode ?? "Reader",
   );
-  const [pendingPrompt, setPendingPrompt] = useState<string | undefined>(
-    route.params?.prompt,
-  );
+  const [pendingPrompt, setPendingPrompt] = useState<
+    MobileGoDeeperPayload | undefined
+  >(route.params?.prompt);
   const [pendingAutoSend, setPendingAutoSend] = useState<boolean | undefined>(
     route.params?.autoSend,
   );
@@ -157,12 +161,12 @@ function ModeShellScreen({
 
   const viewTitle = useMemo(() => {
     if (activeMode === "Reader") return "";
-    if (activeMode === "Chat") return "Chat";
+    if (activeMode === "Chat") return "";
     if (activeMode === "Library") return "Library";
     return "Settings";
   }, [activeMode]);
 
-  function openChat(prompt: string, autoSend = true) {
+  function openChat(prompt: MobileGoDeeperPayload, autoSend = true) {
     setPendingPrompt(prompt);
     setPendingAutoSend(autoSend);
     setActiveMode("Chat");
@@ -175,21 +179,15 @@ function ModeShellScreen({
   return (
     <SafeAreaView edges={["top", "bottom"]} style={localStyles.shellSafeArea}>
       <View style={localStyles.shellRoot}>
-        {activeMode === "Reader" ? (
-          <View style={localStyles.readerTopDivider} />
-        ) : (
-          <View
-            style={[
-              localStyles.topBar,
-              {
-                paddingTop: T.spacing.xs,
-              },
-            ]}
-          >
+        {activeMode === "Reader" ? null : (
+          <View style={localStyles.topBar}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open mode menu"
-              onPress={() => setDrawerOpen(true)}
+              onPress={() => {
+                Keyboard.dismiss();
+                setDrawerOpen(true);
+              }}
               style={localStyles.topBarIconButton}
             >
               <Ionicons color={T.colors.textMuted} name="menu" size={20} />
@@ -249,7 +247,10 @@ function ModeShellScreen({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close mode menu"
-                  onPress={() => setDrawerOpen(false)}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setDrawerOpen(false);
+                  }}
                   style={localStyles.drawerCloseButton}
                 >
                   <Ionicons color={T.colors.textMuted} name="close" size={20} />
@@ -267,6 +268,7 @@ function ModeShellScreen({
                       accessibilityState={{ selected: active }}
                       accessibilityLabel={`Open ${meta.label}`}
                       onPress={() => {
+                        Keyboard.dismiss();
                         setActiveMode(modeKey);
                         setDrawerOpen(false);
                       }}
@@ -296,6 +298,7 @@ function ModeShellScreen({
                   accessibilityState={{ selected: activeMode === "Account" }}
                   accessibilityLabel="Open settings"
                   onPress={() => {
+                    Keyboard.dismiss();
                     setActiveMode("Account");
                     setDrawerOpen(false);
                   }}
@@ -326,7 +329,10 @@ function ModeShellScreen({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close mode menu"
-              onPress={() => setDrawerOpen(false)}
+              onPress={() => {
+                Keyboard.dismiss();
+                setDrawerOpen(false);
+              }}
               style={localStyles.drawerBackdrop}
             />
           </View>
@@ -447,19 +453,13 @@ const localStyles = StyleSheet.create({
     backgroundColor: T.colors.canvas,
   },
   topBar: {
-    borderBottomWidth: 1,
-    borderBottomColor: T.colors.border,
-    minHeight: 56,
-    paddingHorizontal: T.spacing.md,
-    paddingBottom: T.spacing.sm,
+    minHeight: 54,
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 6,
     flexDirection: "row",
     alignItems: "center",
-    gap: T.spacing.sm,
-    backgroundColor: "rgba(24,24,27,0.94)",
-  },
-  readerTopDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: T.colors.border,
+    gap: 10,
     backgroundColor: "rgba(24,24,27,0.94)",
   },
   topBarIconButton: {
@@ -467,8 +467,8 @@ const localStyles = StyleSheet.create({
     height: T.touchTarget.min,
     borderRadius: T.radius.pill,
     borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(39,39,42,0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -476,8 +476,8 @@ const localStyles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
     color: T.colors.text,
-    fontSize: T.typography.body,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
   },
   topBarSpacer: {
     width: T.touchTarget.min,

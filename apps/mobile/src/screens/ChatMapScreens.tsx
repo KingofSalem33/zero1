@@ -1,10 +1,12 @@
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   type GestureResponderEvent,
   type PanResponderGestureState,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,12 +20,22 @@ import {
   type NavigationProp,
   type ParamListBase,
 } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
 import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import { fetchTraceBundle, fetchVerseText } from "../lib/api";
 import { MOBILE_ENV } from "../lib/env";
+import {
+  normalizeMobilePendingPrompt,
+  type MobileMapConnection,
+  type MobileGoDeeperPayload,
+  type MobileMapSession,
+  type MobilePendingPrompt,
+  type MobilePromptMode,
+} from "../types/chat";
 import {
   type VisualContextBundle,
   type VisualNode,
@@ -35,8 +47,11 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  rawContent?: string;
   citations?: string[];
   mapBundle?: VisualContextBundle;
+  suggestTrace?: boolean;
+  connectionCount?: number;
 }
 
 interface ChatHistoryMessage {
@@ -52,7 +67,25 @@ interface MapNodeLayout extends VisualNode {
 interface ParsedBibleStudyResult {
   content: string;
   citations: string[];
+  suggestTrace?: boolean;
+  connectionCount?: number;
+  mapBundle?: VisualContextBundle;
+  searchingVerses?: string[];
+  activeTools?: string[];
+  completedTools?: string[];
+  erroredTools?: string[];
 }
+
+interface RandomPericopeTopic {
+  id: number;
+  title: string;
+  rangeRef: string;
+  displayText: string;
+  promptText: string;
+  kind: "random" | "ot" | "nt";
+}
+
+let hasPrimedInitialEmptyChatAutofocus = false;
 
 const MAP_CANVAS_SIZE = 1200;
 const MAP_CENTER = MAP_CANVAS_SIZE / 2;
@@ -60,7 +93,22 @@ const REFERENCE_PARTS_REGEX =
   /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g;
 const REFERENCE_MATCH_REGEX =
   /^(?:\[)?((?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?)(?:\])?$/;
-const CHAT_QUICK_PROMPTS = [
+const REFERENCE_REGEX =
+  /((?:\[\s*)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\s*\])?)/g;
+const EDGE_TYPE_TO_STYLE: Record<string, string> = {
+  DEEPER: "GREY",
+  ROOTS: "GOLD",
+  ECHOES: "PURPLE",
+  PROPHECY: "CYAN",
+  GENEALOGY: "GENEALOGY",
+  NARRATIVE: "GREY",
+  TYPOLOGY: "TYPOLOGY",
+  FULFILLMENT: "FULFILLMENT",
+  CONTRAST: "CONTRAST",
+  PROGRESSION: "PROGRESSION",
+  PATTERN: "PATTERN",
+};
+const CHAT_QUICK_PROMPTS_FALLBACK = [
   {
     key: "random",
     label: "Surprise Me",
@@ -80,6 +128,14 @@ const CHAT_QUICK_PROMPTS = [
       "Give me a New Testament passage to study with context and key themes.",
   },
 ] as const;
+
+type QuickPromptEntry = {
+  key: "random" | "ot" | "nt";
+  label: string;
+  displayText: string;
+  promptText: string;
+  title: string;
+};
 
 type AssistantBlock =
   | { kind: "heading"; text: string }
@@ -224,6 +280,13 @@ function parseSsePayload(raw: string): ParsedBibleStudyResult {
   let currentEvent = "";
   let content = "";
   let citations: string[] = [];
+  let suggestTrace = false;
+  let connectionCount: number | undefined;
+  let mapBundle: VisualContextBundle | undefined;
+  const searchingVerses: string[] = [];
+  const activeTools: string[] = [];
+  const completedTools: string[] = [];
+  const erroredTools: string[] = [];
 
   for (const line of lines) {
     if (!line.trim()) {
@@ -246,42 +309,498 @@ function parseSsePayload(raw: string): ParsedBibleStudyResult {
       if (currentEvent === "content") {
         content += typeof parsed.delta === "string" ? parsed.delta : "";
       }
-      if (currentEvent === "done" && Array.isArray(parsed.citations)) {
-        citations = parsed.citations.filter(
-          (entry): entry is string => typeof entry === "string",
-        );
+      if (currentEvent === "done") {
+        if (Array.isArray(parsed.citations)) {
+          citations = parsed.citations.filter(
+            (entry): entry is string => typeof entry === "string",
+          );
+        }
+        suggestTrace = Boolean(parsed.suggestTrace);
+        connectionCount =
+          typeof parsed.connectionCount === "number"
+            ? parsed.connectionCount
+            : undefined;
+      }
+      if (currentEvent === "verse_search" && typeof parsed.verse === "string") {
+        searchingVerses.push(parsed.verse);
+      }
+      if (currentEvent === "tool_call" && typeof parsed.tool === "string") {
+        activeTools.push(parsed.tool);
+      }
+      if (currentEvent === "tool_result" && typeof parsed.tool === "string") {
+        completedTools.push(parsed.tool);
+      }
+      if (currentEvent === "tool_error" && typeof parsed.tool === "string") {
+        erroredTools.push(parsed.tool);
+      }
+      if (currentEvent === "map_data" && isVisualContextBundle(parsed)) {
+        mapBundle = parsed;
       }
     } catch {
       // Ignore malformed SSE line and continue parsing.
     }
   }
 
-  return { content, citations };
+  return {
+    content,
+    citations,
+    suggestTrace,
+    connectionCount,
+    mapBundle,
+    searchingVerses,
+    activeTools,
+    completedTools,
+    erroredTools,
+  };
+}
+
+function appendUnique(items: string[], value: string): string[] {
+  if (!value.trim()) return items;
+  return items.includes(value) ? items : [...items, value];
+}
+
+function formatToolLabel(tool: string): string {
+  return tool
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function normalizeReference(value: string): string {
+  return value
+    .replaceAll("[", "")
+    .replaceAll("]", "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function formatNodeReference(node: VisualNode): string {
+  return `${node.book_name} ${node.chapter}:${node.verse}`;
+}
+
+function buildReferenceLookup(
+  bundle: VisualContextBundle,
+): Map<string, number> {
+  const lookup = new Map<string, number>();
+  bundle.nodes.forEach((node) => {
+    const canonical = formatNodeReference(node);
+    lookup.set(normalizeReference(canonical), node.id);
+  });
+  return lookup;
+}
+
+function extractReferences(text: string): string[] {
+  const matches = text.match(REFERENCE_REGEX);
+  if (!matches) return [];
+  return matches.map((value) => value.replace(/^\s*\[|\]\s*$/g, "").trim());
+}
+
+function buildEdgeKey(connectionType: string, fromId: number, toId: number) {
+  const a = Math.min(fromId, toId);
+  const b = Math.max(fromId, toId);
+  return `${connectionType}:${a}-${b}`;
+}
+
+function getEdgeStyleType(edgeType: string | undefined): string {
+  if (!edgeType) return "GREY";
+  return EDGE_TYPE_TO_STYLE[edgeType] || "GREY";
+}
+
+function findBestEdge(
+  bundle: VisualContextBundle,
+  fromId: number,
+  toId: number,
+) {
+  const candidates = (bundle.edges || []).filter(
+    (edge) =>
+      (edge.from === fromId && edge.to === toId) ||
+      (edge.from === toId && edge.to === fromId),
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, current) =>
+    current.weight > best.weight ? current : best,
+  );
+}
+
+function resolveConnectionType(
+  bundle: VisualContextBundle,
+  fromId: number,
+  toId: number,
+  fallback: string,
+): string {
+  const edge = findBestEdge(bundle, fromId, toId);
+  if (!edge) return fallback;
+  return getEdgeStyleType(edge.type);
+}
+
+function buildClusterFromBundle(
+  bundle: VisualContextBundle,
+  baseId: number,
+  connectionType: string,
+  seedVerseIds: number[] = [],
+) {
+  const verseIdSet = new Set<number>(seedVerseIds);
+  verseIdSet.add(baseId);
+  (bundle.edges || []).forEach((edge) => {
+    const styleType = getEdgeStyleType(edge.type);
+    if (styleType !== connectionType) return;
+    if (edge.from === baseId) {
+      verseIdSet.add(edge.to);
+    } else if (edge.to === baseId) {
+      verseIdSet.add(edge.from);
+    }
+  });
+  return {
+    baseId,
+    verseIds: Array.from(verseIdSet),
+    connectionType,
+  };
+}
+
+function buildClusterEdges(
+  bundle: VisualContextBundle,
+  cluster: NonNullable<MobileMapSession["cluster"]>,
+) {
+  return cluster.verseIds
+    .filter((id) => id !== cluster.baseId)
+    .map((id) => {
+      const bestEdge = findBestEdge(bundle, cluster.baseId, id);
+      return {
+        fromId: cluster.baseId,
+        toId: id,
+        connectionType: cluster.connectionType,
+        weight: bestEdge?.weight ?? 0.7,
+      };
+    });
+}
+
+function buildAllClusters(bundle: VisualContextBundle) {
+  const clusters = new Map<
+    string,
+    {
+      key: string;
+      baseId: number;
+      connectionType: string;
+      verseIds: Set<number>;
+      totalWeight: number;
+    }
+  >();
+
+  (bundle.edges || []).forEach((edge) => {
+    const styleType = getEdgeStyleType(edge.type);
+    const weight = typeof edge.weight === "number" ? edge.weight : 0.7;
+    const addEdge = (baseId: number, otherId: number) => {
+      const key = `${baseId}:${styleType}`;
+      if (!clusters.has(key)) {
+        clusters.set(key, {
+          key,
+          baseId,
+          connectionType: styleType,
+          verseIds: new Set<number>(),
+          totalWeight: 0,
+        });
+      }
+      const cluster = clusters.get(key);
+      if (cluster) {
+        cluster.verseIds.add(otherId);
+        cluster.totalWeight += weight;
+      }
+    };
+
+    addEdge(edge.from, edge.to);
+    addEdge(edge.to, edge.from);
+  });
+
+  return Array.from(clusters.values()).map((cluster) => ({
+    ...cluster,
+    verseIds: Array.from(cluster.verseIds),
+  }));
+}
+
+function pickNextConnection(
+  bundle: VisualContextBundle,
+  cluster: MobileMapSession["cluster"] | undefined,
+  visited: Set<string>,
+): {
+  nextConnection: MobileMapConnection | null;
+  nextCluster: MobileMapSession["cluster"] | undefined;
+} {
+  if (cluster) {
+    const edges = buildClusterEdges(bundle, cluster);
+    const filtered = edges.filter(
+      (edge) =>
+        !visited.has(buildEdgeKey(edge.connectionType, edge.fromId, edge.toId)),
+    );
+    const nextInCluster = filtered.sort((a, b) => {
+      if (b.weight !== a.weight) return b.weight - a.weight;
+      return a.toId - b.toId;
+    })[0];
+
+    if (nextInCluster) {
+      return {
+        nextConnection: {
+          fromId: nextInCluster.fromId,
+          toId: nextInCluster.toId,
+          connectionType: nextInCluster.connectionType,
+        },
+        nextCluster: cluster,
+      };
+    }
+  }
+
+  const clusters = buildAllClusters(bundle)
+    .map((entry) => {
+      const remainingIds = entry.verseIds.filter(
+        (id) =>
+          !visited.has(buildEdgeKey(entry.connectionType, entry.baseId, id)),
+      );
+      return {
+        ...entry,
+        remainingIds,
+        remainingCount: remainingIds.length,
+      };
+    })
+    .filter((entry) => entry.remainingCount > 0);
+
+  if (clusters.length === 0) {
+    return { nextConnection: null, nextCluster: cluster };
+  }
+
+  const remainingByType = clusters.reduce(
+    (acc, entry) => {
+      acc[entry.connectionType] =
+        (acc[entry.connectionType] || 0) + entry.remainingCount;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const targetType = Object.entries(remainingByType).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1];
+    return a[0].localeCompare(b[0]);
+  })[0]?.[0];
+
+  const sameBaseTargetClusters =
+    cluster && targetType
+      ? clusters.filter(
+          (entry) =>
+            entry.baseId === cluster.baseId &&
+            entry.connectionType === targetType,
+        )
+      : [];
+
+  const candidateClusters =
+    sameBaseTargetClusters.length > 0
+      ? sameBaseTargetClusters
+      : targetType
+        ? clusters.filter((entry) => entry.connectionType === targetType)
+        : clusters;
+
+  candidateClusters.sort((a, b) => {
+    if (b.remainingCount !== a.remainingCount) {
+      return b.remainingCount - a.remainingCount;
+    }
+    if (b.totalWeight !== a.totalWeight) {
+      return b.totalWeight - a.totalWeight;
+    }
+    if (b.verseIds.length !== a.verseIds.length) {
+      return b.verseIds.length - a.verseIds.length;
+    }
+    if (a.baseId !== b.baseId) return a.baseId - b.baseId;
+    return a.connectionType.localeCompare(b.connectionType);
+  });
+
+  const selectedCluster = candidateClusters[0];
+  const nextId = selectedCluster.remainingIds.sort((a, b) => a - b)[0];
+  if (!nextId) {
+    return { nextConnection: null, nextCluster: cluster };
+  }
+
+  return {
+    nextConnection: {
+      fromId: selectedCluster.baseId,
+      toId: nextId,
+      connectionType: selectedCluster.connectionType,
+    },
+    nextCluster: {
+      baseId: selectedCluster.baseId,
+      verseIds: selectedCluster.verseIds,
+      connectionType: selectedCluster.connectionType,
+    },
+  };
+}
+
+function buildMapSessionPayload({
+  bundle,
+  seedSession,
+  existingSession,
+  inputText,
+  useQueuedConnection,
+}: {
+  bundle: VisualContextBundle;
+  seedSession?: MobileMapSession | null;
+  existingSession?: MobileMapSession | null;
+  inputText?: string;
+  useQueuedConnection: boolean;
+}) {
+  const visited = new Set<string>(
+    seedSession?.visitedEdgeKeys || existingSession?.visitedEdgeKeys || [],
+  );
+  let cluster = seedSession?.cluster || existingSession?.cluster;
+  let currentConnection =
+    seedSession?.currentConnection || existingSession?.currentConnection;
+  let previousConnection =
+    seedSession?.previousConnection || existingSession?.previousConnection;
+
+  const references = inputText ? extractReferences(inputText) : [];
+  const lookup = buildReferenceLookup(bundle);
+  const referencedIds = references
+    .map((ref) => lookup.get(normalizeReference(ref)))
+    .filter((id): id is number => typeof id === "number");
+  const offMapReferences = references.filter(
+    (ref) => !lookup.has(normalizeReference(ref)),
+  );
+
+  if (!seedSession) {
+    if (useQueuedConnection && existingSession?.nextConnection) {
+      currentConnection = existingSession.nextConnection;
+      previousConnection = existingSession.currentConnection;
+    } else if (referencedIds.length > 0) {
+      previousConnection = undefined;
+      const baseId =
+        referencedIds.length > 1
+          ? referencedIds[0]
+          : cluster?.baseId || bundle.rootId || referencedIds[0];
+      let toId =
+        referencedIds.length > 1
+          ? referencedIds[1]
+          : referencedIds[0] === baseId
+            ? bundle.rootId || referencedIds[0]
+            : referencedIds[0];
+      if (toId === baseId) {
+        const fallbackId = cluster?.verseIds?.find((id) => id !== baseId);
+        if (fallbackId) {
+          toId = fallbackId;
+        }
+      }
+      const connectionType = resolveConnectionType(
+        bundle,
+        baseId,
+        toId,
+        cluster?.connectionType || "GREY",
+      );
+      currentConnection = { fromId: baseId, toId, connectionType };
+      cluster = buildClusterFromBundle(bundle, baseId, connectionType, [
+        baseId,
+        toId,
+      ]);
+    }
+  }
+
+  if (currentConnection) {
+    visited.add(
+      buildEdgeKey(
+        currentConnection.connectionType,
+        currentConnection.fromId,
+        currentConnection.toId,
+      ),
+    );
+  }
+
+  const { nextConnection, nextCluster } = pickNextConnection(
+    bundle,
+    cluster,
+    visited,
+  );
+
+  const session: MobileMapSession = {
+    cluster: nextCluster || cluster,
+    currentConnection,
+    previousConnection,
+    nextConnection,
+    visitedEdgeKeys: Array.from(visited),
+    offMapReferences: offMapReferences.length ? offMapReferences : undefined,
+    exhausted: !nextConnection,
+  };
+
+  return {
+    session,
+    queuedConnection: nextConnection,
+  };
+}
+
+function isContextualFollowUp(message: string, hasBundle: boolean): boolean {
+  if (!hasBundle) return false;
+
+  const normalized = message.trim().toLowerCase();
+  const wordCount = normalized.split(/\s+/).length;
+  const hasVerseRef = /\b\d?\s?[a-z]+\s+\d+:\d+/i.test(message);
+  if (hasVerseRef) return false;
+
+  const pronounPattern =
+    /\b(it|that|this|these|those|the same|what you said|you mentioned|the passage|the verse|the text)\b/i;
+  const hasPronoun = pronounPattern.test(normalized);
+  const followUpPattern =
+    /^(what|why|how|can you|could you|tell me|explain|more about|go deeper|elaborate|clarify|meaning|significance|does this|does that|what does)/i;
+  const isFollowUpPhrase = followUpPattern.test(normalized);
+
+  if (wordCount <= 15 && (hasPronoun || isFollowUpPhrase)) return true;
+  if (wordCount <= 6) return true;
+  return false;
 }
 
 async function streamBibleStudy({
+  endpoint,
   prompt,
   history,
+  promptMode,
+  visualBundle,
+  mapSession,
+  mapMode,
   accessToken,
+  signal,
   onDelta,
+  onVerseSearch,
+  onToolCall,
+  onToolResult,
+  onToolError,
+  onMapData,
 }: {
+  endpoint: string;
   prompt: string;
   history: ChatHistoryMessage[];
+  promptMode?: MobilePromptMode;
+  visualBundle?: VisualContextBundle;
+  mapSession?: MobileMapSession | null;
+  mapMode?: "fast" | "full";
   accessToken?: string;
+  signal?: globalThis.AbortSignal;
   onDelta: (delta: string) => void;
+  onVerseSearch?: (verse: string) => void;
+  onToolCall?: (tool: string) => void;
+  onToolResult?: (tool: string) => void;
+  onToolError?: (tool: string) => void;
+  onMapData?: (bundle: VisualContextBundle) => void;
 }): Promise<ParsedBibleStudyResult> {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  const response = await fetch(`${MOBILE_ENV.API_URL}/api/bible-study`, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({
       message: prompt,
       history,
+      ...(promptMode ? { promptMode } : {}),
+      ...(visualBundle ? { visualBundle } : {}),
+      ...(mapSession ? { mapSession } : {}),
+      ...(mapMode ? { mapMode } : {}),
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -295,6 +814,13 @@ async function streamBibleStudy({
     let currentEvent = "";
     let content = "";
     let citations: string[] = [];
+    let suggestTrace = false;
+    let connectionCount: number | undefined;
+    let mapBundle: VisualContextBundle | undefined;
+    const searchingVerses: string[] = [];
+    const activeTools: string[] = [];
+    const completedTools: string[] = [];
+    const erroredTools: string[] = [];
 
     while (true) {
       const { done, value } = await streamReader.read();
@@ -331,10 +857,46 @@ async function streamBibleStudy({
               onDelta(delta);
             }
           }
-          if (currentEvent === "done" && Array.isArray(parsed.citations)) {
-            citations = parsed.citations.filter(
-              (entry): entry is string => typeof entry === "string",
-            );
+          if (currentEvent === "done") {
+            if (Array.isArray(parsed.citations)) {
+              citations = parsed.citations.filter(
+                (entry): entry is string => typeof entry === "string",
+              );
+            }
+            suggestTrace = Boolean(parsed.suggestTrace);
+            connectionCount =
+              typeof parsed.connectionCount === "number"
+                ? parsed.connectionCount
+                : undefined;
+          }
+          if (
+            currentEvent === "verse_search" &&
+            typeof parsed.verse === "string"
+          ) {
+            searchingVerses.push(parsed.verse);
+            onVerseSearch?.(parsed.verse);
+          }
+          if (currentEvent === "tool_call" && typeof parsed.tool === "string") {
+            activeTools.push(parsed.tool);
+            onToolCall?.(parsed.tool);
+          }
+          if (
+            currentEvent === "tool_result" &&
+            typeof parsed.tool === "string"
+          ) {
+            completedTools.push(parsed.tool);
+            onToolResult?.(parsed.tool);
+          }
+          if (
+            currentEvent === "tool_error" &&
+            typeof parsed.tool === "string"
+          ) {
+            erroredTools.push(parsed.tool);
+            onToolError?.(parsed.tool);
+          }
+          if (currentEvent === "map_data" && isVisualContextBundle(parsed)) {
+            mapBundle = parsed;
+            onMapData?.(parsed);
           }
         } catch {
           // Ignore malformed SSE event and continue streaming.
@@ -342,7 +904,17 @@ async function streamBibleStudy({
       }
     }
 
-    return { content, citations };
+    return {
+      content,
+      citations,
+      suggestTrace,
+      connectionCount,
+      mapBundle,
+      searchingVerses,
+      activeTools,
+      completedTools,
+      erroredTools,
+    };
   }
 
   const raw = await response.text();
@@ -351,6 +923,42 @@ async function streamBibleStudy({
     onDelta(parsed.content);
   }
   return parsed;
+}
+
+async function fetchRandomPericope(
+  kind: "random" | "ot" | "nt",
+): Promise<RandomPericopeTopic> {
+  const params =
+    kind === "ot" ? "?testament=OT" : kind === "nt" ? "?testament=NT" : "";
+  const response = await fetch(
+    `${MOBILE_ENV.API_URL}/api/pericope/random${params}`,
+  );
+  if (!response.ok) {
+    throw new Error("Failed to load random pericope");
+  }
+  const data = (await response.json()) as {
+    pericopeId?: number;
+    prompt?: string;
+    title?: string;
+    rangeRef?: string;
+  };
+  const title = typeof data.title === "string" ? data.title.trim() : "Pericope";
+  const rangeRef =
+    typeof data.rangeRef === "string" ? data.rangeRef.trim() : "";
+  const basePrompt =
+    typeof data.prompt === "string" && data.prompt.trim().length > 0
+      ? data.prompt.trim()
+      : rangeRef
+        ? `Go deeper on [${rangeRef}].`
+        : `Go deeper on ${title}.`;
+  return {
+    id: typeof data.pericopeId === "number" ? data.pericopeId : Date.now(),
+    title,
+    rangeRef,
+    displayText: basePrompt,
+    promptText: basePrompt,
+    kind,
+  };
 }
 
 function AssistantRichText({
@@ -465,12 +1073,13 @@ export function ChatScreen({
   nav: {
     openMapViewer: (title?: string, bundle?: unknown) => void;
     openReader: (book: string, chapter: number) => void;
-    pendingPrompt?: string;
+    pendingPrompt?: MobileGoDeeperPayload;
     autoSend?: boolean;
     clearPendingPrompt: () => void;
   };
 }) {
   const controller = useMobileApp();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -478,6 +1087,18 @@ export function ChatScreen({
   const [mapBusyMessageId, setMapBusyMessageId] = useState<string | null>(null);
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
+  );
+  const [traceModeEnabled, setTraceModeEnabled] = useState(false);
+  const [activeTools, setActiveTools] = useState<string[]>([]);
+  const [completedTools, setCompletedTools] = useState<string[]>([]);
+  const [searchingVerses, setSearchingVerses] = useState<string[]>([]);
+  const [erroredTools, setErroredTools] = useState<string[]>([]);
+  const [mapSession, setMapSession] = useState<MobileMapSession | null>(null);
+  const [activeVisualBundle, setActiveVisualBundle] =
+    useState<VisualContextBundle | null>(null);
+  const [randomTopicsLoading, setRandomTopicsLoading] = useState(false);
+  const [randomPericopes, setRandomPericopes] = useState<RandomPericopeTopic[]>(
+    [],
   );
   const [versePreviewReference, setVersePreviewReference] = useState<
     string | null
@@ -491,30 +1112,220 @@ export function ChatScreen({
     useState(false);
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const handledPromptRef = useRef<string | null>(null);
+  const streamAbortRef = useRef<globalThis.AbortController | null>(null);
+  const composerInputRef = useRef<TextInput | null>(null);
   const isEmptyState = messages.length === 0;
+  const canSendDraft = draft.trim().length > 0;
+  const showEmptyThreadChips = isEmptyState && !canSendDraft;
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [autoFocusComposer] = useState(() => {
+    if (hasPrimedInitialEmptyChatAutofocus) return false;
+    hasPrimedInitialEmptyChatAutofocus = true;
+    return true;
+  });
+  const keyboardLift = keyboardVisible
+    ? Math.max(8, keyboardHeight - insets.bottom)
+    : 0;
 
   const history = useMemo<ChatHistoryMessage[]>(
     () =>
       messages.map((message) => ({
         role: message.role,
-        content: message.content,
+        content: message.rawContent ?? message.content,
       })),
     [messages],
   );
 
+  const quickPromptEntries = useMemo<QuickPromptEntry[]>(() => {
+    const fallbackByKey = new Map(
+      CHAT_QUICK_PROMPTS_FALLBACK.map((entry) => [entry.key, entry]),
+    );
+    const byKind = new Map(randomPericopes.map((entry) => [entry.kind, entry]));
+    const orderedKinds: Array<"random" | "ot" | "nt"> = ["random", "ot", "nt"];
+
+    return orderedKinds.map((kind) => {
+      const fromApi = byKind.get(kind);
+      if (fromApi) {
+        return {
+          key: kind,
+          label:
+            kind === "ot"
+              ? "Old Testament"
+              : kind === "nt"
+                ? "New Testament"
+                : "Surprise Me",
+          displayText: fromApi.displayText,
+          promptText: fromApi.promptText,
+          title: fromApi.title || "Pericope",
+        };
+      }
+
+      const fallback = fallbackByKey.get(kind);
+      const prompt = fallback?.prompt ?? "Go deeper on a passage.";
+      return {
+        key: kind,
+        label:
+          kind === "ot"
+            ? "Old Testament"
+            : kind === "nt"
+              ? "New Testament"
+              : "Surprise Me",
+        displayText: prompt,
+        promptText: prompt,
+        title:
+          kind === "ot"
+            ? "Old Testament passage"
+            : kind === "nt"
+              ? "New Testament passage"
+              : "Random passage",
+      };
+    });
+  }, [randomPericopes]);
+
+  const handleStopStreaming = useCallback(() => {
+    streamAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isEmptyState) return;
+    if (randomPericopes.length > 0 || randomTopicsLoading) return;
+
+    let active = true;
+    setRandomTopicsLoading(true);
+
+    Promise.all([
+      fetchRandomPericope("random"),
+      fetchRandomPericope("ot"),
+      fetchRandomPericope("nt"),
+    ])
+      .then((topics) => {
+        if (!active) return;
+        setRandomPericopes(topics);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRandomPericopes([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setRandomTopicsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isEmptyState, randomPericopes.length, randomTopicsLoading]);
+
   const handleSend = useCallback(
-    async (explicitPrompt?: string) => {
-      const prompt = (explicitPrompt ?? draft).trim();
-      if (!prompt || busy) return;
+    async (overrideInput?: string | MobilePendingPrompt) => {
+      if (busy) return;
+      const normalizedOverride = overrideInput
+        ? normalizeMobilePendingPrompt(overrideInput)
+        : null;
+      const displayText = (normalizedOverride?.displayText ?? draft).trim();
+      const promptText = (normalizedOverride?.prompt ?? displayText).trim();
+      if (!displayText || !promptText) return;
+
+      const endpoint = traceModeEnabled
+        ? `${MOBILE_ENV.API_URL}/api/chat/stream`
+        : `${MOBILE_ENV.API_URL}/api/bible-study`;
+      const seededBundle = normalizedOverride?.visualBundle;
+      const seededSession = normalizedOverride?.mapSession ?? null;
+      const bundleForMap = seededBundle ?? activeVisualBundle ?? null;
+      const hasActiveBundle = Boolean(bundleForMap);
+      const references = extractReferences(promptText);
+      const hasExplicitRef = references.length > 0;
+      const offMapReferences =
+        bundleForMap && hasExplicitRef
+          ? references.filter(
+              (ref) =>
+                !buildReferenceLookup(bundleForMap).has(
+                  normalizeReference(ref),
+                ),
+            )
+          : [];
+      const followUp = isContextualFollowUp(displayText, hasActiveBundle);
+      const shouldReanchor =
+        !hasActiveBundle ||
+        (!followUp && (!hasExplicitRef || offMapReferences.length > 0));
+
+      const promptMode =
+        normalizedOverride?.mode ??
+        (shouldReanchor || hasActiveBundle ? "go_deeper_short" : undefined);
+
+      let mapSessionPayload: MobileMapSession | undefined;
+      if (bundleForMap && !shouldReanchor) {
+        const { session } = buildMapSessionPayload({
+          bundle: bundleForMap,
+          seedSession: seededSession,
+          existingSession: mapSession,
+          inputText: promptText,
+          useQueuedConnection: false,
+        });
+        mapSessionPayload = session;
+        setMapSession(session);
+      } else if (shouldReanchor) {
+        setMapSession(null);
+        setActiveVisualBundle(null);
+      }
+
+      if (seededBundle) {
+        setActiveVisualBundle(seededBundle);
+      }
+
+      const streamBundle = shouldReanchor
+        ? undefined
+        : bundleForMap || undefined;
+      const mapMode = shouldReanchor ? "fast" : undefined;
+      const requestHistory = history;
 
       const userMessageId = `user-${Date.now()}`;
       const assistantMessageId = `assistant-${Date.now()}`;
+      const abortController = new globalThis.AbortController();
+      streamAbortRef.current = abortController;
+
       setError(null);
       setBusy(true);
       setDraft("");
+      setSearchingVerses([]);
+      setActiveTools([]);
+      setCompletedTools([]);
+      setErroredTools([]);
       setMessages((current) => [
         ...current,
-        { id: userMessageId, role: "user", content: prompt },
+        {
+          id: userMessageId,
+          role: "user",
+          content: displayText,
+          rawContent: promptText,
+        },
         { id: assistantMessageId, role: "assistant", content: "" },
       ]);
       setTimeout(() => {
@@ -523,9 +1334,15 @@ export function ChatScreen({
 
       try {
         const result = await streamBibleStudy({
-          prompt,
-          history,
+          endpoint,
+          prompt: promptText,
+          history: requestHistory,
+          promptMode,
+          visualBundle: streamBundle,
+          mapSession: mapSessionPayload,
+          mapMode,
           accessToken: controller.session?.access_token,
+          signal: abortController.signal,
           onDelta: (delta) => {
             setMessages((current) =>
               current.map((item) =>
@@ -535,15 +1352,76 @@ export function ChatScreen({
               ),
             );
           },
+          onVerseSearch: (verse) => {
+            setSearchingVerses((current) => appendUnique(current, verse));
+          },
+          onToolCall: (tool) => {
+            setActiveTools((current) => appendUnique(current, tool));
+            setCompletedTools((current) =>
+              current.filter((entry) => entry !== tool),
+            );
+            setErroredTools((current) =>
+              current.filter((entry) => entry !== tool),
+            );
+          },
+          onToolResult: (tool) => {
+            setActiveTools((current) =>
+              current.filter((entry) => entry !== tool),
+            );
+            setCompletedTools((current) => appendUnique(current, tool));
+          },
+          onToolError: (tool) => {
+            setActiveTools((current) =>
+              current.filter((entry) => entry !== tool),
+            );
+            setErroredTools((current) => appendUnique(current, tool));
+          },
+          onMapData: (bundle) => {
+            setActiveVisualBundle((current) => {
+              if (current && current.rootId !== bundle.rootId) {
+                setMapSession(null);
+              }
+              return bundle;
+            });
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === assistantMessageId
+                  ? { ...item, mapBundle: bundle }
+                  : item,
+              ),
+            );
+          },
         });
+
+        if (result.mapBundle) {
+          const nextBundle = result.mapBundle;
+          setActiveVisualBundle((current) => {
+            if (current && current.rootId !== nextBundle.rootId) {
+              setMapSession(null);
+            }
+            return nextBundle;
+          });
+        }
+        const completedSet = new Set(result.completedTools ?? []);
+        const erroredSet = new Set(result.erroredTools ?? []);
+        const finalActive = Array.from(
+          new Set(result.activeTools ?? []),
+        ).filter((tool) => !completedSet.has(tool) && !erroredSet.has(tool));
+        setSearchingVerses(Array.from(new Set(result.searchingVerses ?? [])));
+        setActiveTools(finalActive);
+        setCompletedTools(Array.from(completedSet));
+        setErroredTools(Array.from(erroredSet));
 
         setMessages((current) =>
           current.map((item) =>
             item.id === assistantMessageId
               ? {
                   ...item,
-                  content: result.content,
+                  content: result.content || item.content,
                   citations: result.citations,
+                  mapBundle: result.mapBundle ?? item.mapBundle,
+                  suggestTrace: result.suggestTrace,
+                  connectionCount: result.connectionCount,
                 }
               : item,
           ),
@@ -552,6 +1430,16 @@ export function ChatScreen({
           listRef.current?.scrollToEnd({ animated: true });
         }, 0);
       } catch (nextError) {
+        if (nextError instanceof Error && nextError.name === "AbortError") {
+          setMessages((current) =>
+            current.filter(
+              (item) =>
+                item.id !== assistantMessageId ||
+                item.content.trim().length > 0,
+            ),
+          );
+          return;
+        }
         setError(
           nextError instanceof Error ? nextError.message : String(nextError),
         );
@@ -559,24 +1447,48 @@ export function ChatScreen({
           current.filter((item) => item.id !== assistantMessageId),
         );
       } finally {
+        if (streamAbortRef.current === abortController) {
+          streamAbortRef.current = null;
+        }
         setBusy(false);
       }
     },
-    [busy, controller.session?.access_token, draft, history],
+    [
+      activeVisualBundle,
+      busy,
+      controller.session?.access_token,
+      draft,
+      history,
+      mapSession,
+      traceModeEnabled,
+    ],
   );
 
   useEffect(() => {
-    const prompt = nav.pendingPrompt?.trim();
-    if (!prompt) return;
-    const signature = `${prompt}:${Boolean(nav.autoSend)}`;
+    if (!nav.pendingPrompt) return;
+    const normalizedPrompt = normalizeMobilePendingPrompt(nav.pendingPrompt);
+    const displayText = normalizedPrompt.displayText.trim();
+    const promptText = normalizedPrompt.prompt.trim();
+    if (!displayText || !promptText) {
+      nav.clearPendingPrompt();
+      return;
+    }
+    const signature = `${displayText}:${promptText}:${normalizedPrompt.mode ?? ""}:${Boolean(nav.autoSend)}`;
     if (handledPromptRef.current === signature) return;
     handledPromptRef.current = signature;
+
     nav.clearPendingPrompt();
-    setDraft(prompt);
-    if (nav.autoSend) {
-      void handleSend(prompt);
+    setDraft(displayText);
+    if (normalizedPrompt.visualBundle) {
+      setActiveVisualBundle(normalizedPrompt.visualBundle);
     }
-  }, [nav.pendingPrompt, nav.autoSend, handleSend]);
+    if (normalizedPrompt.mapSession) {
+      setMapSession(normalizedPrompt.mapSession);
+    }
+    if (nav.autoSend) {
+      void handleSend(normalizedPrompt);
+    }
+  }, [nav.pendingPrompt, nav.autoSend, nav.clearPendingPrompt, handleSend]);
 
   useEffect(() => {
     if (!versePreviewReference) return;
@@ -624,7 +1536,7 @@ export function ChatScreen({
     try {
       const bundle = await fetchTraceBundle({
         apiBaseUrl: MOBILE_ENV.API_URL,
-        text: message.content,
+        text: message.rawContent ?? message.content,
         accessToken: controller.session?.access_token,
       });
 
@@ -647,14 +1559,31 @@ export function ChatScreen({
     }
   }
 
-  async function handleQuickPrompt(prompt: string, key: string) {
+  async function handleQuickPrompt(entry: QuickPromptEntry) {
     if (busy) return;
-    setQuickPromptBusyKey(key);
+    setQuickPromptBusyKey(entry.key);
     try {
-      await handleSend(prompt);
+      await handleSend({
+        displayText: entry.displayText,
+        prompt: entry.promptText,
+        mode: "go_deeper_short",
+      });
     } finally {
       setQuickPromptBusyKey(null);
     }
+  }
+
+  function handleResetSession() {
+    handleStopStreaming();
+    setMessages([]);
+    setError(null);
+    setMapSession(null);
+    setActiveVisualBundle(null);
+    setActiveTools([]);
+    setCompletedTools([]);
+    setSearchingVerses([]);
+    setErroredTools([]);
+    setDraft("");
   }
 
   function closeVersePreview() {
@@ -702,171 +1631,288 @@ export function ChatScreen({
     setVersePreviewReference(reference);
   }, []);
 
-  return (
-    <View style={localStyles.chatRoot}>
-      <FlatList
-        ref={listRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        style={localStyles.chatList}
-        contentContainerStyle={localStyles.chatListContent}
-        renderItem={({ item }) => (
-          <View
-            style={[
-              localStyles.messageRow,
-              item.role === "user"
-                ? localStyles.messageRowUser
-                : localStyles.messageRowAssistant,
-            ]}
-          >
-            <View
-              style={[
-                localStyles.messageBubble,
-                item.role === "user"
-                  ? localStyles.userBubble
-                  : localStyles.assistantBubble,
-              ]}
-            >
-              {item.role !== "assistant" ? (
-                <Text style={localStyles.messageText}>{item.content}</Text>
-              ) : null}
-
-              {item.role === "assistant" ? (
-                <AssistantRichText
-                  content={item.content || (busy ? "..." : "")}
-                  onReferencePress={handleInlineReferencePress}
-                />
-              ) : null}
-
-              {item.citations &&
-              item.citations.length > 0 &&
-              !containsScriptureReference(item.content) ? (
-                <View style={localStyles.citationRow}>
-                  {item.citations.slice(0, 6).map((citation) => (
-                    <PressableScale
-                      key={`${item.id}-${citation}`}
-                      onPress={() => handleInlineReferencePress(citation)}
-                      style={localStyles.citationChip}
-                    >
-                      <Text style={localStyles.citationChipLabel}>
-                        {citation}
-                      </Text>
-                    </PressableScale>
-                  ))}
-                </View>
-              ) : null}
-
-              {item.role === "assistant" && item.content.trim().length > 0 ? (
-                <View style={localStyles.messageActionRow}>
-                  <ActionButton
-                    variant="secondary"
-                    disabled={mapBusyMessageId === item.id}
-                    label={
-                      mapBusyMessageId === item.id ? "Mapping..." : "Open map"
-                    }
-                    onPress={() => void handleGenerateMap(item)}
-                    style={localStyles.compactAction}
-                    labelStyle={localStyles.compactActionLabel}
-                  />
-                  {item.mapBundle ? (
-                    <ActionButton
-                      variant="ghost"
-                      label="View map"
-                      onPress={() =>
-                        nav.openMapViewer(
-                          `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
-                          item.mapBundle,
-                        )
-                      }
-                      style={localStyles.compactAction}
-                      labelStyle={localStyles.compactActionLabel}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={localStyles.emptyState}>
-            <Text style={localStyles.emptyStateTitle}>
-              Start a conversation
-            </Text>
-            <Text style={localStyles.emptyStateSubtitle}>
-              Ask about a verse, doctrine, or relationship between passages.
-            </Text>
-          </View>
-        }
-      />
-
-      <View style={localStyles.chatComposerWrap}>
-        {error ? (
-          <View style={localStyles.errorBanner}>
-            <Text style={styles.error}>{error}</Text>
-          </View>
-        ) : null}
-        <View style={localStyles.chatComposer}>
-          <TextInput
-            multiline
-            placeholder="Ask a Bible study question..."
-            placeholderTextColor={T.colors.textMuted}
-            value={draft}
-            onChangeText={setDraft}
-            style={localStyles.chatInput}
-          />
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={busy ? "Sending message" : "Send message"}
-            disabled={busy || !draft.trim()}
-            onPress={() => void handleSend()}
-            style={[
-              localStyles.sendButton,
-              busy || !draft.trim() ? localStyles.sendButtonDisabled : null,
-            ]}
-          >
-            <Text style={localStyles.sendButtonLabel}>
-              {busy ? "..." : "Send"}
-            </Text>
-          </PressableScale>
+  const composerBlock = (
+    <View
+      style={[
+        localStyles.chatComposerWrap,
+        keyboardVisible ? localStyles.chatComposerWrapKeyboard : null,
+        keyboardLift > 0 ? { marginBottom: keyboardLift + 10 } : null,
+      ]}
+    >
+      {error ? (
+        <View style={localStyles.errorBanner}>
+          <Text style={styles.error}>{error}</Text>
         </View>
-
-        <View style={localStyles.quickPromptRow}>
-          {CHAT_QUICK_PROMPTS.map((entry) => (
-            <PressableScale
-              key={entry.key}
-              accessibilityRole="button"
-              accessibilityLabel={entry.label}
-              disabled={busy}
-              onPress={() => void handleQuickPrompt(entry.prompt, entry.key)}
-              style={[
-                localStyles.quickPromptButton,
-                quickPromptBusyKey === entry.key
-                  ? localStyles.quickPromptButtonBusy
-                  : null,
-              ]}
-            >
-              <Text style={localStyles.quickPromptLabel}>
-                {quickPromptBusyKey === entry.key ? "Sending..." : entry.label}
+      ) : null}
+      {busy &&
+      (searchingVerses.length > 0 ||
+        activeTools.length > 0 ||
+        completedTools.length > 0 ||
+        erroredTools.length > 0) ? (
+        <View style={localStyles.streamStatusRow}>
+          {searchingVerses.slice(-1).map((reference) => (
+            <View key={`search-${reference}`} style={localStyles.statusChip}>
+              <Text style={localStyles.statusChipLabel}>
+                Searching {reference}
               </Text>
-            </PressableScale>
+            </View>
+          ))}
+          {activeTools.slice(-2).map((tool) => (
+            <View key={`tool-${tool}`} style={localStyles.statusChip}>
+              <Text style={localStyles.statusChipLabel}>
+                {formatToolLabel(tool)}
+              </Text>
+            </View>
+          ))}
+          {completedTools.slice(-1).map((tool) => (
+            <View
+              key={`tool-done-${tool}`}
+              style={[localStyles.statusChip, localStyles.statusChipDone]}
+            >
+              <Text style={localStyles.statusChipLabel}>
+                Done {formatToolLabel(tool)}
+              </Text>
+            </View>
+          ))}
+          {erroredTools.slice(-1).map((tool) => (
+            <View
+              key={`tool-error-${tool}`}
+              style={[localStyles.statusChip, localStyles.statusChipError]}
+            >
+              <Text style={localStyles.statusChipLabel}>Retry {tool}</Text>
+            </View>
           ))}
         </View>
-
-        {!isEmptyState ? (
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Start a new session"
-            disabled={busy}
-            onPress={() => {
-              setMessages([]);
-              setError(null);
-            }}
-            style={localStyles.newSessionButton}
-          >
-            <Text style={localStyles.newSessionButtonLabel}>New Session</Text>
-          </PressableScale>
-        ) : null}
+      ) : null}
+      {isEmptyState ? (
+        <View style={localStyles.quickPromptRail}>
+          {showEmptyThreadChips ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={localStyles.quickPromptRow}
+              style={localStyles.quickPromptScroller}
+            >
+              {quickPromptEntries.map((entry) => (
+                <PressableScale
+                  key={entry.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={entry.label}
+                  disabled={busy || randomTopicsLoading}
+                  onPress={() => void handleQuickPrompt(entry)}
+                  style={[
+                    localStyles.quickPromptButton,
+                    entry.key === "ot"
+                      ? localStyles.quickPromptButtonOT
+                      : entry.key === "nt"
+                        ? localStyles.quickPromptButtonNT
+                        : localStyles.quickPromptButtonRandom,
+                    quickPromptBusyKey === entry.key
+                      ? localStyles.quickPromptButtonBusy
+                      : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      localStyles.quickPromptLabel,
+                      entry.key === "ot"
+                        ? localStyles.quickPromptLabelOT
+                        : entry.key === "nt"
+                          ? localStyles.quickPromptLabelNT
+                          : localStyles.quickPromptLabelRandom,
+                    ]}
+                  >
+                    {entry.label}
+                  </Text>
+                  <Text numberOfLines={1} style={localStyles.quickPromptTopic}>
+                    {quickPromptBusyKey === entry.key
+                      ? "Sending..."
+                      : entry.title}
+                  </Text>
+                </PressableScale>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={localStyles.quickPromptRailPlaceholder} />
+          )}
+        </View>
+      ) : null}
+      <View style={localStyles.chatComposer}>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={
+            traceModeEnabled ? "Trace mode enabled" : "Trace mode disabled"
+          }
+          onPress={() => setTraceModeEnabled((current) => !current)}
+          style={[
+            localStyles.traceToggleButton,
+            traceModeEnabled ? localStyles.traceToggleButtonActive : null,
+          ]}
+        >
+          <Ionicons
+            color={traceModeEnabled ? T.colors.accent : T.colors.textMuted}
+            name="git-network-outline"
+            size={16}
+          />
+        </PressableScale>
+        <TextInput
+          ref={composerInputRef}
+          autoFocus={autoFocusComposer && isEmptyState}
+          keyboardAppearance="dark"
+          multiline
+          placeholder={
+            traceModeEnabled
+              ? "Ask and trace relationships..."
+              : "Ask a Bible study question..."
+          }
+          placeholderTextColor={T.colors.textMuted}
+          value={draft}
+          onChangeText={setDraft}
+          style={localStyles.chatInput}
+        />
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={busy ? "Stop generating" : "Send message"}
+          disabled={!busy && !canSendDraft}
+          onPress={() => (busy ? handleStopStreaming() : void handleSend())}
+          style={[
+            localStyles.sendButton,
+            !busy && !canSendDraft ? localStyles.sendButtonDisabled : null,
+            !busy && canSendDraft ? localStyles.sendButtonReady : null,
+            busy ? localStyles.sendButtonStop : null,
+          ]}
+        >
+          <Ionicons
+            color={
+              busy
+                ? "rgba(254,202,202,0.95)"
+                : canSendDraft
+                  ? T.colors.accent
+                  : T.colors.textMuted
+            }
+            name={busy ? "stop" : "arrow-up"}
+            size={14}
+          />
+        </PressableScale>
       </View>
+      {!isEmptyState ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Start a new session"
+          disabled={busy}
+          onPress={handleResetSession}
+          style={localStyles.newSessionButton}
+        >
+          <Text style={localStyles.newSessionButtonLabel}>New Session</Text>
+        </PressableScale>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={localStyles.chatRoot}>
+      {isEmptyState ? (
+        <View
+          style={[
+            localStyles.emptyLayout,
+            keyboardVisible ? localStyles.emptyLayoutKeyboard : null,
+          ]}
+        >
+          <View style={localStyles.emptyState}></View>
+          <View style={localStyles.emptyComposerSlot}>{composerBlock}</View>
+        </View>
+      ) : (
+        <>
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            style={localStyles.chatList}
+            contentContainerStyle={localStyles.chatListContent}
+            renderItem={({ item }) => (
+              <View
+                style={[
+                  localStyles.messageRow,
+                  item.role === "user"
+                    ? localStyles.messageRowUser
+                    : localStyles.messageRowAssistant,
+                ]}
+              >
+                <View
+                  style={[
+                    localStyles.messageBubble,
+                    item.role === "user"
+                      ? localStyles.userBubble
+                      : localStyles.assistantBubble,
+                  ]}
+                >
+                  {item.role !== "assistant" ? (
+                    <Text style={localStyles.messageText}>{item.content}</Text>
+                  ) : null}
+
+                  {item.role === "assistant" ? (
+                    <AssistantRichText
+                      content={item.content || (busy ? "..." : "")}
+                      onReferencePress={handleInlineReferencePress}
+                    />
+                  ) : null}
+
+                  {item.citations &&
+                  item.citations.length > 0 &&
+                  !containsScriptureReference(item.content) ? (
+                    <View style={localStyles.citationRow}>
+                      {item.citations.slice(0, 6).map((citation) => (
+                        <PressableScale
+                          key={`${item.id}-${citation}`}
+                          onPress={() => handleInlineReferencePress(citation)}
+                          style={localStyles.citationChip}
+                        >
+                          <Text style={localStyles.citationChipLabel}>
+                            {citation}
+                          </Text>
+                        </PressableScale>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {item.role === "assistant" &&
+                  item.content.trim().length > 0 ? (
+                    <View style={localStyles.messageActionRow}>
+                      <ActionButton
+                        variant="secondary"
+                        disabled={mapBusyMessageId === item.id}
+                        label={
+                          mapBusyMessageId === item.id
+                            ? "Mapping..."
+                            : "Open map"
+                        }
+                        onPress={() => void handleGenerateMap(item)}
+                        style={localStyles.compactAction}
+                        labelStyle={localStyles.compactActionLabel}
+                      />
+                      {item.mapBundle ? (
+                        <ActionButton
+                          variant="ghost"
+                          label="View map"
+                          onPress={() =>
+                            nav.openMapViewer(
+                              `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
+                              item.mapBundle,
+                            )
+                          }
+                          style={localStyles.compactAction}
+                          labelStyle={localStyles.compactActionLabel}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            )}
+          />
+          {composerBlock}
+        </>
+      )}
 
       <Modal
         visible={Boolean(versePreviewReference)}
@@ -1138,37 +2184,60 @@ const localStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.colors.canvas,
   },
+  emptyLayout: {
+    flex: 1,
+    justifyContent: "flex-start",
+    paddingHorizontal: 14,
+    paddingTop: 72,
+    paddingBottom: 20,
+    gap: 14,
+  },
+  emptyLayoutKeyboard: {
+    paddingBottom: 8,
+  },
+  emptyComposerSlot: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
+    marginTop: "auto",
+  },
   chatList: {
     flex: 1,
   },
   chatListContent: {
     flexGrow: 1,
-    paddingHorizontal: T.spacing.md,
-    paddingTop: T.spacing.sm,
-    paddingBottom: T.spacing.md,
-    gap: T.spacing.sm,
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    paddingBottom: 14,
+    gap: 14,
   },
   messageRow: {
     width: "100%",
   },
   messageRowUser: {
     alignItems: "flex-end",
+    paddingLeft: 28,
   },
   messageRowAssistant: {
     alignItems: "flex-start",
+    paddingRight: 10,
   },
   messageBubble: {
     borderWidth: 1,
     borderColor: T.colors.border,
-    borderRadius: T.radius.md,
-    paddingHorizontal: T.spacing.sm,
-    paddingVertical: T.spacing.sm,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     gap: 6,
-    maxWidth: "92%",
+    maxWidth: "90%",
   },
   userBubble: {
-    backgroundColor: T.colors.surfaceRaised,
-    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(38,38,41,0.8)",
+    borderColor: "rgba(255,255,255,0.07)",
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   assistantBubble: {
     backgroundColor: "transparent",
@@ -1179,16 +2248,16 @@ const localStyles = StyleSheet.create({
   },
   messageText: {
     color: T.colors.text,
-    fontSize: T.typography.body,
-    lineHeight: 25,
+    fontSize: 15,
+    lineHeight: 23,
   },
   assistantBlocks: {
-    gap: 10,
+    gap: 12,
   },
   assistantHeading: {
     color: "rgba(232,232,232,0.95)",
-    fontSize: 19,
-    lineHeight: 26,
+    fontSize: 20,
+    lineHeight: 28,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
@@ -1206,8 +2275,8 @@ const localStyles = StyleSheet.create({
   assistantBulletText: {
     flex: 1,
     color: T.colors.text,
-    fontSize: T.typography.body,
-    lineHeight: 25,
+    fontSize: 15,
+    lineHeight: 24,
   },
   inlineReference: {
     color: T.colors.accent,
@@ -1294,21 +2363,21 @@ const localStyles = StyleSheet.create({
   citationChip: {
     borderRadius: T.radius.pill,
     borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: "rgba(39,39,42,0.5)",
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(24,24,27,0.6)",
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   citationChipLabel: {
     color: T.colors.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
   },
   messageActionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingTop: 2,
+    gap: 7,
+    paddingTop: 4,
   },
   compactAction: {
     flex: 0,
@@ -1324,28 +2393,38 @@ const localStyles = StyleSheet.create({
   emptyState: {
     flex: 1,
     justifyContent: "center",
-    paddingTop: 10,
-    paddingHorizontal: 4,
-    gap: 8,
+    alignItems: "center",
+    paddingTop: 16,
+    paddingHorizontal: 20,
+    gap: 10,
+    maxWidth: 540,
+    alignSelf: "center",
   },
   emptyStateTitle: {
     color: T.colors.text,
-    fontSize: T.typography.subheading,
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: "700",
+    fontFamily: T.fonts.serif,
+    textAlign: "center",
+    letterSpacing: -0.4,
   },
   emptyStateSubtitle: {
     color: T.colors.textMuted,
-    fontSize: T.typography.bodySm,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    maxWidth: 520,
   },
   chatComposerWrap: {
-    borderTopWidth: 1,
-    borderTopColor: T.colors.border,
-    backgroundColor: "rgba(12,12,14,0.97)",
-    paddingHorizontal: T.spacing.md,
-    paddingTop: T.spacing.sm,
-    paddingBottom: T.spacing.sm,
-    gap: 8,
+    backgroundColor: T.colors.canvas,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
+    gap: 9,
+  },
+  chatComposerWrapKeyboard: {
+    marginBottom: 0,
   },
   errorBanner: {
     borderWidth: 1,
@@ -1355,71 +2434,169 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: T.spacing.sm,
     paddingVertical: 6,
   },
+  streamStatusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 7,
+  },
+  statusChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.35)",
+    backgroundColor: "rgba(212,175,55,0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  statusChipError: {
+    borderColor: "rgba(239,68,68,0.5)",
+    backgroundColor: "rgba(239,68,68,0.14)",
+  },
+  statusChipDone: {
+    borderColor: "rgba(34,197,94,0.45)",
+    backgroundColor: "rgba(34,197,94,0.14)",
+  },
+  statusChipLabel: {
+    color: T.colors.textMuted,
+    fontSize: 10.5,
+    fontWeight: "600",
+  },
   chatComposer: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     gap: 8,
     borderWidth: 1,
+    borderColor: "rgba(82,82,91,0.52)",
+    borderRadius: 16,
+    backgroundColor: "rgba(38,38,41,0.5)",
+    paddingHorizontal: 12,
+    paddingTop: 9,
+    paddingBottom: 9,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  traceToggleButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: T.radius.lg,
-    backgroundColor: "rgba(39,39,42,0.45)",
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 8,
+    backgroundColor: "rgba(12,12,14,0.58)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  traceToggleButtonActive: {
+    borderColor: "rgba(212,175,55,0.45)",
+    backgroundColor: "rgba(212,175,55,0.16)",
   },
   chatInput: {
     flex: 1,
-    maxHeight: 124,
-    minHeight: 26,
+    maxHeight: 160,
+    minHeight: 40,
     color: T.colors.text,
-    fontSize: T.typography.body,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 23,
     paddingVertical: 0,
   },
   sendButton: {
     minHeight: 32,
-    minWidth: 54,
+    minWidth: 32,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: T.colors.accent,
-    backgroundColor: T.colors.accent,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     paddingVertical: 6,
   },
+  sendButtonReady: {
+    backgroundColor: "rgba(212,175,55,0.12)",
+  },
   sendButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.42,
+  },
+  sendButtonStop: {
+    borderColor: "rgba(239,68,68,0.3)",
+    backgroundColor: "rgba(239,68,68,0.1)",
   },
   sendButtonLabel: {
     color: T.colors.ink,
     fontSize: 11,
     fontWeight: "700",
   },
+  quickPromptRail: {
+    marginBottom: 2,
+  },
+  quickPromptScroller: {
+    width: "100%",
+  },
+  quickPromptRailPlaceholder: {
+    minHeight: 48,
+  },
   quickPromptRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
+    paddingTop: 2,
+    paddingRight: 18,
   },
   quickPromptButton: {
-    flex: 1,
-    minHeight: 30,
-    borderRadius: 8,
+    minHeight: 42,
+    width: 164,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(39,39,42,0.45)",
-    alignItems: "center",
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(39,39,42,0.36)",
+    alignItems: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 2,
+  },
+  quickPromptButtonRandom: {
+    borderColor: "rgba(148,163,184,0.32)",
+    backgroundColor: "rgba(71,85,105,0.12)",
+  },
+  quickPromptButtonOT: {
+    borderColor: "rgba(251,191,36,0.35)",
+    backgroundColor: "rgba(217,119,6,0.14)",
+  },
+  quickPromptButtonNT: {
+    borderColor: "rgba(168,85,247,0.35)",
+    backgroundColor: "rgba(124,58,237,0.14)",
   },
   quickPromptButtonBusy: {
     borderColor: T.colors.accent,
     backgroundColor: T.colors.accentSoft,
   },
   quickPromptLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.35,
+  },
+  quickPromptLabelRandom: {
+    color: "rgba(203,213,225,0.85)",
+  },
+  quickPromptLabelOT: {
+    color: "rgba(253,230,138,0.95)",
+  },
+  quickPromptLabelNT: {
+    color: "rgba(216,180,254,0.95)",
+  },
+  quickPromptTopic: {
+    color: T.colors.textMuted,
+    fontSize: 10.5,
+    lineHeight: 13,
+    fontWeight: "500",
+    width: "100%",
+  },
+  quickPromptLoading: {
     color: T.colors.textMuted,
     fontSize: 10,
-    fontWeight: "600",
+    textAlign: "center",
   },
   newSessionButton: {
     alignSelf: "center",
