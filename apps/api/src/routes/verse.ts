@@ -155,45 +155,46 @@ router.get(
         crossRefs = [];
       }
 
-      let filteredCrossRefs = crossRefs;
-      try {
-        filteredCrossRefs = await profileTime(
-          "verse.filterExistingCrossReferences",
-          async () => {
-            if (crossRefs.length === 0) return crossRefs;
+      const filteredCrossRefs: VerseRef[] = await (async () => {
+        try {
+          return await profileTime(
+            "verse.filterExistingCrossReferences",
+            async () => {
+              if (crossRefs.length === 0) return crossRefs;
 
-            const existingVerses =
-              await cachedBibleService.getVerses(crossRefs);
-            if (existingVerses.length === crossRefs.length) {
-              return crossRefs;
-            }
+              const existingVerses =
+                await cachedBibleService.getVerses(crossRefs);
+              if (existingVerses.length === crossRefs.length) {
+                return crossRefs;
+              }
 
-            const existingKeys = new Set(existingVerses.map(makeRefKey));
-            const filtered = crossRefs.filter((ref) =>
-              existingKeys.has(makeRefKey(ref)),
-            );
-
-            if (filtered.length !== crossRefs.length) {
-              console.warn(
-                `[Verse API] Filtered ${crossRefs.length - filtered.length} invalid cross-reference(s) for ${decodedRef}`,
+              const existingKeys = new Set(existingVerses.map(makeRefKey));
+              const validatedRefs = crossRefs.filter((ref) =>
+                existingKeys.has(makeRefKey(ref)),
               );
-            }
 
-            return filtered;
-          },
-          {
-            file: "routes/verse.ts",
-            fn: "filterExistingCrossReferences",
-            await: "cachedBibleService.getVerses",
-          },
-        );
-      } catch (error) {
-        console.error(
-          `[Verse API] Failed to filter cross-references for ${decodedRef}; returning unfiltered list`,
-          error,
-        );
-        filteredCrossRefs = crossRefs;
-      }
+              if (validatedRefs.length !== crossRefs.length) {
+                console.warn(
+                  `[Verse API] Filtered ${crossRefs.length - validatedRefs.length} invalid cross-reference(s) for ${decodedRef}`,
+                );
+              }
+
+              return validatedRefs;
+            },
+            {
+              file: "routes/verse.ts",
+              fn: "filterExistingCrossReferences",
+              await: "cachedBibleService.getVerses",
+            },
+          );
+        } catch (error) {
+          console.error(
+            `[Verse API] Failed to filter cross-references for ${decodedRef}; returning unfiltered list`,
+            error,
+          );
+          return crossRefs;
+        }
+      })();
 
       // Return the references
       return res.json({
