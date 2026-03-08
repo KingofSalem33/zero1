@@ -10,6 +10,7 @@ import {
   deleteLibraryMap,
   deleteBookmark,
   deleteHighlight,
+  fetchChapterFooter,
   fetchBookmarks,
   fetchHighlights,
   fetchLibraryConnections,
@@ -62,6 +63,7 @@ jest.mock("../../lib/api", () => ({
   createHighlightViaSync: jest.fn(),
   updateHighlight: jest.fn(),
   deleteHighlight: jest.fn(),
+  fetchChapterFooter: jest.fn(),
 }));
 
 jest.mock("expo-web-browser", () => ({
@@ -105,6 +107,10 @@ describe("useMobileAppController", () => {
     (fetchLibraryConnections as jest.Mock).mockResolvedValue([]);
     (fetchLibraryMaps as jest.Mock).mockResolvedValue([]);
     (fetchBookmarks as jest.Mock).mockResolvedValue([]);
+    (fetchChapterFooter as jest.Mock).mockResolvedValue({
+      orientation: "",
+      cards: [],
+    });
     (fetchHighlights as jest.Mock).mockResolvedValue([
       {
         id: "hl-1",

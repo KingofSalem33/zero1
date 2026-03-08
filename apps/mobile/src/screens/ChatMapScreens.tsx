@@ -91,7 +91,6 @@ interface RandomPericopeTopic {
   kind: "random" | "ot" | "nt";
 }
 
-let hasPrimedInitialEmptyChatAutofocus = false;
 const MIN_VERSE_PREVIEW_LOADING_MS = 300;
 
 const MAP_CANVAS_SIZE = 1200;
@@ -401,14 +400,6 @@ function parseSsePayload(raw: string): ParsedBibleStudyResult {
 function appendUnique(items: string[], value: string): string[] {
   if (!value.trim()) return items;
   return items.includes(value) ? items : [...items, value];
-}
-
-function formatToolLabel(tool: string): string {
-  return tool
-    .split(/[_-]+/)
-    .filter(Boolean)
-    .map((part) => part[0].toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function normalizeReference(value: string): string {
@@ -1117,6 +1108,7 @@ export function ChatScreen({
   nav: {
     openMapViewer: (title?: string, bundle?: unknown) => void;
     openReader: (book: string, chapter: number) => void;
+    isActive: boolean;
     pendingPrompt?: MobileGoDeeperPayload;
     autoSend?: boolean;
     clearPendingPrompt: () => void;
@@ -1132,14 +1124,12 @@ export function ChatScreen({
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
   );
-  const [streamPromptLabel, setStreamPromptLabel] = useState<string>("");
   const [traceModeEnabled, setTraceModeEnabled] = useState(false);
   const [activeTools, setActiveTools] = useState<string[]>([]);
-  const [completedTools, setCompletedTools] = useState<string[]>([]);
+  const [, setCompletedTools] = useState<string[]>([]);
   const [searchingVerses, setSearchingVerses] = useState<string[]>([]);
-  const [erroredTools, setErroredTools] = useState<string[]>([]);
+  const [, setErroredTools] = useState<string[]>([]);
   const [mapPrepActive, setMapPrepActive] = useState(false);
-  const [mapPrepCount, setMapPrepCount] = useState<number | null>(null);
   const [mapSession, setMapSession] = useState<MobileMapSession | null>(null);
   const [activeVisualBundle, setActiveVisualBundle] =
     useState<VisualContextBundle | null>(null);
@@ -1166,11 +1156,6 @@ export function ChatScreen({
   const showEmptyThreadChips = isEmptyState && !canSendDraft;
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [autoFocusComposer] = useState(() => {
-    if (hasPrimedInitialEmptyChatAutofocus) return false;
-    hasPrimedInitialEmptyChatAutofocus = true;
-    return true;
-  });
   const keyboardLift = keyboardVisible
     ? Math.max(8, keyboardHeight - insets.bottom)
     : 0;
@@ -1301,6 +1286,26 @@ export function ChatScreen({
   }, []);
 
   useEffect(() => {
+    if (nav.isActive) {
+      const timerA = setTimeout(() => {
+        composerInputRef.current?.focus();
+      }, 40);
+      const timerB = setTimeout(() => {
+        if (!composerInputRef.current?.isFocused()) {
+          composerInputRef.current?.focus();
+        }
+      }, 220);
+      return () => {
+        clearTimeout(timerA);
+        clearTimeout(timerB);
+      };
+    }
+
+    composerInputRef.current?.blur();
+    Keyboard.dismiss();
+  }, [nav.isActive]);
+
+  useEffect(() => {
     if (!isEmptyState) return;
     if (randomPericopes.length > 0 || randomTopicsLoading) return;
 
@@ -1402,14 +1407,16 @@ export function ChatScreen({
 
       setError(null);
       setBusy(true);
+      composerInputRef.current?.blur();
+      Keyboard.dismiss();
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
       setDraft("");
-      setStreamPromptLabel(displayText);
       setSearchingVerses([]);
       setActiveTools([]);
       setCompletedTools([]);
       setErroredTools([]);
       setMapPrepActive(showMapPrepForRequest);
-      setMapPrepCount(showMapPrepForRequest ? 0 : null);
       setMessages((current) => [
         ...current,
         {
@@ -1446,11 +1453,7 @@ export function ChatScreen({
           },
           onVerseSearch: (verse) => {
             setSearchingVerses((current) => {
-              const next = appendUnique(current, verse);
-              if (showMapPrepForRequest) {
-                setMapPrepCount(next.length);
-              }
-              return next;
+              return appendUnique(current, verse);
             });
           },
           onToolCall: (tool) => {
@@ -1553,7 +1556,6 @@ export function ChatScreen({
         }
         setBusy(false);
         setMapPrepActive(false);
-        setStreamPromptLabel("");
         if (traceModeForRequest) {
           setTraceModeEnabled(false);
         }
@@ -1781,65 +1783,6 @@ export function ChatScreen({
           <Text style={styles.error}>{error}</Text>
         </View>
       ) : null}
-      {busy &&
-      (mapPrepActive ||
-        searchingVerses.length > 0 ||
-        activeTools.length > 0 ||
-        completedTools.length > 0 ||
-        erroredTools.length > 0) ? (
-        <View style={localStyles.streamStatusRow}>
-          {mapPrepActive ? (
-            <Animated.View
-              style={[localStyles.statusChipMapPrep, { opacity: statusPulse }]}
-            >
-              <Text style={localStyles.statusChipMapPrepLabel}>
-                Preparing map...
-                {mapPrepCount !== null && mapPrepCount > 0
-                  ? ` (${mapPrepCount} verses found)`
-                  : ""}
-              </Text>
-            </Animated.View>
-          ) : null}
-          {searchingVerses.slice(-1).map((reference) => (
-            <Animated.View
-              key={`search-${reference}`}
-              style={[localStyles.statusChip, { opacity: statusPulse }]}
-            >
-              <Text style={localStyles.statusChipLabel}>
-                Searching {reference}
-              </Text>
-            </Animated.View>
-          ))}
-          {activeTools.slice(-2).map((tool) => (
-            <Animated.View
-              key={`tool-${tool}`}
-              style={[localStyles.statusChip, { opacity: statusPulse }]}
-            >
-              <Text style={localStyles.statusChipLabel}>
-                {formatToolLabel(tool)}
-              </Text>
-            </Animated.View>
-          ))}
-          {completedTools.slice(-1).map((tool) => (
-            <View
-              key={`tool-done-${tool}`}
-              style={[localStyles.statusChip, localStyles.statusChipDone]}
-            >
-              <Text style={localStyles.statusChipLabel}>
-                Done {formatToolLabel(tool)}
-              </Text>
-            </View>
-          ))}
-          {erroredTools.slice(-1).map((tool) => (
-            <View
-              key={`tool-error-${tool}`}
-              style={[localStyles.statusChip, localStyles.statusChipError]}
-            >
-              <Text style={localStyles.statusChipLabel}>Retry {tool}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
       {isEmptyState ? (
         <View style={localStyles.quickPromptRail}>
           {showEmptyThreadChips ? (
@@ -1914,7 +1857,7 @@ export function ChatScreen({
         </PressableScale>
         <TextInput
           ref={composerInputRef}
-          autoFocus={autoFocusComposer && isEmptyState}
+          autoFocus={false}
           keyboardAppearance="dark"
           multiline
           placeholder={
@@ -2022,12 +1965,14 @@ export function ChatScreen({
                     ) : null}
 
                     {isThinkingMessage ? (
-                      <ChatThinkingState
-                        verses={searchingVerses}
-                        tracedText={streamPromptLabel}
-                        activeTools={activeTools}
-                        completedTools={completedTools}
-                      />
+                      <View style={localStyles.thinkingStateSlot}>
+                        <ChatThinkingState
+                          verses={[]}
+                          tracedText="Connections across Scripture"
+                          activeTools={[]}
+                          completedTools={[]}
+                        />
+                      </View>
                     ) : null}
 
                     {item.citations &&
@@ -2549,6 +2494,10 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
     paddingTop: 4,
+  },
+  thinkingStateSlot: {
+    width: "100%",
+    maxWidth: 360,
   },
   compactAction: {
     flex: 0,
