@@ -1633,7 +1633,6 @@ export function ChatScreen({
         const result = await fetchVerseText({
           apiBaseUrl: MOBILE_ENV.API_URL,
           reference: parsed.normalizedReference,
-          throwOnError: true,
         });
         if (cancelled) return;
         const resolvedText = result.text?.trim();
