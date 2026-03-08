@@ -30,7 +30,11 @@ import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNativ
 import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
-import { fetchTraceBundle, fetchVerseText } from "../lib/api";
+import {
+  fetchChainOfThought,
+  fetchTraceBundle,
+  fetchVerseText,
+} from "../lib/api";
 import { getBibleBook } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
 import {
@@ -1122,6 +1126,16 @@ export function ChatScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapBusyMessageId, setMapBusyMessageId] = useState<string | null>(null);
+  const [chainBusyMessageId, setChainBusyMessageId] = useState<string | null>(
+    null,
+  );
+  const [chainByMessageId, setChainByMessageId] = useState<
+    Record<string, string>
+  >({});
+  const [chainModalMessageId, setChainModalMessageId] = useState<string | null>(
+    null,
+  );
+  const [chainModalError, setChainModalError] = useState<string | null>(null);
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
   );
@@ -1810,6 +1824,69 @@ export function ChatScreen({
     }
   }
 
+  function resolveQuestionForAssistantMessage(messageId: string): string {
+    const targetIndex = messages.findIndex((item) => item.id === messageId);
+    if (targetIndex <= 0) return "";
+    for (let index = targetIndex - 1; index >= 0; index -= 1) {
+      const candidate = messages[index];
+      if (candidate?.role === "user") {
+        return (candidate.rawContent ?? candidate.content).trim();
+      }
+    }
+    return "";
+  }
+
+  async function handleOpenChain(
+    message: ChatMessage,
+    options?: { forceRefresh?: boolean },
+  ) {
+    const forceRefresh = Boolean(options?.forceRefresh);
+    if (!forceRefresh) {
+      const cached = chainByMessageId[message.id];
+      if (cached) {
+        setChainModalError(null);
+        setChainModalMessageId(message.id);
+        return;
+      }
+    }
+
+    if (chainBusyMessageId) return;
+    setChainBusyMessageId(message.id);
+    setChainModalError(null);
+    setChainModalMessageId(message.id);
+
+    try {
+      const result = await fetchChainOfThought({
+        apiBaseUrl: MOBILE_ENV.API_URL,
+        question: resolveQuestionForAssistantMessage(message.id),
+        answer: message.rawContent ?? message.content,
+        accessToken: controller.session?.access_token,
+      });
+      const reasoning = result.reasoning?.trim();
+      if (!reasoning) {
+        throw new Error("No reasoning returned");
+      }
+      setChainByMessageId((current) => ({
+        ...current,
+        [message.id]: reasoning,
+      }));
+      setChainModalError(null);
+    } catch (nextError) {
+      setChainModalError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Could not load chain of thought.",
+      );
+    } finally {
+      setChainBusyMessageId(null);
+    }
+  }
+
+  function closeChainModal() {
+    setChainModalMessageId(null);
+    setChainModalError(null);
+  }
+
   async function handleQuickPrompt(entry: QuickPromptEntry) {
     if (busy) return;
     setQuickPromptBusyKey(entry.key);
@@ -1835,6 +1912,10 @@ export function ChatScreen({
     setSearchingVerses([]);
     setErroredTools([]);
     setDraft("");
+    setChainBusyMessageId(null);
+    setChainByMessageId({});
+    setChainModalMessageId(null);
+    setChainModalError(null);
   }
 
   function closeVersePreview() {
@@ -2126,6 +2207,18 @@ export function ChatScreen({
                           style={localStyles.compactAction}
                           labelStyle={localStyles.compactActionLabel}
                         />
+                        <ActionButton
+                          variant="ghost"
+                          disabled={chainBusyMessageId === item.id}
+                          label={
+                            chainBusyMessageId === item.id
+                              ? "Thinking..."
+                              : "Chain"
+                          }
+                          onPress={() => void handleOpenChain(item)}
+                          style={localStyles.compactAction}
+                          labelStyle={localStyles.compactActionLabel}
+                        />
                         {item.mapBundle ? (
                           <ActionButton
                             variant="ghost"
@@ -2206,6 +2299,79 @@ export function ChatScreen({
                 label="View"
                 variant="secondary"
                 onPress={openVersePreviewInReader}
+                style={localStyles.compactAction}
+                labelStyle={localStyles.compactActionLabel}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(chainModalMessageId)}
+        animationType="fade"
+        transparent
+        onRequestClose={closeChainModal}
+      >
+        <View style={localStyles.chainModalOverlay}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close chain modal"
+            onPress={closeChainModal}
+            style={localStyles.chainModalBackdrop}
+          />
+          <View style={localStyles.chainModalCard}>
+            <View style={localStyles.chainModalHeader}>
+              <Text style={localStyles.chainModalTitle}>Chain of Thought</Text>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Close chain modal"
+                onPress={closeChainModal}
+                style={localStyles.referenceModalCloseButton}
+              >
+                <Text style={localStyles.referenceModalCloseLabel}>Close</Text>
+              </PressableScale>
+            </View>
+
+            <View style={localStyles.chainModalBody}>
+              {chainBusyMessageId === chainModalMessageId ? (
+                <LoadingDotsNative label="Building chain..." />
+              ) : null}
+              {chainModalError ? (
+                <Text style={styles.error}>{chainModalError}</Text>
+              ) : null}
+              {chainModalMessageId &&
+              chainByMessageId[chainModalMessageId] &&
+              chainBusyMessageId !== chainModalMessageId ? (
+                <ScrollView style={localStyles.chainModalScroll}>
+                  <Text style={localStyles.chainModalText}>
+                    {chainByMessageId[chainModalMessageId]}
+                  </Text>
+                </ScrollView>
+              ) : null}
+            </View>
+
+            <View style={localStyles.chainModalActions}>
+              {chainModalMessageId && chainModalError ? (
+                <ActionButton
+                  label="Retry"
+                  variant="secondary"
+                  onPress={() => {
+                    const target = messages.find(
+                      (item) => item.id === chainModalMessageId,
+                    );
+                    if (target) {
+                      void handleOpenChain(target, { forceRefresh: true });
+                    }
+                  }}
+                  style={localStyles.compactAction}
+                  labelStyle={localStyles.compactActionLabel}
+                />
+              ) : null}
+              <ActionButton
+                label="Close"
+                variant="ghost"
+                onPress={closeChainModal}
                 style={localStyles.compactAction}
                 labelStyle={localStyles.compactActionLabel}
               />
@@ -2583,6 +2749,64 @@ const localStyles = StyleSheet.create({
   referenceModalActions: {
     flexDirection: "row",
     alignItems: "center",
+    gap: T.spacing.sm,
+  },
+  chainModalOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: T.spacing.md,
+  },
+  chainModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  chainModalCard: {
+    width: "100%",
+    maxWidth: 640,
+    borderRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.ink,
+    padding: T.spacing.md,
+    gap: T.spacing.sm,
+    maxHeight: "76%",
+  },
+  chainModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: T.spacing.sm,
+  },
+  chainModalTitle: {
+    flex: 1,
+    color: T.colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+    textTransform: "uppercase",
+  },
+  chainModalBody: {
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+    minHeight: 140,
+  },
+  chainModalScroll: {
+    maxHeight: 360,
+  },
+  chainModalText: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 24,
+  },
+  chainModalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: T.spacing.sm,
   },
   citationRow: {
