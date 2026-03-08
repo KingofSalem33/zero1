@@ -134,6 +134,7 @@ const CHAT_QUICK_PROMPTS_FALLBACK = [
       "Give me a New Testament passage to study with context and key themes.",
   },
 ] as const;
+const STREAM_CHARS_PER_FRAME = 4;
 
 type QuickPromptEntry = {
   key: "random" | "ot" | "nt";
@@ -1150,6 +1151,11 @@ export function ChatScreen({
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const handledPromptRef = useRef<string | null>(null);
   const streamAbortRef = useRef<globalThis.AbortController | null>(null);
+  const streamDeltaBufferRef = useRef("");
+  const streamDisplayedContentRef = useRef("");
+  const streamAnimationFrameRef = useRef<number | null>(null);
+  const streamAnimationRunningRef = useRef(false);
+  const streamTargetMessageIdRef = useRef<string | null>(null);
   const composerInputRef = useRef<TextInput | null>(null);
   const isEmptyState = messages.length === 0;
   const canSendDraft = draft.trim().length > 0;
@@ -1216,15 +1222,112 @@ export function ChatScreen({
     });
   }, [randomPericopes]);
 
-  const handleStopStreaming = useCallback(() => {
-    streamAbortRef.current?.abort();
+  const cancelStreamTextAnimation = useCallback(() => {
+    const frameId = streamAnimationFrameRef.current;
+    if (frameId !== null) {
+      globalThis.cancelAnimationFrame(frameId);
+      streamAnimationFrameRef.current = null;
+    }
+    streamAnimationRunningRef.current = false;
   }, []);
+
+  const resetStreamTextAnimation = useCallback(
+    (targetMessageId: string | null) => {
+      cancelStreamTextAnimation();
+      streamTargetMessageIdRef.current = targetMessageId;
+      streamDeltaBufferRef.current = "";
+      streamDisplayedContentRef.current = "";
+    },
+    [cancelStreamTextAnimation],
+  );
+
+  const ensureStreamTextAnimating = useCallback(() => {
+    if (streamAnimationRunningRef.current) {
+      return;
+    }
+
+    streamAnimationRunningRef.current = true;
+    const tick = () => {
+      const targetMessageId = streamTargetMessageIdRef.current;
+      if (!targetMessageId) {
+        streamAnimationRunningRef.current = false;
+        streamAnimationFrameRef.current = null;
+        return;
+      }
+
+      const buffered = streamDeltaBufferRef.current;
+      const displayed = streamDisplayedContentRef.current;
+      if (buffered.length <= displayed.length) {
+        streamAnimationRunningRef.current = false;
+        streamAnimationFrameRef.current = null;
+        return;
+      }
+
+      const charsToAdd = Math.min(
+        STREAM_CHARS_PER_FRAME,
+        buffered.length - displayed.length,
+      );
+      const nextContent = buffered.slice(0, displayed.length + charsToAdd);
+      streamDisplayedContentRef.current = nextContent;
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === targetMessageId
+            ? { ...item, content: nextContent }
+            : item,
+        ),
+      );
+
+      streamAnimationFrameRef.current = globalThis.requestAnimationFrame(tick);
+    };
+
+    streamAnimationFrameRef.current = globalThis.requestAnimationFrame(tick);
+  }, []);
+
+  const waitForStreamTextDrain = useCallback((targetMessageId: string) => {
+    return new Promise<void>((resolve) => {
+      const startedAt = Date.now();
+      const bufferedAtStart = Math.max(
+        streamDeltaBufferRef.current.length,
+        streamDisplayedContentRef.current.length,
+      );
+      const expectedMs =
+        Math.ceil(
+          (bufferedAtStart / Math.max(1, STREAM_CHARS_PER_FRAME * 60)) * 1000,
+        ) + 220;
+      const maxWaitMs = Math.min(10000, Math.max(1800, expectedMs));
+
+      const check = () => {
+        const stillTargeting =
+          streamTargetMessageIdRef.current === targetMessageId;
+        const bufferedLength = streamDeltaBufferRef.current.length;
+        const displayedLength = streamDisplayedContentRef.current.length;
+        const fullyDisplayed = displayedLength >= bufferedLength;
+        const timedOut = Date.now() - startedAt >= maxWaitMs;
+
+        if (!stillTargeting || fullyDisplayed || timedOut) {
+          resolve();
+          return;
+        }
+
+        globalThis.requestAnimationFrame(check);
+      };
+
+      check();
+    });
+  }, []);
+
+  const handleStopStreaming = useCallback(() => {
+    cancelStreamTextAnimation();
+    streamAbortRef.current?.abort();
+  }, [cancelStreamTextAnimation]);
 
   useEffect(() => {
     return () => {
+      cancelStreamTextAnimation();
       streamAbortRef.current?.abort();
     };
-  }, []);
+  }, [cancelStreamTextAnimation]);
 
   useEffect(() => {
     const shouldPulse =
@@ -1404,6 +1507,7 @@ export function ChatScreen({
       const assistantMessageId = `assistant-${Date.now()}`;
       const abortController = new globalThis.AbortController();
       streamAbortRef.current = abortController;
+      resetStreamTextAnimation(assistantMessageId);
 
       setError(null);
       setBusy(true);
@@ -1443,13 +1547,9 @@ export function ChatScreen({
           accessToken: controller.session?.access_token,
           signal: abortController.signal,
           onDelta: (delta) => {
-            setMessages((current) =>
-              current.map((item) =>
-                item.id === assistantMessageId
-                  ? { ...item, content: `${item.content}${delta}` }
-                  : item,
-              ),
-            );
+            if (!delta) return;
+            streamDeltaBufferRef.current += delta;
+            ensureStreamTextAnimating();
           },
           onVerseSearch: (verse) => {
             setSearchingVerses((current) => {
@@ -1515,13 +1615,19 @@ export function ChatScreen({
         setActiveTools(finalActive);
         setCompletedTools(Array.from(completedSet));
         setErroredTools(Array.from(erroredSet));
+        await waitForStreamTextDrain(assistantMessageId);
+        cancelStreamTextAnimation();
+        const finalStreamContent =
+          result.content || streamDeltaBufferRef.current;
+        streamDeltaBufferRef.current = finalStreamContent;
+        streamDisplayedContentRef.current = finalStreamContent;
 
         setMessages((current) =>
           current.map((item) =>
             item.id === assistantMessageId
               ? {
                   ...item,
-                  content: result.content || item.content,
+                  content: finalStreamContent || item.content,
                   citations: result.citations,
                   mapBundle: result.mapBundle ?? item.mapBundle,
                   suggestTrace: result.suggestTrace,
@@ -1534,6 +1640,7 @@ export function ChatScreen({
           listRef.current?.scrollToEnd({ animated: true });
         }, 0);
       } catch (nextError) {
+        cancelStreamTextAnimation();
         if (nextError instanceof Error && nextError.name === "AbortError") {
           setMessages((current) =>
             current.filter(
@@ -1551,6 +1658,8 @@ export function ChatScreen({
           current.filter((item) => item.id !== assistantMessageId),
         );
       } finally {
+        cancelStreamTextAnimation();
+        streamTargetMessageIdRef.current = null;
         if (streamAbortRef.current === abortController) {
           streamAbortRef.current = null;
         }
@@ -1566,9 +1675,13 @@ export function ChatScreen({
       busy,
       controller.session?.access_token,
       draft,
+      ensureStreamTextAnimating,
       history,
       mapSession,
+      resetStreamTextAnimation,
       traceModeEnabled,
+      cancelStreamTextAnimation,
+      waitForStreamTextDrain,
     ],
   );
 
@@ -1934,6 +2047,10 @@ export function ChatScreen({
                 item.role === "assistant" &&
                 busy &&
                 item.content.trim().length === 0;
+              const isStreamingAssistantMessage =
+                item.role === "assistant" &&
+                busy &&
+                item.id === streamTargetMessageIdRef.current;
               return (
                 <View
                   style={[
@@ -1994,7 +2111,8 @@ export function ChatScreen({
                     ) : null}
 
                     {item.role === "assistant" &&
-                    item.content.trim().length > 0 ? (
+                    item.content.trim().length > 0 &&
+                    !isStreamingAssistantMessage ? (
                       <View style={localStyles.messageActionRow}>
                         <ActionButton
                           variant="secondary"
@@ -2350,10 +2468,6 @@ const localStyles = StyleSheet.create({
   userBubble: {
     backgroundColor: "rgba(38,38,41,0.8)",
     borderColor: "rgba(255,255,255,0.07)",
-    shadowColor: "#000",
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
   },
   assistantBubble: {
     backgroundColor: "transparent",
@@ -2605,10 +2719,6 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 9,
     paddingBottom: 9,
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
   },
   traceToggleButton: {
     width: 32,

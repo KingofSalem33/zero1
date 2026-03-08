@@ -9,7 +9,6 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useReducedMotion } from "../../../hooks/useReducedMotion";
-import { T } from "../../../theme/mobileStyles";
 
 interface SkeletonBlockProps {
   width?: DimensionValue;
@@ -116,9 +115,5 @@ const localStyles = StyleSheet.create({
     backgroundColor: "rgba(63, 63, 70, 0.78)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
-    shadowColor: T.colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
   },
 });

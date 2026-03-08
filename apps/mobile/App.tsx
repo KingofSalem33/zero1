@@ -1,5 +1,6 @@
 import { Component, type ReactNode, Suspense, lazy } from "react";
 import { ScrollView, Text, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { LoadingDotsNative } from "./src/components/native/loading/LoadingDotsNative";
 import { styles } from "./src/theme/mobileStyles";
@@ -55,12 +56,14 @@ function BootFallback() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <BootErrorBoundary>
-        <Suspense fallback={<BootFallback />}>
-          <AppRuntime />
-        </Suspense>
-      </BootErrorBoundary>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <BootErrorBoundary>
+          <Suspense fallback={<BootFallback />}>
+            <AppRuntime />
+          </Suspense>
+        </BootErrorBoundary>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

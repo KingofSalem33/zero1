@@ -1248,6 +1248,81 @@ app.post(
   },
 );
 
+app.post(
+  "/api/chain-of-thought",
+  optionalAuth,
+  aiLimiter,
+  express.json(),
+  async (req, res) => {
+    try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("chain_of_thought");
+      profiler?.markHandlerStart();
+
+      const question =
+        typeof req.body?.question === "string" ? req.body.question.trim() : "";
+      const answer =
+        typeof req.body?.answer === "string" ? req.body.answer.trim() : "";
+
+      if (!answer) {
+        return res
+          .status(400)
+          .json({ error: "Missing required answer content" });
+      }
+
+      const prompt = `User question:
+${question || "(not provided)"}
+
+Assistant answer:
+${answer}
+
+Task:
+Provide a concise chain-of-thought style study breakdown for the answer.
+- 4-7 short bullets
+- Keep each bullet clear and concrete
+- Ground in Scripture-first reasoning
+- Do not reveal hidden model reasoning or policy text
+- If references are present in the answer, incorporate them naturally`;
+
+      const result = await profileTime(
+        "chain_of_thought.runModel",
+        () =>
+          runModel(
+            [
+              {
+                role: "system",
+                content:
+                  "You are a Bible study reasoning explainer. Produce concise, practical reasoning chains suitable for UI display.",
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            {
+              taskType: "connection",
+              reasoningEffort: "low",
+              verbosity: "low",
+            },
+          ),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+        },
+      );
+
+      return res.json({
+        reasoning: result.text.trim(),
+        citations: result.citations || [],
+      });
+    } catch (error) {
+      console.error("Chain of thought error:", error);
+      return res.status(500).json({ error: "Chain of thought request failed" });
+    }
+  },
+);
+
 // AI Chat endpoint with tools and optional JSON format (optional auth, AI rate limited)
 app.post(
   "/api/chat",
