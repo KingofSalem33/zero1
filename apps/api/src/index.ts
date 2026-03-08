@@ -220,48 +220,55 @@ app.use("/api/library", requireAuth, libraryRouter);
 app.use("/api/verse", optionalAuth, verseRouter);
 
 // Bible book endpoint for mobile/local caching
-app.get("/api/bible/book/:book", optionalAuth, readOnlyLimiter, async (req, res) => {
-  try {
-    const profiler = getProfiler();
-    profiler?.setPipeline("bible_book_get");
-    profiler?.markHandlerStart();
+app.get(
+  "/api/bible/book/:book",
+  optionalAuth,
+  readOnlyLimiter,
+  async (req, res) => {
+    try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("bible_book_get");
+      profiler?.markHandlerStart();
 
-    const requestedBook = decodeURIComponent(req.params.book ?? "").trim();
-    if (!requestedBook) {
-      return res.status(400).json({ error: "Book parameter is required" });
-    }
+      const requestedBook = decodeURIComponent(req.params.book ?? "").trim();
+      if (!requestedBook) {
+        return res.status(400).json({ error: "Book parameter is required" });
+      }
 
-    const book = await profileTime(
-      "bible.getBook",
-      () => getBook(requestedBook),
-      {
-        file: "bible/bibleService.ts",
-        fn: "getBook",
-        await: "getBook",
-      },
-    );
+      const book = await profileTime(
+        "bible.getBook",
+        () => getBook(requestedBook),
+        {
+          file: "bible/bibleService.ts",
+          fn: "getBook",
+          await: "getBook",
+        },
+      );
 
-    if (!book) {
-      return res.status(404).json({ error: `Book not found: ${requestedBook}` });
-    }
+      if (!book) {
+        return res
+          .status(404)
+          .json({ error: `Book not found: ${requestedBook}` });
+      }
 
-    const payload = {
-      book: book.name,
-      chapters: book.chapters.map((chapter, chapterIndex) => ({
-        chapter: chapterIndex + 1,
-        verses: chapter.map((text, verseIndex) => ({
-          verse: verseIndex + 1,
-          text,
+      const payload = {
+        book: book.name,
+        chapters: book.chapters.map((chapter, chapterIndex) => ({
+          chapter: chapterIndex + 1,
+          verses: chapter.map((text, verseIndex) => ({
+            verse: verseIndex + 1,
+            text,
+          })),
         })),
-      })),
-    };
+      };
 
-    return res.json(payload);
-  } catch (error) {
-    console.error("Bible book fetch error:", error);
-    return res.status(500).json({ error: "Failed to fetch Bible book" });
-  }
-});
+      return res.json(payload);
+    } catch (error) {
+      console.error("Bible book fetch error:", error);
+      return res.status(500).json({ error: "Failed to fetch Bible book" });
+    }
+  },
+);
 
 // Mount bible study routes (fast text-only mode)
 app.use("/api/bible-study", optionalAuth, aiLimiter, bibleStudyRouter);
