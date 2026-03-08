@@ -470,13 +470,24 @@ function dedupeReferencesInOrder(candidates: string[]): string[] {
 function normalizeConceptPhrase(line: string): string {
   const withoutRefs = line.replace(REFERENCE_REGEX, " ");
   const cleaned = stripMarkdownInline(withoutRefs)
-    .replace(/^[*•\d.)\s:-]+/, "")
+    .replace(/^[*\u2022\d.)\s:-]+/, "")
     .replace(/\s+/g, " ")
-    .replace(/[.;,:!?]+$/g, "")
     .trim();
   if (!cleaned) return "";
-  const words = cleaned.split(" ").filter((word) => word.trim().length > 0);
-  return words.slice(0, 6).join(" ");
+
+  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || "";
+  if (!firstSentence) return "";
+
+  const bounded =
+    firstSentence.length > 150
+      ? `${firstSentence.slice(0, 147).trimEnd()}...`
+      : firstSentence;
+
+  if (/[.!?]$/.test(bounded)) {
+    return bounded;
+  }
+
+  return `${bounded}.`;
 }
 
 function extractConceptCandidates(reasoning: string): string[] {
@@ -488,11 +499,12 @@ function extractConceptCandidates(reasoning: string): string[] {
 
   const concepts = rawLines
     .map((line) => normalizeConceptPhrase(line))
-    .filter((phrase) => phrase.split(" ").length >= 2);
+    .filter((phrase) => phrase.split(" ").length >= 3);
 
-  return concepts.length > 0 ? concepts : ["Scripture clarifies Scripture"];
+  return concepts.length > 0
+    ? concepts
+    : ["Scripture clarifies Scripture in immediate context."];
 }
-
 function buildChainLinksFromReasoning({
   reasoning,
   message,
@@ -568,6 +580,153 @@ function toChainFlowItems(links: ChainLink[]): ChainFlowItem[] {
   });
 
   return items;
+}
+
+function describeEdgeConcept(
+  edgeType: string,
+  fromLabel: string,
+  toLabel: string,
+): string {
+  const core = (() => {
+    switch (edgeType) {
+      case "ROOTS":
+        return "This traces a root thread that grounds the same doctrine.";
+      case "ECHOES":
+        return "This echoes key language and imagery across the canon.";
+      case "PROPHECY":
+        return "This moves from promise toward expected fulfillment.";
+      case "FULFILLMENT":
+        return "This shows fulfillment of an earlier biblical promise.";
+      case "TYPOLOGY":
+        return "This connects type and fulfillment across redemptive history.";
+      case "CONTRAST":
+        return "This sharpens meaning through intentional contrast.";
+      case "PROGRESSION":
+        return "This advances the argument in the next stage.";
+      case "PATTERN":
+        return "This repeats a structural pattern with theological intent.";
+      case "GENEALOGY":
+        return "This preserves covenant continuity through lineage.";
+      case "NARRATIVE":
+        return "This continues the narrative movement of the thread.";
+      case "ALLUSION":
+        return "This alludes to an earlier text to deepen meaning.";
+      default:
+        return "This deepens the same theological thread.";
+    }
+  })();
+
+  return `${core} (${fromLabel} to ${toLabel}).`;
+}
+
+function buildChainLinksFromBundle(bundle: VisualContextBundle): ChainLink[] {
+  if (!bundle.nodes.length || !bundle.edges.length) return [];
+
+  const nodeById = new Map(bundle.nodes.map((node) => [node.id, node]));
+  const withDirection = bundle.edges
+    .map((edge) => {
+      const fromNode = nodeById.get(edge.from);
+      const toNode = nodeById.get(edge.to);
+      if (!fromNode || !toNode) return null;
+
+      let fromId = edge.from;
+      let toId = edge.to;
+      if (fromNode.depth > toNode.depth) {
+        fromId = edge.to;
+        toId = edge.from;
+      } else if (
+        fromNode.depth === toNode.depth &&
+        edge.to === bundle.rootId &&
+        edge.from !== bundle.rootId
+      ) {
+        fromId = edge.to;
+        toId = edge.from;
+      }
+
+      return {
+        ...edge,
+        fromId,
+        toId,
+      };
+    })
+    .filter((edge): edge is NonNullable<typeof edge> => Boolean(edge));
+
+  const outgoing = new Map<number, typeof withDirection>();
+  withDirection.forEach((edge) => {
+    const list = outgoing.get(edge.fromId) ?? [];
+    list.push(edge);
+    outgoing.set(edge.fromId, list);
+  });
+
+  const edgeKey = (edge: { fromId: number; toId: number; type: string }) =>
+    `${edge.type}:${Math.min(edge.fromId, edge.toId)}-${Math.max(edge.fromId, edge.toId)}`;
+
+  const visitedEdges = new Set<string>();
+  const visitedNodes = new Set<number>();
+  const links: ChainLink[] = [];
+  const maxLinks = Math.min(18, withDirection.length);
+  let currentId = bundle.rootId;
+
+  const pickNext = (): (typeof withDirection)[number] | null => {
+    const outgoingCandidates = (outgoing.get(currentId) ?? [])
+      .filter((edge) => !visitedEdges.has(edgeKey(edge)))
+      .sort((a, b) => {
+        const aVisited = visitedNodes.has(a.toId) ? 1 : 0;
+        const bVisited = visitedNodes.has(b.toId) ? 1 : 0;
+        if (aVisited !== bVisited) return aVisited - bVisited;
+        if (b.weight !== a.weight) return b.weight - a.weight;
+        const aDepth = nodeById.get(a.toId)?.depth ?? 0;
+        const bDepth = nodeById.get(b.toId)?.depth ?? 0;
+        return aDepth - bDepth;
+      });
+    if (outgoingCandidates[0]) return outgoingCandidates[0];
+
+    const bridge = withDirection
+      .filter((edge) => !visitedEdges.has(edgeKey(edge)))
+      .sort((a, b) => b.weight - a.weight)[0];
+    return bridge ?? null;
+  };
+
+  while (links.length < maxLinks) {
+    const next = pickNext();
+    if (!next) break;
+
+    const fromNode = nodeById.get(next.fromId);
+    const toNode = nodeById.get(next.toId);
+    if (!fromNode || !toNode) {
+      visitedEdges.add(edgeKey(next));
+      continue;
+    }
+
+    const fromRef = `${fromNode.book_name} ${fromNode.chapter}:${fromNode.verse}`;
+    const toRef = `${toNode.book_name} ${toNode.chapter}:${toNode.verse}`;
+    links.push({
+      from: fromRef,
+      to: toRef,
+      concept: describeEdgeConcept(
+        next.type,
+        compactReferenceLabel(fromRef),
+        compactReferenceLabel(toRef),
+      ),
+      fromIsReference: true,
+      toIsReference: true,
+    });
+
+    visitedEdges.add(edgeKey(next));
+    visitedNodes.add(next.fromId);
+    visitedNodes.add(next.toId);
+    currentId = next.toId;
+  }
+
+  const deduped: ChainLink[] = [];
+  const seen = new Set<string>();
+  links.forEach((link) => {
+    const key = `${normalizeReference(link.from)}->${normalizeReference(link.to)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(link);
+  });
+  return deduped;
 }
 
 function formatNodeReference(node: VisualNode): string {
@@ -1996,11 +2155,19 @@ export function ChatScreen({
     options?: { forceRefresh?: boolean },
   ) {
     const forceRefresh = Boolean(options?.forceRefresh);
-    if (!forceRefresh) {
+    const hasBundle = Boolean(message.mapBundle);
+    if (!forceRefresh && hasBundle) {
+      setChainModalError(null);
+      setChainModalMessageId(message.id);
+      setChainShowAll(false);
+      return;
+    }
+    if (!forceRefresh && !hasBundle) {
       const cached = chainByMessageId[message.id];
       if (cached) {
         setChainModalError(null);
         setChainModalMessageId(message.id);
+        setChainShowAll(false);
         return;
       }
     }
@@ -2012,6 +2179,23 @@ export function ChatScreen({
     setChainShowAll(false);
 
     try {
+      if (!hasBundle || forceRefresh) {
+        const bundle = await fetchTraceBundle({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          text: message.rawContent ?? message.content,
+          accessToken: controller.session?.access_token,
+        });
+        if (isVisualContextBundle(bundle)) {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === message.id ? { ...item, mapBundle: bundle } : item,
+            ),
+          );
+          setChainModalError(null);
+          return;
+        }
+      }
+
       const result = await fetchChainOfThought({
         apiBaseUrl: MOBILE_ENV.API_URL,
         question: resolveQuestionForAssistantMessage(message.id),
@@ -2019,14 +2203,15 @@ export function ChatScreen({
         accessToken: controller.session?.access_token,
       });
       const reasoning = result.reasoning?.trim();
-      if (!reasoning) {
-        throw new Error("No reasoning returned");
+      if (reasoning) {
+        setChainByMessageId((current) => ({
+          ...current,
+          [message.id]: reasoning,
+        }));
+        setChainModalError(null);
+        return;
       }
-      setChainByMessageId((current) => ({
-        ...current,
-        [message.id]: reasoning,
-      }));
-      setChainModalError(null);
+      throw new Error("No chain data returned.");
     } catch (nextError) {
       setChainModalError(
         nextError instanceof Error
@@ -2128,14 +2313,16 @@ export function ChatScreen({
   const chainModalReasoning = chainModalMessageId
     ? chainByMessageId[chainModalMessageId] || ""
     : "";
-  const chainLinks = useMemo(
-    () =>
-      buildChainLinksFromReasoning({
-        reasoning: chainModalReasoning,
-        message: chainModalMessage,
-      }),
-    [chainModalMessage, chainModalReasoning],
-  );
+  const chainLinks = useMemo(() => {
+    if (chainModalMessage?.mapBundle) {
+      const fromBundle = buildChainLinksFromBundle(chainModalMessage.mapBundle);
+      if (fromBundle.length > 0) return fromBundle;
+    }
+    return buildChainLinksFromReasoning({
+      reasoning: chainModalReasoning,
+      message: chainModalMessage,
+    });
+  }, [chainModalMessage, chainModalReasoning]);
   const visibleChainLinks = chainShowAll ? chainLinks : chainLinks.slice(0, 5);
   const chainFlowItems = useMemo(
     () => toChainFlowItems(visibleChainLinks),
