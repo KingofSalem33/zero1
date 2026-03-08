@@ -86,6 +86,26 @@ interface ParsedBibleStudyResult {
   erroredTools?: string[];
 }
 
+interface ChainLink {
+  from: string;
+  to: string;
+  concept: string;
+  fromIsReference: boolean;
+  toIsReference: boolean;
+}
+
+type ChainFlowItem =
+  | {
+      kind: "verse";
+      label: string;
+      reference: string;
+      tappable: boolean;
+    }
+  | {
+      kind: "concept";
+      label: string;
+    };
+
 interface RandomPericopeTopic {
   id: number;
   title: string;
@@ -414,6 +434,140 @@ function normalizeReference(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function compactBookLabel(book: string): string {
+  const words = book.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return book;
+  return words
+    .map((word, index) => {
+      if (index === 0 && /^\d+$/.test(word)) return word;
+      return word.slice(0, 3);
+    })
+    .join(" ");
+}
+
+function compactReferenceLabel(reference: string): string {
+  const parsed = parseScriptureReference(reference);
+  if (!parsed) return reference;
+  return `${compactBookLabel(parsed.book)} ${parsed.chapter}:${parsed.verse}`;
+}
+
+function dedupeReferencesInOrder(candidates: string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  candidates.forEach((candidate) => {
+    const parsed = parseScriptureReference(candidate);
+    if (!parsed) return;
+    const normalized = normalizeReference(parsed.normalizedReference);
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    output.push(parsed.normalizedReference);
+  });
+  return output;
+}
+
+function normalizeConceptPhrase(line: string): string {
+  const withoutRefs = line.replace(REFERENCE_REGEX, " ");
+  const cleaned = stripMarkdownInline(withoutRefs)
+    .replace(/^[*•\d.)\s:-]+/, "")
+    .replace(/\s+/g, " ")
+    .replace(/[.;,:!?]+$/g, "")
+    .trim();
+  if (!cleaned) return "";
+  const words = cleaned.split(" ").filter((word) => word.trim().length > 0);
+  return words.slice(0, 6).join(" ");
+}
+
+function extractConceptCandidates(reasoning: string): string[] {
+  const rawLines = reasoning
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const concepts = rawLines
+    .map((line) => normalizeConceptPhrase(line))
+    .filter((phrase) => phrase.split(" ").length >= 2);
+
+  return concepts.length > 0 ? concepts : ["Scripture clarifies Scripture"];
+}
+
+function buildChainLinksFromReasoning({
+  reasoning,
+  message,
+}: {
+  reasoning: string;
+  message: ChatMessage | null;
+}): ChainLink[] {
+  const messageText = (message?.rawContent ?? message?.content ?? "").trim();
+  const references = dedupeReferencesInOrder([
+    ...extractReferences(reasoning),
+    ...extractReferences(messageText),
+    ...(message?.citations || []).flatMap((entry) => extractReferences(entry)),
+  ]);
+  const concepts = extractConceptCandidates(reasoning);
+  const conceptAt = (index: number): string =>
+    concepts[index] || concepts[0] || "Scripture clarifies Scripture";
+
+  if (references.length >= 2) {
+    return references.slice(0, -1).map((from, index) => ({
+      from,
+      to: references[index + 1],
+      concept: conceptAt(index),
+      fromIsReference: true,
+      toIsReference: true,
+    }));
+  }
+
+  if (references.length === 1) {
+    return [
+      {
+        from: references[0],
+        to: "Related text",
+        concept: conceptAt(0),
+        fromIsReference: true,
+        toIsReference: false,
+      },
+    ];
+  }
+
+  return [
+    {
+      from: "Current text",
+      to: "Related text",
+      concept: conceptAt(0),
+      fromIsReference: false,
+      toIsReference: false,
+    },
+  ];
+}
+
+function toChainFlowItems(links: ChainLink[]): ChainFlowItem[] {
+  if (links.length === 0) return [];
+  const items: ChainFlowItem[] = [
+    {
+      kind: "verse",
+      label: compactReferenceLabel(links[0].from),
+      reference: links[0].from,
+      tappable: links[0].fromIsReference,
+    },
+  ];
+
+  links.forEach((link) => {
+    items.push({
+      kind: "concept",
+      label: `Concept: ${link.concept}`,
+    });
+    items.push({
+      kind: "verse",
+      label: compactReferenceLabel(link.to),
+      reference: link.to,
+      tappable: link.toIsReference,
+    });
+  });
+
+  return items;
 }
 
 function formatNodeReference(node: VisualNode): string {
@@ -1136,6 +1290,7 @@ export function ChatScreen({
     null,
   );
   const [chainModalError, setChainModalError] = useState<string | null>(null);
+  const [chainShowAll, setChainShowAll] = useState(false);
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
   );
@@ -1854,6 +2009,7 @@ export function ChatScreen({
     setChainBusyMessageId(message.id);
     setChainModalError(null);
     setChainModalMessageId(message.id);
+    setChainShowAll(false);
 
     try {
       const result = await fetchChainOfThought({
@@ -1885,6 +2041,7 @@ export function ChatScreen({
   function closeChainModal() {
     setChainModalMessageId(null);
     setChainModalError(null);
+    setChainShowAll(false);
   }
 
   async function handleQuickPrompt(entry: QuickPromptEntry) {
@@ -1916,6 +2073,7 @@ export function ChatScreen({
     setChainByMessageId({});
     setChainModalMessageId(null);
     setChainModalError(null);
+    setChainShowAll(false);
   }
 
   function closeVersePreview() {
@@ -1963,6 +2121,33 @@ export function ChatScreen({
     if (!parseScriptureReference(reference)) return;
     setVersePreviewReference(reference);
   }, []);
+
+  const chainModalMessage = chainModalMessageId
+    ? messages.find((item) => item.id === chainModalMessageId) || null
+    : null;
+  const chainModalReasoning = chainModalMessageId
+    ? chainByMessageId[chainModalMessageId] || ""
+    : "";
+  const chainLinks = useMemo(
+    () =>
+      buildChainLinksFromReasoning({
+        reasoning: chainModalReasoning,
+        message: chainModalMessage,
+      }),
+    [chainModalMessage, chainModalReasoning],
+  );
+  const visibleChainLinks = chainShowAll ? chainLinks : chainLinks.slice(0, 5);
+  const chainFlowItems = useMemo(
+    () => toChainFlowItems(visibleChainLinks),
+    [visibleChainLinks],
+  );
+  const hasCollapsedChain = chainLinks.length > 5 && !chainShowAll;
+
+  function handleChainVersePress(reference: string, tappable: boolean) {
+    if (!tappable) return;
+    closeChainModal();
+    handleInlineReferencePress(reference);
+  }
 
   const composerBlock = (
     <View
@@ -2344,9 +2529,68 @@ export function ChatScreen({
               chainByMessageId[chainModalMessageId] &&
               chainBusyMessageId !== chainModalMessageId ? (
                 <ScrollView style={localStyles.chainModalScroll}>
-                  <Text style={localStyles.chainModalText}>
-                    {chainByMessageId[chainModalMessageId]}
-                  </Text>
+                  <View style={localStyles.chainFlow}>
+                    {chainFlowItems.map((item, index) => (
+                      <View
+                        key={`chain-flow-${index}-${item.kind}`}
+                        style={localStyles.chainFlowItemWrap}
+                      >
+                        {item.kind === "verse" ? (
+                          <PressableScale
+                            disabled={!item.tappable}
+                            onPress={() =>
+                              handleChainVersePress(
+                                item.reference,
+                                item.tappable,
+                              )
+                            }
+                            style={[
+                              localStyles.chainVerseChip,
+                              !item.tappable
+                                ? localStyles.chainVerseChipMuted
+                                : null,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                localStyles.chainVerseChipLabel,
+                                !item.tappable
+                                  ? localStyles.chainVerseChipLabelMuted
+                                  : null,
+                              ]}
+                            >
+                              {item.label}
+                            </Text>
+                          </PressableScale>
+                        ) : (
+                          <View style={localStyles.chainConceptChip}>
+                            <Text style={localStyles.chainConceptChipLabel}>
+                              {item.label}
+                            </Text>
+                          </View>
+                        )}
+                        {index < chainFlowItems.length - 1 ? (
+                          <View style={localStyles.chainConnector}>
+                            <Ionicons
+                              color="rgba(212,175,55,0.62)"
+                              name="chevron-down"
+                              size={14}
+                            />
+                          </View>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                  {hasCollapsedChain ? (
+                    <PressableScale
+                      onPress={() => setChainShowAll(true)}
+                      style={localStyles.chainShowMoreButton}
+                    >
+                      <Text style={localStyles.chainShowMoreLabel}>
+                        Show more
+                      </Text>
+                    </PressableScale>
+                  ) : null}
                 </ScrollView>
               ) : null}
             </View>
@@ -2797,6 +3041,79 @@ const localStyles = StyleSheet.create({
   },
   chainModalScroll: {
     maxHeight: 360,
+  },
+  chainFlow: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 0,
+    paddingVertical: 2,
+  },
+  chainFlowItemWrap: {
+    width: "100%",
+    alignItems: "center",
+  },
+  chainVerseChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.4)",
+    backgroundColor: "rgba(212,175,55,0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minHeight: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chainVerseChipMuted: {
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  chainVerseChipLabel: {
+    color: T.colors.accent,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.15,
+  },
+  chainVerseChipLabelMuted: {
+    color: T.colors.textMuted,
+  },
+  chainConceptChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(24,24,27,0.7)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minHeight: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    maxWidth: "94%",
+  },
+  chainConceptChipLabel: {
+    color: T.colors.text,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  chainConnector: {
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  chainShowMoreButton: {
+    alignSelf: "center",
+    marginTop: 8,
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.32)",
+    backgroundColor: "rgba(212,175,55,0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  chainShowMoreLabel: {
+    color: T.colors.accent,
+    fontSize: 10.5,
+    fontWeight: "700",
   },
   chainModalText: {
     color: T.colors.text,
