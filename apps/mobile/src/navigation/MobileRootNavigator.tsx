@@ -52,6 +52,7 @@ export interface MobileRootNavigatorProps {
   renderChat: (nav: {
     openMapViewer: (title?: string, bundle?: unknown) => void;
     openReader: (book: string, chapter: number) => void;
+    isActive: boolean;
     pendingPrompt?: MobileGoDeeperPayload;
     autoSend?: boolean;
     clearPendingPrompt: () => void;
@@ -159,6 +160,12 @@ function ModeShellScreen({
     }
   }, [route.params?.mode, route.params?.prompt, route.params?.autoSend]);
 
+  useEffect(() => {
+    if (activeMode !== "Chat") {
+      Keyboard.dismiss();
+    }
+  }, [activeMode]);
+
   const viewTitle = useMemo(() => {
     if (activeMode === "Reader") return "";
     if (activeMode === "Chat") return "";
@@ -226,6 +233,7 @@ function ModeShellScreen({
             {props.renderChat({
               openMapViewer,
               openReader: () => setActiveMode("Reader"),
+              isActive: activeMode === "Chat",
               pendingPrompt,
               autoSend: pendingAutoSend,
               clearPendingPrompt: () => {

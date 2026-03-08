@@ -355,6 +355,10 @@ export function useMobileAppController(
   const readerFooterCacheRef = useRef<Map<string, ChapterFooterResult>>(
     new Map(),
   );
+  const readerFooterInflightRef = useRef<
+    Map<string, Promise<ChapterFooterResult>>
+  >(new Map());
+  const readerNavigationRequestIdRef = useRef(0);
   const [readerHighlightColor, setReaderHighlightColorState] = useState<string>(
     DEFAULT_READER_HIGHLIGHT_COLOR,
   );
@@ -605,6 +609,7 @@ export function useMobileAppController(
   useEffect(() => {
     if (!user) {
       readerFooterCacheRef.current.clear();
+      readerFooterInflightRef.current.clear();
       setProbeResult(null);
       setProbeError(null);
       setLibraryConnections([]);
@@ -865,6 +870,59 @@ export function useMobileAppController(
     }
   }
 
+  function getReaderFooterCacheKey(book: string, chapter: number): string {
+    return `${book}:${chapter}`;
+  }
+
+  function fetchReaderFooterCached(
+    book: string,
+    chapter: number,
+  ): Promise<ChapterFooterResult> {
+    const cacheKey = getReaderFooterCacheKey(book, chapter);
+    const cached = readerFooterCacheRef.current.get(cacheKey);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const inflight = readerFooterInflightRef.current.get(cacheKey);
+    if (inflight) {
+      return inflight;
+    }
+
+    const request = fetchChapterFooter({
+      apiBaseUrl: MOBILE_ENV.API_URL,
+      book,
+      chapter,
+    })
+      .then((footer) => {
+        readerFooterCacheRef.current.set(cacheKey, footer);
+        return footer;
+      })
+      .finally(() => {
+        readerFooterInflightRef.current.delete(cacheKey);
+      });
+
+    readerFooterInflightRef.current.set(cacheKey, request);
+    return request;
+  }
+
+  function prefetchAdjacentReaderFooters(book: string, chapter: number) {
+    const maxChapter = getBibleChapterCount(book) ?? 1;
+    const neighborChapters = [chapter - 1, chapter + 1].filter(
+      (value) => value >= 1 && value <= maxChapter,
+    );
+
+    for (const neighborChapter of neighborChapters) {
+      const cacheKey = getReaderFooterCacheKey(book, neighborChapter);
+      if (readerFooterCacheRef.current.has(cacheKey)) {
+        continue;
+      }
+      void fetchReaderFooterCached(book, neighborChapter).catch(() => {
+        // Ignore prefetch failures; foreground navigation surfaces errors.
+      });
+    }
+  }
+
   async function navigateReaderTo(rawBook: string, rawChapter: number) {
     const canonicalBook = resolveBibleBookName(rawBook);
     if (!canonicalBook) {
@@ -879,36 +937,45 @@ export function useMobileAppController(
 
     const maxChapter = getBibleChapterCount(canonicalBook) ?? 1;
     const boundedChapter = Math.min(Math.max(rawChapter, 1), maxChapter);
-    const footerCacheKey = `${canonicalBook}:${boundedChapter}`;
+    const footerCacheKey = getReaderFooterCacheKey(
+      canonicalBook,
+      boundedChapter,
+    );
     const cachedFooter =
       readerFooterCacheRef.current.get(footerCacheKey) ?? null;
+    const requestId = readerNavigationRequestIdRef.current + 1;
+    readerNavigationRequestIdRef.current = requestId;
+    const isSameChapter =
+      reader.book === canonicalBook &&
+      reader.chapter === boundedChapter &&
+      reader.verses.length > 0;
 
-    setReaderLoading(true);
     setReaderError(null);
     setReaderSelectedVerse(null);
     setReaderCrossReferences([]);
     setReaderCrossReferencesError(null);
-    setReaderFooterLoading(true);
     setReaderFooter(cachedFooter);
     setReaderFooterError(null);
+    if (isSameChapter) {
+      setReaderLoading(false);
+      setReaderFooterLoading(false);
+      return;
+    }
+
+    setReaderLoading(true);
+    setReaderFooterLoading(!cachedFooter);
+
+    const footerPromise = cachedFooter
+      ? Promise.resolve(cachedFooter)
+      : fetchReaderFooterCached(canonicalBook, boundedChapter);
 
     try {
-      const [bookResult, footerResult] = await Promise.allSettled([
-        getBibleBook(canonicalBook),
-        cachedFooter
-          ? Promise.resolve(cachedFooter)
-          : fetchChapterFooter({
-              apiBaseUrl: MOBILE_ENV.API_URL,
-              book: canonicalBook,
-              chapter: boundedChapter,
-            }),
-      ]);
-
-      if (bookResult.status !== "fulfilled") {
-        throw bookResult.reason;
+      const bookResult = await getBibleBook(canonicalBook);
+      if (requestId !== readerNavigationRequestIdRef.current) {
+        return;
       }
 
-      const chapterData = bookResult.value.chapters.find(
+      const chapterData = bookResult.chapters.find(
         (entry) => entry.chapter === boundedChapter,
       );
 
@@ -924,23 +991,39 @@ export function useMobileAppController(
         verses: chapterData.verses,
       });
       setReaderLoadedAt(new Date().toISOString());
+      setReaderLoading(false);
+      prefetchAdjacentReaderFooters(canonicalBook, boundedChapter);
 
-      if (footerResult.status === "fulfilled") {
-        setReaderFooter(footerResult.value);
-        readerFooterCacheRef.current.set(footerCacheKey, footerResult.value);
-        setReaderFooterError(null);
-      } else {
-        setReaderFooter(null);
-        setReaderFooterError(
-          footerResult.reason instanceof Error
-            ? footerResult.reason.message
-            : String(footerResult.reason),
-        );
-      }
+      void footerPromise
+        .then((footer) => {
+          if (requestId !== readerNavigationRequestIdRef.current) {
+            return;
+          }
+          setReaderFooter(footer);
+          readerFooterCacheRef.current.set(footerCacheKey, footer);
+          setReaderFooterError(null);
+        })
+        .catch((error) => {
+          if (requestId !== readerNavigationRequestIdRef.current) {
+            return;
+          }
+          setReaderFooter(null);
+          setReaderFooterError(
+            error instanceof Error ? error.message : String(error),
+          );
+        })
+        .finally(() => {
+          if (requestId !== readerNavigationRequestIdRef.current) {
+            return;
+          }
+          setReaderFooterLoading(false);
+        });
     } catch (error) {
+      if (requestId !== readerNavigationRequestIdRef.current) {
+        return;
+      }
       setReaderError(error instanceof Error ? error.message : String(error));
       setReaderFooter(null);
-    } finally {
       setReaderLoading(false);
       setReaderFooterLoading(false);
     }

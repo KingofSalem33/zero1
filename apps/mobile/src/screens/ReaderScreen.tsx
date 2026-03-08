@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -13,7 +13,12 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { BIBLE_BOOKS, getBibleChapterCount } from "@zero1/shared";
+import {
+  BIBLE_BOOKS,
+  getBibleChapterCount,
+  resolveBibleBookName,
+  tryParseBookmarkReference,
+} from "@zero1/shared";
 import { ActionButton } from "../components/native/ActionButton";
 import { PressableScale } from "../components/native/PressableScale";
 import { RootTranslationPanel } from "../components/native/RootTranslationPanel";
@@ -22,10 +27,14 @@ import { ReaderChapterSkeleton } from "../components/native/loading/ReaderChapte
 import { useMobileApp } from "../context/MobileAppContext";
 import { useRootTranslationMobile } from "../hooks/useRootTranslationMobile";
 import {
+  fetchVerseCrossReferences,
+  fetchVerseText,
   fetchSynopsis,
   fetchTraceBundle,
   type SynopsisResponse,
+  type VerseCrossReferenceItem,
 } from "../lib/api";
+import { getBibleBook } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
 import { styles, T } from "../theme/mobileStyles";
 import type { MobileGoDeeperPayload } from "../types/chat";
@@ -37,10 +46,85 @@ const HEADER_HIDE_SCROLL_DISTANCE = 34;
 const HEADER_TOGGLE_ANIMATION_MS = 180;
 const READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY =
   "biblelot:mobile:reader:last-chapters-by-book";
+const READER_VERSE_NOTES_STORAGE_KEY = "biblelot:mobile:reader:verse-notes";
 const DEFAULT_MARKER_COLOR = "#D4AF37";
 const PARAGRAPH_INDENT = "\u2003";
 const MIN_SELECTION_SYNOPSIS_LOADING_MS = 220;
+const MIN_REFERENCE_MODAL_LOADING_MS = 300;
+const INITIAL_REFERENCE_ROWS_PER_GROUP = 3;
 type IoniconName = keyof typeof Ionicons.glyphMap;
+type ReferenceGroup = "parallel" | "prophecy" | "thematic";
+type VerseNoteMap = Record<string, string>;
+
+const OT_BOOKS = new Set([
+  "Genesis",
+  "Exodus",
+  "Leviticus",
+  "Numbers",
+  "Deuteronomy",
+  "Joshua",
+  "Judges",
+  "Ruth",
+  "1 Samuel",
+  "2 Samuel",
+  "1 Kings",
+  "2 Kings",
+  "1 Chronicles",
+  "2 Chronicles",
+  "Ezra",
+  "Nehemiah",
+  "Esther",
+  "Job",
+  "Psalms",
+  "Proverbs",
+  "Ecclesiastes",
+  "Song of Solomon",
+  "Isaiah",
+  "Jeremiah",
+  "Lamentations",
+  "Ezekiel",
+  "Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadiah",
+  "Jonah",
+  "Micah",
+  "Nahum",
+  "Habakkuk",
+  "Zephaniah",
+  "Haggai",
+  "Zechariah",
+  "Malachi",
+]);
+
+const GOSPELS = new Set(["Matthew", "Mark", "Luke", "John"]);
+
+const PROPHETS = new Set([
+  "Isaiah",
+  "Jeremiah",
+  "Lamentations",
+  "Ezekiel",
+  "Daniel",
+  "Hosea",
+  "Joel",
+  "Amos",
+  "Obadiah",
+  "Jonah",
+  "Micah",
+  "Nahum",
+  "Habakkuk",
+  "Zephaniah",
+  "Haggai",
+  "Zechariah",
+  "Malachi",
+]);
+
+const REFERENCE_GROUP_LABELS: Record<ReferenceGroup, string> = {
+  parallel: "Parallel",
+  prophecy: "Prophecy",
+  thematic: "Thematic",
+};
 
 type FooterLensMeta = {
   label: string;
@@ -208,6 +292,75 @@ function sanitizeLastChapterMap(raw: unknown): LastChapterByBookMap {
   return next;
 }
 
+function normalizeReferenceString(reference: string): string | null {
+  const parsed = tryParseBookmarkReference(reference);
+  if (!parsed || parsed.verse === undefined) return null;
+  const canonicalBook = resolveBibleBookName(parsed.book);
+  if (!canonicalBook) return null;
+  return `${canonicalBook} ${parsed.chapter}:${parsed.verse}`;
+}
+
+function parseReferenceWithVerse(reference: string): {
+  book: (typeof BIBLE_BOOKS)[number];
+  chapter: number;
+  verse: number;
+} | null {
+  const parsed = tryParseBookmarkReference(reference);
+  if (!parsed || parsed.verse === undefined) return null;
+  const canonicalBook = resolveBibleBookName(parsed.book);
+  if (!canonicalBook) return null;
+  return {
+    book: canonicalBook,
+    chapter: parsed.chapter,
+    verse: parsed.verse,
+  };
+}
+
+function parseApiStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) return null;
+  const match = error.message.match(/\((\d{3})\)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function getReferenceErrorMessage(error: unknown, fallback: string): string {
+  const status = parseApiStatus(error);
+  if (status === 429) {
+    return "Too many requests right now. Try again in a few seconds.";
+  }
+  return fallback;
+}
+
+function classifyReferenceGroup(
+  sourceBook: string,
+  targetBook: string,
+): ReferenceGroup {
+  const sourceIsOT = OT_BOOKS.has(sourceBook);
+  const targetIsOT = OT_BOOKS.has(targetBook);
+
+  if (
+    GOSPELS.has(sourceBook) &&
+    GOSPELS.has(targetBook) &&
+    sourceBook !== targetBook
+  ) {
+    return "parallel";
+  }
+
+  if (
+    (sourceIsOT && !targetIsOT && PROPHETS.has(sourceBook)) ||
+    (!sourceIsOT && targetIsOT && PROPHETS.has(targetBook))
+  ) {
+    return "prophecy";
+  }
+
+  if (sourceBook === targetBook) {
+    return "parallel";
+  }
+
+  return "thematic";
+}
+
 export function ReaderScreen({
   nav,
 }: {
@@ -254,8 +407,62 @@ export function ReaderScreen({
     apiBaseUrl: MOBILE_ENV.API_URL,
     accessToken: controller.session?.access_token,
   });
+  const {
+    isLoading: referenceRootLoading,
+    language: referenceRootLanguage,
+    words: referenceRootWords,
+    lostContext: referenceRootLostContext,
+    fallbackText: referenceRootFallbackText,
+    selectedWordIndex: referenceRootWordIndex,
+    setSelectedWordIndex: setReferenceRootWordIndex,
+    generate: generateReferenceRootTranslation,
+    reset: resetReferenceRootTranslation,
+  } = useRootTranslationMobile({
+    apiBaseUrl: MOBILE_ENV.API_URL,
+    accessToken: controller.session?.access_token,
+  });
   const [selectionMapLoading, setSelectionMapLoading] = useState(false);
   const [activeFooterCardIndex, setActiveFooterCardIndex] = useState(0);
+  const [referenceModalVisible, setReferenceModalVisible] = useState(false);
+  const [referenceStack, setReferenceStack] = useState<string[]>([]);
+  const [referenceVerseText, setReferenceVerseText] = useState("");
+  const [referenceVerseTextLoading, setReferenceVerseTextLoading] =
+    useState(false);
+  const [referenceVerseTextError, setReferenceVerseTextError] = useState<
+    string | null
+  >(null);
+  const [referenceCrossReferences, setReferenceCrossReferences] = useState<
+    VerseCrossReferenceItem[]
+  >([]);
+  const [referenceCrossReferencesLoading, setReferenceCrossReferencesLoading] =
+    useState(false);
+  const [referenceCrossReferencesError, setReferenceCrossReferencesError] =
+    useState<string | null>(null);
+  const [referenceActionError, setReferenceActionError] = useState<
+    string | null
+  >(null);
+  const [referenceTraceLoading, setReferenceTraceLoading] = useState(false);
+  const [referenceView, setReferenceView] = useState<"explore" | "root">(
+    "explore",
+  );
+  const [referenceNotes, setReferenceNotes] = useState<VerseNoteMap>({});
+  const [referenceNoteEditorVisible, setReferenceNoteEditorVisible] =
+    useState(false);
+  const [referenceNoteDraft, setReferenceNoteDraft] = useState("");
+  const [referenceShowAllCrossReferences, setReferenceShowAllCrossReferences] =
+    useState(false);
+  const [pendingVerseNavigation, setPendingVerseNavigation] = useState<{
+    book: string;
+    chapter: number;
+    verse: number;
+    key: string;
+    startedAt: number;
+  } | null>(null);
+  const [focusedNavigationVerse, setFocusedNavigationVerse] = useState<
+    number | null
+  >(null);
+  const [readerViewportHeight, setReaderViewportHeight] = useState(0);
+  const [readerContentHeight, setReaderContentHeight] = useState(0);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [headerMeasuredHeight, setHeaderMeasuredHeight] = useState(56);
   const lastVerseTapRef = useRef<{ verse: number; at: number } | null>(null);
@@ -271,6 +478,14 @@ export function ReaderScreen({
   const feedbackVerseColorRef = useRef<string>(controller.readerHighlightColor);
   const headerVisibilityAnim = useRef(new Animated.Value(1)).current;
   const selectorDropAnim = useRef(new Animated.Value(0)).current;
+  const navigationFocusAnim = useRef(new Animated.Value(0)).current;
+  const navigationFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const navigationFocusKeyRef = useRef<string | null>(null);
+  const navigationFocusHandledKeyRef = useRef<string | null>(null);
+  const referenceRequestIdRef = useRef(0);
+  const verseLayoutByNumberRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     setSelectionDraft(null);
@@ -278,14 +493,32 @@ export function ReaderScreen({
     setSelectionSynopsis(null);
     setSelectionSynopsisError(null);
     setPendingRemovalVerses([]);
+    setReferenceModalVisible(false);
+    setReferenceStack([]);
+    setReferenceVerseText("");
+    setReferenceVerseTextError(null);
+    setReferenceCrossReferences([]);
+    setReferenceCrossReferencesError(null);
+    setReferenceActionError(null);
+    setReferenceView("explore");
+    setReferenceNoteEditorVisible(false);
+    setReferenceNoteDraft("");
+    setReferenceShowAllCrossReferences(false);
     resetRootTranslation();
-  }, [controller.reader.book, controller.reader.chapter, resetRootTranslation]);
+    resetReferenceRootTranslation();
+  }, [
+    controller.reader.book,
+    controller.reader.chapter,
+    resetReferenceRootTranslation,
+    resetRootTranslation,
+  ]);
 
   useEffect(() => {
     setHeaderVisible(true);
     headerScrollDirectionRef.current = 0;
     headerScrollDeltaRef.current = 0;
     lastScrollYRef.current = 0;
+    verseLayoutByNumberRef.current = {};
     const timer = setTimeout(() => {
       scrollViewRef.current?.scrollTo({ y: 0, animated: false });
     }, 0);
@@ -305,6 +538,46 @@ export function ReaderScreen({
         }
       })
       .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (navigationFocusTimerRef.current) {
+        clearTimeout(navigationFocusTimerRef.current);
+        navigationFocusTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(READER_VERSE_NOTES_STORAGE_KEY)
+      .then((raw) => {
+        if (!active || !raw) return;
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (!parsed || typeof parsed !== "object") return;
+          const next: VerseNoteMap = {};
+          Object.entries(parsed as Record<string, unknown>).forEach(
+            ([key, value]) => {
+              if (typeof key !== "string" || typeof value !== "string") return;
+              const normalizedKey = normalizeReferenceString(key);
+              if (!normalizedKey) return;
+              const note = value.trim();
+              if (!note) return;
+              next[normalizedKey] = note;
+            },
+          );
+          setReferenceNotes(next);
+        } catch {
+          setReferenceNotes({});
+        }
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
     };
@@ -353,14 +626,20 @@ export function ReaderScreen({
     if (
       !bookSelectorVisible &&
       !chapterSelectorVisible &&
-      !selectionModalVisible
+      !selectionModalVisible &&
+      !referenceModalVisible
     ) {
       return;
     }
     setHeaderVisible(true);
     headerScrollDirectionRef.current = 0;
     headerScrollDeltaRef.current = 0;
-  }, [bookSelectorVisible, chapterSelectorVisible, selectionModalVisible]);
+  }, [
+    bookSelectorVisible,
+    chapterSelectorVisible,
+    referenceModalVisible,
+    selectionModalVisible,
+  ]);
 
   useEffect(() => {
     setActiveFooterCardIndex(0);
@@ -430,6 +709,114 @@ export function ReaderScreen({
       .join(" ")
       .trim();
   }, [controller.reader.verses, selectedVerses]);
+  const currentChapterVerseTextMap = useMemo(
+    () =>
+      new Map(
+        controller.reader.verses.map((entry) => [entry.verse, entry.text]),
+      ),
+    [controller.reader.verses],
+  );
+  const getLocalVerseTextForReference = useCallback(
+    (reference: string | null): string | null => {
+      if (!reference) return null;
+      const parsed = parseReferenceWithVerse(reference);
+      if (!parsed) return null;
+      if (parsed.book.toLowerCase() !== controller.reader.book.toLowerCase()) {
+        return null;
+      }
+      if (parsed.chapter !== controller.reader.chapter) {
+        return null;
+      }
+      const text = currentChapterVerseTextMap.get(parsed.verse);
+      if (typeof text !== "string") return null;
+      const trimmed = text.trim();
+      return trimmed ? trimmed : null;
+    },
+    [
+      controller.reader.book,
+      controller.reader.chapter,
+      currentChapterVerseTextMap,
+    ],
+  );
+  const getCachedVerseTextForReference = useCallback(
+    async (reference: string | null): Promise<string | null> => {
+      const localText = getLocalVerseTextForReference(reference);
+      if (localText) return localText;
+      if (!reference) return null;
+      const parsed = parseReferenceWithVerse(reference);
+      if (!parsed) return null;
+      try {
+        const bookData = await getBibleBook(parsed.book);
+        const chapter = bookData.chapters.find(
+          (entry) => entry.chapter === parsed.chapter,
+        );
+        if (!chapter) return null;
+        const verse = chapter.verses.find(
+          (entry) => entry.verse === parsed.verse,
+        );
+        if (!verse) return null;
+        const trimmed = verse.text.trim();
+        return trimmed ? trimmed : null;
+      } catch {
+        return null;
+      }
+    },
+    [getLocalVerseTextForReference],
+  );
+  const activeReference = useMemo(
+    () =>
+      referenceStack.length > 0
+        ? referenceStack[referenceStack.length - 1]
+        : null,
+    [referenceStack],
+  );
+  const activeReferenceParsed = useMemo(
+    () => (activeReference ? parseReferenceWithVerse(activeReference) : null),
+    [activeReference],
+  );
+  const canGoBackReference = referenceStack.length > 1;
+  const activeReferenceNote = useMemo(
+    () => (activeReference ? (referenceNotes[activeReference] ?? "") : ""),
+    [activeReference, referenceNotes],
+  );
+  const groupedReferenceSections = useMemo(() => {
+    if (!activeReferenceParsed)
+      return [] as Array<{
+        type: ReferenceGroup;
+        refs: VerseCrossReferenceItem[];
+      }>;
+    const grouped: Record<ReferenceGroup, VerseCrossReferenceItem[]> = {
+      parallel: [],
+      prophecy: [],
+      thematic: [],
+    };
+    referenceCrossReferences.forEach((ref) => {
+      const type = classifyReferenceGroup(activeReferenceParsed.book, ref.book);
+      grouped[type].push(ref);
+    });
+    const orderedTypes: ReferenceGroup[] = ["parallel", "prophecy", "thematic"];
+    return orderedTypes
+      .filter((type) => grouped[type].length > 0)
+      .map((type) => ({
+        type,
+        refs: grouped[type],
+      }));
+  }, [activeReferenceParsed, referenceCrossReferences]);
+  const totalReferenceCount = useMemo(
+    () =>
+      groupedReferenceSections.reduce(
+        (total, section) => total + section.refs.length,
+        0,
+      ),
+    [groupedReferenceSections],
+  );
+  const hasCollapsedReferenceRows = useMemo(
+    () =>
+      groupedReferenceSections.some(
+        (section) => section.refs.length > INITIAL_REFERENCE_ROWS_PER_GROUP,
+      ),
+    [groupedReferenceSections],
+  );
   const footerOrientationParts = useMemo(() => {
     const orientation = controller.readerFooter?.orientation?.trim() ?? "";
     if (!orientation) return null;
@@ -519,6 +906,76 @@ export function ReaderScreen({
     feedbackVerseColorRef.current = color;
   }
 
+  function runNavigationFocusPulse(verse: number, navigationKey?: string) {
+    if (
+      navigationKey &&
+      navigationFocusKeyRef.current &&
+      navigationKey !== navigationFocusKeyRef.current
+    ) {
+      return;
+    }
+    if (
+      navigationKey &&
+      navigationFocusHandledKeyRef.current === navigationKey
+    ) {
+      return;
+    }
+    if (navigationKey) {
+      navigationFocusHandledKeyRef.current = navigationKey;
+    }
+    setFocusedNavigationVerse(verse);
+    navigationFocusAnim.stopAnimation();
+    navigationFocusAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(navigationFocusAnim, {
+        toValue: 1,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.delay(220),
+      Animated.timing(navigationFocusAnim, {
+        toValue: 0,
+        duration: 560,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      setFocusedNavigationVerse((current) =>
+        current === verse ? null : current,
+      );
+    });
+  }
+
+  function scheduleNavigationFocusPulse(
+    verse: number,
+    navigationKey: string,
+    delayMs = 120,
+  ) {
+    if (navigationFocusTimerRef.current) {
+      clearTimeout(navigationFocusTimerRef.current);
+      navigationFocusTimerRef.current = null;
+    }
+    navigationFocusTimerRef.current = setTimeout(() => {
+      runNavigationFocusPulse(verse, navigationKey);
+      navigationFocusTimerRef.current = null;
+    }, delayMs);
+  }
+
+  function getCenteredVerseScrollY(verseOffset: number) {
+    const viewport = readerViewportHeight > 0 ? readerViewportHeight : 0;
+    const headerAllowance = headerVisible ? headerMeasuredHeight : 0;
+    const centerOffset =
+      viewport > 0 ? viewport * 0.5 - Math.max(0, headerAllowance * 0.18) : 280;
+    const rawY = Math.max(0, verseOffset - centerOffset);
+    if (viewport <= 0 || readerContentHeight <= 0) {
+      return rawY;
+    }
+    const maxScrollableY = Math.max(0, readerContentHeight - viewport);
+    return Math.min(rawY, maxScrollableY);
+  }
+
   function markVersePendingRemoval(verse: number) {
     setPendingRemovalVerses((current) =>
       current.includes(verse) ? current : [...current, verse],
@@ -585,6 +1042,87 @@ export function ReaderScreen({
     }, 40);
   }
 
+  const registerVerseLayout = useCallback((verse: number, y: number) => {
+    const normalizedY = Math.max(0, Math.round(y));
+    const current = verseLayoutByNumberRef.current[verse];
+    if (current === normalizedY) return;
+    verseLayoutByNumberRef.current[verse] = normalizedY;
+  }, []);
+
+  useEffect(() => {
+    if (!pendingVerseNavigation) return;
+    let rafId: number | null = null;
+    const target = pendingVerseNavigation;
+    const resolveNavigation = () => {
+      if (
+        target.book.toLowerCase() !== controller.reader.book.toLowerCase() ||
+        target.chapter !== controller.reader.chapter
+      ) {
+        rafId = globalThis.requestAnimationFrame(resolveNavigation);
+        return;
+      }
+      if (controller.readerLoading) {
+        rafId = globalThis.requestAnimationFrame(resolveNavigation);
+        return;
+      }
+
+      const verseOffset = verseLayoutByNumberRef.current[target.verse];
+      if (Number.isFinite(verseOffset)) {
+        const nextY = getCenteredVerseScrollY(verseOffset);
+        globalThis.requestAnimationFrame(() => {
+          globalThis.requestAnimationFrame(() => {
+            scrollViewRef.current?.scrollTo({ y: nextY, animated: true });
+          });
+        });
+        scheduleNavigationFocusPulse(target.verse, target.key, 260);
+        setPendingVerseNavigation((current) =>
+          current?.key === target.key ? null : current,
+        );
+        return;
+      }
+
+      const elapsedMs = Date.now() - target.startedAt;
+      if (elapsedMs >= 700) {
+        const targetVerseIndex = controller.reader.verses.findIndex(
+          (entry) => entry.verse === target.verse,
+        );
+        if (targetVerseIndex >= 0) {
+          const denominator = Math.max(1, controller.reader.verses.length - 1);
+          const ratio = targetVerseIndex / denominator;
+          const approxVerseOffset = ratio * Math.max(0, readerContentHeight);
+          const approxY = getCenteredVerseScrollY(approxVerseOffset);
+          globalThis.requestAnimationFrame(() => {
+            globalThis.requestAnimationFrame(() => {
+              scrollViewRef.current?.scrollTo({ y: approxY, animated: true });
+            });
+          });
+        }
+        scheduleNavigationFocusPulse(target.verse, target.key, 320);
+        setPendingVerseNavigation((current) =>
+          current?.key === target.key ? null : current,
+        );
+        return;
+      }
+
+      rafId = globalThis.requestAnimationFrame(resolveNavigation);
+    };
+
+    rafId = globalThis.requestAnimationFrame(resolveNavigation);
+    return () => {
+      if (rafId !== null) {
+        globalThis.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [
+    controller.reader.book,
+    controller.reader.chapter,
+    controller.readerLoading,
+    controller.reader.verses,
+    getCenteredVerseScrollY,
+    pendingVerseNavigation,
+    readerContentHeight,
+  ]);
+
   async function handleGoToPreviousChapter() {
     scrollReaderToTop();
     await controller.goToPreviousReaderChapter();
@@ -620,10 +1158,8 @@ export function ReaderScreen({
         verses: activePayload.verses,
       });
       setSelectionSynopsis(result);
-    } catch (error) {
-      setSelectionSynopsisError(
-        error instanceof Error ? error.message : String(error),
-      );
+    } catch {
+      setSelectionSynopsisError("Could not load synopsis.");
       setSelectionSynopsis(null);
     } finally {
       await ensureMinLoaderDuration(
@@ -675,10 +1211,8 @@ export function ReaderScreen({
       }
       nav.openMapViewer(selectedVerseLabel, bundle);
       clearSelection();
-    } catch (error) {
-      setSelectionSynopsisError(
-        error instanceof Error ? error.message : String(error),
-      );
+    } catch {
+      setSelectionSynopsisError("Could not trace this selection.");
     } finally {
       setSelectionMapLoading(false);
     }
@@ -694,6 +1228,265 @@ export function ReaderScreen({
     nav.openChat(prompt, true);
     clearSelection();
   }
+
+  function persistReferenceNotes(next: VerseNoteMap) {
+    setReferenceNotes(next);
+    void AsyncStorage.setItem(
+      READER_VERSE_NOTES_STORAGE_KEY,
+      JSON.stringify(next),
+    ).catch(() => {});
+  }
+
+  function closeReferenceModal() {
+    setReferenceModalVisible(false);
+    setReferenceStack([]);
+    setReferenceVerseText("");
+    setReferenceVerseTextError(null);
+    setReferenceCrossReferences([]);
+    setReferenceCrossReferencesError(null);
+    setReferenceActionError(null);
+    setReferenceView("explore");
+    setReferenceNoteEditorVisible(false);
+    setReferenceNoteDraft("");
+    setReferenceShowAllCrossReferences(false);
+    setReferenceTraceLoading(false);
+    resetReferenceRootTranslation();
+  }
+
+  function openReferenceModalForVerse(verse: number) {
+    triggerSelectionHaptic();
+    const nextReference = normalizeReferenceString(
+      `${controller.reader.book} ${controller.reader.chapter}:${verse}`,
+    );
+    if (!nextReference) return;
+    setReferenceModalVisible(true);
+    setReferenceStack([nextReference]);
+    setReferenceVerseText(currentChapterVerseTextMap.get(verse)?.trim() ?? "");
+    setReferenceVerseTextError(null);
+    setReferenceActionError(null);
+    setReferenceView("explore");
+    setReferenceNoteEditorVisible(false);
+    setReferenceNoteDraft("");
+    setReferenceShowAllCrossReferences(false);
+    resetReferenceRootTranslation();
+  }
+
+  function pushReference(reference: string) {
+    const normalized = normalizeReferenceString(reference);
+    if (!normalized) return;
+    setReferenceStack((current) => [...current, normalized]);
+    setReferenceView("explore");
+    setReferenceNoteEditorVisible(false);
+    setReferenceNoteDraft("");
+    setReferenceActionError(null);
+    setReferenceShowAllCrossReferences(false);
+    resetReferenceRootTranslation();
+  }
+
+  function popReference() {
+    if (!canGoBackReference) return;
+    setReferenceStack((current) =>
+      current.length > 1 ? current.slice(0, -1) : current,
+    );
+    setReferenceView("explore");
+    setReferenceNoteEditorVisible(false);
+    setReferenceNoteDraft("");
+    setReferenceActionError(null);
+    setReferenceShowAllCrossReferences(false);
+    resetReferenceRootTranslation();
+  }
+
+  async function handleViewReference() {
+    if (!activeReferenceParsed) return;
+    if (pendingVerseNavigation) return;
+    const navigationKey = `${activeReferenceParsed.book}:${activeReferenceParsed.chapter}:${activeReferenceParsed.verse}:${Date.now()}`;
+    if (navigationFocusTimerRef.current) {
+      clearTimeout(navigationFocusTimerRef.current);
+      navigationFocusTimerRef.current = null;
+    }
+    navigationFocusKeyRef.current = navigationKey;
+    navigationFocusHandledKeyRef.current = null;
+    setPendingVerseNavigation({
+      ...activeReferenceParsed,
+      key: navigationKey,
+      startedAt: Date.now(),
+    });
+    closeReferenceModal();
+    await controller.navigateReaderTo(
+      activeReferenceParsed.book,
+      activeReferenceParsed.chapter,
+    );
+  }
+
+  function handleSaveReferenceNote() {
+    if (!activeReference) return;
+    const nextDraft = referenceNoteDraft.trim();
+    const next: VerseNoteMap = { ...referenceNotes };
+    if (nextDraft) {
+      next[activeReference] = nextDraft;
+    } else {
+      delete next[activeReference];
+    }
+    persistReferenceNotes(next);
+    setReferenceNoteEditorVisible(false);
+  }
+
+  async function handleTraceReference() {
+    if (!activeReference) return;
+    setReferenceTraceLoading(true);
+    setReferenceActionError(null);
+    try {
+      const bundle = await fetchTraceBundle({
+        apiBaseUrl: MOBILE_ENV.API_URL,
+        text: activeReference,
+        accessToken: controller.session?.access_token,
+      });
+      if (!isVisualContextBundle(bundle)) {
+        throw new Error("Map response was malformed.");
+      }
+      nav.openMapViewer(activeReference, bundle);
+      closeReferenceModal();
+    } catch {
+      setReferenceActionError("Could not trace this passage.");
+    } finally {
+      setReferenceTraceLoading(false);
+    }
+  }
+
+  function handleGoDeeperReference() {
+    if (!activeReference) return;
+    const prompt: MobileGoDeeperPayload = {
+      displayText: activeReference,
+      prompt: `${activeReference}\n\nHelp me understand this passage.`,
+      mode: "go_deeper_short",
+    };
+    nav.openChat(prompt, true);
+    closeReferenceModal();
+  }
+
+  async function handleReferenceRootTranslation() {
+    if (!activeReferenceParsed) return;
+    const normalizedText = referenceVerseText.trim();
+    if (!normalizedText) return;
+    setReferenceView("root");
+    await generateReferenceRootTranslation(normalizedText, {
+      book: activeReferenceParsed.book,
+      chapter: activeReferenceParsed.chapter,
+      verse: activeReferenceParsed.verse,
+    });
+  }
+
+  function handleBackToReferenceExplore() {
+    resetReferenceRootTranslation();
+    setReferenceView("explore");
+  }
+
+  useEffect(() => {
+    if (!referenceModalVisible || !activeReference) return;
+    const requestId = referenceRequestIdRef.current + 1;
+    referenceRequestIdRef.current = requestId;
+    const controllerAbort = new globalThis.AbortController();
+    const loadStartedAt = Date.now();
+    const localFallbackVerseText =
+      getLocalVerseTextForReference(activeReference);
+
+    setReferenceVerseTextLoading(true);
+    setReferenceVerseTextError(null);
+    setReferenceVerseText(localFallbackVerseText ?? "");
+    setReferenceCrossReferencesLoading(true);
+    setReferenceCrossReferencesError(null);
+    setReferenceCrossReferences([]);
+    setReferenceActionError(null);
+    setReferenceView("explore");
+    setReferenceNoteEditorVisible(false);
+    setReferenceNoteDraft(activeReferenceNote);
+    setReferenceShowAllCrossReferences(false);
+    resetReferenceRootTranslation();
+
+    void (async () => {
+      const localText = await getCachedVerseTextForReference(activeReference);
+      if (controllerAbort.signal.aborted) return;
+      if (requestId !== referenceRequestIdRef.current) return;
+      if (localText) {
+        setReferenceVerseText(localText);
+        setReferenceVerseTextError(null);
+        setReferenceVerseTextLoading(false);
+        return;
+      }
+
+      try {
+        const result = await fetchVerseText({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          reference: activeReference,
+        });
+        if (requestId !== referenceRequestIdRef.current) return;
+        const resolvedText =
+          result.text?.trim() ||
+          localFallbackVerseText ||
+          "Could not load verse text";
+        setReferenceVerseText(resolvedText);
+        setReferenceVerseTextError(null);
+      } catch (error) {
+        if (controllerAbort.signal.aborted) return;
+        if (requestId !== referenceRequestIdRef.current) return;
+        const fallbackText = getLocalVerseTextForReference(activeReference);
+        if (fallbackText) {
+          setReferenceVerseText(fallbackText);
+          setReferenceVerseTextError(
+            getReferenceErrorMessage(error, "Could not load verse text."),
+          );
+          return;
+        }
+        setReferenceVerseText("Could not load verse text");
+        setReferenceVerseTextError(
+          getReferenceErrorMessage(error, "Could not load verse text."),
+        );
+      } finally {
+        if (requestId === referenceRequestIdRef.current) {
+          setReferenceVerseTextLoading(false);
+        }
+      }
+    })();
+
+    void fetchVerseCrossReferences({
+      apiBaseUrl: MOBILE_ENV.API_URL,
+      reference: activeReference,
+    })
+      .then(async (result) => {
+        if (requestId !== referenceRequestIdRef.current) return;
+        setReferenceCrossReferences(result.crossReferences);
+        setReferenceCrossReferencesError(null);
+      })
+      .catch((_error) => {
+        if (controllerAbort.signal.aborted) return;
+        if (requestId !== referenceRequestIdRef.current) return;
+        // Keep modal usable like web behavior: fall back to empty list.
+        // Route-level diagnostics handle server investigation.
+        setReferenceCrossReferencesError(null);
+        setReferenceCrossReferences([]);
+      })
+      .finally(() => {
+        if (requestId !== referenceRequestIdRef.current) return;
+        void ensureMinLoaderDuration(
+          loadStartedAt,
+          MIN_REFERENCE_MODAL_LOADING_MS,
+        ).then(() => {
+          if (requestId !== referenceRequestIdRef.current) return;
+          setReferenceCrossReferencesLoading(false);
+        });
+      });
+
+    return () => {
+      controllerAbort.abort();
+    };
+  }, [
+    activeReference,
+    activeReferenceNote,
+    getCachedVerseTextForReference,
+    getLocalVerseTextForReference,
+    referenceModalVisible,
+    resetReferenceRootTranslation,
+  ]);
 
   const modalFeedbackLabel = selectionMapLoading ? "Tracing..." : null;
 
@@ -728,7 +1521,8 @@ export function ReaderScreen({
     if (
       bookSelectorVisible ||
       chapterSelectorVisible ||
-      selectionModalVisible
+      selectionModalVisible ||
+      referenceModalVisible
     ) {
       return;
     }
@@ -813,6 +1607,18 @@ export function ReaderScreen({
 
     lastVerseTapRef.current = { verse, at: now };
   }
+
+  const hasReaderContent = controller.reader.verses.length > 0;
+  const showReaderSkeleton = controller.readerLoading && !hasReaderContent;
+  const navigationFocusHighlight = navigationFocusAnim.interpolate({
+    inputRange: [0, 0.35, 0.65, 1],
+    outputRange: [
+      "rgba(212, 175, 55, 0)",
+      "rgba(212, 175, 55, 0.24)",
+      "rgba(212, 175, 55, 0.24)",
+      "rgba(212, 175, 55, 0)",
+    ],
+  });
 
   return (
     <View style={localStyles.root}>
@@ -930,6 +1736,12 @@ export function ReaderScreen({
         ref={scrollViewRef}
         style={localStyles.readerScroll}
         contentContainerStyle={localStyles.readerContent}
+        onLayout={(event) => {
+          setReaderViewportHeight(Math.round(event.nativeEvent.layout.height));
+        }}
+        onContentSizeChange={(_width, height) => {
+          setReaderContentHeight(Math.round(height));
+        }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={(event) => {
@@ -937,9 +1749,9 @@ export function ReaderScreen({
         }}
       >
         <View style={localStyles.readingSurface}>
-          {controller.readerLoading ? <ReaderChapterSkeleton /> : null}
+          {showReaderSkeleton ? <ReaderChapterSkeleton /> : null}
 
-          {!controller.readerLoading ? (
+          {hasReaderContent ? (
             <View style={localStyles.chapterTextFlow}>
               <View style={localStyles.chapterHeading}>
                 <Text style={localStyles.chapterHeadingBook}>
@@ -955,6 +1767,8 @@ export function ReaderScreen({
                   const highlightVisual = verseHighlightMap.get(item.verse);
                   const selectedVerse =
                     controller.readerSelectedVerse === item.verse;
+                  const navigationFocused =
+                    focusedNavigationVerse === item.verse;
                   const addFeedbackActive = feedbackVerse === item.verse;
                   const removePending = pendingRemovalVerseSet.has(item.verse);
                   const isParagraphStart =
@@ -995,16 +1809,20 @@ export function ReaderScreen({
                       <Text
                         accessibilityRole="button"
                         accessibilityLabel={`Verse ${item.verse} references`}
-                        onPress={() =>
-                          void controller.selectReaderVerse(item.verse)
-                        }
+                        onPress={() => openReferenceModalForVerse(item.verse)}
                         suppressHighlighting
                         style={localStyles.verseNumberInlineText}
                       >
                         {item.verse}
                       </Text>{" "}
-                      <Text
+                      <Animated.Text
                         onLongPress={handleVerseLongPress}
+                        onLayout={(event) =>
+                          registerVerseLayout(
+                            item.verse,
+                            event.nativeEvent.layout.y,
+                          )
+                        }
                         onPress={() =>
                           handleVerseTextPress(item.verse, item.text)
                         }
@@ -1030,53 +1848,22 @@ export function ReaderScreen({
                           !addFeedbackActive
                             ? localStyles.inlineVerseSelection
                             : null,
+                          navigationFocused
+                            ? [
+                                localStyles.inlineVerseNavigationFocus,
+                                {
+                                  backgroundColor: navigationFocusHighlight,
+                                },
+                              ]
+                            : null,
                         ]}
                       >
                         {item.text}
-                      </Text>
+                      </Animated.Text>
                     </Text>
                   );
                 })}
               </Text>
-            </View>
-          ) : null}
-
-          {controller.readerSelectedVerse ? (
-            <View style={localStyles.crossRefSection}>
-              <Text style={localStyles.crossRefTitle}>
-                Cross-references - {controller.reader.book}{" "}
-                {controller.reader.chapter}:{controller.readerSelectedVerse}
-              </Text>
-              {controller.readerCrossReferencesLoading ? (
-                <LoadingDotsNative label="Loading references..." />
-              ) : null}
-              {controller.readerCrossReferencesError ? (
-                <Text style={styles.error}>
-                  {controller.readerCrossReferencesError}
-                </Text>
-              ) : null}
-              <View style={styles.suggestionRow}>
-                {controller.readerCrossReferences.map((reference) => {
-                  const label = `${reference.book} ${reference.chapter}:${reference.verse}`;
-                  return (
-                    <PressableScale
-                      key={label}
-                      onPress={() =>
-                        void controller.navigateReaderTo(
-                          reference.book,
-                          reference.chapter,
-                        )
-                      }
-                      motionPreset="quiet"
-                      style={styles.suggestionChip}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${label}`}
-                    >
-                      <Text style={styles.suggestionChipLabel}>{label}</Text>
-                    </PressableScale>
-                  );
-                })}
-              </View>
             </View>
           ) : null}
 
@@ -1252,6 +2039,298 @@ export function ReaderScreen({
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={referenceModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={closeReferenceModal}
+      >
+        <View style={localStyles.centerModalOverlay}>
+          <Pressable
+            onPress={closeReferenceModal}
+            style={localStyles.modalBackdrop}
+          />
+          <View style={localStyles.referenceModalCard}>
+            <View style={localStyles.modalHeaderRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.panelTitle}>Verse References</Text>
+                <Text style={styles.caption}>{activeReference ?? ""}</Text>
+              </View>
+              {canGoBackReference ? (
+                <ActionButton
+                  label="Back"
+                  variant="ghost"
+                  motionPreset="quiet"
+                  onPress={popReference}
+                />
+              ) : null}
+              <ActionButton
+                label="Close"
+                variant="ghost"
+                motionPreset="quiet"
+                onPress={closeReferenceModal}
+              />
+            </View>
+
+            {referenceActionError ? (
+              <Text style={styles.error}>{referenceActionError}</Text>
+            ) : null}
+
+            <ScrollView style={localStyles.modalContent}>
+              {referenceView === "root" ? (
+                <RootTranslationPanel
+                  isLoading={referenceRootLoading}
+                  language={referenceRootLanguage}
+                  words={referenceRootWords}
+                  lostContext={referenceRootLostContext}
+                  fallbackText={referenceRootFallbackText}
+                  selectedWordIndex={referenceRootWordIndex}
+                  onSelectWord={setReferenceRootWordIndex}
+                  onBack={handleBackToReferenceExplore}
+                />
+              ) : (
+                <>
+                  <View style={localStyles.modalPanel}>
+                    {referenceVerseTextLoading ? (
+                      <LoadingDotsNative label="Loading verse..." />
+                    ) : null}
+                    {referenceVerseTextError ? (
+                      <Text style={styles.error}>
+                        {referenceVerseTextError}
+                      </Text>
+                    ) : null}
+                    {!referenceVerseTextLoading && referenceVerseText ? (
+                      <Text style={localStyles.referenceVerseText}>
+                        {referenceVerseText}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View style={localStyles.referencePrimaryActionRow}>
+                    <ActionButton
+                      label={referenceTraceLoading ? "Tracing..." : "Trace"}
+                      variant="primary"
+                      motionPreset="quiet"
+                      disabled={referenceTraceLoading}
+                      onPress={() => void handleTraceReference()}
+                      style={[
+                        localStyles.compactPrimaryButton,
+                        localStyles.referenceActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactPrimaryButtonLabel,
+                        localStyles.referenceActionButtonLabel,
+                      ]}
+                    />
+                    <ActionButton
+                      label="Go Deeper"
+                      variant="ghost"
+                      motionPreset="quiet"
+                      onPress={handleGoDeeperReference}
+                      style={[
+                        localStyles.compactHeaderAction,
+                        localStyles.referenceActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactHeaderActionLabel,
+                        localStyles.referenceActionButtonLabel,
+                      ]}
+                    />
+                    <ActionButton
+                      label="View"
+                      variant="ghost"
+                      motionPreset="quiet"
+                      disabled={Boolean(pendingVerseNavigation)}
+                      onPress={() => void handleViewReference()}
+                      style={[
+                        localStyles.compactHeaderAction,
+                        localStyles.referenceActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactHeaderActionLabel,
+                        localStyles.referenceActionButtonLabel,
+                      ]}
+                    />
+                    <ActionButton
+                      label={referenceRootLoading ? "ROOT..." : "ROOT"}
+                      variant="ghost"
+                      motionPreset="quiet"
+                      disabled={
+                        referenceVerseTextLoading ||
+                        referenceRootLoading ||
+                        !referenceVerseText.trim()
+                      }
+                      onPress={() => void handleReferenceRootTranslation()}
+                      style={[
+                        localStyles.compactHeaderAction,
+                        localStyles.referenceActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactHeaderActionLabel,
+                        localStyles.referenceActionButtonLabel,
+                        localStyles.rootActionLabel,
+                      ]}
+                    />
+                  </View>
+
+                  {referenceNoteEditorVisible ? (
+                    <View style={localStyles.modalPanel}>
+                      <TextInput
+                        accessibilityLabel="Verse note"
+                        multiline
+                        placeholder="Write a note for this verse..."
+                        placeholderTextColor={T.colors.textMuted}
+                        style={localStyles.referenceNoteInput}
+                        value={referenceNoteDraft}
+                        onChangeText={setReferenceNoteDraft}
+                      />
+                      <View style={localStyles.referenceNoteActions}>
+                        <ActionButton
+                          label="Cancel"
+                          variant="ghost"
+                          motionPreset="quiet"
+                          onPress={() => {
+                            setReferenceNoteEditorVisible(false);
+                            setReferenceNoteDraft(activeReferenceNote);
+                          }}
+                          style={localStyles.compactHeaderAction}
+                          labelStyle={localStyles.compactHeaderActionLabel}
+                        />
+                        <ActionButton
+                          label="Save"
+                          variant="primary"
+                          motionPreset="quiet"
+                          onPress={handleSaveReferenceNote}
+                          style={localStyles.compactPrimaryButton}
+                          labelStyle={localStyles.compactPrimaryButtonLabel}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View style={localStyles.referenceListSection}>
+                    <View style={localStyles.referenceListHeaderRow}>
+                      <Text style={localStyles.referenceListLabel}>
+                        Cross-References
+                      </Text>
+                      <Text style={localStyles.referenceListCount}>
+                        {totalReferenceCount}
+                      </Text>
+                    </View>
+                    {totalReferenceCount > 0 ? (
+                      <View style={localStyles.referenceDisclosureRow}>
+                        {hasCollapsedReferenceRows ? (
+                          <PressableScale
+                            onPress={() =>
+                              setReferenceShowAllCrossReferences(
+                                (current) => !current,
+                              )
+                            }
+                            motionPreset="quiet"
+                            pressedStyle={
+                              localStyles.referenceDisclosureButtonPressed
+                            }
+                            style={[
+                              localStyles.referenceDisclosureButton,
+                              referenceShowAllCrossReferences
+                                ? localStyles.referenceDisclosureButtonActive
+                                : null,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              referenceShowAllCrossReferences
+                                ? "Show fewer references"
+                                : "Show all references"
+                            }
+                          >
+                            <Text
+                              style={[
+                                localStyles.referenceDisclosureLabel,
+                                referenceShowAllCrossReferences
+                                  ? localStyles.referenceDisclosureLabelActive
+                                  : null,
+                              ]}
+                            >
+                              {referenceShowAllCrossReferences
+                                ? "Show less"
+                                : `Show all (${totalReferenceCount})`}
+                            </Text>
+                          </PressableScale>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {referenceCrossReferencesLoading ? (
+                      <LoadingDotsNative label="Loading references..." />
+                    ) : null}
+                    {referenceCrossReferencesError ? (
+                      <Text style={styles.error}>
+                        {referenceCrossReferencesError}
+                      </Text>
+                    ) : null}
+                    {!referenceCrossReferencesLoading &&
+                    !referenceCrossReferencesError &&
+                    groupedReferenceSections.length === 0 ? (
+                      <Text style={localStyles.referenceEmptyLabel}>
+                        No cross-references found.
+                      </Text>
+                    ) : null}
+                    {!referenceCrossReferencesLoading &&
+                      groupedReferenceSections.map((section) => (
+                        <View
+                          key={`reference-group-${section.type}`}
+                          style={localStyles.referenceGroup}
+                        >
+                          {groupedReferenceSections.length > 1 ? (
+                            <Text style={localStyles.referenceGroupLabel}>
+                              {REFERENCE_GROUP_LABELS[section.type]}
+                            </Text>
+                          ) : null}
+                          {(referenceShowAllCrossReferences
+                            ? section.refs
+                            : section.refs.slice(
+                                0,
+                                INITIAL_REFERENCE_ROWS_PER_GROUP,
+                              )
+                          ).map((ref, index) => {
+                            const label = `${ref.book} ${ref.chapter}:${ref.verse}`;
+                            return (
+                              <PressableScale
+                                key={`${section.type}-${label}-${index}`}
+                                onPress={() => pushReference(label)}
+                                motionPreset="quiet"
+                                pressedStyle={
+                                  localStyles.referenceRowButtonPressed
+                                }
+                                style={localStyles.referenceRowButton}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Open ${label}`}
+                              >
+                                <Text style={localStyles.referenceRowLabel}>
+                                  {label}
+                                </Text>
+                              </PressableScale>
+                            );
+                          })}
+                          {!referenceShowAllCrossReferences &&
+                          section.refs.length >
+                            INITIAL_REFERENCE_ROWS_PER_GROUP ? (
+                            <Text style={localStyles.referenceGroupMoreLabel}>
+                              +
+                              {section.refs.length -
+                                INITIAL_REFERENCE_ROWS_PER_GROUP}{" "}
+                              more
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={bookSelectorVisible}
@@ -1526,16 +2605,28 @@ export function ReaderScreen({
                       motionPreset="quiet"
                       disabled={selectionMapLoading}
                       onPress={() => void handleTraceSelection()}
-                      style={localStyles.compactPrimaryButton}
-                      labelStyle={localStyles.compactPrimaryButtonLabel}
+                      style={[
+                        localStyles.compactPrimaryButton,
+                        localStyles.selectionActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactPrimaryButtonLabel,
+                        localStyles.selectionActionButtonLabel,
+                      ]}
                     />
                     <ActionButton
                       label="Go Deeper"
                       variant="ghost"
                       motionPreset="quiet"
                       onPress={handleGoDeeperSelection}
-                      style={localStyles.compactHeaderAction}
-                      labelStyle={localStyles.compactHeaderActionLabel}
+                      style={[
+                        localStyles.compactHeaderAction,
+                        localStyles.selectionActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactHeaderActionLabel,
+                        localStyles.selectionActionButtonLabel,
+                      ]}
                     />
                     <ActionButton
                       label={rootLoading ? "ROOT..." : "ROOT"}
@@ -1543,9 +2634,13 @@ export function ReaderScreen({
                       motionPreset="quiet"
                       disabled={selectionSynopsisLoading || rootLoading}
                       onPress={() => void handleRootTranslation()}
-                      style={localStyles.compactHeaderAction}
+                      style={[
+                        localStyles.compactHeaderAction,
+                        localStyles.selectionActionButton,
+                      ]}
                       labelStyle={[
                         localStyles.compactHeaderActionLabel,
+                        localStyles.selectionActionButtonLabel,
                         localStyles.rootActionLabel,
                       ]}
                     />
@@ -1637,22 +2732,30 @@ const localStyles = StyleSheet.create({
     flex: 0,
     minHeight: 32,
     borderRadius: 7,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  compactPrimaryButtonPressed: {
+    backgroundColor: "rgba(252, 211, 77, 0.86)",
+    borderColor: "rgba(252, 211, 77, 0.92)",
   },
   compactPrimaryButtonLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "700",
   },
   compactHeaderAction: {
     flex: 0,
     minHeight: 32,
     borderRadius: 7,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  compactHeaderActionPressed: {
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: "rgba(255, 255, 255, 0.22)",
   },
   compactHeaderActionLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "600",
   },
   selectionStatusRow: {
@@ -1772,6 +2875,9 @@ const localStyles = StyleSheet.create({
   },
   inlineVerseFocused: {
     backgroundColor: T.colors.pineSoft,
+    borderRadius: 3,
+  },
+  inlineVerseNavigationFocus: {
     borderRadius: 3,
   },
   verseTextParagraphStart: {
@@ -1928,6 +3034,178 @@ const localStyles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
+  centerModalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 14,
+  },
+  referenceModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    maxHeight: "84%",
+    borderRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.ink,
+    padding: T.spacing.md,
+    gap: T.spacing.sm,
+  },
+  referenceVerseText: {
+    color: T.colors.text,
+    fontFamily: T.fonts.serif,
+    fontSize: T.typography.body,
+    lineHeight: 28,
+  },
+  referencePrimaryActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 2,
+    marginBottom: 6,
+    width: "100%",
+  },
+  referenceActionButton: {
+    flex: 1,
+    minWidth: 0,
+  },
+  referenceActionButtonLabel: {
+    textAlign: "center",
+  },
+  referenceSecondaryActionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 2,
+    marginBottom: T.spacing.sm,
+  },
+  referenceNoteInput: {
+    minHeight: 88,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.surface,
+    color: T.colors.text,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+    textAlignVertical: "top",
+    fontSize: T.typography.bodySm,
+  },
+  referenceNoteActions: {
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "flex-end",
+  },
+  referenceListSection: {
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.surface,
+    padding: T.spacing.sm,
+    gap: 8,
+    marginBottom: T.spacing.md,
+  },
+  referenceListHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  referenceListLabel: {
+    color: T.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  referenceListCount: {
+    color: "rgba(212, 175, 55, 0.86)",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  referenceActionActive: {
+    borderColor: "rgba(212, 175, 55, 0.44)",
+    backgroundColor: "rgba(212, 175, 55, 0.16)",
+  },
+  referenceActionActiveLabel: {
+    color: T.colors.accentStrong,
+    fontWeight: "700",
+  },
+  referenceDisclosureRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+  },
+  referenceDisclosureButton: {
+    borderWidth: 1,
+    borderColor: "rgba(212, 175, 55, 0.3)",
+    borderRadius: T.radius.pill,
+    backgroundColor: "rgba(212, 175, 55, 0.09)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  referenceDisclosureButtonPressed: {
+    backgroundColor: "rgba(212, 175, 55, 0.18)",
+    borderColor: "rgba(252, 211, 77, 0.44)",
+  },
+  referenceDisclosureButtonActive: {
+    backgroundColor: "rgba(212, 175, 55, 0.18)",
+    borderColor: "rgba(252, 211, 77, 0.48)",
+  },
+  referenceDisclosureLabel: {
+    color: "rgba(252, 211, 77, 0.94)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.45,
+    textTransform: "uppercase",
+  },
+  referenceDisclosureLabelActive: {
+    color: "#FDE68A",
+  },
+  referenceEmptyLabel: {
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+  },
+  referenceGroup: {
+    gap: 6,
+  },
+  referenceGroupLabel: {
+    color: "rgba(212, 212, 216, 0.58)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+    paddingHorizontal: 2,
+  },
+  referenceRowButton: {
+    borderLeftWidth: 2,
+    borderLeftColor: "rgba(212, 175, 55, 0.34)",
+    borderRadius: T.radius.sm,
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  referenceRowButtonPressed: {
+    backgroundColor: "rgba(212, 175, 55, 0.12)",
+    borderLeftColor: "rgba(252, 211, 77, 0.58)",
+  },
+  referenceRowLabel: {
+    color: "rgba(212, 175, 55, 0.96)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  referenceGroupMoreLabel: {
+    color: "rgba(212, 212, 216, 0.6)",
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+    paddingHorizontal: 2,
+    paddingTop: 2,
+  },
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
@@ -2082,10 +3360,17 @@ const localStyles = StyleSheet.create({
   modalActionRow: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 2,
     marginBottom: T.spacing.sm,
+    width: "100%",
+  },
+  selectionActionButton: {
+    flex: 1,
+    minWidth: 0,
+  },
+  selectionActionButtonLabel: {
+    textAlign: "center",
   },
   rootActionLabel: {
     color: T.colors.accent,
