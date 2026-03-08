@@ -943,8 +943,6 @@ export function useMobileAppController(
     );
     const cachedFooter =
       readerFooterCacheRef.current.get(footerCacheKey) ?? null;
-    const requestId = readerNavigationRequestIdRef.current + 1;
-    readerNavigationRequestIdRef.current = requestId;
     const isSameChapter =
       reader.book === canonicalBook &&
       reader.chapter === boundedChapter &&
@@ -958,9 +956,32 @@ export function useMobileAppController(
     setReaderFooterError(null);
     if (isSameChapter) {
       setReaderLoading(false);
-      setReaderFooterLoading(false);
+      if (cachedFooter) {
+        setReaderFooterLoading(false);
+        return;
+      }
+
+      setReaderFooterLoading(true);
+      void fetchReaderFooterCached(canonicalBook, boundedChapter)
+        .then((footer) => {
+          setReaderFooter(footer);
+          readerFooterCacheRef.current.set(footerCacheKey, footer);
+          setReaderFooterError(null);
+        })
+        .catch((error) => {
+          setReaderFooter(null);
+          setReaderFooterError(
+            error instanceof Error ? error.message : String(error),
+          );
+        })
+        .finally(() => {
+          setReaderFooterLoading(false);
+        });
       return;
     }
+
+    const requestId = readerNavigationRequestIdRef.current + 1;
+    readerNavigationRequestIdRef.current = requestId;
 
     setReaderLoading(true);
     setReaderFooterLoading(!cachedFooter);
