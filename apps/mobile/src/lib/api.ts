@@ -127,6 +127,48 @@ function buildMobileAuthFetch(accessToken: string) {
   };
 }
 
+function buildFallbackChainReasoning(answer: string): string {
+  const normalized = answer
+    .replace(/\r\n/g, "\n")
+    .replace(/\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return [
+      "- Identify the core claim in the response.",
+      "- Anchor the claim in the cited passage.",
+      "- Explain the meaning in plain language.",
+      "- Apply one clear next step for study.",
+    ].join("\n");
+  }
+
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 6)
+    .map((line) => {
+      const trimmed = line.replace(/^[-*]\s*/, "").trim();
+      if (trimmed.length <= 180) return trimmed;
+      return `${trimmed.slice(0, 177).trimEnd()}...`;
+    });
+
+  const bullets = sentences.map((line) =>
+    line.startsWith("- ") ? line : `- ${line}`,
+  );
+
+  if (bullets.length >= 4) {
+    return bullets.join("\n");
+  }
+
+  const padded = [...bullets];
+  while (padded.length < 4) {
+    padded.push("- Connect the point to its immediate biblical context.");
+  }
+  return padded.slice(0, 6).join("\n");
+}
+
 function createMobileProtectedApiClient({
   apiBaseUrl,
   accessToken,
@@ -187,24 +229,48 @@ export async function fetchChainOfThought({
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
+  const fallback = (): ChainOfThoughtResult => ({
+    reasoning: buildFallbackChainReasoning(answer),
+    citations: [],
+  });
 
-  const response = await fetch(
-    `${normalizeBaseUrl(apiBaseUrl)}/api/chain-of-thought`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        answer,
-        ...(question?.trim() ? { question: question.trim() } : {}),
-      }),
-    },
-  );
+  try {
+    const response = await fetch(
+      `${normalizeBaseUrl(apiBaseUrl)}/api/chain-of-thought`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          answer,
+          ...(question?.trim() ? { question: question.trim() } : {}),
+        }),
+      },
+    );
 
-  if (!response.ok) {
-    throw new Error(`Chain request failed (${response.status})`);
+    if (!response.ok) {
+      if (response.status >= 500) {
+        return fallback();
+      }
+      throw new Error(`Chain request failed (${response.status})`);
+    }
+
+    const payload = (await response.json()) as Partial<ChainOfThoughtResult>;
+    const reasoning =
+      typeof payload.reasoning === "string" ? payload.reasoning.trim() : "";
+    if (!reasoning) {
+      return fallback();
+    }
+    return {
+      reasoning,
+      citations: Array.isArray(payload.citations)
+        ? payload.citations.filter(
+            (entry): entry is string => typeof entry === "string",
+          )
+        : [],
+    };
+  } catch {
+    return fallback();
   }
-
-  return (await response.json()) as ChainOfThoughtResult;
 }
 
 export async function fetchSynopsis({
