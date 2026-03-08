@@ -557,7 +557,7 @@ function toChainFlowItems(links: ChainLink[]): ChainFlowItem[] {
   links.forEach((link) => {
     items.push({
       kind: "concept",
-      label: `Concept: ${link.concept}`,
+      label: link.concept,
     });
     items.push({
       kind: "verse",
@@ -2517,6 +2517,9 @@ export function ChatScreen({
                 <Text style={localStyles.referenceModalCloseLabel}>Close</Text>
               </PressableScale>
             </View>
+            <Text style={localStyles.chainModalHint}>
+              Tap a verse to preview it in context.
+            </Text>
 
             <View style={localStyles.chainModalBody}>
               {chainBusyMessageId === chainModalMessageId ? (
@@ -2563,19 +2566,20 @@ export function ChatScreen({
                             </Text>
                           </PressableScale>
                         ) : (
-                          <View style={localStyles.chainConceptChip}>
-                            <Text style={localStyles.chainConceptChipLabel}>
+                          <View style={localStyles.chainConceptCard}>
+                            <Text style={localStyles.chainConceptEyebrow}>
+                              Concept
+                            </Text>
+                            <Text style={localStyles.chainConceptCardLabel}>
                               {item.label}
                             </Text>
                           </View>
                         )}
                         {index < chainFlowItems.length - 1 ? (
                           <View style={localStyles.chainConnector}>
-                            <Ionicons
-                              color="rgba(212,175,55,0.62)"
-                              name="chevron-down"
-                              size={14}
-                            />
+                            <View style={localStyles.chainConnectorLine} />
+                            <View style={localStyles.chainConnectorDot} />
+                            <View style={localStyles.chainConnectorLine} />
                           </View>
                         ) : null}
                       </View>
@@ -3007,7 +3011,7 @@ const localStyles = StyleSheet.create({
   },
   chainModalCard: {
     width: "100%",
-    maxWidth: 640,
+    maxWidth: 560,
     borderRadius: T.radius.lg,
     borderWidth: 1,
     borderColor: T.colors.border,
@@ -3025,10 +3029,14 @@ const localStyles = StyleSheet.create({
   chainModalTitle: {
     flex: 1,
     color: T.colors.accent,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
-    letterSpacing: 0.2,
-    textTransform: "uppercase",
+    letterSpacing: 0.15,
+  },
+  chainModalHint: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
   },
   chainModalBody: {
     borderWidth: 1,
@@ -3046,7 +3054,7 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 0,
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   chainFlowItemWrap: {
     width: "100%",
@@ -3055,11 +3063,11 @@ const localStyles = StyleSheet.create({
   chainVerseChip: {
     borderRadius: T.radius.pill,
     borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.4)",
-    backgroundColor: "rgba(212,175,55,0.12)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minHeight: 30,
+    borderColor: "rgba(212,175,55,0.34)",
+    backgroundColor: "rgba(212,175,55,0.09)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minHeight: 34,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3069,51 +3077,71 @@ const localStyles = StyleSheet.create({
   },
   chainVerseChipLabel: {
     color: T.colors.accent,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.15,
+    letterSpacing: 0.2,
   },
   chainVerseChipLabelMuted: {
     color: T.colors.textMuted,
   },
-  chainConceptChip: {
-    borderRadius: T.radius.pill,
+  chainConceptCard: {
+    width: "92%",
+    maxWidth: 420,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(24,24,27,0.7)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minHeight: 30,
-    alignItems: "center",
+    backgroundColor: "rgba(20,20,23,0.72)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: "flex-start",
     justifyContent: "center",
-    maxWidth: "94%",
+    gap: 2,
   },
-  chainConceptChipLabel: {
+  chainConceptEyebrow: {
+    color: T.colors.textMuted,
+    fontSize: 9,
+    letterSpacing: 0.45,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  chainConceptCardLabel: {
     color: T.colors.text,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: "600",
-    textAlign: "center",
+    textAlign: "left",
   },
   chainConnector: {
-    height: 16,
+    height: 20,
     justifyContent: "center",
     alignItems: "center",
+  },
+  chainConnectorLine: {
+    width: 1,
+    height: 6,
+    backgroundColor: "rgba(212,175,55,0.34)",
+  },
+  chainConnectorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(212,175,55,0.72)",
   },
   chainShowMoreButton: {
     alignSelf: "center",
-    marginTop: 8,
+    marginTop: 10,
     borderRadius: T.radius.pill,
     borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.32)",
-    backgroundColor: "rgba(212,175,55,0.1)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    paddingHorizontal: 11,
+    paddingVertical: 6,
   },
   chainShowMoreLabel: {
-    color: T.colors.accent,
+    color: T.colors.textMuted,
     fontSize: 10.5,
-    fontWeight: "700",
+    fontWeight: "600",
+    letterSpacing: 0.2,
   },
   chainModalText: {
     color: T.colors.text,
