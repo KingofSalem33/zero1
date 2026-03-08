@@ -198,43 +198,76 @@ function ModeShellScreen({
         )}
 
         <View style={localStyles.modeContentWrap}>
-          {activeMode === "Reader"
-            ? props.renderReader({
-                openChat,
-                openMapViewer,
-                openModeMenu: () => setDrawerOpen(true),
-              })
-            : null}
+          <View
+            pointerEvents={activeMode === "Reader" ? "auto" : "none"}
+            style={[
+              localStyles.modePanel,
+              activeMode === "Reader"
+                ? localStyles.modePanelVisible
+                : localStyles.modePanelHidden,
+            ]}
+          >
+            {props.renderReader({
+              openChat,
+              openMapViewer,
+              openModeMenu: () => setDrawerOpen(true),
+            })}
+          </View>
 
-          {activeMode === "Chat"
-            ? props.renderChat({
-                openMapViewer,
-                openReader: () => setActiveMode("Reader"),
-                pendingPrompt,
-                autoSend: pendingAutoSend,
-                clearPendingPrompt: () => {
-                  setPendingPrompt(undefined);
-                  setPendingAutoSend(undefined);
-                },
-              })
-            : null}
+          <View
+            pointerEvents={activeMode === "Chat" ? "auto" : "none"}
+            style={[
+              localStyles.modePanel,
+              activeMode === "Chat"
+                ? localStyles.modePanelVisible
+                : localStyles.modePanelHidden,
+            ]}
+          >
+            {props.renderChat({
+              openMapViewer,
+              openReader: () => setActiveMode("Reader"),
+              pendingPrompt,
+              autoSend: pendingAutoSend,
+              clearPendingPrompt: () => {
+                setPendingPrompt(undefined);
+                setPendingAutoSend(undefined);
+              },
+            })}
+          </View>
 
-          {activeMode === "Library"
-            ? props.renderLibrary({
-                openMapCreate: () => navigation.navigate("LibraryMapCreate"),
-                openBookmarkCreate: () => navigation.navigate("BookmarkCreate"),
-                openBookmarkDetail: (bookmarkId) =>
-                  navigation.navigate("BookmarkDetail", { bookmarkId }),
-                openHighlightCreate: () =>
-                  navigation.navigate("HighlightCreate"),
-                openHighlightDetail: (highlightId) =>
-                  navigation.navigate("HighlightDetail", { highlightId }),
-                openMapViewer,
-                openChat,
-              })
-            : null}
+          <View
+            pointerEvents={activeMode === "Library" ? "auto" : "none"}
+            style={[
+              localStyles.modePanel,
+              activeMode === "Library"
+                ? localStyles.modePanelVisible
+                : localStyles.modePanelHidden,
+            ]}
+          >
+            {props.renderLibrary({
+              openMapCreate: () => navigation.navigate("LibraryMapCreate"),
+              openBookmarkCreate: () => navigation.navigate("BookmarkCreate"),
+              openBookmarkDetail: (bookmarkId) =>
+                navigation.navigate("BookmarkDetail", { bookmarkId }),
+              openHighlightCreate: () => navigation.navigate("HighlightCreate"),
+              openHighlightDetail: (highlightId) =>
+                navigation.navigate("HighlightDetail", { highlightId }),
+              openMapViewer,
+              openChat,
+            })}
+          </View>
 
-          {activeMode === "Account" ? props.renderAccount() : null}
+          <View
+            pointerEvents={activeMode === "Account" ? "auto" : "none"}
+            style={[
+              localStyles.modePanel,
+              activeMode === "Account"
+                ? localStyles.modePanelVisible
+                : localStyles.modePanelHidden,
+            ]}
+          >
+            {props.renderAccount()}
+          </View>
         </View>
 
         {drawerOpen ? (
@@ -485,6 +518,16 @@ const localStyles = StyleSheet.create({
   },
   modeContentWrap: {
     flex: 1,
+    position: "relative",
+  },
+  modePanel: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modePanelVisible: {
+    display: "flex",
+  },
+  modePanelHidden: {
+    display: "none",
   },
   drawerOverlay: {
     ...StyleSheet.absoluteFillObject,

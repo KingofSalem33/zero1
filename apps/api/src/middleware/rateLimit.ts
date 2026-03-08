@@ -18,6 +18,7 @@ const RATE_LIMIT_MAX_REQUESTS = {
   STRICT_ENDPOINTS: 20,
   FILE_UPLOADS: 30,
   READ_ONLY: 300, // Higher limit for read-only endpoints (polling)
+  VERSE_READ: 900, // Verse lookups can burst from reader/reference UIs
 } as const;
 
 /**
@@ -35,8 +36,17 @@ export const apiLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Skip successful requests to health check endpoints
-  skip: (req) => req.path === "/health" || req.path === "/api/health/db",
+  // Skip read-only traffic here; GET endpoints are protected by route-level
+  // `readOnlyLimiter` where needed, which avoids accidental double-limiting.
+  skip: (req) => {
+    if (req.method === "GET") return true;
+    const normalizedPath = req.path.toLowerCase();
+    return (
+      normalizedPath === "/health" ||
+      normalizedPath === "/health/db" ||
+      normalizedPath === "/api/health/db"
+    );
+  },
 });
 
 /**
@@ -124,5 +134,26 @@ export const readOnlyLimiter = rateLimit({
   keyGenerator: (req) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     return `readonly:${ipKeyGenerator(ip)}`;
+  },
+});
+
+/**
+ * Verse-specific read limiter
+ * Applied only to /api/verse endpoints to isolate heavy reader traffic
+ * from other read-only routes.
+ */
+export const verseReadLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOWS.FIFTEEN_MINUTES,
+  max: RATE_LIMIT_MAX_REQUESTS.VERSE_READ,
+  message: {
+    error: "Too many verse requests",
+    message: "Verse lookups are happening too quickly. Please slow down.",
+    retryAfter: "15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    return `verse:${ipKeyGenerator(ip)}`;
   },
 });

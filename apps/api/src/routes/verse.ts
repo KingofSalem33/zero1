@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { readOnlyLimiter } from "../middleware/rateLimit";
+import { verseReadLimiter } from "../middleware/rateLimit";
 import { VerseRef } from "../bible/types";
 import { CachedBibleService } from "../bible/CachedBibleService";
 import { getCache } from "../infrastructure/cache/cacheInstance";
@@ -37,8 +37,12 @@ function parseReference(reference: string): VerseRef | null {
   return { book, chapter, verse };
 }
 
+function makeRefKey(ref: VerseRef): string {
+  return `${ref.book.toLowerCase()}|${ref.chapter}|${ref.verse}`;
+}
+
 // GET /api/verse/:reference - Get verse text by reference
-router.get("/:reference", readOnlyLimiter, async (req, res) => {
+router.get("/:reference", verseReadLimiter, async (req, res) => {
   try {
     const profiler = getProfiler();
     profiler?.setPipeline("verse_get");
@@ -105,7 +109,7 @@ router.get("/:reference", readOnlyLimiter, async (req, res) => {
 // GET /api/verse/:reference/cross-references - Get cross-references for a verse
 router.get(
   "/:reference/cross-references",
-  readOnlyLimiter,
+  verseReadLimiter,
   async (req, res) => {
     try {
       const profiler = getProfiler();
@@ -141,11 +145,41 @@ router.get(
         },
       );
 
+      const filteredCrossRefs = await profileTime(
+        "verse.filterExistingCrossReferences",
+        async () => {
+          if (crossRefs.length === 0) return crossRefs;
+
+          const existingVerses = await cachedBibleService.getVerses(crossRefs);
+          if (existingVerses.length === crossRefs.length) {
+            return crossRefs;
+          }
+
+          const existingKeys = new Set(existingVerses.map(makeRefKey));
+          const filtered = crossRefs.filter((ref) =>
+            existingKeys.has(makeRefKey(ref)),
+          );
+
+          if (filtered.length !== crossRefs.length) {
+            console.warn(
+              `[Verse API] Filtered ${crossRefs.length - filtered.length} invalid cross-reference(s) for ${decodedRef}`,
+            );
+          }
+
+          return filtered;
+        },
+        {
+          file: "routes/verse.ts",
+          fn: "filterExistingCrossReferences",
+          await: "cachedBibleService.getVerses",
+        },
+      );
+
       // Return the references
       return res.json({
         reference: `${verseRef.book} ${verseRef.chapter}:${verseRef.verse}`,
-        crossReferences: crossRefs,
-        count: crossRefs.length,
+        crossReferences: filteredCrossRefs,
+        count: filteredCrossRefs.length,
       });
     } catch (error) {
       console.error("Get cross-references error:", error);

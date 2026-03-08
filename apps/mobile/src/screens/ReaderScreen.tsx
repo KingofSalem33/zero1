@@ -839,6 +839,25 @@ export function ReaderScreen({
             </PressableScale>
             <PressableScale
               accessibilityRole="button"
+              accessibilityLabel="Previous chapter"
+              disabled={controller.readerLoading}
+              motionPreset="quiet"
+              onPress={() => void handleGoToPreviousChapter()}
+              style={localStyles.headerChapterNavButton}
+            >
+              <Ionicons
+                color={
+                  controller.readerLoading
+                    ? "rgba(228, 228, 231, 0.36)"
+                    : "rgba(228, 228, 231, 0.88)"
+                }
+                name="chevron-back"
+                size={18}
+              />
+            </PressableScale>
+
+            <PressableScale
+              accessibilityRole="button"
               accessibilityLabel="Open book selector"
               motionPreset="quiet"
               disabled={controller.readerLoading}
@@ -856,7 +875,7 @@ export function ReaderScreen({
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {controller.reader.book}
+                {controller.reader.book} {controller.reader.chapter}
               </Text>
               <Ionicons
                 color={T.colors.textMuted}
@@ -864,24 +883,25 @@ export function ReaderScreen({
                 size={14}
               />
             </PressableScale>
-            <ActionButton
+
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Next chapter"
               disabled={controller.readerLoading}
-              label="Prev"
-              motionPreset="quiet"
-              onPress={() => void handleGoToPreviousChapter()}
-              variant="ghost"
-              style={localStyles.headerNavButton}
-              labelStyle={localStyles.compactHeaderActionLabel}
-            />
-            <ActionButton
-              disabled={controller.readerLoading}
-              label="Next"
               motionPreset="quiet"
               onPress={() => void handleGoToNextChapter()}
-              variant="ghost"
-              style={localStyles.headerNavButton}
-              labelStyle={localStyles.compactHeaderActionLabel}
-            />
+              style={localStyles.headerChapterNavButton}
+            >
+              <Ionicons
+                color={
+                  controller.readerLoading
+                    ? "rgba(228, 228, 231, 0.36)"
+                    : "rgba(228, 228, 231, 0.88)"
+                }
+                name="chevron-forward"
+                size={18}
+              />
+            </PressableScale>
           </View>
 
           {selectionDraft ? (
@@ -1561,53 +1581,57 @@ const localStyles = StyleSheet.create({
     zIndex: 12,
   },
   headerBar: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     gap: 5,
   },
   headerControlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    minHeight: 36,
+    gap: 8,
+    minHeight: 38,
   },
   headerMenuButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 30,
+    width: 38,
+    height: 38,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    backgroundColor: "rgba(24, 24, 27, 0.84)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerChapterNavButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    backgroundColor: "rgba(24, 24, 27, 0.84)",
     alignItems: "center",
     justifyContent: "center",
   },
   headerPickerButton: {
-    minHeight: 34,
-    borderRadius: 8,
+    minHeight: 38,
+    borderRadius: T.radius.pill,
     borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
-    paddingHorizontal: 8,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    backgroundColor: "rgba(24, 24, 27, 0.84)",
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 4,
+    gap: 8,
   },
   headerBookPickerButton: {
     flex: 1,
-    minWidth: 114,
+    minWidth: 120,
   },
   headerPickerLabel: {
     color: T.colors.text,
-    fontSize: T.typography.caption,
-    fontWeight: "600",
-  },
-  headerNavButton: {
-    width: 52,
-    minHeight: 34,
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 6,
+    fontSize: 12.5,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   compactPrimaryButton: {
     flex: 0,
