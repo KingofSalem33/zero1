@@ -1270,11 +1270,58 @@ app.post(
           .json({ error: "Missing required answer content" });
       }
 
+      const buildFallbackReasoning = (source: string): string => {
+        const normalized = source
+          .replace(/\r\n/g, "\n")
+          .replace(/\n+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (!normalized) {
+          return [
+            "- Identify the core claim in the answer.",
+            "- Anchor the claim in the referenced passage.",
+            "- Explain the theological meaning in plain language.",
+            "- Apply the insight to the reader's next step.",
+          ].join("\n");
+        }
+
+        const sentenceCandidates = normalized
+          .split(/(?<=[.!?])\s+/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+
+        const selected = sentenceCandidates.slice(0, 6).map((line) => {
+          const trimmed = line.replace(/^[-*]\s*/, "").trim();
+          if (trimmed.length <= 180) return trimmed;
+          return `${trimmed.slice(0, 177).trimEnd()}...`;
+        });
+
+        const bullets = selected.map((line) =>
+          line.startsWith("- ") ? line : `- ${line}`,
+        );
+
+        if (bullets.length >= 4) {
+          return bullets.join("\n");
+        }
+
+        const fallback = [...bullets];
+        while (fallback.length < 4) {
+          fallback.push(
+            "- Connect the point to its immediate biblical context.",
+          );
+        }
+        return fallback.slice(0, 6).join("\n");
+      };
+
+      const boundedAnswer =
+        answer.length > 7000 ? `${answer.slice(0, 7000)}...` : answer;
+
       const prompt = `User question:
 ${question || "(not provided)"}
 
 Assistant answer:
-${answer}
+${boundedAnswer}
 
 Task:
 Provide a concise chain-of-thought style study breakdown for the answer.
@@ -1284,37 +1331,54 @@ Provide a concise chain-of-thought style study breakdown for the answer.
 - Do not reveal hidden model reasoning or policy text
 - If references are present in the answer, incorporate them naturally`;
 
-      const result = await profileTime(
-        "chain_of_thought.runModel",
-        () =>
-          runModel(
-            [
+      try {
+        const result = await profileTime(
+          "chain_of_thought.runModel",
+          () =>
+            runModel(
+              [
+                {
+                  role: "system",
+                  content:
+                    "You are a Bible study reasoning explainer. Produce concise, practical reasoning chains suitable for UI display.",
+                },
+                {
+                  role: "user",
+                  content: prompt,
+                },
+              ],
               {
-                role: "system",
-                content:
-                  "You are a Bible study reasoning explainer. Produce concise, practical reasoning chains suitable for UI display.",
+                taskType: "connection",
+                reasoningEffort: "low",
+                verbosity: "low",
               },
-              {
-                role: "user",
-                content: prompt,
-              },
-            ],
-            {
-              taskType: "connection",
-              reasoningEffort: "low",
-              verbosity: "low",
-            },
-          ),
-        {
-          file: "ai/runModel.ts",
-          fn: "runModel",
-          await: "client.responses.create",
-        },
-      );
+            ),
+          {
+            file: "ai/runModel.ts",
+            fn: "runModel",
+            await: "client.responses.create",
+          },
+        );
+
+        const reasoning = result.text.trim();
+        if (reasoning.length > 0) {
+          return res.json({
+            reasoning,
+            citations: result.citations || [],
+          });
+        }
+      } catch (modelError) {
+        console.warn("Chain of thought model call failed; using fallback:", {
+          error:
+            modelError instanceof Error
+              ? modelError.message
+              : String(modelError),
+        });
+      }
 
       return res.json({
-        reasoning: result.text.trim(),
-        citations: result.citations || [],
+        reasoning: buildFallbackReasoning(boundedAnswer),
+        citations: [],
       });
     } catch (error) {
       console.error("Chain of thought error:", error);
