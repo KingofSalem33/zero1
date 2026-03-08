@@ -22,6 +22,7 @@ import {
   type ParamListBase,
 } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { resolveBibleBookName, type BibleBookName } from "@zero1/shared";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
 import { ChatThinkingState } from "../components/native/loading/ChatThinkingState";
@@ -30,6 +31,7 @@ import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import { fetchTraceBundle, fetchVerseText } from "../lib/api";
+import { getBibleBook } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
 import {
   normalizeMobilePendingPrompt,
@@ -90,7 +92,7 @@ interface RandomPericopeTopic {
 }
 
 let hasPrimedInitialEmptyChatAutofocus = false;
-const MIN_VERSE_PREVIEW_LOADING_MS = 220;
+const MIN_VERSE_PREVIEW_LOADING_MS = 300;
 
 const MAP_CANVAS_SIZE = 1200;
 const MAP_CENTER = MAP_CANVAS_SIZE / 2;
@@ -165,9 +167,10 @@ function parseScriptureReference(reference: string) {
   const cleaned = reference.replace(/^\[/, "").replace(/\]$/, "").trim();
   const parsed = cleaned.match(/^(.+?)\s+(\d+):(\d+)(?:-\d+)?$/);
   if (!parsed) return null;
-  const book = parsed[1].trim();
+  const rawBook = parsed[1].trim();
   const chapter = Number(parsed[2]);
   const verse = Number(parsed[3]);
+  const book = resolveBibleBookName(rawBook);
   if (!book || !Number.isFinite(chapter) || !Number.isFinite(verse)) {
     return null;
   }
@@ -178,6 +181,42 @@ function parseScriptureReference(reference: string) {
     verse,
     normalizedReference: `${book} ${chapter}:${verse}`,
   };
+}
+
+function parseApiStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) return null;
+  const match = error.message.match(/\((\d{3})\)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function getVersePreviewErrorMessage(error: unknown): string {
+  const status = parseApiStatus(error);
+  if (status === 429) {
+    return "Too many requests right now. Try again in a few seconds.";
+  }
+  return "Could not load verse text.";
+}
+
+async function getLocalVerseTextForReference(parsed: {
+  book: BibleBookName;
+  chapter: number;
+  verse: number;
+}): Promise<string | null> {
+  try {
+    const bookData = await getBibleBook(parsed.book);
+    const chapter = bookData.chapters.find(
+      (entry) => entry.chapter === parsed.chapter,
+    );
+    if (!chapter) return null;
+    const verse = chapter.verses.find((entry) => entry.verse === parsed.verse);
+    if (!verse || typeof verse.text !== "string") return null;
+    const trimmed = verse.text.trim();
+    return trimmed ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseAssistantBlocks(content: string): AssistantBlock[] {
@@ -1532,6 +1571,11 @@ export function ChatScreen({
   );
 
   useEffect(() => {
+    if (nav.pendingPrompt) return;
+    handledPromptRef.current = null;
+  }, [nav.pendingPrompt]);
+
+  useEffect(() => {
     if (!nav.pendingPrompt) return;
     const normalizedPrompt = normalizeMobilePendingPrompt(nav.pendingPrompt);
     const displayText = normalizedPrompt.displayText.trim();
@@ -1541,7 +1585,10 @@ export function ChatScreen({
       return;
     }
     const signature = `${displayText}:${promptText}:${normalizedPrompt.mode ?? ""}:${Boolean(nav.autoSend)}`;
-    if (handledPromptRef.current === signature) return;
+    if (handledPromptRef.current === signature) {
+      nav.clearPendingPrompt();
+      return;
+    }
     handledPromptRef.current = signature;
 
     nav.clearPendingPrompt();
@@ -1561,8 +1608,8 @@ export function ChatScreen({
     if (!versePreviewReference) return;
     const parsed = parseScriptureReference(versePreviewReference);
     if (!parsed) {
-      setVersePreviewError("Reference format was invalid.");
-      setVersePreviewText("");
+      setVersePreviewError("Could not load verse text.");
+      setVersePreviewText("Could not load verse text");
       setVersePreviewLoading(false);
       return;
     }
@@ -1573,30 +1620,46 @@ export function ChatScreen({
     setVersePreviewError(null);
     setVersePreviewText("");
 
-    fetchVerseText({
-      apiBaseUrl: MOBILE_ENV.API_URL,
-      reference: parsed.normalizedReference,
-    })
-      .then((result) => {
+    void (async () => {
+      try {
+        const localText = await getLocalVerseTextForReference(parsed);
         if (cancelled) return;
-        setVersePreviewText(result.text || "");
-      })
-      .catch((nextError) => {
-        if (cancelled) return;
-        setVersePreviewError(
-          nextError instanceof Error ? nextError.message : String(nextError),
-        );
-      })
-      .finally(() => {
-        if (cancelled) return;
-        void ensureMinLoaderDuration(
-          loadStartedAt,
-          MIN_VERSE_PREVIEW_LOADING_MS,
-        ).then(() => {
-          if (cancelled) return;
-          setVersePreviewLoading(false);
+        if (localText) {
+          setVersePreviewText(localText);
+          setVersePreviewError(null);
+          return;
+        }
+
+        const result = await fetchVerseText({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          reference: parsed.normalizedReference,
+          throwOnError: true,
         });
-      });
+        if (cancelled) return;
+        const resolvedText = result.text?.trim();
+        if (!resolvedText) {
+          setVersePreviewText("Could not load verse text");
+          setVersePreviewError("Could not load verse text.");
+          return;
+        }
+        setVersePreviewText(resolvedText);
+        setVersePreviewError(null);
+      } catch (error) {
+        if (cancelled) return;
+        setVersePreviewText("Could not load verse text");
+        setVersePreviewError(getVersePreviewErrorMessage(error));
+      } finally {
+        if (!cancelled) {
+          await ensureMinLoaderDuration(
+            loadStartedAt,
+            MIN_VERSE_PREVIEW_LOADING_MS,
+          );
+        }
+        if (!cancelled) {
+          setVersePreviewLoading(false);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -1692,9 +1755,10 @@ export function ChatScreen({
       nav.openMapViewer(versePreviewReference, bundle);
       closeVersePreview();
     } catch (nextError) {
-      setVersePreviewError(
-        nextError instanceof Error ? nextError.message : String(nextError),
-      );
+      if (nextError instanceof Error && nextError.name === "AbortError") {
+        return;
+      }
+      setVersePreviewError("Could not trace this verse.");
     } finally {
       setVersePreviewTraceLoading(false);
     }
@@ -2062,7 +2126,7 @@ export function ChatScreen({
               ) : null}
               {!versePreviewLoading && !versePreviewError ? (
                 <Text style={localStyles.referenceModalVerseText}>
-                  {versePreviewText || "Verse text unavailable."}
+                  {versePreviewText || "Could not load verse text"}
                 </Text>
               ) : null}
             </View>
