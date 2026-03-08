@@ -75,10 +75,6 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     gap: 10,
-    shadowColor: T.colors.shadow,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
   },
   headerRow: {
     flexDirection: "row",

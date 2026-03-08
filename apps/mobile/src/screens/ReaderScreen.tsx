@@ -10,6 +10,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import {
+  Directions,
+  FlingGestureHandler,
+  State,
+} from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
@@ -44,6 +49,7 @@ import { ensureMinLoaderDuration } from "../utils/ensureMinLoaderDuration";
 const DOUBLE_TAP_WINDOW_MS = 380;
 const HEADER_HIDE_SCROLL_DISTANCE = 34;
 const HEADER_TOGGLE_ANIMATION_MS = 180;
+const CHAPTER_SWIPE_COOLDOWN_MS = 280;
 const READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY =
   "biblelot:mobile:reader:last-chapters-by-book";
 const READER_VERSE_NOTES_STORAGE_KEY = "biblelot:mobile:reader:verse-notes";
@@ -486,6 +492,8 @@ export function ReaderScreen({
   const navigationFocusHandledKeyRef = useRef<string | null>(null);
   const referenceRequestIdRef = useRef(0);
   const verseLayoutByNumberRef = useRef<Record<number, number>>({});
+  const chapterSwipeLockRef = useRef(false);
+  const chapterSwipeLastAtRef = useRef(0);
 
   useEffect(() => {
     setSelectionDraft(null);
@@ -1139,6 +1147,33 @@ export function ReaderScreen({
     }, 0);
   }
 
+  async function handleSwipeChapterChange(direction: "next" | "previous") {
+    if (controller.readerLoading) return;
+    if (direction === "next" && footerNextDisabled) return;
+    if (direction === "previous" && footerPrevDisabled) return;
+
+    const now = Date.now();
+    if (chapterSwipeLockRef.current) return;
+    if (now - chapterSwipeLastAtRef.current < CHAPTER_SWIPE_COOLDOWN_MS) {
+      return;
+    }
+
+    chapterSwipeLockRef.current = true;
+    chapterSwipeLastAtRef.current = now;
+    triggerSelectionHaptic();
+    try {
+      if (direction === "next") {
+        await handleGoToNextChapter();
+      } else {
+        await handleGoToPreviousChapter();
+      }
+    } finally {
+      setTimeout(() => {
+        chapterSwipeLockRef.current = false;
+      }, 140);
+    }
+  }
+
   async function loadSelectionSynopsis(payload?: SelectionPayload) {
     const activePayload = payload ?? {
       text: selectedText,
@@ -1732,313 +1767,335 @@ export function ReaderScreen({
         </View>
       </Animated.View>
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={localStyles.readerScroll}
-        contentContainerStyle={localStyles.readerContent}
-        onLayout={(event) => {
-          setReaderViewportHeight(Math.round(event.nativeEvent.layout.height));
-        }}
-        onContentSizeChange={(_width, height) => {
-          setReaderContentHeight(Math.round(height));
-        }}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={(event) => {
-          handleReaderScroll(event.nativeEvent.contentOffset.y);
+      <FlingGestureHandler
+        direction={Directions.LEFT}
+        onHandlerStateChange={({ nativeEvent }) => {
+          if (nativeEvent.state !== State.ACTIVE) return;
+          void handleSwipeChapterChange("next");
         }}
       >
-        <View style={localStyles.readingSurface}>
-          {showReaderSkeleton ? <ReaderChapterSkeleton /> : null}
+        <FlingGestureHandler
+          direction={Directions.RIGHT}
+          onHandlerStateChange={({ nativeEvent }) => {
+            if (nativeEvent.state !== State.ACTIVE) return;
+            void handleSwipeChapterChange("previous");
+          }}
+        >
+          <ScrollView
+            ref={scrollViewRef}
+            style={localStyles.readerScroll}
+            contentContainerStyle={localStyles.readerContent}
+            onLayout={(event) => {
+              setReaderViewportHeight(
+                Math.round(event.nativeEvent.layout.height),
+              );
+            }}
+            onContentSizeChange={(_width, height) => {
+              setReaderContentHeight(Math.round(height));
+            }}
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={(event) => {
+              handleReaderScroll(event.nativeEvent.contentOffset.y);
+            }}
+          >
+            <View style={localStyles.readingSurface}>
+              {showReaderSkeleton ? <ReaderChapterSkeleton /> : null}
 
-          {hasReaderContent ? (
-            <View style={localStyles.chapterTextFlow}>
-              <View style={localStyles.chapterHeading}>
-                <Text style={localStyles.chapterHeadingBook}>
-                  {controller.reader.book}
-                </Text>
-                <Text style={localStyles.chapterHeadingNumber}>
-                  {controller.reader.chapter}
-                </Text>
-              </View>
-              <Text style={localStyles.verseText}>
-                {controller.reader.verses.map((item, index) => {
-                  const inSelection = selectedVerses.includes(item.verse);
-                  const highlightVisual = verseHighlightMap.get(item.verse);
-                  const selectedVerse =
-                    controller.readerSelectedVerse === item.verse;
-                  const navigationFocused =
-                    focusedNavigationVerse === item.verse;
-                  const addFeedbackActive = feedbackVerse === item.verse;
-                  const removePending = pendingRemovalVerseSet.has(item.verse);
-                  const isParagraphStart =
-                    item.verse === 1 || item.verse % 4 === 1;
-                  const leadSpacing =
-                    index === 0
-                      ? PARAGRAPH_INDENT
-                      : isParagraphStart
-                        ? `\n\n${PARAGRAPH_INDENT}`
-                        : " ";
-                  const addFeedbackTone =
-                    buildHighlightTone(feedbackVerseColorRef.current) ??
-                    defaultMarkerTone;
-                  const hasPersistentHighlight =
-                    Boolean(highlightVisual) && !removePending;
-                  const markerTone = addFeedbackActive
-                    ? addFeedbackTone
-                    : hasPersistentHighlight
-                      ? (highlightVisual?.tone ?? null)
-                      : null;
-                  const markerVisible = Boolean(markerTone);
-                  const handleVerseLongPress = () => {
-                    triggerSelectionHaptic();
-                    suppressNextVersePressRef.current = true;
-                    lastVerseTapRef.current = null;
-                    const draft = {
-                      startVerse: item.verse,
-                      endVerse: item.verse,
-                    };
-                    setSelectionDraft(draft);
-                    void openSelectionTools(draft);
-                  };
-                  return (
-                    <Text
-                      key={`${controller.reader.book}-${controller.reader.chapter}-${item.verse}`}
-                    >
-                      {leadSpacing}
-                      <Text
-                        accessibilityRole="button"
-                        accessibilityLabel={`Verse ${item.verse} references`}
-                        onPress={() => openReferenceModalForVerse(item.verse)}
-                        suppressHighlighting
-                        style={localStyles.verseNumberInlineText}
-                      >
-                        {item.verse}
-                      </Text>{" "}
-                      <Animated.Text
-                        onLongPress={handleVerseLongPress}
-                        onLayout={(event) =>
-                          registerVerseLayout(
-                            item.verse,
-                            event.nativeEvent.layout.y,
-                          )
-                        }
-                        onPress={() =>
-                          handleVerseTextPress(item.verse, item.text)
-                        }
-                        suppressHighlighting
-                        style={[
-                          markerVisible
-                            ? localStyles.verseTextHighlighted
-                            : null,
-                          markerVisible && markerTone
-                            ? {
-                                textDecorationLine: "underline",
-                                textDecorationStyle: "solid",
-                                textDecorationColor: markerTone.underline,
-                              }
-                            : null,
-                          selectedVerse &&
-                          !hasPersistentHighlight &&
-                          !addFeedbackActive
-                            ? localStyles.inlineVerseFocused
-                            : null,
-                          inSelection &&
-                          !hasPersistentHighlight &&
-                          !addFeedbackActive
-                            ? localStyles.inlineVerseSelection
-                            : null,
-                          navigationFocused
-                            ? [
-                                localStyles.inlineVerseNavigationFocus,
-                                {
-                                  backgroundColor: navigationFocusHighlight,
-                                },
-                              ]
-                            : null,
-                        ]}
-                      >
-                        {item.text}
-                      </Animated.Text>
+              {hasReaderContent ? (
+                <View style={localStyles.chapterTextFlow}>
+                  <View style={localStyles.chapterHeading}>
+                    <Text style={localStyles.chapterHeadingBook}>
+                      {controller.reader.book}
                     </Text>
-                  );
-                })}
-              </Text>
-            </View>
-          ) : null}
-
-          <View style={localStyles.footerChapterNavRow}>
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Previous chapter"
-              disabled={footerPrevDisabled || controller.readerLoading}
-              motionPreset="quiet"
-              onPress={() => void handleGoToPreviousChapter()}
-              style={localStyles.footerChapterNavButton}
-            >
-              <Ionicons
-                color={
-                  footerPrevDisabled
-                    ? "rgba(228, 228, 231, 0.36)"
-                    : "rgba(228, 228, 231, 0.88)"
-                }
-                name="chevron-back"
-                size={18}
-              />
-            </PressableScale>
-
-            <View style={localStyles.footerChapterIndicator}>
-              <Text
-                style={localStyles.footerChapterIndicatorLabel}
-                numberOfLines={1}
-              >
-                {controller.reader.book} {controller.reader.chapter}
-              </Text>
-            </View>
-
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Next chapter"
-              disabled={footerNextDisabled || controller.readerLoading}
-              motionPreset="quiet"
-              onPress={() => void handleGoToNextChapter()}
-              style={localStyles.footerChapterNavButton}
-            >
-              <Ionicons
-                color={
-                  footerNextDisabled
-                    ? "rgba(228, 228, 231, 0.36)"
-                    : "rgba(228, 228, 231, 0.88)"
-                }
-                name="chevron-forward"
-                size={18}
-              />
-            </PressableScale>
-          </View>
-
-          <View style={localStyles.chapterFooterSection}>
-            <View style={localStyles.footerDividerWrap}>
-              <View style={localStyles.footerDividerLine} />
-            </View>
-            {controller.readerFooterLoading ? (
-              <Text style={localStyles.footerLoadingLabel}>
-                Loading chapter tools...
-              </Text>
-            ) : null}
-            {controller.readerFooter ? (
-              <>
-                {footerOrientationParts ? (
-                  <Text style={localStyles.chapterOrientation}>
-                    <Text style={localStyles.chapterOrientationLead}>
-                      {footerOrientationParts.lead}
+                    <Text style={localStyles.chapterHeadingNumber}>
+                      {controller.reader.chapter}
                     </Text>
-                    {footerOrientationParts.tail ? (
-                      <>
-                        {" "}
-                        <Text style={localStyles.chapterOrientationTail}>
-                          {footerOrientationParts.tail}
+                  </View>
+                  <Text style={localStyles.verseText}>
+                    {controller.reader.verses.map((item, index) => {
+                      const inSelection = selectedVerses.includes(item.verse);
+                      const highlightVisual = verseHighlightMap.get(item.verse);
+                      const selectedVerse =
+                        controller.readerSelectedVerse === item.verse;
+                      const navigationFocused =
+                        focusedNavigationVerse === item.verse;
+                      const addFeedbackActive = feedbackVerse === item.verse;
+                      const removePending = pendingRemovalVerseSet.has(
+                        item.verse,
+                      );
+                      const isParagraphStart =
+                        item.verse === 1 || item.verse % 4 === 1;
+                      const leadSpacing =
+                        index === 0
+                          ? PARAGRAPH_INDENT
+                          : isParagraphStart
+                            ? `\n\n${PARAGRAPH_INDENT}`
+                            : " ";
+                      const addFeedbackTone =
+                        buildHighlightTone(feedbackVerseColorRef.current) ??
+                        defaultMarkerTone;
+                      const hasPersistentHighlight =
+                        Boolean(highlightVisual) && !removePending;
+                      const markerTone = addFeedbackActive
+                        ? addFeedbackTone
+                        : hasPersistentHighlight
+                          ? (highlightVisual?.tone ?? null)
+                          : null;
+                      const markerVisible = Boolean(markerTone);
+                      const handleVerseLongPress = () => {
+                        triggerSelectionHaptic();
+                        suppressNextVersePressRef.current = true;
+                        lastVerseTapRef.current = null;
+                        const draft = {
+                          startVerse: item.verse,
+                          endVerse: item.verse,
+                        };
+                        setSelectionDraft(draft);
+                        void openSelectionTools(draft);
+                      };
+                      return (
+                        <Text
+                          key={`${controller.reader.book}-${controller.reader.chapter}-${item.verse}`}
+                        >
+                          {leadSpacing}
+                          <Text
+                            accessibilityRole="button"
+                            accessibilityLabel={`Verse ${item.verse} references`}
+                            onPress={() =>
+                              openReferenceModalForVerse(item.verse)
+                            }
+                            suppressHighlighting
+                            style={localStyles.verseNumberInlineText}
+                          >
+                            {item.verse}
+                          </Text>{" "}
+                          <Animated.Text
+                            onLongPress={handleVerseLongPress}
+                            onLayout={(event) =>
+                              registerVerseLayout(
+                                item.verse,
+                                event.nativeEvent.layout.y,
+                              )
+                            }
+                            onPress={() =>
+                              handleVerseTextPress(item.verse, item.text)
+                            }
+                            suppressHighlighting
+                            style={[
+                              markerVisible
+                                ? localStyles.verseTextHighlighted
+                                : null,
+                              markerVisible && markerTone
+                                ? {
+                                    textDecorationLine: "underline",
+                                    textDecorationStyle: "solid",
+                                    textDecorationColor: markerTone.underline,
+                                  }
+                                : null,
+                              selectedVerse &&
+                              !hasPersistentHighlight &&
+                              !addFeedbackActive
+                                ? localStyles.inlineVerseFocused
+                                : null,
+                              inSelection &&
+                              !hasPersistentHighlight &&
+                              !addFeedbackActive
+                                ? localStyles.inlineVerseSelection
+                                : null,
+                              navigationFocused
+                                ? [
+                                    localStyles.inlineVerseNavigationFocus,
+                                    {
+                                      backgroundColor: navigationFocusHighlight,
+                                    },
+                                  ]
+                                : null,
+                            ]}
+                          >
+                            {item.text}
+                          </Animated.Text>
                         </Text>
-                      </>
-                    ) : null}
+                      );
+                    })}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={localStyles.footerChapterNavRow}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous chapter"
+                  disabled={footerPrevDisabled || controller.readerLoading}
+                  motionPreset="quiet"
+                  onPress={() => void handleGoToPreviousChapter()}
+                  style={localStyles.footerChapterNavButton}
+                >
+                  <Ionicons
+                    color={
+                      footerPrevDisabled
+                        ? "rgba(228, 228, 231, 0.36)"
+                        : "rgba(228, 228, 231, 0.88)"
+                    }
+                    name="chevron-back"
+                    size={18}
+                  />
+                </PressableScale>
+
+                <View style={localStyles.footerChapterIndicator}>
+                  <Text
+                    style={localStyles.footerChapterIndicatorLabel}
+                    numberOfLines={1}
+                  >
+                    {controller.reader.book} {controller.reader.chapter}
+                  </Text>
+                </View>
+
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Next chapter"
+                  disabled={footerNextDisabled || controller.readerLoading}
+                  motionPreset="quiet"
+                  onPress={() => void handleGoToNextChapter()}
+                  style={localStyles.footerChapterNavButton}
+                >
+                  <Ionicons
+                    color={
+                      footerNextDisabled
+                        ? "rgba(228, 228, 231, 0.36)"
+                        : "rgba(228, 228, 231, 0.88)"
+                    }
+                    name="chevron-forward"
+                    size={18}
+                  />
+                </PressableScale>
+              </View>
+
+              <View style={localStyles.chapterFooterSection}>
+                <View style={localStyles.footerDividerWrap}>
+                  <View style={localStyles.footerDividerLine} />
+                </View>
+                {controller.readerFooterLoading ? (
+                  <Text style={localStyles.footerLoadingLabel}>
+                    Loading chapter tools...
                   </Text>
                 ) : null}
-                <Text style={localStyles.footerLabel}>
-                  Ways to explore this chapter
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={localStyles.footerCardRow}
-                >
-                  {controller.readerFooter.cards.map((card, index) =>
-                    (() => {
-                      const lensMeta = getFooterLensMeta(card.lens);
-                      const isActive = index === activeFooterCardIndex;
-                      return (
-                        <PressableScale
-                          key={`${card.lens}-${card.title}-${index}`}
-                          onPress={() => {
-                            setActiveFooterCardIndex(index);
-                            nav.openChat(card.prompt, true);
-                          }}
-                          motionPreset="quiet"
-                          style={[
-                            localStyles.footerCardButton,
-                            isActive
-                              ? localStyles.footerCardButtonActive
-                              : null,
-                            {
-                              borderColor: lensMeta.border,
-                              backgroundColor: lensMeta.surface,
-                            },
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Open ${card.title} in chat`}
-                        >
-                          <View style={localStyles.footerCardTopRow}>
-                            <View
+                {controller.readerFooter ? (
+                  <>
+                    {footerOrientationParts ? (
+                      <Text style={localStyles.chapterOrientation}>
+                        <Text style={localStyles.chapterOrientationLead}>
+                          {footerOrientationParts.lead}
+                        </Text>
+                        {footerOrientationParts.tail ? (
+                          <>
+                            {" "}
+                            <Text style={localStyles.chapterOrientationTail}>
+                              {footerOrientationParts.tail}
+                            </Text>
+                          </>
+                        ) : null}
+                      </Text>
+                    ) : null}
+                    <Text style={localStyles.footerLabel}>
+                      Ways to explore this chapter
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={localStyles.footerCardRow}
+                    >
+                      {controller.readerFooter.cards.map((card, index) =>
+                        (() => {
+                          const lensMeta = getFooterLensMeta(card.lens);
+                          const isActive = index === activeFooterCardIndex;
+                          return (
+                            <PressableScale
+                              key={`${card.lens}-${card.title}-${index}`}
+                              onPress={() => {
+                                setActiveFooterCardIndex(index);
+                                nav.openChat(card.prompt, true);
+                              }}
+                              motionPreset="quiet"
                               style={[
-                                localStyles.footerLensPill,
+                                localStyles.footerCardButton,
+                                isActive
+                                  ? localStyles.footerCardButtonActive
+                                  : null,
                                 {
                                   borderColor: lensMeta.border,
                                   backgroundColor: lensMeta.surface,
                                 },
                               ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Open ${card.title} in chat`}
                             >
-                              <Ionicons
-                                name={lensMeta.icon}
-                                size={12}
-                                color={lensMeta.tint}
-                              />
+                              <View style={localStyles.footerCardTopRow}>
+                                <View
+                                  style={[
+                                    localStyles.footerLensPill,
+                                    {
+                                      borderColor: lensMeta.border,
+                                      backgroundColor: lensMeta.surface,
+                                    },
+                                  ]}
+                                >
+                                  <Ionicons
+                                    name={lensMeta.icon}
+                                    size={12}
+                                    color={lensMeta.tint}
+                                  />
+                                  <Text
+                                    style={[
+                                      localStyles.footerCardLens,
+                                      { color: lensMeta.tint },
+                                    ]}
+                                  >
+                                    {lensMeta.label}
+                                  </Text>
+                                </View>
+                                <Ionicons
+                                  name={
+                                    isActive
+                                      ? "arrow-forward"
+                                      : "arrow-forward-outline"
+                                  }
+                                  size={13}
+                                  color={
+                                    isActive
+                                      ? T.colors.text
+                                      : "rgba(228, 228, 231, 0.56)"
+                                  }
+                                />
+                              </View>
                               <Text
-                                style={[
-                                  localStyles.footerCardLens,
-                                  { color: lensMeta.tint },
-                                ]}
+                                style={localStyles.footerCardTitle}
+                                numberOfLines={2}
                               >
-                                {lensMeta.label}
+                                {card.title}
                               </Text>
-                            </View>
-                            <Ionicons
-                              name={
-                                isActive
-                                  ? "arrow-forward"
-                                  : "arrow-forward-outline"
-                              }
-                              size={13}
-                              color={
-                                isActive
-                                  ? T.colors.text
-                                  : "rgba(228, 228, 231, 0.56)"
-                              }
-                            />
-                          </View>
-                          <Text
-                            style={localStyles.footerCardTitle}
-                            numberOfLines={2}
-                          >
-                            {card.title}
-                          </Text>
-                        </PressableScale>
-                      );
-                    })(),
-                  )}
-                </ScrollView>
-                {activeFooterCard ? (
-                  <Text style={localStyles.footerAssistLabel}>
-                    Tap a lens card to explore in chat
+                            </PressableScale>
+                          );
+                        })(),
+                      )}
+                    </ScrollView>
+                    {activeFooterCard ? (
+                      <Text style={localStyles.footerAssistLabel}>
+                        Tap a lens card to explore in chat
+                      </Text>
+                    ) : null}
+                  </>
+                ) : null}
+                {controller.readerFooterError ? (
+                  <Text style={localStyles.footerErrorLabel}>
+                    {controller.readerFooterError}
                   </Text>
                 ) : null}
-              </>
-            ) : null}
-            {controller.readerFooterError ? (
-              <Text style={localStyles.footerErrorLabel}>
-                {controller.readerFooterError}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-      </ScrollView>
+              </View>
+            </View>
+          </ScrollView>
+        </FlingGestureHandler>
+      </FlingGestureHandler>
 
       <Modal
         visible={referenceModalVisible}

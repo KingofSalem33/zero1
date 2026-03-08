@@ -98,6 +98,11 @@ export interface RootTranslationResponse {
   totalWords?: number;
 }
 
+export interface ChainOfThoughtResult {
+  reasoning: string;
+  citations: string[];
+}
+
 export type LibraryConnectionItem = LibraryConnection;
 export type LibraryMapItem = LibraryMap;
 export type LibraryBundleResult = LibraryBundleCreateResult;
@@ -165,6 +170,41 @@ export async function fetchTraceBundle({
   }
 
   return (await response.json()) as VisualContextBundle;
+}
+
+export async function fetchChainOfThought({
+  apiBaseUrl,
+  answer,
+  question,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  answer: string;
+  question?: string;
+  accessToken?: string;
+}): Promise<ChainOfThoughtResult> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/chain-of-thought`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        answer,
+        ...(question?.trim() ? { question: question.trim() } : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Chain request failed (${response.status})`);
+  }
+
+  return (await response.json()) as ChainOfThoughtResult;
 }
 
 export async function fetchSynopsis({

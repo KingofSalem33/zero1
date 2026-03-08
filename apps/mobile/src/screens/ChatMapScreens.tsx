@@ -30,7 +30,11 @@ import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNativ
 import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
-import { fetchTraceBundle, fetchVerseText } from "../lib/api";
+import {
+  fetchChainOfThought,
+  fetchTraceBundle,
+  fetchVerseText,
+} from "../lib/api";
 import { getBibleBook } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
 import {
@@ -134,6 +138,7 @@ const CHAT_QUICK_PROMPTS_FALLBACK = [
       "Give me a New Testament passage to study with context and key themes.",
   },
 ] as const;
+const STREAM_CHARS_PER_FRAME = 4;
 
 type QuickPromptEntry = {
   key: "random" | "ot" | "nt";
@@ -1121,6 +1126,16 @@ export function ChatScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapBusyMessageId, setMapBusyMessageId] = useState<string | null>(null);
+  const [chainBusyMessageId, setChainBusyMessageId] = useState<string | null>(
+    null,
+  );
+  const [chainByMessageId, setChainByMessageId] = useState<
+    Record<string, string>
+  >({});
+  const [chainModalMessageId, setChainModalMessageId] = useState<string | null>(
+    null,
+  );
+  const [chainModalError, setChainModalError] = useState<string | null>(null);
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
   );
@@ -1150,6 +1165,11 @@ export function ChatScreen({
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const handledPromptRef = useRef<string | null>(null);
   const streamAbortRef = useRef<globalThis.AbortController | null>(null);
+  const streamDeltaBufferRef = useRef("");
+  const streamDisplayedContentRef = useRef("");
+  const streamAnimationFrameRef = useRef<number | null>(null);
+  const streamAnimationRunningRef = useRef(false);
+  const streamTargetMessageIdRef = useRef<string | null>(null);
   const composerInputRef = useRef<TextInput | null>(null);
   const isEmptyState = messages.length === 0;
   const canSendDraft = draft.trim().length > 0;
@@ -1216,15 +1236,112 @@ export function ChatScreen({
     });
   }, [randomPericopes]);
 
-  const handleStopStreaming = useCallback(() => {
-    streamAbortRef.current?.abort();
+  const cancelStreamTextAnimation = useCallback(() => {
+    const frameId = streamAnimationFrameRef.current;
+    if (frameId !== null) {
+      globalThis.cancelAnimationFrame(frameId);
+      streamAnimationFrameRef.current = null;
+    }
+    streamAnimationRunningRef.current = false;
   }, []);
+
+  const resetStreamTextAnimation = useCallback(
+    (targetMessageId: string | null) => {
+      cancelStreamTextAnimation();
+      streamTargetMessageIdRef.current = targetMessageId;
+      streamDeltaBufferRef.current = "";
+      streamDisplayedContentRef.current = "";
+    },
+    [cancelStreamTextAnimation],
+  );
+
+  const ensureStreamTextAnimating = useCallback(() => {
+    if (streamAnimationRunningRef.current) {
+      return;
+    }
+
+    streamAnimationRunningRef.current = true;
+    const tick = () => {
+      const targetMessageId = streamTargetMessageIdRef.current;
+      if (!targetMessageId) {
+        streamAnimationRunningRef.current = false;
+        streamAnimationFrameRef.current = null;
+        return;
+      }
+
+      const buffered = streamDeltaBufferRef.current;
+      const displayed = streamDisplayedContentRef.current;
+      if (buffered.length <= displayed.length) {
+        streamAnimationRunningRef.current = false;
+        streamAnimationFrameRef.current = null;
+        return;
+      }
+
+      const charsToAdd = Math.min(
+        STREAM_CHARS_PER_FRAME,
+        buffered.length - displayed.length,
+      );
+      const nextContent = buffered.slice(0, displayed.length + charsToAdd);
+      streamDisplayedContentRef.current = nextContent;
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === targetMessageId
+            ? { ...item, content: nextContent }
+            : item,
+        ),
+      );
+
+      streamAnimationFrameRef.current = globalThis.requestAnimationFrame(tick);
+    };
+
+    streamAnimationFrameRef.current = globalThis.requestAnimationFrame(tick);
+  }, []);
+
+  const waitForStreamTextDrain = useCallback((targetMessageId: string) => {
+    return new Promise<void>((resolve) => {
+      const startedAt = Date.now();
+      const bufferedAtStart = Math.max(
+        streamDeltaBufferRef.current.length,
+        streamDisplayedContentRef.current.length,
+      );
+      const expectedMs =
+        Math.ceil(
+          (bufferedAtStart / Math.max(1, STREAM_CHARS_PER_FRAME * 60)) * 1000,
+        ) + 220;
+      const maxWaitMs = Math.min(10000, Math.max(1800, expectedMs));
+
+      const check = () => {
+        const stillTargeting =
+          streamTargetMessageIdRef.current === targetMessageId;
+        const bufferedLength = streamDeltaBufferRef.current.length;
+        const displayedLength = streamDisplayedContentRef.current.length;
+        const fullyDisplayed = displayedLength >= bufferedLength;
+        const timedOut = Date.now() - startedAt >= maxWaitMs;
+
+        if (!stillTargeting || fullyDisplayed || timedOut) {
+          resolve();
+          return;
+        }
+
+        globalThis.requestAnimationFrame(check);
+      };
+
+      check();
+    });
+  }, []);
+
+  const handleStopStreaming = useCallback(() => {
+    cancelStreamTextAnimation();
+    streamAbortRef.current?.abort();
+  }, [cancelStreamTextAnimation]);
 
   useEffect(() => {
     return () => {
+      cancelStreamTextAnimation();
       streamAbortRef.current?.abort();
     };
-  }, []);
+  }, [cancelStreamTextAnimation]);
 
   useEffect(() => {
     const shouldPulse =
@@ -1404,6 +1521,7 @@ export function ChatScreen({
       const assistantMessageId = `assistant-${Date.now()}`;
       const abortController = new globalThis.AbortController();
       streamAbortRef.current = abortController;
+      resetStreamTextAnimation(assistantMessageId);
 
       setError(null);
       setBusy(true);
@@ -1443,13 +1561,9 @@ export function ChatScreen({
           accessToken: controller.session?.access_token,
           signal: abortController.signal,
           onDelta: (delta) => {
-            setMessages((current) =>
-              current.map((item) =>
-                item.id === assistantMessageId
-                  ? { ...item, content: `${item.content}${delta}` }
-                  : item,
-              ),
-            );
+            if (!delta) return;
+            streamDeltaBufferRef.current += delta;
+            ensureStreamTextAnimating();
           },
           onVerseSearch: (verse) => {
             setSearchingVerses((current) => {
@@ -1515,13 +1629,19 @@ export function ChatScreen({
         setActiveTools(finalActive);
         setCompletedTools(Array.from(completedSet));
         setErroredTools(Array.from(erroredSet));
+        await waitForStreamTextDrain(assistantMessageId);
+        cancelStreamTextAnimation();
+        const finalStreamContent =
+          result.content || streamDeltaBufferRef.current;
+        streamDeltaBufferRef.current = finalStreamContent;
+        streamDisplayedContentRef.current = finalStreamContent;
 
         setMessages((current) =>
           current.map((item) =>
             item.id === assistantMessageId
               ? {
                   ...item,
-                  content: result.content || item.content,
+                  content: finalStreamContent || item.content,
                   citations: result.citations,
                   mapBundle: result.mapBundle ?? item.mapBundle,
                   suggestTrace: result.suggestTrace,
@@ -1534,6 +1654,7 @@ export function ChatScreen({
           listRef.current?.scrollToEnd({ animated: true });
         }, 0);
       } catch (nextError) {
+        cancelStreamTextAnimation();
         if (nextError instanceof Error && nextError.name === "AbortError") {
           setMessages((current) =>
             current.filter(
@@ -1551,6 +1672,8 @@ export function ChatScreen({
           current.filter((item) => item.id !== assistantMessageId),
         );
       } finally {
+        cancelStreamTextAnimation();
+        streamTargetMessageIdRef.current = null;
         if (streamAbortRef.current === abortController) {
           streamAbortRef.current = null;
         }
@@ -1566,9 +1689,13 @@ export function ChatScreen({
       busy,
       controller.session?.access_token,
       draft,
+      ensureStreamTextAnimating,
       history,
       mapSession,
+      resetStreamTextAnimation,
       traceModeEnabled,
+      cancelStreamTextAnimation,
+      waitForStreamTextDrain,
     ],
   );
 
@@ -1697,6 +1824,69 @@ export function ChatScreen({
     }
   }
 
+  function resolveQuestionForAssistantMessage(messageId: string): string {
+    const targetIndex = messages.findIndex((item) => item.id === messageId);
+    if (targetIndex <= 0) return "";
+    for (let index = targetIndex - 1; index >= 0; index -= 1) {
+      const candidate = messages[index];
+      if (candidate?.role === "user") {
+        return (candidate.rawContent ?? candidate.content).trim();
+      }
+    }
+    return "";
+  }
+
+  async function handleOpenChain(
+    message: ChatMessage,
+    options?: { forceRefresh?: boolean },
+  ) {
+    const forceRefresh = Boolean(options?.forceRefresh);
+    if (!forceRefresh) {
+      const cached = chainByMessageId[message.id];
+      if (cached) {
+        setChainModalError(null);
+        setChainModalMessageId(message.id);
+        return;
+      }
+    }
+
+    if (chainBusyMessageId) return;
+    setChainBusyMessageId(message.id);
+    setChainModalError(null);
+    setChainModalMessageId(message.id);
+
+    try {
+      const result = await fetchChainOfThought({
+        apiBaseUrl: MOBILE_ENV.API_URL,
+        question: resolveQuestionForAssistantMessage(message.id),
+        answer: message.rawContent ?? message.content,
+        accessToken: controller.session?.access_token,
+      });
+      const reasoning = result.reasoning?.trim();
+      if (!reasoning) {
+        throw new Error("No reasoning returned");
+      }
+      setChainByMessageId((current) => ({
+        ...current,
+        [message.id]: reasoning,
+      }));
+      setChainModalError(null);
+    } catch (nextError) {
+      setChainModalError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Could not load chain of thought.",
+      );
+    } finally {
+      setChainBusyMessageId(null);
+    }
+  }
+
+  function closeChainModal() {
+    setChainModalMessageId(null);
+    setChainModalError(null);
+  }
+
   async function handleQuickPrompt(entry: QuickPromptEntry) {
     if (busy) return;
     setQuickPromptBusyKey(entry.key);
@@ -1722,6 +1912,10 @@ export function ChatScreen({
     setSearchingVerses([]);
     setErroredTools([]);
     setDraft("");
+    setChainBusyMessageId(null);
+    setChainByMessageId({});
+    setChainModalMessageId(null);
+    setChainModalError(null);
   }
 
   function closeVersePreview() {
@@ -1934,6 +2128,10 @@ export function ChatScreen({
                 item.role === "assistant" &&
                 busy &&
                 item.content.trim().length === 0;
+              const isStreamingAssistantMessage =
+                item.role === "assistant" &&
+                busy &&
+                item.id === streamTargetMessageIdRef.current;
               return (
                 <View
                   style={[
@@ -1994,7 +2192,8 @@ export function ChatScreen({
                     ) : null}
 
                     {item.role === "assistant" &&
-                    item.content.trim().length > 0 ? (
+                    item.content.trim().length > 0 &&
+                    !isStreamingAssistantMessage ? (
                       <View style={localStyles.messageActionRow}>
                         <ActionButton
                           variant="secondary"
@@ -2005,6 +2204,18 @@ export function ChatScreen({
                               : "Open map"
                           }
                           onPress={() => void handleGenerateMap(item)}
+                          style={localStyles.compactAction}
+                          labelStyle={localStyles.compactActionLabel}
+                        />
+                        <ActionButton
+                          variant="ghost"
+                          disabled={chainBusyMessageId === item.id}
+                          label={
+                            chainBusyMessageId === item.id
+                              ? "Thinking..."
+                              : "Chain"
+                          }
+                          onPress={() => void handleOpenChain(item)}
                           style={localStyles.compactAction}
                           labelStyle={localStyles.compactActionLabel}
                         />
@@ -2088,6 +2299,79 @@ export function ChatScreen({
                 label="View"
                 variant="secondary"
                 onPress={openVersePreviewInReader}
+                style={localStyles.compactAction}
+                labelStyle={localStyles.compactActionLabel}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(chainModalMessageId)}
+        animationType="fade"
+        transparent
+        onRequestClose={closeChainModal}
+      >
+        <View style={localStyles.chainModalOverlay}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close chain modal"
+            onPress={closeChainModal}
+            style={localStyles.chainModalBackdrop}
+          />
+          <View style={localStyles.chainModalCard}>
+            <View style={localStyles.chainModalHeader}>
+              <Text style={localStyles.chainModalTitle}>Chain of Thought</Text>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Close chain modal"
+                onPress={closeChainModal}
+                style={localStyles.referenceModalCloseButton}
+              >
+                <Text style={localStyles.referenceModalCloseLabel}>Close</Text>
+              </PressableScale>
+            </View>
+
+            <View style={localStyles.chainModalBody}>
+              {chainBusyMessageId === chainModalMessageId ? (
+                <LoadingDotsNative label="Building chain..." />
+              ) : null}
+              {chainModalError ? (
+                <Text style={styles.error}>{chainModalError}</Text>
+              ) : null}
+              {chainModalMessageId &&
+              chainByMessageId[chainModalMessageId] &&
+              chainBusyMessageId !== chainModalMessageId ? (
+                <ScrollView style={localStyles.chainModalScroll}>
+                  <Text style={localStyles.chainModalText}>
+                    {chainByMessageId[chainModalMessageId]}
+                  </Text>
+                </ScrollView>
+              ) : null}
+            </View>
+
+            <View style={localStyles.chainModalActions}>
+              {chainModalMessageId && chainModalError ? (
+                <ActionButton
+                  label="Retry"
+                  variant="secondary"
+                  onPress={() => {
+                    const target = messages.find(
+                      (item) => item.id === chainModalMessageId,
+                    );
+                    if (target) {
+                      void handleOpenChain(target, { forceRefresh: true });
+                    }
+                  }}
+                  style={localStyles.compactAction}
+                  labelStyle={localStyles.compactActionLabel}
+                />
+              ) : null}
+              <ActionButton
+                label="Close"
+                variant="ghost"
+                onPress={closeChainModal}
                 style={localStyles.compactAction}
                 labelStyle={localStyles.compactActionLabel}
               />
@@ -2350,10 +2634,6 @@ const localStyles = StyleSheet.create({
   userBubble: {
     backgroundColor: "rgba(38,38,41,0.8)",
     borderColor: "rgba(255,255,255,0.07)",
-    shadowColor: "#000",
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
   },
   assistantBubble: {
     backgroundColor: "transparent",
@@ -2469,6 +2749,64 @@ const localStyles = StyleSheet.create({
   referenceModalActions: {
     flexDirection: "row",
     alignItems: "center",
+    gap: T.spacing.sm,
+  },
+  chainModalOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: T.spacing.md,
+  },
+  chainModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  chainModalCard: {
+    width: "100%",
+    maxWidth: 640,
+    borderRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    backgroundColor: T.colors.ink,
+    padding: T.spacing.md,
+    gap: T.spacing.sm,
+    maxHeight: "76%",
+  },
+  chainModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: T.spacing.sm,
+  },
+  chainModalTitle: {
+    flex: 1,
+    color: T.colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+    textTransform: "uppercase",
+  },
+  chainModalBody: {
+    borderWidth: 1,
+    borderColor: T.colors.border,
+    borderRadius: T.radius.md,
+    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: T.spacing.sm,
+    minHeight: 140,
+  },
+  chainModalScroll: {
+    maxHeight: 360,
+  },
+  chainModalText: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 24,
+  },
+  chainModalActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: T.spacing.sm,
   },
   citationRow: {
@@ -2605,10 +2943,6 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 9,
     paddingBottom: 9,
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
   },
   traceToggleButton: {
     width: 32,
