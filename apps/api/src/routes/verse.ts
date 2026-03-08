@@ -155,7 +155,7 @@ router.get(
         crossRefs = [];
       }
 
-      const filteredCrossRefs: VerseRef[] = await (async () => {
+      const resolvedCrossReferences: VerseRef[] = await (async () => {
         try {
           return await profileTime(
             "verse.filterExistingCrossReferences",
@@ -199,8 +199,8 @@ router.get(
       // Return the references
       return res.json({
         reference: `${verseRef.book} ${verseRef.chapter}:${verseRef.verse}`,
-        crossReferences: filteredCrossRefs,
-        count: filteredCrossRefs.length,
+        crossReferences: resolvedCrossReferences,
+        count: resolvedCrossReferences.length,
       });
     } catch (error) {
       console.error("Get cross-references error:", error);
