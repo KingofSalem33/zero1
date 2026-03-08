@@ -134,52 +134,73 @@ router.get(
         });
       }
 
-      // Get cross-references from OpenBible.info dataset
-      const crossRefs = await profileTime(
-        "verse.getCrossReferences",
-        () => getCrossReferences(verseRef),
-        {
-          file: "bible/crossReferences.ts",
-          fn: "getCrossReferences",
-          await: "getCrossReferences",
-        },
-      );
+      // Get cross-references from OpenBible.info dataset.
+      // Fail-open to keep the endpoint stable during transient data pipeline errors.
+      let crossRefs: VerseRef[] = [];
+      try {
+        crossRefs = await profileTime(
+          "verse.getCrossReferences",
+          () => getCrossReferences(verseRef),
+          {
+            file: "bible/crossReferences.ts",
+            fn: "getCrossReferences",
+            await: "getCrossReferences",
+          },
+        );
+      } catch (error) {
+        console.error(
+          `[Verse API] Failed to fetch cross-references for ${decodedRef}; returning empty list`,
+          error,
+        );
+        crossRefs = [];
+      }
 
-      const filteredCrossRefs = await profileTime(
-        "verse.filterExistingCrossReferences",
-        async () => {
-          if (crossRefs.length === 0) return crossRefs;
+      const resolvedCrossReferences: VerseRef[] = await (async () => {
+        try {
+          return await profileTime(
+            "verse.filterExistingCrossReferences",
+            async () => {
+              if (crossRefs.length === 0) return crossRefs;
 
-          const existingVerses = await cachedBibleService.getVerses(crossRefs);
-          if (existingVerses.length === crossRefs.length) {
-            return crossRefs;
-          }
+              const existingVerses =
+                await cachedBibleService.getVerses(crossRefs);
+              if (existingVerses.length === crossRefs.length) {
+                return crossRefs;
+              }
 
-          const existingKeys = new Set(existingVerses.map(makeRefKey));
-          const filtered = crossRefs.filter((ref) =>
-            existingKeys.has(makeRefKey(ref)),
+              const existingKeys = new Set(existingVerses.map(makeRefKey));
+              const validatedRefs = crossRefs.filter((ref) =>
+                existingKeys.has(makeRefKey(ref)),
+              );
+
+              if (validatedRefs.length !== crossRefs.length) {
+                console.warn(
+                  `[Verse API] Filtered ${crossRefs.length - validatedRefs.length} invalid cross-reference(s) for ${decodedRef}`,
+                );
+              }
+
+              return validatedRefs;
+            },
+            {
+              file: "routes/verse.ts",
+              fn: "filterExistingCrossReferences",
+              await: "cachedBibleService.getVerses",
+            },
           );
-
-          if (filtered.length !== crossRefs.length) {
-            console.warn(
-              `[Verse API] Filtered ${crossRefs.length - filtered.length} invalid cross-reference(s) for ${decodedRef}`,
-            );
-          }
-
-          return filtered;
-        },
-        {
-          file: "routes/verse.ts",
-          fn: "filterExistingCrossReferences",
-          await: "cachedBibleService.getVerses",
-        },
-      );
+        } catch (error) {
+          console.error(
+            `[Verse API] Failed to filter cross-references for ${decodedRef}; returning unfiltered list`,
+            error,
+          );
+          return crossRefs;
+        }
+      })();
 
       // Return the references
       return res.json({
         reference: `${verseRef.book} ${verseRef.chapter}:${verseRef.verse}`,
-        crossReferences: filteredCrossRefs,
-        count: filteredCrossRefs.length,
+        crossReferences: resolvedCrossReferences,
+        count: resolvedCrossReferences.length,
       });
     } catch (error) {
       console.error("Get cross-references error:", error);
