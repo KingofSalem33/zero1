@@ -103,6 +103,11 @@ export interface ChainOfThoughtResult {
   citations: string[];
 }
 
+export interface NextBranchOption {
+  label: string;
+  prompt: string;
+}
+
 export type LibraryConnectionItem = LibraryConnection;
 export type LibraryMapItem = LibraryMap;
 export type LibraryBundleResult = LibraryBundleCreateResult;
@@ -268,6 +273,170 @@ export async function fetchChainOfThought({
           )
         : [],
     };
+  } catch {
+    return fallback();
+  }
+}
+
+export async function fetchNextBranches({
+  apiBaseUrl,
+  question,
+  answer,
+  citations,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  question?: string;
+  answer: string;
+  citations?: string[];
+  accessToken?: string;
+}): Promise<NextBranchOption[]> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const toSentenceCase = (value: string) => {
+    const trimmed = value.replace(/\s+/g, " ").trim();
+    if (!trimmed) return trimmed;
+    return `${trimmed.slice(0, 1).toUpperCase()}${trimmed.slice(1)}`;
+  };
+
+  const sanitizeLabel = (value: string): string => {
+    const cleaned = value
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!cleaned) return "";
+    return toSentenceCase(cleaned);
+  };
+
+  const toSubtleNudge = (value: string): string => {
+    let cleaned = sanitizeLabel(value)
+      .replace(/[.!?]+$/g, "")
+      .trim();
+    if (!cleaned) return "";
+    cleaned = cleaned
+      .replace(/^(want to\s+(see|explore|trace|learn)\s+how\s+)/i, "How ")
+      .replace(/^(want to\s+(see|explore|trace|learn)\s+)/i, "")
+      .replace(/^(explore|trace|compare|consider|see|look at)\s+/i, "");
+    const normalized = sanitizeLabel(cleaned)
+      .replace(/[.!?]+$/g, "")
+      .trim();
+    if (!normalized) return "";
+    return `${normalized}.`;
+  };
+
+  const isGenericLabel = (label: string): boolean => {
+    const normalized = label.toLowerCase().trim();
+    if (!normalized) return true;
+    return [
+      /^go deeper\b/,
+      /^compare\b/,
+      /^practical\b/,
+      /^next step\b/,
+      /^learn more\b/,
+      /^explore more\b/,
+      /^more context\b/,
+      /^deeper\b/,
+      /^follow up\b/,
+    ].some((pattern) => pattern.test(normalized));
+  };
+
+  const extractIdeaSentences = (text: string, count: number): string[] => {
+    const cleaned = text.replace(/\s+/g, " ").trim();
+    if (!cleaned) return [];
+    return cleaned
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sanitizeLabel(sentence))
+      .filter((sentence) => sentence.length >= 22 && sentence.length <= 180)
+      .filter((sentence) => !isGenericLabel(sentence))
+      .slice(0, count);
+  };
+
+  const fallback = (): NextBranchOption[] => {
+    const primary = citations?.[0];
+    const secondary = citations?.[1];
+    const labels = extractIdeaSentences(answer, 2);
+
+    if (labels.length < 2 && primary) {
+      labels.push(
+        `${primary} reveals a connected promise thread that sharpens this answer.`,
+      );
+    }
+    if (labels.length < 2 && secondary) {
+      labels.push(
+        `${secondary} extends the same theme and shows how the idea unfolds across Scripture.`,
+      );
+    }
+    while (labels.length < 2) {
+      labels.push(
+        labels.length === 0
+          ? "A connected kingdom thread runs through this answer and points to the next passage to explore."
+          : "This adjacent theme clarifies how the same biblical idea develops in the surrounding texts.",
+      );
+    }
+
+    return labels.slice(0, 2).map((label, idx) => ({
+      label: toSubtleNudge(label),
+      prompt:
+        idx === 0
+          ? `Follow this next thread from the answer and show one supporting verse with why it matters: ${label}`
+          : `Explore this adjacent connection from the answer with one additional verse and explain the significance: ${label}`,
+    }));
+  };
+
+  if (!answer.trim()) {
+    return fallback();
+  }
+
+  try {
+    const response = await fetch(
+      `${normalizeBaseUrl(apiBaseUrl)}/api/next-branches`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          answer,
+          ...(question?.trim() ? { question: question.trim() } : {}),
+          ...(citations && citations.length > 0 ? { citations } : {}),
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      if (response.status >= 500) {
+        return fallback();
+      }
+      throw new Error(`Next branches request failed (${response.status})`);
+    }
+
+    const payload = (await response.json()) as {
+      branches?: Array<{
+        label?: string;
+        prompt?: string;
+      }>;
+    };
+    const branches = (payload.branches || [])
+      .map((entry) => ({
+        label:
+          typeof entry.label === "string"
+            ? toSubtleNudge(entry.label.replace(/\s+/g, " ").trim())
+            : "",
+        prompt:
+          typeof entry.prompt === "string"
+            ? entry.prompt.replace(/\s+/g, " ").trim()
+            : "",
+      }))
+      .filter(
+        (entry) => entry.label && entry.prompt && !isGenericLabel(entry.label),
+      )
+      .slice(0, 2);
+
+    if (branches.length >= 2) {
+      return branches;
+    }
+    return fallback();
   } catch {
     return fallback();
   }

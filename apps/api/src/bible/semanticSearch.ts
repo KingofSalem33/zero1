@@ -195,15 +195,15 @@ export async function searchVersesByQuery(
   );
 
   // Check OpenAI API key
-  if (!ENV.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY not configured");
+  if (!ENV.AI_API_KEY) {
+    throw new Error("AI_API_KEY not configured");
   }
 
   // Step 1: Generate embedding for the query
   const startTime = Date.now();
   const client = makeOpenAI();
   if (!client) {
-    throw new Error("OpenAI client not configured");
+    throw new Error("AI client not configured");
   }
 
   let queryEmbedding: number[];
@@ -376,13 +376,13 @@ export async function findMultipleAnchorVerses(
 export async function generateEmbeddingsBatch(
   texts: string[],
 ): Promise<number[][]> {
-  if (!ENV.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY not configured");
+  if (!ENV.AI_API_KEY) {
+    throw new Error("AI_API_KEY not configured");
   }
 
   const client = makeOpenAI();
   if (!client) {
-    throw new Error("OpenAI client not configured");
+    throw new Error("AI client not configured");
   }
 
   const response = await client.embeddings.create({

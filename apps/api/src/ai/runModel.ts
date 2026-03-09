@@ -219,7 +219,7 @@ export async function runModel(
 
   const client = makeOpenAI();
   if (!client) {
-    throw new Error("OpenAI client not configured");
+    throw new Error("AI client not configured");
   }
 
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]

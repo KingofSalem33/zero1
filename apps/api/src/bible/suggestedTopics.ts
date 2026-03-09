@@ -82,7 +82,7 @@ export async function findSimilarChapters(
     .substring(0, 500);
 
   // Use existing vector search to find similar verses (faster than chapter-by-chapter)
-  if (!ENV.OPENAI_API_KEY) {
+  if (!ENV.AI_API_KEY) {
     console.warn("[Suggested Topics] No OpenAI API key");
     return [];
   }
@@ -90,7 +90,7 @@ export async function findSimilarChapters(
   try {
     const client = makeOpenAI();
     if (!client) {
-      throw new Error("OpenAI client not configured");
+      throw new Error("AI client not configured");
     }
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
@@ -223,7 +223,7 @@ export async function findGoldenThreads(
     .join(" ")
     .substring(0, 500);
 
-  if (!ENV.OPENAI_API_KEY) {
+  if (!ENV.AI_API_KEY) {
     console.warn("[Suggested Topics] No OpenAI API key");
     return [];
   }
@@ -231,7 +231,7 @@ export async function findGoldenThreads(
   try {
     const client = makeOpenAI();
     if (!client) {
-      throw new Error("OpenAI client not configured");
+      throw new Error("AI client not configured");
     }
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,

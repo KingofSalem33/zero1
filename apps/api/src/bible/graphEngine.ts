@@ -129,7 +129,7 @@ export async function rankByQueryRelevance<T extends { id: number }>(
   const profileLabel = options?.profileLabel ?? "rank_similarity";
   const logLabel = options?.logLabel;
 
-  if (!items.length || !ENV.OPENAI_API_KEY) {
+  if (!items.length || !ENV.AI_API_KEY) {
     if (logLabel) {
       console.log(`[${logLabel}] Skipping ranking (no items or no API key)`);
     }
@@ -145,7 +145,7 @@ export async function rankByQueryRelevance<T extends { id: number }>(
   try {
     const client = makeOpenAI();
     if (!client) {
-      throw new Error("OpenAI client not configured");
+      throw new Error("AI client not configured");
     }
 
     const response = await profileTime(
@@ -240,7 +240,7 @@ export async function getQueryEmbedding(
   userQuery: string,
   profileLabel: string,
 ): Promise<number[] | null> {
-  if (!ENV.OPENAI_API_KEY) return null;
+  if (!ENV.AI_API_KEY) return null;
 
   const client = makeOpenAI();
   if (!client) {

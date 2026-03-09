@@ -51,7 +51,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     );
 
     // Check if OpenAI client is available
-    if (!ENV.OPENAI_API_KEY) {
+    if (!ENV.AI_API_KEY) {
       return res.status(503).json({
         error: {
           message: "Synopsis service not configured",

@@ -1387,6 +1387,267 @@ Provide a concise chain-of-thought style study breakdown for the answer.
   },
 );
 
+app.post(
+  "/api/next-branches",
+  optionalAuth,
+  aiLimiter,
+  express.json(),
+  async (req, res) => {
+    try {
+      const profiler = getProfiler();
+      profiler?.setPipeline("next_branches");
+      profiler?.markHandlerStart();
+
+      const question =
+        typeof req.body?.question === "string" ? req.body.question.trim() : "";
+      const answer =
+        typeof req.body?.answer === "string" ? req.body.answer.trim() : "";
+      const citations = Array.isArray(req.body?.citations)
+        ? req.body.citations.filter(
+            (entry: unknown): entry is string => typeof entry === "string",
+          )
+        : [];
+
+      if (!answer) {
+        return res
+          .status(400)
+          .json({ error: "Missing required answer content" });
+      }
+
+      const toSentenceCase = (value: string) => {
+        const trimmed = value.replace(/\s+/g, " ").trim();
+        if (!trimmed) return trimmed;
+        return `${trimmed.slice(0, 1).toUpperCase()}${trimmed.slice(1)}`;
+      };
+
+      const sanitizeLabel = (value: string): string => {
+        const cleaned = value
+          .replace(/[\r\n\t]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!cleaned) return "";
+        return toSentenceCase(cleaned);
+      };
+
+      const toSubtleNudge = (value: string): string => {
+        let cleaned = sanitizeLabel(value)
+          .replace(/[.!?]+$/g, "")
+          .trim();
+        if (!cleaned) return "";
+        cleaned = cleaned
+          .replace(/^(want to\s+(see|explore|trace|learn)\s+how\s+)/i, "How ")
+          .replace(/^(want to\s+(see|explore|trace|learn)\s+)/i, "")
+          .replace(/^(explore|trace|compare|consider|see|look at)\s+/i, "");
+        const normalized = sanitizeLabel(cleaned)
+          .replace(/[.!?]+$/g, "")
+          .trim();
+        if (!normalized) return "";
+        return `${normalized}.`;
+      };
+
+      const parseJsonObject = <T>(raw: string): T | null => {
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        try {
+          return JSON.parse(trimmed) as T;
+        } catch {
+          const start = trimmed.indexOf("{");
+          const end = trimmed.lastIndexOf("}");
+          if (start < 0 || end <= start) return null;
+          const candidate = trimmed.slice(start, end + 1);
+          try {
+            return JSON.parse(candidate) as T;
+          } catch {
+            return null;
+          }
+        }
+      };
+
+      const isGenericLabel = (label: string): boolean => {
+        const normalized = label.toLowerCase().trim();
+        if (!normalized) return true;
+        return [
+          /^go deeper\b/,
+          /^compare\b/,
+          /^practical\b/,
+          /^next step\b/,
+          /^learn more\b/,
+          /^explore more\b/,
+          /^more context\b/,
+          /^deeper\b/,
+          /^follow up\b/,
+        ].some((pattern) => pattern.test(normalized));
+      };
+
+      const extractIdeaSentences = (text: string, count: number): string[] => {
+        const cleaned = text.replace(/\s+/g, " ").trim();
+        if (!cleaned) return [];
+        return cleaned
+          .split(/(?<=[.!?])\s+/)
+          .map((sentence) => sanitizeLabel(sentence))
+          .filter((sentence) => sentence.length >= 22 && sentence.length <= 180)
+          .filter((sentence) => !isGenericLabel(sentence))
+          .slice(0, count);
+      };
+
+      const buildFallbackBranches = () => {
+        const primaryCitation = citations[0];
+        const secondaryCitation = citations[1];
+        const labels = extractIdeaSentences(answer, 2);
+
+        if (labels.length < 2 && primaryCitation) {
+          labels.push(
+            `${primaryCitation} reveals a connected promise thread that sharpens this answer.`,
+          );
+        }
+        if (labels.length < 2 && secondaryCitation) {
+          labels.push(
+            `${secondaryCitation} extends the same theme and shows how the idea unfolds across Scripture.`,
+          );
+        }
+        while (labels.length < 2) {
+          labels.push(
+            labels.length === 0
+              ? "A connected kingdom thread runs through this answer and points to the next passage to explore."
+              : "This adjacent theme clarifies how the same biblical idea develops in the surrounding texts.",
+          );
+        }
+
+        return labels.slice(0, 2).map((label, idx) => ({
+          label: toSubtleNudge(label),
+          prompt:
+            idx === 0
+              ? `Follow this next thread from the answer and show one supporting verse with why it matters: ${label}`
+              : `Explore this adjacent connection from the answer with one additional verse and explain the significance: ${label}`,
+        }));
+      };
+
+      const boundedAnswer =
+        answer.length > 5000 ? `${answer.slice(0, 5000)}...` : answer;
+      const citationBlock =
+        citations.length > 0
+          ? citations.slice(0, 8).join(", ")
+          : "(No explicit citations provided)";
+      const prompt = `User question:
+${question || "(not provided)"}
+
+Assistant answer:
+${boundedAnswer}
+
+Known verse citations:
+${citationBlock}
+
+Task:
+Generate exactly 2 practical "what to explore next" branches for a Bible study UI.
+- label: one short sentence with a subtle nudge toward the next relevant connection
+- label voice: warm and intriguing, but not explicit invitation language
+- label content: specific connected idea/theme from the answer, never generic
+- prompt: one concise follow-up prompt grounded in this answer
+- Branches must be different and immediately useful
+- No generic filler or action-only phrasing
+- Never use labels like "Go deeper", "Compare two verses", "Practical next step"
+- Do not use phrases like "Want to see", "Let's", or imperative prompts like "Explore..."
+- Do not use question marks
+- Keep labels as one clean sentence the user can tap directly`;
+
+      try {
+        const result = await profileTime(
+          "next_branches.runModel",
+          () =>
+            runModel(
+              [
+                {
+                  role: "system",
+                  content:
+                    "You generate concise next-branch prompts for Bible study. Labels should feel naturally inviting but not use explicit invite language or questions. Keep them specific, interesting, and grounded in the answer.",
+                },
+                { role: "user", content: prompt },
+              ],
+              {
+                model: ENV.OPENAI_FAST_MODEL,
+                reasoningEffort: "low",
+                verbosity: "low",
+                responseFormat: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: "next_branches",
+                    strict: true,
+                    schema: {
+                      type: "object",
+                      properties: {
+                        branches: {
+                          type: "array",
+                          minItems: 2,
+                          maxItems: 2,
+                          items: {
+                            type: "object",
+                            properties: {
+                              label: { type: "string" },
+                              prompt: { type: "string" },
+                            },
+                            required: ["label", "prompt"],
+                            additionalProperties: false,
+                          },
+                        },
+                      },
+                      required: ["branches"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+              },
+            ),
+          {
+            file: "ai/runModel.ts",
+            fn: "runModel",
+            await: "client.responses.create",
+          },
+        );
+
+        const parsed = parseJsonObject<{
+          branches?: Array<{ label?: string; prompt?: string }>;
+        }>(result.text);
+        if (!parsed) {
+          throw new Error("Could not parse next branches model output");
+        }
+        const normalized = (parsed.branches || [])
+          .map((entry) => ({
+            label: toSubtleNudge(
+              typeof entry.label === "string" ? entry.label : "",
+            ),
+            prompt:
+              typeof entry.prompt === "string"
+                ? entry.prompt.replace(/\s+/g, " ").trim()
+                : "",
+          }))
+          .filter((entry) => entry.label && entry.prompt);
+
+        const nongeneric = normalized.filter(
+          (entry) => !isGenericLabel(entry.label),
+        );
+        if (nongeneric.length >= 2) {
+          return res.json({ branches: nongeneric.slice(0, 2) });
+        }
+        if (normalized.length >= 2) {
+          return res.json({ branches: normalized.slice(0, 2) });
+        }
+      } catch (modelError) {
+        console.warn("Next branches model call failed; using fallback:", {
+          error:
+            modelError instanceof Error
+              ? modelError.message
+              : String(modelError),
+        });
+      }
+
+      return res.json({ branches: buildFallbackBranches() });
+    } catch (error) {
+      console.error("Next branches error:", error);
+      return res.status(500).json({ error: "Next branches request failed" });
+    }
+  },
+);
+
 // AI Chat endpoint with tools and optional JSON format (optional auth, AI rate limited)
 app.post(
   "/api/chat",
