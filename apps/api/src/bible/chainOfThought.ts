@@ -51,7 +51,7 @@ const EDGE_TYPE_SET = new Set<EdgeType>([
 
 function normalizeReference(value: string): string {
   return value
-    .replace(/^[\[(]\s*/, "")
+    .replace(/^[[(]\s*/, "")
     .replace(/\s*[\])]$/, "")
     .replace(/\s+/g, " ")
     .trim()
@@ -62,7 +62,7 @@ function parseReference(
   value: string,
 ): { book: string; chapter: number; verse: number } | null {
   const cleaned = value
-    .replace(/^[\[(]\s*/, "")
+    .replace(/^[[(]\s*/, "")
     .replace(/\s*[\])]$/, "")
     .trim();
   const matched = cleaned.match(/^(.+?)\s+(\d+):(\d+)(?:-\d+)?$/);
