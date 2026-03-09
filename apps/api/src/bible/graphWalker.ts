@@ -214,7 +214,7 @@ const findBridgeVerses = async (
     }
   }
 
-  if (bridges.length >= 2 || !ENV.OPENAI_API_KEY) {
+  if (bridges.length >= 2 || !ENV.AI_API_KEY) {
     return bridges;
   }
 

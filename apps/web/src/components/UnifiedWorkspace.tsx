@@ -14,9 +14,10 @@ import { useBibleHighlightsContext } from "../contexts/BibleHighlightsContext";
 import { BookmarkPanel } from "./BookmarkPanel";
 import { useChatStream } from "../hooks/useChatStream";
 import { NarrativeMap } from "./golden-thread/NarrativeMap";
+import { ChainOfThought } from "./ChainOfThought";
 import { useGoldenThreadHighlighting } from "../hooks/useGoldenThreadHighlighting";
 import { useChatScrollMemory } from "../hooks/useScrollMemory";
-import type { VisualContextBundle } from "../types/goldenThread";
+import type { ChainData, VisualContextBundle } from "../types/goldenThread";
 import type {
   GoDeeperPayload,
   PendingPrompt,
@@ -93,6 +94,7 @@ interface ChatMessage {
   suggestTrace?: boolean;
   tracePrompt?: string;
   connectionCount?: number;
+  chainData?: ChainData;
 }
 
 interface ToolActivity {
@@ -1548,6 +1550,7 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
         visualBundle: pendingVisualBundle || visualBundle || undefined,
         suggestTrace: streamingMessage.suggestTrace,
         connectionCount: streamingMessage.connectionCount,
+        chainData: streamingMessage.chainData,
         tracePrompt: lastUserPromptRef.current ?? undefined,
       };
       if (fullMapPending && fullMapRequestRef.current) {
@@ -2247,6 +2250,12 @@ const UnifiedWorkspace: React.FC<UnifiedWorkspaceProps> = ({
                                           </span>
                                         </div>
                                       )}
+                                      {message.chainData &&
+                                        message.chainData.steps.length >= 1 && (
+                                          <ChainOfThought
+                                            chainData={message.chainData}
+                                          />
+                                        )}
                                     </div>
                                   )}
                               </>

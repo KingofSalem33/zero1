@@ -48,6 +48,10 @@ import {
   type DiscoveredConnection,
 } from "./connectionDiscovery";
 import { ensureVersesHaveText } from "./verseText";
+import {
+  buildChainDataFromBundleAndResponse,
+  extractCitationsFromResponse,
+} from "./chainOfThought";
 
 const ANCHOR_NOT_FOUND_MESSAGE =
   "I could not find specific KJV verses matching your question. Please try rephrasing with more specific biblical terms or include a verse reference (e.g., 'John 3:16').";
@@ -467,7 +471,7 @@ export async function rankVersesBySimilarity(
   visualBundle: ReferenceVisualBundle,
   userQuery: string,
 ): Promise<ReferenceVisualBundle> {
-  if (!visualBundle.nodes.length || !ENV.OPENAI_API_KEY) {
+  if (!visualBundle.nodes.length || !ENV.AI_API_KEY) {
     console.log("[Verse Ranking] Skipping ranking (no nodes or no API key)");
     return visualBundle;
   }
@@ -998,7 +1002,7 @@ const extractReferencesFromText = (text: string): string[] => {
 };
 
 const suggestAnchorReferences = async (prompt: string): Promise<string[]> => {
-  if (!ENV.OPENAI_API_KEY) return [];
+  if (!ENV.AI_API_KEY) return [];
   const response = await runModel(
     [
       { role: "system", content: ANCHOR_REF_SYSTEM },
@@ -2046,7 +2050,7 @@ export async function explainScriptureWithKernelStream(
 
     // Stream the response directly with validation and guardrails enabled
     const requestId = generateRequestId();
-    await profileTime(
+    const streamedResponse = await profileTime(
       "exegesis.prebuilt.runModelStream",
       () =>
         runModelStream(
@@ -2061,6 +2065,7 @@ export async function explainScriptureWithKernelStream(
             taskType: "deep_exegesis",
             enableValidation: true,
             enableGuardrails: true,
+            keepAlive: true,
           },
         ),
       {
@@ -2069,6 +2074,38 @@ export async function explainScriptureWithKernelStream(
         await: "client.responses.create",
       },
     );
+
+    const anchorReference = `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
+    let citations = [anchorReference];
+    try {
+      const extracted = extractCitationsFromResponse(streamedResponse);
+      if (extracted.length > 0) {
+        citations = extracted;
+      }
+      const chainData = buildChainDataFromBundleAndResponse(
+        visualBundle,
+        streamedResponse,
+      );
+      if (chainData && chainData.steps.length > 0) {
+        res.write("event: chain_data\n");
+        res.write(`data: ${JSON.stringify(chainData)}\n\n`);
+      }
+    } catch (chainError) {
+      console.warn("[Expanding Ring] chain_data generation failed (prebuilt)", {
+        error:
+          chainError instanceof Error ? chainError.message : String(chainError),
+      });
+    }
+    res.write("event: done\n");
+    res.write(
+      `data: ${JSON.stringify({
+        citations,
+        suggestTrace: true,
+        connectionCount: visualBundle.edges.length,
+        anchorId,
+      })}\n\n`,
+    );
+    res.end();
 
     return {
       anchor,
@@ -2369,7 +2406,7 @@ export async function explainScriptureWithKernelStream(
           return mergeDiscoveredEdges(visualBundle, cached, "llm_cached");
         }
 
-        if (!ENV.OPENAI_API_KEY) {
+        if (!ENV.AI_API_KEY) {
           return visualBundle;
         }
 
@@ -2446,7 +2483,7 @@ export async function explainScriptureWithKernelStream(
 
   // Stream with validation and guardrails enabled
   const requestId = generateRequestId();
-  await profileTime(
+  const streamedResponse = await profileTime(
     "exegesis.runModelStream",
     () =>
       runModelStream(
@@ -2464,6 +2501,7 @@ export async function explainScriptureWithKernelStream(
           taskType: "deep_exegesis",
           enableValidation: true,
           enableGuardrails: true,
+          keepAlive: true,
         },
       ),
     {
@@ -2472,6 +2510,38 @@ export async function explainScriptureWithKernelStream(
       await: "client.responses.create",
     },
   );
+
+  const anchorReference = `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
+  let citations = [anchorReference];
+  try {
+    const extracted = extractCitationsFromResponse(streamedResponse);
+    if (extracted.length > 0) {
+      citations = extracted;
+    }
+    const chainData = buildChainDataFromBundleAndResponse(
+      visualBundle,
+      streamedResponse,
+    );
+    if (chainData && chainData.steps.length > 0) {
+      res.write("event: chain_data\n");
+      res.write(`data: ${JSON.stringify(chainData)}\n\n`);
+    }
+  } catch (chainError) {
+    console.warn("[Expanding Ring] chain_data generation failed", {
+      error:
+        chainError instanceof Error ? chainError.message : String(chainError),
+    });
+  }
+  res.write("event: done\n");
+  res.write(
+    `data: ${JSON.stringify({
+      citations,
+      suggestTrace: true,
+      connectionCount: visualBundle.edges.length,
+      anchorId,
+    })}\n\n`,
+  );
+  res.end();
 
   console.log("[Fast Stream] Teaching complete");
 

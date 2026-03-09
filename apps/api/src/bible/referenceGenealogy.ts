@@ -59,11 +59,11 @@ export async function buildReferenceTree(
 
   // Generate query embedding if user query provided
   let queryEmbedding: number[] | null = null;
-  if (userQuery && ENV.OPENAI_API_KEY) {
+  if (userQuery && ENV.AI_API_KEY) {
     try {
       const client = makeOpenAI();
       if (!client) {
-        throw new Error("OpenAI client not configured");
+        throw new Error("AI client not configured");
       }
       const response = await client.embeddings.create({
         model: "text-embedding-3-small",

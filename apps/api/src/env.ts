@@ -33,6 +33,28 @@ const nodeEnv = process.env.NODE_ENV || "development";
 const isProduction = nodeEnv === "production";
 const configuredCorsOrigins = parseCsv(process.env.CORS_ALLOWED_ORIGINS);
 const strictEnv = parseBoolean(process.env.STRICT_ENV, isProduction);
+const requestedAiProvider = (process.env.AI_PROVIDER || "openai")
+  .trim()
+  .toLowerCase();
+const aiProvider = requestedAiProvider === "groq" ? "groq" : "openai";
+const openaiApiKey = process.env.OPENAI_API_KEY || "";
+const groqApiKey = process.env.GROQ_API_KEY || "";
+const groqBaseUrl = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const groqModelName = process.env.GROQ_MODEL_NAME || "openai/gpt-oss-20b";
+const openaiModelName = process.env.OPENAI_MODEL_NAME || "gpt-4o-mini";
+const defaultProviderModel =
+  aiProvider === "groq" ? groqModelName : openaiModelName;
+const aiApiKey = aiProvider === "groq" ? groqApiKey : openaiApiKey;
+const resolvedFastModel =
+  process.env.OPENAI_FAST_MODEL ||
+  (aiProvider === "groq"
+    ? defaultProviderModel
+    : process.env.OPENAI_MODEL_NAME || "gpt-4.1-nano");
+const resolvedSmartModel =
+  process.env.OPENAI_SMART_MODEL ||
+  (aiProvider === "groq"
+    ? defaultProviderModel
+    : process.env.OPENAI_MODEL_NAME || "gpt-4.1-mini");
 const mergedProductionCorsOrigins = Array.from(
   new Set([...configuredCorsOrigins, ...LOCAL_DESKTOP_CORS_ORIGINS]),
 );
@@ -50,16 +72,15 @@ export const ENV = {
   IS_PRODUCTION: isProduction,
   STRICT_ENV: strictEnv,
   PORT: Number(process.env.PORT || 3001),
-  OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
-  OPENAI_MODEL_NAME: process.env.OPENAI_MODEL_NAME || "gpt-4o-mini",
-  OPENAI_FAST_MODEL:
-    process.env.OPENAI_FAST_MODEL ||
-    process.env.OPENAI_MODEL_NAME ||
-    "gpt-4.1-nano",
-  OPENAI_SMART_MODEL:
-    process.env.OPENAI_SMART_MODEL ||
-    process.env.OPENAI_MODEL_NAME ||
-    "gpt-4.1-mini",
+  AI_PROVIDER: aiProvider,
+  AI_API_KEY: aiApiKey,
+  GROQ_API_KEY: groqApiKey,
+  GROQ_BASE_URL: groqBaseUrl,
+  GROQ_MODEL_NAME: groqModelName,
+  OPENAI_API_KEY: openaiApiKey,
+  OPENAI_MODEL_NAME: defaultProviderModel,
+  OPENAI_FAST_MODEL: resolvedFastModel,
+  OPENAI_SMART_MODEL: resolvedSmartModel,
   SUPABASE_URL: process.env.SUPABASE_URL || "",
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
   SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY || "",
@@ -84,10 +105,16 @@ if (ENV.STRICT_ENV && missingRequiredVars.length > 0) {
   );
 }
 
-if (!ENV.OPENAI_API_KEY) {
-  console.warn(
-    "[WARN] Missing OPENAI_API_KEY. /api/ai routes will return 503 until you set it.",
-  );
+if (!ENV.AI_API_KEY) {
+  if (ENV.AI_PROVIDER === "groq") {
+    console.warn(
+      "[WARN] Missing GROQ_API_KEY. /api/ai routes will return 503 until you set it.",
+    );
+  } else {
+    console.warn(
+      "[WARN] Missing AI_API_KEY. /api/ai routes will return 503 until you set it.",
+    );
+  }
 }
 
 if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {

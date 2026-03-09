@@ -144,6 +144,18 @@ export interface VisualContextBundle {
   pericopeBundle?: PericopeBundle;
 }
 
+export interface ChainStep {
+  fromReference: string;
+  toReference: string;
+  connectionType: EdgeType;
+  explanation: string;
+}
+
+export interface ChainData {
+  theme: string;
+  steps: ChainStep[];
+}
+
 /**
  * Edge styling map
  */

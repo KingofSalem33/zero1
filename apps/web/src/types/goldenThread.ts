@@ -103,3 +103,31 @@ export interface VisualContextBundle {
   resolutionType?: "pericope_first" | "verse_first";
   pericopeBundle?: PericopeBundle;
 }
+
+export interface ChainStep {
+  fromReference: string;
+  toReference: string;
+  connectionType: EdgeType;
+  explanation: string;
+}
+
+export interface ChainData {
+  theme: string;
+  steps: ChainStep[];
+}
+
+export function isChainData(value: unknown): value is ChainData {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ChainData>;
+  if (!Array.isArray(candidate.steps)) return false;
+  return candidate.steps.every((step) => {
+    if (!step || typeof step !== "object") return false;
+    const entry = step as Partial<ChainStep>;
+    return (
+      typeof entry.fromReference === "string" &&
+      typeof entry.toReference === "string" &&
+      typeof entry.connectionType === "string" &&
+      typeof entry.explanation === "string"
+    );
+  });
+}

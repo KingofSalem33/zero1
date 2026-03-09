@@ -1,7 +1,11 @@
 ﻿import { WEB_ENV } from "../lib/env";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { VisualContextBundle } from "../types/goldenThread";
+import {
+  isChainData,
+  type ChainData,
+  type VisualContextBundle,
+} from "../types/goldenThread";
 
 const API_URL = WEB_ENV.API_URL;
 
@@ -54,6 +58,7 @@ export interface StreamingMessage {
   completedTools: string[]; // Tools that finished successfully
   erroredTools: string[]; // Tools that errored
   searchingVerses: string[]; // Verses being explored during search
+  chainData?: ChainData;
 }
 
 // Smooth text release rate - chars per frame at 60fps
@@ -243,6 +248,7 @@ export function useChatStream(
                       suggestTrace: doneEvent.suggestTrace,
                       connectionCount: doneEvent.connectionCount,
                       anchorId: doneEvent.anchorId,
+                      chainData: prev.chainData,
                     };
                   });
                 } else {
@@ -315,6 +321,16 @@ export function useChatStream(
                         return currentState;
                       }
 
+                      case "chain_data": {
+                        if (!isChainData(parsed)) {
+                          return currentState;
+                        }
+                        return {
+                          ...currentState,
+                          chainData: parsed,
+                        };
+                      }
+
                       case "error": {
                         const errorEvent = parsed as ErrorEvent;
                         setError(errorEvent.message);
@@ -381,5 +397,3 @@ export function useChatStream(
     reset,
   };
 }
-
-

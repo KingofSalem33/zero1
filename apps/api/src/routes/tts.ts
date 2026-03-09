@@ -33,7 +33,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     );
 
     // Check if OpenAI client is available
-    if (!ENV.OPENAI_API_KEY) {
+    if (!ENV.AI_API_KEY) {
       return res.status(503).json({
         error: {
           message: "Text-to-speech service not configured",
@@ -46,7 +46,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     // Create OpenAI client for TTS
     const client = makeOpenAI();
     if (!client) {
-      throw new Error("OpenAI client not configured");
+      throw new Error("AI client not configured");
     }
 
     console.log("Calling OpenAI TTS API...");

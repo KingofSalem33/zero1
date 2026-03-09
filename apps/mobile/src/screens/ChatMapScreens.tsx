@@ -32,8 +32,10 @@ import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
 import {
   fetchChainOfThought,
+  fetchNextBranches,
   fetchTraceBundle,
   fetchVerseText,
+  type NextBranchOption,
 } from "../lib/api";
 import { getBibleBook } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
@@ -62,6 +64,8 @@ interface ChatMessage {
   mapBundle?: VisualContextBundle;
   suggestTrace?: boolean;
   connectionCount?: number;
+  chainData?: ChainData;
+  nextBranches?: NextBranchOption[];
 }
 
 interface ChatHistoryMessage {
@@ -80,10 +84,24 @@ interface ParsedBibleStudyResult {
   suggestTrace?: boolean;
   connectionCount?: number;
   mapBundle?: VisualContextBundle;
+  chainData?: ChainData;
+  errorMessage?: string;
   searchingVerses?: string[];
   activeTools?: string[];
   completedTools?: string[];
   erroredTools?: string[];
+}
+
+interface ChainStep {
+  fromReference: string;
+  toReference: string;
+  connectionType: string;
+  explanation: string;
+}
+
+interface ChainData {
+  theme: string;
+  steps: ChainStep[];
 }
 
 interface ChainLink {
@@ -93,18 +111,6 @@ interface ChainLink {
   fromIsReference: boolean;
   toIsReference: boolean;
 }
-
-type ChainFlowItem =
-  | {
-      kind: "verse";
-      label: string;
-      reference: string;
-      tappable: boolean;
-    }
-  | {
-      kind: "concept";
-      label: string;
-    };
 
 interface RandomPericopeTopic {
   id: number;
@@ -221,6 +227,22 @@ function getVersePreviewErrorMessage(error: unknown): string {
     return "Too many requests right now. Try again in a few seconds.";
   }
   return "Could not load verse text.";
+}
+
+function isChainData(value: unknown): value is ChainData {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ChainData>;
+  if (!Array.isArray(candidate.steps)) return false;
+  return candidate.steps.every((step) => {
+    if (!step || typeof step !== "object") return false;
+    const entry = step as Partial<ChainStep>;
+    return (
+      typeof entry.fromReference === "string" &&
+      typeof entry.toReference === "string" &&
+      typeof entry.connectionType === "string" &&
+      typeof entry.explanation === "string"
+    );
+  });
 }
 
 async function getLocalVerseTextForReference(parsed: {
@@ -351,6 +373,8 @@ function parseSsePayload(raw: string): ParsedBibleStudyResult {
   let suggestTrace = false;
   let connectionCount: number | undefined;
   let mapBundle: VisualContextBundle | undefined;
+  let chainData: ChainData | undefined;
+  let errorMessage: string | undefined;
   const searchingVerses: string[] = [];
   const activeTools: string[] = [];
   const completedTools: string[] = [];
@@ -404,6 +428,12 @@ function parseSsePayload(raw: string): ParsedBibleStudyResult {
       if (currentEvent === "map_data" && isVisualContextBundle(parsed)) {
         mapBundle = parsed;
       }
+      if (currentEvent === "chain_data" && isChainData(parsed)) {
+        chainData = parsed;
+      }
+      if (currentEvent === "error" && typeof parsed.message === "string") {
+        errorMessage = parsed.message;
+      }
     } catch {
       // Ignore malformed SSE line and continue parsing.
     }
@@ -415,6 +445,8 @@ function parseSsePayload(raw: string): ParsedBibleStudyResult {
     suggestTrace,
     connectionCount,
     mapBundle,
+    chainData,
+    errorMessage,
     searchingVerses,
     activeTools,
     completedTools,
@@ -434,6 +466,12 @@ function normalizeReference(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
+}
+
+function toSentenceCaseLabel(value: string): string {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  if (!cleaned) return cleaned;
+  return `${cleaned.slice(0, 1).toUpperCase()}${cleaned.slice(1)}`;
 }
 
 function compactBookLabel(book: string): string {
@@ -467,27 +505,54 @@ function dedupeReferencesInOrder(candidates: string[]): string[] {
   return output;
 }
 
+function edgeTypeToConceptLabel(edgeType: string): string {
+  switch (edgeType) {
+    case "ROOTS":
+      return "Root context";
+    case "ECHOES":
+      return "Echoed theme";
+    case "PROPHECY":
+      return "Prophetic movement";
+    case "FULFILLMENT":
+      return "Promise -> fulfillment";
+    case "TYPOLOGY":
+      return "Type -> fulfillment";
+    case "CONTRAST":
+      return "Theological contrast";
+    case "PROGRESSION":
+      return "Doctrinal progression";
+    case "PATTERN":
+      return "Canonical pattern";
+    case "GENEALOGY":
+      return "Covenant lineage";
+    case "NARRATIVE":
+      return "Narrative continuation";
+    case "ALLUSION":
+      return "Scripture allusion";
+    default:
+      return "Linked idea";
+  }
+}
+
 function normalizeConceptPhrase(line: string): string {
   const withoutRefs = line.replace(REFERENCE_REGEX, " ");
   const cleaned = stripMarkdownInline(withoutRefs)
+    .replace(/^concept\s*:\s*/i, "")
     .replace(/^[*\u2022\d.)\s:-]+/, "")
+    .replace(/^this\s+(step|passage)\s+/i, "")
+    .replace(/^shows?\s+/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/[.,;:!?]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!cleaned) return "";
 
-  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || "";
+  const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0]?.trim() || cleaned;
   if (!firstSentence) return "";
 
-  const bounded =
-    firstSentence.length > 150
-      ? `${firstSentence.slice(0, 147).trimEnd()}...`
-      : firstSentence;
-
-  if (/[.!?]$/.test(bounded)) {
-    return bounded;
-  }
-
-  return `${bounded}.`;
+  const words = firstSentence.split(/\s+/).filter(Boolean);
+  const compact = words.slice(0, 7).join(" ").trim();
+  return compact;
 }
 
 function extractConceptCandidates(reasoning: string): string[] {
@@ -501,9 +566,7 @@ function extractConceptCandidates(reasoning: string): string[] {
     .map((line) => normalizeConceptPhrase(line))
     .filter((phrase) => phrase.split(" ").length >= 3);
 
-  return concepts.length > 0
-    ? concepts
-    : ["Scripture clarifies Scripture in immediate context."];
+  return concepts.length > 0 ? concepts : ["Linked idea"];
 }
 function buildChainLinksFromReasoning({
   reasoning,
@@ -555,68 +618,35 @@ function buildChainLinksFromReasoning({
   ];
 }
 
-function toChainFlowItems(links: ChainLink[]): ChainFlowItem[] {
-  if (links.length === 0) return [];
-  const items: ChainFlowItem[] = [
-    {
-      kind: "verse",
-      label: compactReferenceLabel(links[0].from),
-      reference: links[0].from,
-      tappable: links[0].fromIsReference,
-    },
-  ];
+function buildChainLinksFromChainData(chainData?: ChainData): ChainLink[] {
+  if (
+    !chainData ||
+    !Array.isArray(chainData.steps) ||
+    chainData.steps.length === 0
+  ) {
+    return [];
+  }
 
-  links.forEach((link) => {
-    items.push({
-      kind: "concept",
-      label: link.concept,
+  return chainData.steps
+    .filter(
+      (step) =>
+        typeof step.fromReference === "string" &&
+        typeof step.toReference === "string",
+    )
+    .map((step) => {
+      const concept = normalizeConceptPhrase(step.explanation || "");
+      return {
+        from: step.fromReference,
+        to: step.toReference,
+        concept: concept || edgeTypeToConceptLabel(step.connectionType),
+        fromIsReference: Boolean(parseScriptureReference(step.fromReference)),
+        toIsReference: Boolean(parseScriptureReference(step.toReference)),
+      };
     });
-    items.push({
-      kind: "verse",
-      label: compactReferenceLabel(link.to),
-      reference: link.to,
-      tappable: link.toIsReference,
-    });
-  });
-
-  return items;
 }
 
-function describeEdgeConcept(
-  edgeType: string,
-  fromLabel: string,
-  toLabel: string,
-): string {
-  const core = (() => {
-    switch (edgeType) {
-      case "ROOTS":
-        return "This traces a root thread that grounds the same doctrine.";
-      case "ECHOES":
-        return "This echoes key language and imagery across the canon.";
-      case "PROPHECY":
-        return "This moves from promise toward expected fulfillment.";
-      case "FULFILLMENT":
-        return "This shows fulfillment of an earlier biblical promise.";
-      case "TYPOLOGY":
-        return "This connects type and fulfillment across redemptive history.";
-      case "CONTRAST":
-        return "This sharpens meaning through intentional contrast.";
-      case "PROGRESSION":
-        return "This advances the argument in the next stage.";
-      case "PATTERN":
-        return "This repeats a structural pattern with theological intent.";
-      case "GENEALOGY":
-        return "This preserves covenant continuity through lineage.";
-      case "NARRATIVE":
-        return "This continues the narrative movement of the thread.";
-      case "ALLUSION":
-        return "This alludes to an earlier text to deepen meaning.";
-      default:
-        return "This deepens the same theological thread.";
-    }
-  })();
-
-  return `${core} (${fromLabel} to ${toLabel}).`;
+function describeEdgeConcept(edgeType: string): string {
+  return edgeTypeToConceptLabel(edgeType);
 }
 
 function buildChainLinksFromBundle(bundle: VisualContextBundle): ChainLink[] {
@@ -703,11 +733,7 @@ function buildChainLinksFromBundle(bundle: VisualContextBundle): ChainLink[] {
     links.push({
       from: fromRef,
       to: toRef,
-      concept: describeEdgeConcept(
-        next.type,
-        compactReferenceLabel(fromRef),
-        compactReferenceLabel(toRef),
-      ),
+      concept: describeEdgeConcept(next.type),
       fromIsReference: true,
       toIsReference: true,
     });
@@ -1170,6 +1196,8 @@ async function streamBibleStudy({
     let suggestTrace = false;
     let connectionCount: number | undefined;
     let mapBundle: VisualContextBundle | undefined;
+    let chainData: ChainData | undefined;
+    let streamErrorMessage: string | undefined;
     const searchingVerses: string[] = [];
     const activeTools: string[] = [];
     const completedTools: string[] = [];
@@ -1251,10 +1279,24 @@ async function streamBibleStudy({
             mapBundle = parsed;
             onMapData?.(parsed);
           }
+          if (currentEvent === "chain_data" && isChainData(parsed)) {
+            chainData = parsed;
+          }
+          if (
+            currentEvent === "error" &&
+            typeof parsed.message === "string" &&
+            parsed.message.trim().length > 0
+          ) {
+            streamErrorMessage = parsed.message.trim();
+          }
         } catch {
           // Ignore malformed SSE event and continue streaming.
         }
       }
+    }
+
+    if (streamErrorMessage && !content.trim()) {
+      throw new Error(streamErrorMessage);
     }
 
     return {
@@ -1263,6 +1305,8 @@ async function streamBibleStudy({
       suggestTrace,
       connectionCount,
       mapBundle,
+      chainData,
+      errorMessage: streamErrorMessage,
       searchingVerses,
       activeTools,
       completedTools,
@@ -1272,6 +1316,9 @@ async function streamBibleStudy({
 
   const raw = await response.text();
   const parsed = parseSsePayload(raw);
+  if (parsed.errorMessage && !parsed.content.trim()) {
+    throw new Error(parsed.errorMessage);
+  }
   if (parsed.content) {
     onDelta(parsed.content);
   }
@@ -1449,7 +1496,6 @@ export function ChatScreen({
     null,
   );
   const [chainModalError, setChainModalError] = useState<string | null>(null);
-  const [chainShowAll, setChainShowAll] = useState(false);
   const [quickPromptBusyKey, setQuickPromptBusyKey] = useState<string | null>(
     null,
   );
@@ -1850,7 +1896,11 @@ export function ChatScreen({
       setErroredTools([]);
       setMapPrepActive(showMapPrepForRequest);
       setMessages((current) => [
-        ...current,
+        ...current.map((item) =>
+          item.role === "assistant" && item.nextBranches
+            ? { ...item, nextBranches: undefined }
+            : item,
+        ),
         {
           id: userMessageId,
           role: "user",
@@ -1960,10 +2010,20 @@ export function ChatScreen({
                   mapBundle: result.mapBundle ?? item.mapBundle,
                   suggestTrace: result.suggestTrace,
                   connectionCount: result.connectionCount,
+                  chainData: result.chainData ?? item.chainData,
                 }
               : item,
           ),
         );
+        if (result.errorMessage) {
+          setError(result.errorMessage);
+        }
+        void hydrateNextBranchesForMessage({
+          messageId: assistantMessageId,
+          question: promptText,
+          answer: finalStreamContent || "",
+          citations: result.citations || [],
+        });
         setTimeout(() => {
           listRef.current?.scrollToEnd({ animated: true });
         }, 0);
@@ -2138,6 +2198,45 @@ export function ChatScreen({
     }
   }
 
+  async function hydrateNextBranchesForMessage({
+    messageId,
+    question,
+    answer,
+    citations,
+  }: {
+    messageId: string;
+    question: string;
+    answer: string;
+    citations: string[];
+  }) {
+    try {
+      const branches = await fetchNextBranches({
+        apiBaseUrl: MOBILE_ENV.API_URL,
+        question,
+        answer,
+        citations,
+        accessToken: controller.session?.access_token,
+      });
+      if (branches.length < 2) return;
+
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === messageId
+            ? {
+                ...item,
+                nextBranches: branches.map((branch) => ({
+                  label: toSentenceCaseLabel(branch.label),
+                  prompt: branch.prompt,
+                })),
+              }
+            : item,
+        ),
+      );
+    } catch {
+      // Non-blocking UI enhancement: ignore branch generation failures.
+    }
+  }
+
   function resolveQuestionForAssistantMessage(messageId: string): string {
     const targetIndex = messages.findIndex((item) => item.id === messageId);
     if (targetIndex <= 0) return "";
@@ -2155,11 +2254,20 @@ export function ChatScreen({
     options?: { forceRefresh?: boolean },
   ) {
     const forceRefresh = Boolean(options?.forceRefresh);
+    if (
+      !forceRefresh &&
+      message.chainData &&
+      Array.isArray(message.chainData.steps) &&
+      message.chainData.steps.length > 0
+    ) {
+      setChainModalError(null);
+      setChainModalMessageId(message.id);
+      return;
+    }
     const hasBundle = Boolean(message.mapBundle);
     if (!forceRefresh && hasBundle) {
       setChainModalError(null);
       setChainModalMessageId(message.id);
-      setChainShowAll(false);
       return;
     }
     if (!forceRefresh && !hasBundle) {
@@ -2167,7 +2275,6 @@ export function ChatScreen({
       if (cached) {
         setChainModalError(null);
         setChainModalMessageId(message.id);
-        setChainShowAll(false);
         return;
       }
     }
@@ -2176,7 +2283,6 @@ export function ChatScreen({
     setChainBusyMessageId(message.id);
     setChainModalError(null);
     setChainModalMessageId(message.id);
-    setChainShowAll(false);
 
     try {
       if (!hasBundle || forceRefresh) {
@@ -2226,7 +2332,6 @@ export function ChatScreen({
   function closeChainModal() {
     setChainModalMessageId(null);
     setChainModalError(null);
-    setChainShowAll(false);
   }
 
   async function handleQuickPrompt(entry: QuickPromptEntry) {
@@ -2258,7 +2363,6 @@ export function ChatScreen({
     setChainByMessageId({});
     setChainModalMessageId(null);
     setChainModalError(null);
-    setChainShowAll(false);
   }
 
   function closeVersePreview() {
@@ -2314,6 +2418,10 @@ export function ChatScreen({
     ? chainByMessageId[chainModalMessageId] || ""
     : "";
   const chainLinks = useMemo(() => {
+    if (chainModalMessage?.chainData) {
+      const fromSse = buildChainLinksFromChainData(chainModalMessage.chainData);
+      if (fromSse.length > 0) return fromSse;
+    }
     if (chainModalMessage?.mapBundle) {
       const fromBundle = buildChainLinksFromBundle(chainModalMessage.mapBundle);
       if (fromBundle.length > 0) return fromBundle;
@@ -2323,17 +2431,70 @@ export function ChatScreen({
       message: chainModalMessage,
     });
   }, [chainModalMessage, chainModalReasoning]);
-  const visibleChainLinks = chainShowAll ? chainLinks : chainLinks.slice(0, 5);
-  const chainFlowItems = useMemo(
-    () => toChainFlowItems(visibleChainLinks),
-    [visibleChainLinks],
-  );
-  const hasCollapsedChain = chainLinks.length > 5 && !chainShowAll;
+  const chainResourceItems = useMemo(() => {
+    const orderedRefs: string[] = [];
+    chainLinks.forEach((link, index) => {
+      if (index === 0) {
+        orderedRefs.push(link.from);
+      }
+      orderedRefs.push(link.to);
+    });
+
+    const dedupedRefs: string[] = [];
+    const seen = new Set<string>();
+    orderedRefs.forEach((reference) => {
+      const key = normalizeReference(reference);
+      if (seen.has(key)) return;
+      seen.add(key);
+      dedupedRefs.push(reference);
+    });
+
+    const verseTextByRef = new Map<string, string>();
+    chainModalMessage?.mapBundle?.nodes?.forEach((node) => {
+      const ref = `${node.book_name} ${node.chapter}:${node.verse}`;
+      verseTextByRef.set(normalizeReference(ref), node.text || "");
+    });
+
+    return dedupedRefs.map((reference) => {
+      const verseText = verseTextByRef.get(normalizeReference(reference)) || "";
+      const snippet =
+        verseText.trim().length > 0
+          ? `${verseText.trim().slice(0, 128)}${verseText.trim().length > 128 ? "..." : ""}`
+          : "Verse text preview unavailable.";
+      return {
+        reference,
+        title: compactReferenceLabel(reference),
+        snippet,
+        tappable: Boolean(parseScriptureReference(reference)),
+      };
+    });
+  }, [chainLinks, chainModalMessage?.mapBundle?.nodes]);
 
   function handleChainVersePress(reference: string, tappable: boolean) {
     if (!tappable) return;
     closeChainModal();
     handleInlineReferencePress(reference);
+  }
+
+  function handleNextBranchPress(
+    message: ChatMessage,
+    branch: NextBranchOption,
+  ) {
+    if (busy) return;
+    setMessages((current) =>
+      current.map((item) =>
+        item.role === "assistant" && item.nextBranches
+          ? { ...item, nextBranches: undefined }
+          : item,
+      ),
+    );
+    void handleSend({
+      displayText: branch.label,
+      prompt: branch.prompt,
+      mode: "go_deeper_short",
+      visualBundle: message.mapBundle ?? activeVisualBundle ?? undefined,
+      mapSession: mapSession ?? undefined,
+    });
   }
 
   const composerBlock = (
@@ -2566,44 +2727,77 @@ export function ChatScreen({
                     {item.role === "assistant" &&
                     item.content.trim().length > 0 &&
                     !isStreamingAssistantMessage ? (
-                      <View style={localStyles.messageActionRow}>
-                        <ActionButton
-                          variant="secondary"
-                          disabled={mapBusyMessageId === item.id}
-                          label={
-                            mapBusyMessageId === item.id
-                              ? "Mapping..."
-                              : "Open map"
-                          }
-                          onPress={() => void handleGenerateMap(item)}
-                          style={localStyles.compactAction}
-                          labelStyle={localStyles.compactActionLabel}
-                        />
-                        <ActionButton
-                          variant="ghost"
-                          disabled={chainBusyMessageId === item.id}
-                          label={
-                            chainBusyMessageId === item.id
-                              ? "Thinking..."
-                              : "Chain"
-                          }
-                          onPress={() => void handleOpenChain(item)}
-                          style={localStyles.compactAction}
-                          labelStyle={localStyles.compactActionLabel}
-                        />
-                        {item.mapBundle ? (
+                      <View>
+                        <View style={localStyles.messageActionRow}>
                           <ActionButton
-                            variant="ghost"
-                            label="View map"
-                            onPress={() =>
-                              nav.openMapViewer(
-                                `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
-                                item.mapBundle,
-                              )
+                            variant="secondary"
+                            disabled={mapBusyMessageId === item.id}
+                            label={
+                              mapBusyMessageId === item.id
+                                ? "Mapping..."
+                                : item.mapBundle
+                                  ? "View map"
+                                  : "Open map"
                             }
+                            onPress={() => {
+                              if (item.mapBundle) {
+                                nav.openMapViewer(
+                                  `Map (${item.mapBundle?.nodes.length ?? 0} verses)`,
+                                  item.mapBundle,
+                                );
+                                return;
+                              }
+                              void handleGenerateMap(item);
+                            }}
                             style={localStyles.compactAction}
                             labelStyle={localStyles.compactActionLabel}
                           />
+                          <ActionButton
+                            variant="ghost"
+                            disabled={chainBusyMessageId === item.id}
+                            label={
+                              chainBusyMessageId === item.id
+                                ? "Thinking..."
+                                : "Chain"
+                            }
+                            onPress={() => void handleOpenChain(item)}
+                            style={localStyles.compactAction}
+                            labelStyle={localStyles.compactActionLabel}
+                          />
+                        </View>
+                        {item.nextBranches && item.nextBranches.length > 0 ? (
+                          <View style={localStyles.nextBranchList}>
+                            {item.nextBranches
+                              .slice(0, 2)
+                              .map((branch, idx, arr) => (
+                                <View key={`${item.id}-branch-${idx}`}>
+                                  <PressableScale
+                                    accessibilityRole="button"
+                                    accessibilityLabel={branch.label}
+                                    disabled={busy}
+                                    onPress={() =>
+                                      handleNextBranchPress(item, branch)
+                                    }
+                                    style={localStyles.nextBranchRow}
+                                  >
+                                    <Ionicons
+                                      color={T.colors.text}
+                                      name="return-down-forward-outline"
+                                      size={14}
+                                      style={localStyles.nextBranchArrowIcon}
+                                    />
+                                    <Text style={localStyles.nextBranchLabel}>
+                                      {toSentenceCaseLabel(branch.label)}
+                                    </Text>
+                                  </PressableScale>
+                                  {idx < arr.length - 1 ? (
+                                    <View
+                                      style={localStyles.nextBranchDivider}
+                                    />
+                                  ) : null}
+                                </View>
+                              ))}
+                          </View>
                         ) : null}
                       </View>
                     ) : null}
@@ -2694,7 +2888,7 @@ export function ChatScreen({
           />
           <View style={localStyles.chainModalCard}>
             <View style={localStyles.chainModalHeader}>
-              <Text style={localStyles.chainModalTitle}>Chain of Thought</Text>
+              <Text style={localStyles.chainModalTitle}>Verses Used</Text>
               <PressableScale
                 accessibilityRole="button"
                 accessibilityLabel="Close chain modal"
@@ -2705,7 +2899,7 @@ export function ChatScreen({
               </PressableScale>
             </View>
             <Text style={localStyles.chainModalHint}>
-              Tap a verse to preview it in context.
+              Verses used in this response.
             </Text>
 
             <View style={localStyles.chainModalBody}>
@@ -2715,73 +2909,40 @@ export function ChatScreen({
               {chainModalError ? (
                 <Text style={styles.error}>{chainModalError}</Text>
               ) : null}
-              {chainModalMessageId &&
-              chainByMessageId[chainModalMessageId] &&
+              {chainResourceItems.length > 0 &&
               chainBusyMessageId !== chainModalMessageId ? (
                 <ScrollView style={localStyles.chainModalScroll}>
-                  <View style={localStyles.chainFlow}>
-                    {chainFlowItems.map((item, index) => (
-                      <View
-                        key={`chain-flow-${index}-${item.kind}`}
-                        style={localStyles.chainFlowItemWrap}
-                      >
-                        {item.kind === "verse" ? (
-                          <PressableScale
-                            disabled={!item.tappable}
-                            onPress={() =>
-                              handleChainVersePress(
-                                item.reference,
-                                item.tappable,
-                              )
-                            }
-                            style={[
-                              localStyles.chainVerseChip,
-                              !item.tappable
-                                ? localStyles.chainVerseChipMuted
-                                : null,
-                            ]}
+                  <View style={localStyles.chainResourceList}>
+                    {chainResourceItems.map((item, index) => (
+                      <View key={`chain-resource-${index}-${item.reference}`}>
+                        <PressableScale
+                          disabled={!item.tappable}
+                          onPress={() =>
+                            handleChainVersePress(item.reference, item.tappable)
+                          }
+                          style={[
+                            localStyles.chainResourceRow,
+                            !item.tappable
+                              ? localStyles.chainResourceRowMuted
+                              : null,
+                          ]}
+                        >
+                          <Text style={localStyles.chainResourceTitle}>
+                            {item.title}
+                          </Text>
+                          <Text
+                            numberOfLines={2}
+                            style={localStyles.chainResourceSnippet}
                           >
-                            <Text
-                              style={[
-                                localStyles.chainVerseChipLabel,
-                                !item.tappable
-                                  ? localStyles.chainVerseChipLabelMuted
-                                  : null,
-                              ]}
-                            >
-                              {item.label}
-                            </Text>
-                          </PressableScale>
-                        ) : (
-                          <View style={localStyles.chainConceptCard}>
-                            <Text style={localStyles.chainConceptEyebrow}>
-                              Concept
-                            </Text>
-                            <Text style={localStyles.chainConceptCardLabel}>
-                              {item.label}
-                            </Text>
-                          </View>
-                        )}
-                        {index < chainFlowItems.length - 1 ? (
-                          <View style={localStyles.chainConnector}>
-                            <View style={localStyles.chainConnectorLine} />
-                            <View style={localStyles.chainConnectorDot} />
-                            <View style={localStyles.chainConnectorLine} />
-                          </View>
+                            {item.snippet}
+                          </Text>
+                        </PressableScale>
+                        {index < chainResourceItems.length - 1 ? (
+                          <View style={localStyles.chainResourceDivider} />
                         ) : null}
                       </View>
                     ))}
                   </View>
-                  {hasCollapsedChain ? (
-                    <PressableScale
-                      onPress={() => setChainShowAll(true)}
-                      style={localStyles.chainShowMoreButton}
-                    >
-                      <Text style={localStyles.chainShowMoreLabel}>
-                        Show more
-                      </Text>
-                    </PressableScale>
-                  ) : null}
                 </ScrollView>
               ) : null}
             </View>
@@ -2803,13 +2964,6 @@ export function ChatScreen({
                   labelStyle={localStyles.compactActionLabel}
                 />
               ) : null}
-              <ActionButton
-                label="Close"
-                variant="ghost"
-                onPress={closeChainModal}
-                style={localStyles.compactAction}
-                labelStyle={localStyles.compactActionLabel}
-              />
             </View>
           </View>
         </View>
@@ -3237,98 +3391,33 @@ const localStyles = StyleSheet.create({
   chainModalScroll: {
     maxHeight: 360,
   },
-  chainFlow: {
-    alignItems: "center",
-    justifyContent: "center",
+  chainResourceList: {
     gap: 0,
-    paddingVertical: 4,
   },
-  chainFlowItemWrap: {
-    width: "100%",
-    alignItems: "center",
+  chainResourceRow: {
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    gap: 4,
   },
-  chainVerseChip: {
-    borderRadius: T.radius.pill,
-    borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.34)",
-    backgroundColor: "rgba(212,175,55,0.09)",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    minHeight: 34,
-    alignItems: "center",
-    justifyContent: "center",
+  chainResourceRowMuted: {
+    opacity: 0.8,
   },
-  chainVerseChipMuted: {
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  chainVerseChipLabel: {
+  chainResourceTitle: {
     color: T.colors.accent,
     fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 0.2,
+    letterSpacing: 0.15,
   },
-  chainVerseChipLabelMuted: {
-    color: T.colors.textMuted,
-  },
-  chainConceptCard: {
-    width: "92%",
-    maxWidth: 420,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(20,20,23,0.72)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    alignItems: "flex-start",
-    justifyContent: "center",
-    gap: 2,
-  },
-  chainConceptEyebrow: {
-    color: T.colors.textMuted,
-    fontSize: 9,
-    letterSpacing: 0.45,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  chainConceptCardLabel: {
+  chainResourceSnippet: {
     color: T.colors.text,
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: "600",
-    textAlign: "left",
   },
-  chainConnector: {
-    height: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  chainConnectorLine: {
-    width: 1,
-    height: 6,
-    backgroundColor: "rgba(212,175,55,0.34)",
-  },
-  chainConnectorDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(212,175,55,0.72)",
-  },
-  chainShowMoreButton: {
-    alignSelf: "center",
-    marginTop: 10,
-    borderRadius: T.radius.pill,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(255,255,255,0.02)",
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  chainShowMoreLabel: {
-    color: T.colors.textMuted,
-    fontSize: 10.5,
-    fontWeight: "600",
-    letterSpacing: 0.2,
+  chainResourceDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginVertical: 2,
   },
   chainModalText: {
     color: T.colors.text,
@@ -3364,6 +3453,30 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
     paddingTop: 4,
+  },
+  nextBranchList: {
+    marginTop: 8,
+    gap: 0,
+  },
+  nextBranchRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  nextBranchArrowIcon: {
+    marginTop: 2,
+  },
+  nextBranchLabel: {
+    flex: 1,
+    color: T.colors.text,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600",
+  },
+  nextBranchDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   thinkingStateSlot: {
     width: "100%",
