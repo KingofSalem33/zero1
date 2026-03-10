@@ -61,7 +61,9 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       });
     }
 
-    // Generate synopsis using GPT-5-nano with scriptural context
+    // Generate synopsis using the user-facing model tier with scriptural context
+    const synopsisTimeoutMs = 30000;
+    const synopsisModel = ENV.OPENAI_SMART_MODEL || ENV.OPENAI_MODEL_NAME;
     const result = (await profileTime(
       "synopsis.runModel",
       () =>
@@ -78,14 +80,20 @@ router.post("/", readOnlyLimiter, async (req, res) => {
               },
             ],
             {
-              model: ENV.OPENAI_FAST_MODEL,
-              verbosity: "medium",
+              model: synopsisModel,
+              taskType: "synopsis",
+              verbosity: "low",
             },
           ),
           new Promise((_, reject) =>
             setTimeout(
-              () => reject(new Error("Synopsis request timed out after 15s")),
-              15000,
+              () =>
+                reject(
+                  new Error(
+                    `Synopsis request timed out after ${Math.round(synopsisTimeoutMs / 1000)}s`,
+                  ),
+                ),
+              synopsisTimeoutMs,
             ),
           ),
         ]),
@@ -93,7 +101,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         file: "ai/runModel.ts",
         fn: "runModel",
         await: "client.responses.create",
-        model: ENV.OPENAI_FAST_MODEL,
+        model: synopsisModel,
       },
     )) as RunModelResult;
 
@@ -126,7 +134,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const tokenUsage = extractTokenUsage(
       result,
       "/api/synopsis",
-      ENV.OPENAI_FAST_MODEL,
+      synopsisModel,
       "synopsis-v1",
     );
     if (tokenUsage) {
