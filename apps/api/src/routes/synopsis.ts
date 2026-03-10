@@ -8,8 +8,7 @@ import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
-const SYNOPSIS_INPUT_CHAR_LIMIT = 1200;
-const SYNOPSIS_MAX_OUTPUT_TOKENS = 120;
+const SYNOPSIS_INPUT_CHAR_LIMIT = 2200;
 
 const clampSynopsisInput = (
   text: string,
@@ -24,33 +23,6 @@ const clampSynopsisInput = (
   const head = cleaned.slice(0, headSize).trim();
   const tail = cleaned.slice(-tailSize).trim();
   return `${head} [...] ${tail}`;
-};
-
-const buildFallbackSynopsis = (text: string, maxWords: number): string => {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) return "Unable to generate synopsis.";
-
-  const sentences = cleaned
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const words: string[] = [];
-  const source = sentences.length > 0 ? sentences : [cleaned];
-
-  for (const sentence of source) {
-    const sentenceWords = sentence.split(/\s+/).filter(Boolean);
-    for (const word of sentenceWords) {
-      if (words.length >= maxWords) break;
-      words.push(word);
-    }
-    if (words.length >= maxWords) break;
-    if (words.length >= Math.min(20, maxWords)) break;
-  }
-
-  const synopsis = words.join(" ").trim();
-  if (!synopsis) return "Unable to generate synopsis.";
-  return /[.!?]$/.test(synopsis) ? synopsis : `${synopsis}.`;
 };
 
 const formatVerseReference = (
@@ -127,8 +99,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
             {
               model: synopsisModel,
               taskType: "synopsis",
-              verbosity: "low",
-              maxOutputTokens: SYNOPSIS_MAX_OUTPUT_TOKENS,
+              verbosity: "medium",
             },
           ),
           new Promise((_, reject) =>
@@ -149,19 +120,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         await: "client.responses.create",
         model: synopsisModel,
       },
-    ).catch((error) => {
-      const message =
-        error instanceof Error ? error.message : "Synopsis model failed";
-      if (message.includes("timed out")) {
-        const fallbackSynopsis = buildFallbackSynopsis(synopsisInput, maxWords);
-        return {
-          text: fallbackSynopsis,
-          citations: [],
-          tools_used: [],
-        } as RunModelResult;
-      }
-      throw error;
-    })) as RunModelResult;
+    )) as RunModelResult;
 
     // Extract the synopsis and enforce word count at sentence boundary
     let synopsis =
@@ -186,9 +145,6 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         synopsis = truncated.trim();
         if (!synopsis.endsWith(".")) synopsis += ".";
       }
-    }
-    if (synopsis === "Unable to generate synopsis." || words.length < 4) {
-      synopsis = buildFallbackSynopsis(synopsisInput, maxWords);
     }
 
     // Log token usage for telemetry
