@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createHash } from "crypto";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
@@ -6,9 +7,15 @@ import { runModel, type RunModelResult } from "../ai/runModel";
 import { SYNOPSIS_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
+import { getCache } from "../infrastructure/cache/cacheInstance";
 
 const router = Router();
 const SYNOPSIS_INPUT_CHAR_LIMIT = 2200;
+const SYNOPSIS_TIMEOUT_MS = 30000;
+const SYNOPSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
+const SYNOPSIS_CACHE_PREFIX = "synopsis:v1";
+const synopsisCache = getCache();
+const synopsisInFlight = new Map<string, Promise<SynopsisResponsePayload>>();
 
 const clampSynopsisInput = (
   text: string,
@@ -24,6 +31,33 @@ const clampSynopsisInput = (
   const tail = cleaned.slice(-tailSize).trim();
   return `${head} [...] ${tail}`;
 };
+
+type VersePayload = {
+  book: string;
+  chapter: number;
+  verse: number;
+  reference: string;
+};
+
+type VersesPayload = {
+  book: string;
+  chapter: number;
+  verses: number[];
+  reference: string;
+};
+
+type SynopsisResponsePayload = {
+  synopsis: string;
+  wordCount: number;
+  verse?: VersePayload;
+  verses?: VersesPayload;
+};
+
+const toStableTextFingerprint = (text: string): string =>
+  createHash("sha256")
+    .update(text.replace(/\s+/g, " ").trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 20);
 
 const formatVerseReference = (
   book: string,
@@ -41,6 +75,107 @@ const formatVerseReference = (
     return `${book} ${chapter}:${normalized[0]}-${normalized[normalized.length - 1]}`;
   }
   return `${book} ${chapter}:${normalized.join(",")}`;
+};
+
+const toReferenceSignature = ({
+  cleanBook,
+  resolvedChapter,
+  resolvedVerse,
+  normalizedVerses,
+}: {
+  cleanBook: string;
+  resolvedChapter: number;
+  resolvedVerse?: number;
+  normalizedVerses: number[];
+}): string => {
+  if (!cleanBook || resolvedChapter <= 0) return "none";
+  if (normalizedVerses.length > 1) {
+    return `${cleanBook.toLowerCase()}|${resolvedChapter}|${normalizedVerses.join(",")}`;
+  }
+  if (resolvedVerse && resolvedVerse > 0) {
+    return `${cleanBook.toLowerCase()}|${resolvedChapter}|${resolvedVerse}`;
+  }
+  return `${cleanBook.toLowerCase()}|${resolvedChapter}`;
+};
+
+const buildSynopsisCacheKey = ({
+  synopsisModel,
+  maxWords,
+  synopsisInput,
+  cleanBook,
+  resolvedChapter,
+  resolvedVerse,
+  normalizedVerses,
+}: {
+  synopsisModel: string;
+  maxWords: number;
+  synopsisInput: string;
+  cleanBook: string;
+  resolvedChapter: number;
+  resolvedVerse?: number;
+  normalizedVerses: number[];
+}): string => {
+  const promptVersion = SYNOPSIS_V1.version ?? "unknown";
+  const textFingerprint = toStableTextFingerprint(synopsisInput);
+  const referenceSignature = toReferenceSignature({
+    cleanBook,
+    resolvedChapter,
+    resolvedVerse,
+    normalizedVerses,
+  });
+  return [
+    SYNOPSIS_CACHE_PREFIX,
+    `p${promptVersion}`,
+    `m${synopsisModel}`,
+    `w${maxWords}`,
+    `r${referenceSignature}`,
+    `t${textFingerprint}`,
+  ].join(":");
+};
+
+const buildSynopsisPayload = ({
+  synopsis,
+  cleanBook,
+  resolvedChapter,
+  resolvedVerse,
+  normalizedVerses,
+}: {
+  synopsis: string;
+  cleanBook: string;
+  resolvedChapter: number;
+  resolvedVerse?: number;
+  normalizedVerses: number[];
+}): SynopsisResponsePayload => {
+  const versePayload: VersePayload | undefined =
+    cleanBook && resolvedChapter > 0 && resolvedVerse
+      ? {
+          book: cleanBook,
+          chapter: resolvedChapter,
+          verse: resolvedVerse,
+          reference: `${cleanBook} ${resolvedChapter}:${resolvedVerse}`,
+        }
+      : undefined;
+
+  const versesPayload: VersesPayload | undefined =
+    cleanBook && resolvedChapter > 0 && normalizedVerses.length > 1
+      ? {
+          book: cleanBook,
+          chapter: resolvedChapter,
+          verses: normalizedVerses,
+          reference: formatVerseReference(
+            cleanBook,
+            resolvedChapter,
+            normalizedVerses,
+          ),
+        }
+      : undefined;
+
+  return {
+    synopsis,
+    wordCount: synopsis.split(/\s+/).length,
+    ...(versePayload ? { verse: versePayload } : {}),
+    ...(versesPayload ? { verses: versesPayload } : {}),
+  };
 };
 
 // Validation schema for synopsis request
@@ -78,86 +213,6 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       });
     }
 
-    // Generate synopsis using fast tier for low-latency highlight UX
-    const synopsisTimeoutMs = 10000;
-    const synopsisModel = ENV.OPENAI_FAST_MODEL || ENV.OPENAI_MODEL_NAME;
-    const result = (await profileTime(
-      "synopsis.runModel",
-      () =>
-        Promise.race([
-          runModel(
-            [
-              {
-                role: "system",
-                content: SYNOPSIS_V1.buildSystem({ maxWords }),
-              },
-              {
-                role: "user",
-                content: SYNOPSIS_V1.buildUser(synopsisInput, maxWords),
-              },
-            ],
-            {
-              model: synopsisModel,
-              taskType: "synopsis",
-              verbosity: "medium",
-            },
-          ),
-          new Promise((_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `Synopsis request timed out after ${Math.round(synopsisTimeoutMs / 1000)}s`,
-                  ),
-                ),
-              synopsisTimeoutMs,
-            ),
-          ),
-        ]),
-      {
-        file: "ai/runModel.ts",
-        fn: "runModel",
-        await: "client.responses.create",
-        model: synopsisModel,
-      },
-    )) as RunModelResult;
-
-    // Extract the synopsis and enforce word count at sentence boundary
-    let synopsis =
-      typeof result.text === "string" && result.text.trim().length > 0
-        ? result.text.trim()
-        : "Unable to generate synopsis.";
-    const words = synopsis.split(/\s+/);
-    if (words.length > maxWords) {
-      // Truncate at the last sentence-ending punctuation within the limit
-      const truncated = words.slice(0, maxWords).join(" ");
-      const lastSentenceEnd = Math.max(
-        truncated.lastIndexOf(". "),
-        truncated.lastIndexOf("."),
-        truncated.lastIndexOf("? "),
-        truncated.lastIndexOf("! "),
-      );
-      if (lastSentenceEnd > truncated.length * 0.4) {
-        // Cut at sentence boundary if it preserves at least 40% of content
-        synopsis = truncated.substring(0, lastSentenceEnd + 1).trim();
-      } else {
-        // Otherwise hard-truncate at word limit
-        synopsis = truncated.trim();
-        if (!synopsis.endsWith(".")) synopsis += ".";
-      }
-    }
-
-    // Log token usage for telemetry
-    const tokenUsage = extractTokenUsage(
-      result,
-      "/api/synopsis",
-      synopsisModel,
-      "synopsis-v1",
-    );
-    if (tokenUsage) {
-      logTokenUsage(tokenUsage);
-    }
-
     const normalizedVerses = Array.isArray(verses)
       ? Array.from(
           new Set(verses.filter((num) => Number.isFinite(num) && num > 0)),
@@ -165,7 +220,6 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       : [];
     const cleanBook = typeof book === "string" ? book.trim() : "";
     const resolvedChapter = Number.isFinite(chapter) ? (chapter as number) : 0;
-    const hasBookChapter = cleanBook.length > 0 && resolvedChapter > 0;
     const parsedVerse =
       typeof verse === "number" && Number.isFinite(verse) ? verse : undefined;
     const resolvedVerse =
@@ -175,37 +229,145 @@ router.post("/", readOnlyLimiter, async (req, res) => {
           ? normalizedVerses[0]
           : undefined;
 
-    const versePayload =
-      hasBookChapter && resolvedVerse
-        ? {
-            book: cleanBook,
-            chapter: resolvedChapter,
-            verse: resolvedVerse,
-            reference: `${cleanBook} ${resolvedChapter}:${resolvedVerse}`,
-          }
-        : undefined;
-
-    const versesPayload =
-      hasBookChapter && normalizedVerses.length > 1
-        ? {
-            book: cleanBook,
-            chapter: resolvedChapter,
-            verses: normalizedVerses,
-            reference: formatVerseReference(
-              cleanBook,
-              resolvedChapter,
-              normalizedVerses,
-            ),
-          }
-        : undefined;
-
-    // Return the synopsis
-    return res.json({
-      synopsis,
-      wordCount: synopsis.split(/\s+/).length,
-      ...(versePayload ? { verse: versePayload } : {}),
-      ...(versesPayload ? { verses: versesPayload } : {}),
+    // Synopsis favors responsiveness and answer quality over lowest-cost tier.
+    const synopsisTimeoutMs = SYNOPSIS_TIMEOUT_MS;
+    const synopsisModel = ENV.OPENAI_SMART_MODEL || ENV.OPENAI_MODEL_NAME;
+    const cacheKey = buildSynopsisCacheKey({
+      synopsisModel,
+      maxWords,
+      synopsisInput,
+      cleanBook,
+      resolvedChapter,
+      resolvedVerse,
+      normalizedVerses,
     });
+
+    const cached = await profileTime(
+      "synopsis.cache_get",
+      () => synopsisCache.get<SynopsisResponsePayload>(cacheKey),
+      {
+        file: "infrastructure/cache/cacheInstance.ts",
+        fn: "getCache",
+        await: "cache.get",
+      },
+    );
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const sharedInFlight = synopsisInFlight.get(cacheKey);
+    if (sharedInFlight) {
+      const sharedPayload = await sharedInFlight;
+      return res.json(sharedPayload);
+    }
+
+    const generationPromise = (async (): Promise<SynopsisResponsePayload> => {
+      const result = (await profileTime(
+        "synopsis.runModel",
+        () =>
+          Promise.race([
+            runModel(
+              [
+                {
+                  role: "system",
+                  content: SYNOPSIS_V1.buildSystem({ maxWords }),
+                },
+                {
+                  role: "user",
+                  content: SYNOPSIS_V1.buildUser(synopsisInput, maxWords),
+                },
+              ],
+              {
+                model: synopsisModel,
+                taskType: "synopsis",
+                verbosity: "low",
+                promptCacheKey: `synopsis-v${SYNOPSIS_V1.version}`,
+              },
+            ),
+            new Promise((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `Synopsis request timed out after ${Math.round(synopsisTimeoutMs / 1000)}s`,
+                    ),
+                  ),
+                synopsisTimeoutMs,
+              ),
+            ),
+          ]),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+          model: synopsisModel,
+        },
+      )) as RunModelResult;
+
+      // Extract the synopsis and enforce word count at sentence boundary
+      let synopsis =
+        typeof result.text === "string" && result.text.trim().length > 0
+          ? result.text.trim()
+          : "Unable to generate synopsis.";
+      const words = synopsis.split(/\s+/);
+      if (words.length > maxWords) {
+        // Truncate at the last sentence-ending punctuation within the limit
+        const truncated = words.slice(0, maxWords).join(" ");
+        const lastSentenceEnd = Math.max(
+          truncated.lastIndexOf(". "),
+          truncated.lastIndexOf("."),
+          truncated.lastIndexOf("? "),
+          truncated.lastIndexOf("! "),
+        );
+        if (lastSentenceEnd > truncated.length * 0.4) {
+          // Cut at sentence boundary if it preserves at least 40% of content
+          synopsis = truncated.substring(0, lastSentenceEnd + 1).trim();
+        } else {
+          // Otherwise hard-truncate at word limit
+          synopsis = truncated.trim();
+          if (!synopsis.endsWith(".")) synopsis += ".";
+        }
+      }
+
+      // Log token usage for telemetry
+      const tokenUsage = extractTokenUsage(
+        result,
+        "/api/synopsis",
+        synopsisModel,
+        "synopsis-v1",
+      );
+      if (tokenUsage) {
+        logTokenUsage(tokenUsage);
+      }
+
+      const payload = buildSynopsisPayload({
+        synopsis,
+        cleanBook,
+        resolvedChapter,
+        resolvedVerse,
+        normalizedVerses,
+      });
+
+      await profileTime(
+        "synopsis.cache_set",
+        () => synopsisCache.set(cacheKey, payload, SYNOPSIS_CACHE_TTL_SECONDS),
+        {
+          file: "infrastructure/cache/cacheInstance.ts",
+          fn: "getCache",
+          await: "cache.set",
+        },
+      );
+
+      return payload;
+    })();
+
+    synopsisInFlight.set(cacheKey, generationPromise);
+    try {
+      const payload = await generationPromise;
+      return res.json(payload);
+    } finally {
+      synopsisInFlight.delete(cacheKey);
+    }
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Synopsis validation error:", error.errors);
