@@ -39,22 +39,27 @@ const requestedAiProvider = (process.env.AI_PROVIDER || "openai")
 const aiProvider = requestedAiProvider === "groq" ? "groq" : "openai";
 const openaiApiKey = process.env.OPENAI_API_KEY || "";
 const groqApiKey = process.env.GROQ_API_KEY || "";
-const groqBaseUrl = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const groqBaseUrl =
+  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
 const groqModelName = process.env.GROQ_MODEL_NAME || "openai/gpt-oss-20b";
+const groqFastModelName = process.env.GROQ_FAST_MODEL || groqModelName;
+const groqSmartModelName = process.env.GROQ_SMART_MODEL || groqModelName;
 const openaiModelName = process.env.OPENAI_MODEL_NAME || "gpt-4o-mini";
 const defaultProviderModel =
   aiProvider === "groq" ? groqModelName : openaiModelName;
 const aiApiKey = aiProvider === "groq" ? groqApiKey : openaiApiKey;
 const resolvedFastModel =
-  process.env.OPENAI_FAST_MODEL ||
-  (aiProvider === "groq"
-    ? defaultProviderModel
-    : process.env.OPENAI_MODEL_NAME || "gpt-4.1-nano");
+  aiProvider === "groq"
+    ? groqFastModelName
+    : process.env.OPENAI_FAST_MODEL ||
+      process.env.OPENAI_MODEL_NAME ||
+      "gpt-4.1-nano";
 const resolvedSmartModel =
-  process.env.OPENAI_SMART_MODEL ||
-  (aiProvider === "groq"
-    ? defaultProviderModel
-    : process.env.OPENAI_MODEL_NAME || "gpt-4.1-mini");
+  aiProvider === "groq"
+    ? groqSmartModelName
+    : process.env.OPENAI_SMART_MODEL ||
+      process.env.OPENAI_MODEL_NAME ||
+      "gpt-4.1-mini";
 const mergedProductionCorsOrigins = Array.from(
   new Set([...configuredCorsOrigins, ...LOCAL_DESKTOP_CORS_ORIGINS]),
 );
@@ -77,6 +82,8 @@ export const ENV = {
   GROQ_API_KEY: groqApiKey,
   GROQ_BASE_URL: groqBaseUrl,
   GROQ_MODEL_NAME: groqModelName,
+  GROQ_FAST_MODEL: groqFastModelName,
+  GROQ_SMART_MODEL: groqSmartModelName,
   OPENAI_API_KEY: openaiApiKey,
   OPENAI_MODEL_NAME: defaultProviderModel,
   OPENAI_FAST_MODEL: resolvedFastModel,
@@ -140,3 +147,7 @@ if (ENV.IS_PRODUCTION && configuredCorsOrigins.length > 0) {
     "[INFO] CORS allowlist merged with localhost/127.0.0.1 + null origins for desktop/Electron clients.",
   );
 }
+
+console.log(
+  `[AI] Active provider=${ENV.AI_PROVIDER} default=${ENV.OPENAI_MODEL_NAME} fast=${ENV.OPENAI_FAST_MODEL} smart=${ENV.OPENAI_SMART_MODEL}`,
+);
