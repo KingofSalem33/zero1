@@ -60,11 +60,11 @@ const embeddingApiKey = openaiApiKey;
 const resolvedFastModel =
   process.env.OPENAI_FAST_MODEL ||
   process.env.OPENAI_MODEL_NAME ||
-  "gpt-5-mini";
+  "gpt-5-nano";
 const resolvedSmartModel =
   process.env.OPENAI_SMART_MODEL ||
   process.env.OPENAI_MODEL_NAME ||
-  "gpt-5-nano";
+  "gpt-5-mini";
 const mergedProductionCorsOrigins = Array.from(
   new Set([...configuredCorsOrigins, ...LOCAL_DESKTOP_CORS_ORIGINS]),
 );
