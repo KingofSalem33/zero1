@@ -79,6 +79,14 @@ export class InMemoryVerseRepository implements IVerseRepository {
       }));
       console.log("[InMemoryVerseRepository] Loaded books from KJV");
     } catch (error) {
+      const fileError = error as { code?: string };
+      if (fileError?.code === "ENOENT") {
+        console.warn(
+          `[InMemoryVerseRepository] KJV data not found at ${this.kjvPath}; continuing without in-memory fallback data`,
+        );
+        this.kjvData = [];
+        return;
+      }
       console.error(
         "[InMemoryVerseRepository] Failed to load KJV data:",
         error,
