@@ -442,7 +442,7 @@ Return ONLY valid JSON.`;
           {
             toolSpecs: [],
             toolMap: {},
-            model: ENV.OPENAI_SMART_MODEL,
+            model: ENV.OPENAI_FAST_MODEL,
             reasoningEffort: "low", // Explicit low reasoning for faster responses
             // Automatic in-memory caching (5-10 min) works for prompts > 1024 tokens
           },

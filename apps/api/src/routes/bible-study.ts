@@ -164,7 +164,7 @@ router.post("/", async (req, res) => {
         { role: "user", content: userMessage },
       ],
       {
-        model: ENV.OPENAI_FAST_MODEL,
+        model: ENV.OPENAI_SMART_MODEL,
         keepAlive: true,
         taskType: "bible_study",
       },

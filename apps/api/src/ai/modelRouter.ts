@@ -52,7 +52,7 @@ const MODEL_TIERS = {
  */
 const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   synopsis: {
-    model: MODEL_TIERS.smart,
+    model: MODEL_TIERS.fast,
     temperature: 0.3,
     maxTokens: 500,
     verbosity: "low",
@@ -69,7 +69,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   connection: {
-    model: MODEL_TIERS.smart,
+    model: MODEL_TIERS.fast,
     temperature: 0.5,
     maxTokens: 1000,
     reasoningEffort: "low",
@@ -86,7 +86,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   chapter_footer: {
-    model: MODEL_TIERS.smart,
+    model: MODEL_TIERS.fast,
     temperature: 0.6,
     maxTokens: 1500,
     reasoningEffort: "low",

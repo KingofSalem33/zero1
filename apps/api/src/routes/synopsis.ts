@@ -61,9 +61,9 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       });
     }
 
-    // Generate synopsis using the user-facing model tier with scriptural context
-    const synopsisTimeoutMs = 30000;
-    const synopsisModel = ENV.OPENAI_SMART_MODEL || ENV.OPENAI_MODEL_NAME;
+    // Generate synopsis using fast tier for low-latency highlight UX
+    const synopsisTimeoutMs = 10000;
+    const synopsisModel = ENV.OPENAI_FAST_MODEL || ENV.OPENAI_MODEL_NAME;
     const result = (await profileTime(
       "synopsis.runModel",
       () =>

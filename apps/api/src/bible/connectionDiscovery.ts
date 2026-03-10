@@ -177,7 +177,7 @@ Only return connections you are confident a careful, text-centered interpreter w
         },
       ],
       {
-        model: ENV.OPENAI_SMART_MODEL,
+        model: ENV.OPENAI_FAST_MODEL,
         verbosity: "medium",
         responseFormat: {
           type: "json_schema",
@@ -226,7 +226,7 @@ Only return connections you are confident a careful, text-centered interpreter w
     const tokenUsage = extractTokenUsage(
       result,
       "connectionDiscovery",
-      ENV.OPENAI_SMART_MODEL,
+      ENV.OPENAI_FAST_MODEL,
       "connection-discovery-v1",
     );
     if (tokenUsage) {
