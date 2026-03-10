@@ -855,7 +855,12 @@ export async function resolveMultipleAnchors(
 
 const ANCHOR_REF_MAX = 5;
 const ANCHOR_RANGE_CAP = 6;
-const SEMANTIC_STRICT_MIN = 0.9;
+// Anchor confidence bands:
+// - high: accept immediately
+// - low band: accept only if clearly better than next candidate
+const SEMANTIC_ACCEPT_HIGH = 0.8;
+const SEMANTIC_ACCEPT_LOW = 0.6;
+const SEMANTIC_MARGIN_MIN = 0.07;
 const ANCHOR_REF_SYSTEM = `You are a Bible reference resolver for KJV-only study.
 Return a JSON object with a single field "references" (array of 0-5 strings).
 Each string must be a specific reference like "Genesis 22:1-18" or "John 3:16".
@@ -1206,14 +1211,28 @@ export async function resolveAnchor(
 
     if (results.length > 0) {
       const best = results[0];
-      if (best.similarity >= SEMANTIC_STRICT_MIN) {
+      const second = results[1];
+      const margin = best.similarity - (second?.similarity ?? 0);
+
+      if (best.similarity >= SEMANTIC_ACCEPT_HIGH) {
         console.log(
           `[Expanding Ring] ✅ Found anchor via semantic search (${(best.similarity * 100).toFixed(1)}% confidence)`,
         );
         return best.id;
       }
+
+      if (
+        best.similarity >= SEMANTIC_ACCEPT_LOW &&
+        margin >= SEMANTIC_MARGIN_MIN
+      ) {
+        console.log(
+          `[Expanding Ring] ✅ Found anchor via semantic search (mid-confidence ${(best.similarity * 100).toFixed(1)}%, margin ${(margin * 100).toFixed(1)}%)`,
+        );
+        return best.id;
+      }
+
       console.warn(
-        `[Expanding Ring] ⚠️  Semantic match below threshold (${(best.similarity * 100).toFixed(1)}% < ${(SEMANTIC_STRICT_MIN * 100).toFixed(1)}%), trying LLM fallback`,
+        `[Expanding Ring] ⚠️  Semantic match ambiguous (${(best.similarity * 100).toFixed(1)}%, margin ${(margin * 100).toFixed(1)}%), trying LLM fallback`,
       );
     } else {
       console.warn(
