@@ -143,6 +143,4 @@ if (ENV.IS_PRODUCTION && configuredCorsOrigins.length > 0) {
 console.log(
   `[AI] OpenAI models default=${ENV.OPENAI_MODEL_NAME} fast=${ENV.OPENAI_FAST_MODEL} smart=${ENV.OPENAI_SMART_MODEL}`,
 );
-console.log(
-  `[AI] Embeddings model=${ENV.EMBEDDING_MODEL_NAME || "(unset)"}`,
-);
+console.log(`[AI] Embeddings model=${ENV.EMBEDDING_MODEL_NAME || "(unset)"}`);
