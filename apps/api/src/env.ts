@@ -36,7 +36,11 @@ const strictEnv = parseBoolean(process.env.STRICT_ENV, isProduction);
 const requestedAiProvider = (process.env.AI_PROVIDER || "openai")
   .trim()
   .toLowerCase();
-const aiProvider = requestedAiProvider === "groq" ? "groq" : "openai";
+const aiProvider = "openai";
+const requestedEmbeddingProvider = (process.env.EMBEDDING_PROVIDER || "openai")
+  .trim()
+  .toLowerCase();
+const embeddingProvider = "openai";
 const openaiApiKey = process.env.OPENAI_API_KEY || "";
 const groqApiKey = process.env.GROQ_API_KEY || "";
 const groqBaseUrl =
@@ -44,22 +48,23 @@ const groqBaseUrl =
 const groqModelName = process.env.GROQ_MODEL_NAME || "openai/gpt-oss-20b";
 const groqFastModelName = process.env.GROQ_FAST_MODEL || groqModelName;
 const groqSmartModelName = process.env.GROQ_SMART_MODEL || groqModelName;
-const openaiModelName = process.env.OPENAI_MODEL_NAME || "gpt-4o-mini";
-const defaultProviderModel =
-  aiProvider === "groq" ? groqModelName : openaiModelName;
-const aiApiKey = aiProvider === "groq" ? groqApiKey : openaiApiKey;
+const openaiModelName = process.env.OPENAI_MODEL_NAME || "gpt-5-mini";
+const defaultEmbeddingModel =
+  process.env.EMBEDDING_MODEL_NAME ||
+  process.env.OPENAI_EMBEDDING_MODEL ||
+  "text-embedding-3-small";
+const embeddingModelName = defaultEmbeddingModel;
+const defaultProviderModel = openaiModelName;
+const aiApiKey = openaiApiKey;
+const embeddingApiKey = openaiApiKey;
 const resolvedFastModel =
-  aiProvider === "groq"
-    ? groqFastModelName
-    : process.env.OPENAI_FAST_MODEL ||
-      process.env.OPENAI_MODEL_NAME ||
-      "gpt-4.1-nano";
+  process.env.OPENAI_FAST_MODEL ||
+  process.env.OPENAI_MODEL_NAME ||
+  "gpt-5-mini";
 const resolvedSmartModel =
-  aiProvider === "groq"
-    ? groqSmartModelName
-    : process.env.OPENAI_SMART_MODEL ||
-      process.env.OPENAI_MODEL_NAME ||
-      "gpt-4.1-mini";
+  process.env.OPENAI_SMART_MODEL ||
+  process.env.OPENAI_MODEL_NAME ||
+  "gpt-5-nano";
 const mergedProductionCorsOrigins = Array.from(
   new Set([...configuredCorsOrigins, ...LOCAL_DESKTOP_CORS_ORIGINS]),
 );
@@ -79,6 +84,9 @@ export const ENV = {
   PORT: Number(process.env.PORT || 3001),
   AI_PROVIDER: aiProvider,
   AI_API_KEY: aiApiKey,
+  EMBEDDING_PROVIDER: embeddingProvider,
+  EMBEDDING_API_KEY: embeddingApiKey,
+  EMBEDDING_MODEL_NAME: embeddingModelName,
   GROQ_API_KEY: groqApiKey,
   GROQ_BASE_URL: groqBaseUrl,
   GROQ_MODEL_NAME: groqModelName,
@@ -112,16 +120,34 @@ if (ENV.STRICT_ENV && missingRequiredVars.length > 0) {
   );
 }
 
+if (requestedAiProvider !== "openai") {
+  console.warn(
+    `[WARN] AI_PROVIDER=${requestedAiProvider} requested, but Groq is disabled for now. Using OpenAI.`,
+  );
+}
+
+if (requestedEmbeddingProvider !== "openai") {
+  console.warn(
+    `[WARN] EMBEDDING_PROVIDER=${requestedEmbeddingProvider} requested, but Groq embeddings are disabled for now. Using OpenAI.`,
+  );
+}
+
 if (!ENV.AI_API_KEY) {
-  if (ENV.AI_PROVIDER === "groq") {
-    console.warn(
-      "[WARN] Missing GROQ_API_KEY. /api/ai routes will return 503 until you set it.",
-    );
-  } else {
-    console.warn(
-      "[WARN] Missing AI_API_KEY. /api/ai routes will return 503 until you set it.",
-    );
-  }
+  console.warn(
+    "[WARN] Missing OPENAI_API_KEY. /api/ai routes will return 503 until you set it.",
+  );
+}
+
+if (!ENV.EMBEDDING_API_KEY) {
+  console.warn(
+    "[WARN] Missing OPENAI_API_KEY for embeddings. Embedding-backed routes will degrade gracefully.",
+  );
+}
+
+if (!ENV.EMBEDDING_MODEL_NAME) {
+  console.warn(
+    "[WARN] EMBEDDING_MODEL_NAME is empty. Embedding-backed routes will degrade gracefully.",
+  );
 }
 
 if (!ENV.SUPABASE_URL || !ENV.SUPABASE_ANON_KEY) {
@@ -150,4 +176,7 @@ if (ENV.IS_PRODUCTION && configuredCorsOrigins.length > 0) {
 
 console.log(
   `[AI] Active provider=${ENV.AI_PROVIDER} default=${ENV.OPENAI_MODEL_NAME} fast=${ENV.OPENAI_FAST_MODEL} smart=${ENV.OPENAI_SMART_MODEL}`,
+);
+console.log(
+  `[AI] Embeddings provider=${ENV.EMBEDDING_PROVIDER} model=${ENV.EMBEDDING_MODEL_NAME || "(unset)"}`,
 );

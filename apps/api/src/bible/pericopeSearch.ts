@@ -5,10 +5,10 @@
  */
 
 import { supabase } from "../db";
-import { makeOpenAI } from "../ai";
+import { makeEmbeddingClient } from "../ai";
 import { ENV } from "../env";
 
-const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_MODEL = ENV.EMBEDDING_MODEL_NAME || "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
 
 export type PericopeRecord = {
@@ -176,19 +176,21 @@ export const searchPericopesByQuery = async (
     embeddingType?: string;
   } = {},
 ): Promise<PericopeSearchResult[]> => {
-  if (!ENV.AI_API_KEY) {
-    throw new Error("AI_API_KEY not configured");
+  if (!ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) {
+    throw new Error("Embedding provider not configured");
   }
 
-  const client = makeOpenAI();
+  const client = makeEmbeddingClient();
   if (!client) {
-    throw new Error("AI client not configured");
+    throw new Error("Embedding client not configured");
   }
 
   const response = await client.embeddings.create({
     model: EMBEDDING_MODEL,
     input: query,
-    ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: EMBEDDING_DIMENSIONS }),
+    ...(ENV.EMBEDDING_PROVIDER === "groq"
+      ? {}
+      : { dimensions: EMBEDDING_DIMENSIONS }),
   });
 
   const queryEmbedding = response.data[0].embedding;

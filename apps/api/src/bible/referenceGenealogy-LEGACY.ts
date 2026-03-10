@@ -14,8 +14,11 @@
 import { supabase } from "../db";
 import type { Verse } from "./graphWalker";
 import type { ThreadNode, VisualEdge, VisualContextBundle } from "./types";
-import { makeOpenAI } from "../ai";
+import { makeEmbeddingClient } from "../ai";
 import { ENV } from "../env";
+
+const EMBEDDING_MODEL = ENV.EMBEDDING_MODEL_NAME || "text-embedding-3-small";
+const EMBEDDING_DIMENSIONS = 1536;
 
 interface BuildTreeOptions {
   maxDepth?: number; // How many levels deep to traverse (default: 6)
@@ -76,16 +79,18 @@ export async function buildReferenceTree(
 
   // Generate query embedding if user query provided
   let queryEmbedding: number[] | null = null;
-  if (userQuery && ENV.AI_API_KEY) {
+  if (userQuery && ENV.EMBEDDING_API_KEY && ENV.EMBEDDING_MODEL_NAME) {
     try {
-      const client = makeOpenAI();
+      const client = makeEmbeddingClient();
       if (!client) {
-        throw new Error("AI client not configured");
+        throw new Error("Embedding client not configured");
       }
       const response = await client.embeddings.create({
-        model: "text-embedding-3-small",
+        model: EMBEDDING_MODEL,
         input: userQuery,
-        ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: 1536 }),
+        ...(ENV.EMBEDDING_PROVIDER === "groq"
+          ? {}
+          : { dimensions: EMBEDDING_DIMENSIONS }),
       });
       queryEmbedding = response.data[0].embedding;
       console.log(
