@@ -5,11 +5,11 @@
  */
 
 import { supabase } from "../db";
-import { makeOpenAI } from "../ai";
+import { makeEmbeddingClient } from "../ai";
 import { ENV } from "../env";
 import { cosineSimilarity } from "./mathUtils";
 
-const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_MODEL = ENV.EMBEDDING_MODEL_NAME || "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
 const ANCHOR_POOL_FACTOR = 6;
 const ANCHOR_POOL_MAX = 50;
@@ -194,16 +194,16 @@ export async function searchVersesByQuery(
     `[Semantic Search] Limit: ${limit}, Threshold: ${similarityThreshold}`,
   );
 
-  // Check OpenAI API key
-  if (!ENV.AI_API_KEY) {
-    throw new Error("AI_API_KEY not configured");
+  // Check embedding provider config
+  if (!ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) {
+    throw new Error("Embedding provider not configured");
   }
 
   // Step 1: Generate embedding for the query
   const startTime = Date.now();
-  const client = makeOpenAI();
+  const client = makeEmbeddingClient();
   if (!client) {
-    throw new Error("AI client not configured");
+    throw new Error("Embedding client not configured");
   }
 
   let queryEmbedding: number[];
@@ -211,7 +211,7 @@ export async function searchVersesByQuery(
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: query,
-      ...(ENV.AI_PROVIDER === "groq"
+      ...(ENV.EMBEDDING_PROVIDER === "groq"
         ? {}
         : { dimensions: EMBEDDING_DIMENSIONS }),
     });
@@ -378,19 +378,21 @@ export async function findMultipleAnchorVerses(
 export async function generateEmbeddingsBatch(
   texts: string[],
 ): Promise<number[][]> {
-  if (!ENV.AI_API_KEY) {
-    throw new Error("AI_API_KEY not configured");
+  if (!ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) {
+    throw new Error("Embedding provider not configured");
   }
 
-  const client = makeOpenAI();
+  const client = makeEmbeddingClient();
   if (!client) {
-    throw new Error("AI client not configured");
+    throw new Error("Embedding client not configured");
   }
 
   const response = await client.embeddings.create({
     model: EMBEDDING_MODEL,
     input: texts,
-    ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: EMBEDDING_DIMENSIONS }),
+    ...(ENV.EMBEDDING_PROVIDER === "groq"
+      ? {}
+      : { dimensions: EMBEDDING_DIMENSIONS }),
   });
 
   return response.data.map((item) => item.embedding);

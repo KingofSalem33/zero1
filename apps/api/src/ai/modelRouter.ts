@@ -39,9 +39,9 @@ export interface ModelConfig {
  * Using ENV variables for configurability
  */
 const MODEL_TIERS = {
-  // Fast/cheap tier - for simple tasks
+  // User-facing tier
   fast: ENV.OPENAI_FAST_MODEL,
-  // Smart/balanced tier - for most tasks
+  // Backend/internal tier
   smart: ENV.OPENAI_SMART_MODEL,
   // Default/base tier
   default: ENV.OPENAI_MODEL_NAME,
@@ -60,7 +60,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   deep_exegesis: {
-    model: MODEL_TIERS.smart,
+    model: MODEL_TIERS.fast,
     temperature: 0.7,
     maxTokens: 2000,
     reasoningEffort: "medium",
@@ -69,7 +69,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   connection: {
-    model: MODEL_TIERS.smart,
+    model: MODEL_TIERS.fast,
     temperature: 0.5,
     maxTokens: 1000,
     reasoningEffort: "low",
@@ -78,7 +78,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   fact_extraction: {
-    model: MODEL_TIERS.fast,
+    model: MODEL_TIERS.smart,
     temperature: 0.1,
     maxTokens: 500,
     verbosity: "low",
@@ -86,7 +86,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   chapter_footer: {
-    model: MODEL_TIERS.smart,
+    model: MODEL_TIERS.fast,
     temperature: 0.6,
     maxTokens: 1500,
     reasoningEffort: "low",
@@ -111,7 +111,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   classification: {
-    model: MODEL_TIERS.fast,
+    model: MODEL_TIERS.smart,
     temperature: 0.0,
     maxTokens: 100,
     verbosity: "low",
@@ -119,7 +119,7 @@ const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   },
 
   embedding_prep: {
-    model: MODEL_TIERS.fast,
+    model: MODEL_TIERS.smart,
     temperature: 0.0,
     maxTokens: 200,
     verbosity: "low",

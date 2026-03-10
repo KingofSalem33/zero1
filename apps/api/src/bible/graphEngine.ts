@@ -1,6 +1,6 @@
 import { supabase } from "../db";
 import { ENV } from "../env";
-import { makeOpenAI } from "../ai";
+import { makeEmbeddingClient } from "../ai";
 import { ensureVersesHaveText } from "./verseText";
 import { fetchAllEdges } from "./edgeFetchers";
 import {
@@ -45,6 +45,8 @@ export const DEFAULT_GRAVITY: GravityConfig = {
 };
 
 const DEFAULT_CROSS_PERICOPE_THRESHOLD = 0.9;
+const EMBEDDING_MODEL = ENV.EMBEDDING_MODEL_NAME || "text-embedding-3-small";
+const EMBEDDING_DIMENSIONS = 1536;
 
 const DEFAULT_EDGE_OPTIONS = {
   includeDEEPER: true,
@@ -129,7 +131,7 @@ export async function rankByQueryRelevance<T extends { id: number }>(
   const profileLabel = options?.profileLabel ?? "rank_similarity";
   const logLabel = options?.logLabel;
 
-  if (!items.length || !ENV.AI_API_KEY) {
+  if (!items.length || !ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) {
     if (logLabel) {
       console.log(`[${logLabel}] Skipping ranking (no items or no API key)`);
     }
@@ -143,24 +145,26 @@ export async function rankByQueryRelevance<T extends { id: number }>(
   }
 
   try {
-    const client = makeOpenAI();
+    const client = makeEmbeddingClient();
     if (!client) {
-      throw new Error("AI client not configured");
+      throw new Error("Embedding client not configured");
     }
 
     const response = await profileTime(
       `${profileLabel}.embedding_query`,
       () =>
         client.embeddings.create({
-          model: "text-embedding-3-small",
+          model: EMBEDDING_MODEL,
           input: userQuery,
-          ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: 1536 }),
+          ...(ENV.EMBEDDING_PROVIDER === "groq"
+            ? {}
+            : { dimensions: EMBEDDING_DIMENSIONS }),
         }),
       {
         file: "bible/graphEngine.ts",
         fn: "rankByQueryRelevance",
         await: "client.embeddings.create",
-        model: "text-embedding-3-small",
+        model: EMBEDDING_MODEL,
       },
     );
     const queryEmbedding = response.data[0].embedding;
@@ -240,9 +244,9 @@ export async function getQueryEmbedding(
   userQuery: string,
   profileLabel: string,
 ): Promise<number[] | null> {
-  if (!ENV.AI_API_KEY) return null;
+  if (!ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) return null;
 
-  const client = makeOpenAI();
+  const client = makeEmbeddingClient();
   if (!client) {
     return null;
   }
@@ -251,15 +255,17 @@ export async function getQueryEmbedding(
     `${profileLabel}.embedding_query`,
     () =>
       client.embeddings.create({
-        model: "text-embedding-3-small",
+        model: EMBEDDING_MODEL,
         input: userQuery,
-        ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: 1536 }),
+        ...(ENV.EMBEDDING_PROVIDER === "groq"
+          ? {}
+          : { dimensions: EMBEDDING_DIMENSIONS }),
       }),
     {
       file: "bible/graphEngine.ts",
       fn: "getQueryEmbedding",
       await: "client.embeddings.create",
-      model: "text-embedding-3-small",
+      model: EMBEDDING_MODEL,
     },
   );
 

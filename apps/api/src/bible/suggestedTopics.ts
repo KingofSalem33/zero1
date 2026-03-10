@@ -7,7 +7,7 @@
  */
 
 import { supabase } from "../db";
-import { makeOpenAI } from "../ai";
+import { makeEmbeddingClient } from "../ai";
 import { ENV } from "../env";
 import {
   getTestament,
@@ -15,7 +15,7 @@ import {
   NEW_TESTAMENT_BOOKS,
 } from "./testamentUtil";
 
-const EMBEDDING_MODEL = "text-embedding-3-small";
+const EMBEDDING_MODEL = ENV.EMBEDDING_MODEL_NAME || "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
 
 // Verse search result from RPC function
@@ -82,20 +82,20 @@ export async function findSimilarChapters(
     .substring(0, 500);
 
   // Use existing vector search to find similar verses (faster than chapter-by-chapter)
-  if (!ENV.AI_API_KEY) {
-    console.warn("[Suggested Topics] No OpenAI API key");
+  if (!ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) {
+    console.warn("[Suggested Topics] Embedding provider not configured");
     return [];
   }
 
   try {
-    const client = makeOpenAI();
+    const client = makeEmbeddingClient();
     if (!client) {
-      throw new Error("AI client not configured");
+      throw new Error("Embedding client not configured");
     }
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: chapterSummary,
-      ...(ENV.AI_PROVIDER === "groq"
+      ...(ENV.EMBEDDING_PROVIDER === "groq"
         ? {}
         : { dimensions: EMBEDDING_DIMENSIONS }),
     });
@@ -225,20 +225,20 @@ export async function findGoldenThreads(
     .join(" ")
     .substring(0, 500);
 
-  if (!ENV.AI_API_KEY) {
-    console.warn("[Suggested Topics] No OpenAI API key");
+  if (!ENV.EMBEDDING_API_KEY || !ENV.EMBEDDING_MODEL_NAME) {
+    console.warn("[Suggested Topics] Embedding provider not configured");
     return [];
   }
 
   try {
-    const client = makeOpenAI();
+    const client = makeEmbeddingClient();
     if (!client) {
-      throw new Error("AI client not configured");
+      throw new Error("Embedding client not configured");
     }
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: chapterSummary,
-      ...(ENV.AI_PROVIDER === "groq"
+      ...(ENV.EMBEDDING_PROVIDER === "groq"
         ? {}
         : { dimensions: EMBEDDING_DIMENSIONS }),
     });
