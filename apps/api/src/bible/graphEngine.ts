@@ -156,9 +156,7 @@ export async function rankByQueryRelevance<T extends { id: number }>(
         client.embeddings.create({
           model: EMBEDDING_MODEL,
           input: userQuery,
-          ...(ENV.EMBEDDING_PROVIDER === "groq"
-            ? {}
-            : { dimensions: EMBEDDING_DIMENSIONS }),
+          dimensions: EMBEDDING_DIMENSIONS,
         }),
       {
         file: "bible/graphEngine.ts",
@@ -257,9 +255,7 @@ export async function getQueryEmbedding(
       client.embeddings.create({
         model: EMBEDDING_MODEL,
         input: userQuery,
-        ...(ENV.EMBEDDING_PROVIDER === "groq"
-          ? {}
-          : { dimensions: EMBEDDING_DIMENSIONS }),
+        dimensions: EMBEDDING_DIMENSIONS,
       }),
     {
       file: "bible/graphEngine.ts",

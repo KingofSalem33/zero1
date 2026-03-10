@@ -273,7 +273,6 @@ export async function runModel(
             tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
             max_output_tokens: maxOutputTokens ?? 16000,
             parallel_tool_calls: true,
-            // Groq rejects `verbosity`; only send it on OpenAI.
             ...(responseFormat
               ? {
                   text: {
@@ -282,18 +281,14 @@ export async function runModel(
                       name: responseFormat.json_schema.name,
                       schema: responseFormat.json_schema.schema,
                     },
-                    ...(ENV.AI_PROVIDER === "groq"
-                      ? {}
-                      : { verbosity: effectiveVerbosity }),
+                    verbosity: effectiveVerbosity,
                   },
                 }
-              : ENV.AI_PROVIDER === "groq"
-                ? {}
-                : {
-                    text: {
-                      verbosity: effectiveVerbosity,
-                    },
-                  }),
+              : {
+                  text: {
+                    verbosity: effectiveVerbosity,
+                  },
+                }),
             // Only apply reasoning for models that support it (not nano)
             ...(effectiveReasoningEffort && {
               reasoning: {
