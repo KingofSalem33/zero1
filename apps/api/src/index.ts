@@ -54,6 +54,7 @@ import {
 import { buildPericopeScopeForVerse } from "./bible/pericopeGraphWalker";
 import { buildVisualBundle } from "./bible/graphWalker";
 import { getBook } from "./bible/bibleService";
+import { checkBibleDataIntegrity } from "./bible/dataIntegrity";
 import bookmarksRouter from "./routes/bookmarks";
 import libraryRouter from "./routes/library";
 import verseRouter from "./routes/verse";
@@ -1929,6 +1930,11 @@ const server = app.listen(ENV.PORT, () => {
   ); // Every 5 minutes
 
   console.log("✅ Memory monitoring started");
+
+  // Validate canonical Bible data shape at startup (non-blocking).
+  void checkBibleDataIntegrity().catch((error) => {
+    console.error("[BIBLE INTEGRITY] Startup check failed:", error);
+  });
 });
 
 // ✅ Graceful shutdown handlers to prevent data loss
