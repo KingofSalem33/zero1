@@ -37,6 +37,66 @@ function extractTextFromItem(msg: any): string {
   return "";
 }
 
+function extractTextFromContentArray(content: any): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item: any) => {
+      if (!item) return "";
+      if (typeof item === "string") return item;
+      if (typeof item.text === "string") return item.text;
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+function extractTextFromResponse(
+  response: any,
+  assistantMessage?: any,
+): string {
+  // Preferred: SDK-provided convenience field
+  const outputText = response?.output_text;
+  if (typeof outputText === "string" && outputText.trim().length > 0) {
+    return outputText;
+  }
+
+  if (Array.isArray(outputText)) {
+    const joined = outputText
+      .map((item: any) =>
+        typeof item === "string" ? item : (item?.text ?? ""),
+      )
+      .filter(Boolean)
+      .join("");
+    if (joined.trim().length > 0) return joined;
+  }
+
+  // Legacy/common path: assistant message content array
+  const assistantText = extractTextFromContentArray(assistantMessage?.content);
+  if (assistantText.trim().length > 0) {
+    return assistantText;
+  }
+
+  // Fallback: scan output items directly for text-bearing entries
+  if (Array.isArray(response?.output)) {
+    const fromOutputItems = response.output
+      .map((item: any) => {
+        if (!item) return "";
+        if (typeof item.text === "string") return item.text;
+        if (Array.isArray(item.content)) {
+          return extractTextFromContentArray(item.content);
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("");
+    if (fromOutputItems.trim().length > 0) {
+      return fromOutputItems;
+    }
+  }
+
+  return "";
+}
+
 function getLastUserText(context: any[]): string | null {
   for (let i = context.length - 1; i >= 0; i--) {
     const msg = context[i];
@@ -332,19 +392,18 @@ export async function runModel(
       // Store usage data for telemetry
       lastUsageData = (response as any).usage;
 
-      // Extract assistant message from output array
-      const assistantMessage = response.output.find(
+      const outputItems = Array.isArray(response.output) ? response.output : [];
+
+      // Extract assistant message from output array (legacy shape)
+      const assistantMessage = outputItems.find(
         (item: any) => item.type === "message" && item.role === "assistant",
       ) as any;
-
-      if (!assistantMessage) {
-        throw new Error("No assistant message in response");
-      }
       // Extract tool calls from output array
       // Be tolerant of SDK/event shape differences (id vs call_id)
       const toolCalls = (
-        response.output.filter(
-          (item: any) => item.type === "function_tool_call",
+        outputItems.filter(
+          (item: any) =>
+            item.type === "function_tool_call" || item.type === "function_call",
         ) as any[]
       ).map((item: any) => ({
         // Prefer call_id if present; fall back to id
@@ -356,13 +415,14 @@ export async function runModel(
       logger.info(
         {
           iteration: iterations,
+          hasAssistantMessage: !!assistantMessage,
           hasToolCalls: toolCalls.length > 0,
         },
         "Received model response",
       );
 
       // Add all output items to conversation for context
-      for (const outputItem of response.output) {
+      for (const outputItem of outputItems) {
         conversationMessages.push(outputItem);
       }
 
@@ -371,21 +431,22 @@ export async function runModel(
         // No tool calls, return final response
         // Get text content from assistant message
         // Handle both "text" and "output_text" types (Responses API format)
-        const textContent =
-          assistantMessage.content
-            ?.filter((c: any) => c.type === "text" || c.type === "output_text")
-            .map((c: any) => c.text)
-            .join("") || "";
+        const textContent = extractTextFromResponse(response, assistantMessage);
 
         // Log if text content is empty to help debug
         if (!textContent) {
           logger.warn(
             {
-              assistantMessageType: assistantMessage.type,
-              contentType: typeof assistantMessage.content,
-              contentIsArray: Array.isArray(assistantMessage.content),
-              contentLength: assistantMessage.content?.length,
-              firstContentItem: assistantMessage.content?.[0],
+              outputLength: outputItems.length,
+              outputTypes: outputItems
+                .map((item: any) => item?.type)
+                .slice(0, 8),
+              outputTextType: typeof response?.output_text,
+              assistantMessageType: assistantMessage?.type,
+              contentType: typeof assistantMessage?.content,
+              contentIsArray: Array.isArray(assistantMessage?.content),
+              contentLength: assistantMessage?.content?.length,
+              firstContentItem: assistantMessage?.content?.[0],
             },
             "Empty text content extracted from assistant message",
           );
