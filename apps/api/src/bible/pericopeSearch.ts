@@ -188,7 +188,7 @@ export const searchPericopesByQuery = async (
   const response = await client.embeddings.create({
     model: EMBEDDING_MODEL,
     input: query,
-    dimensions: EMBEDDING_DIMENSIONS,
+    ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: EMBEDDING_DIMENSIONS }),
   });
 
   const queryEmbedding = response.data[0].embedding;

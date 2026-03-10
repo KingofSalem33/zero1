@@ -19,6 +19,17 @@ import {
 
 const logger = pino({ name: "runModelStream" });
 
+function resolveModelVerbosity(
+  model: string,
+  requested: "low" | "medium" | "high",
+): "low" | "medium" | "high" {
+  // gpt-4o-mini currently rejects "low" verbosity and supports "medium".
+  if (model.includes("gpt-4o-mini") && requested === "low") {
+    return "medium";
+  }
+  return requested;
+}
+
 /**
  * Extract keywords from context to build a search query
  */
@@ -266,6 +277,7 @@ export async function runModelStream(
     userId,
     taskType,
   } = options;
+  const effectiveVerbosity = resolveModelVerbosity(model, verbosity);
 
   // Create metadata builder for tracking
   const metadataBuilder = createMetadataBuilder(requestId);
@@ -288,6 +300,7 @@ export async function runModelStream(
       model,
       requestedReasoningEffort: reasoningEffort,
       effectiveReasoningEffort,
+      verbosity: effectiveVerbosity,
       isNano: model.includes("nano"),
     },
     "Model configuration for streaming",
@@ -451,6 +464,7 @@ export async function runModelStream(
         "[runModelStream] Model config:",
         JSON.stringify({
           model,
+          verbosity: effectiveVerbosity,
           effectiveReasoningEffort,
           willSendReasoning: !!effectiveReasoningEffort,
         }),
@@ -469,7 +483,7 @@ export async function runModelStream(
             parallel_tool_calls: true,
             stream: true,
             text: {
-              verbosity: verbosity,
+              verbosity: effectiveVerbosity,
             },
             // Only apply reasoning for models that support it (not nano)
             ...(effectiveReasoningEffort && {

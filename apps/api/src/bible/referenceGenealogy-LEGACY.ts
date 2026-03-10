@@ -85,7 +85,7 @@ export async function buildReferenceTree(
       const response = await client.embeddings.create({
         model: "text-embedding-3-small",
         input: userQuery,
-        dimensions: 1536,
+        ...(ENV.AI_PROVIDER === "groq" ? {} : { dimensions: 1536 }),
       });
       queryEmbedding = response.data[0].embedding;
       console.log(
