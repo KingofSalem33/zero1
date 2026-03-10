@@ -211,9 +211,7 @@ export async function searchVersesByQuery(
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: query,
-      ...(ENV.EMBEDDING_PROVIDER === "groq"
-        ? {}
-        : { dimensions: EMBEDDING_DIMENSIONS }),
+      dimensions: EMBEDDING_DIMENSIONS,
     });
 
     queryEmbedding = response.data[0].embedding;
@@ -390,9 +388,7 @@ export async function generateEmbeddingsBatch(
   const response = await client.embeddings.create({
     model: EMBEDDING_MODEL,
     input: texts,
-    ...(ENV.EMBEDDING_PROVIDER === "groq"
-      ? {}
-      : { dimensions: EMBEDDING_DIMENSIONS }),
+    dimensions: EMBEDDING_DIMENSIONS,
   });
 
   return response.data.map((item) => item.embedding);

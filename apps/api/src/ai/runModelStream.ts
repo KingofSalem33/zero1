@@ -482,13 +482,9 @@ export async function runModelStream(
             max_output_tokens: 16000,
             parallel_tool_calls: true,
             stream: true,
-            ...(ENV.AI_PROVIDER === "groq"
-              ? {}
-              : {
-                  text: {
-                    verbosity: effectiveVerbosity,
-                  },
-                }),
+            text: {
+              verbosity: effectiveVerbosity,
+            },
             // Only apply reasoning for models that support it (not nano)
             ...(effectiveReasoningEffort && {
               reasoning: {
