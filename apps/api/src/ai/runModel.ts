@@ -8,6 +8,17 @@ import { type TaskType, getModelConfig, recordModelUsage } from "./modelRouter";
 
 const logger = pino({ name: "runModel" });
 
+function resolveModelVerbosity(
+  model: string,
+  requested: "low" | "medium" | "high",
+): "low" | "medium" | "high" {
+  // gpt-4o-mini currently rejects "low" verbosity and supports "medium".
+  if (model.includes("gpt-4o-mini") && requested === "low") {
+    return "medium";
+  }
+  return requested;
+}
+
 function extractTextFromItem(msg: any): string {
   const content = msg?.content;
   if (typeof content === "string") return content;
@@ -186,6 +197,7 @@ export async function runModel(
   // Resolve model from task type or use explicit model or default
   const resolvedConfig = taskType ? getModelConfig(taskType) : null;
   const model = options.model ?? resolvedConfig?.model ?? ENV.OPENAI_MODEL_NAME;
+  const effectiveVerbosity = resolveModelVerbosity(model, verbosity);
   const startTime = Date.now();
 
   // Helper to record usage and return result
@@ -241,6 +253,7 @@ export async function runModel(
       logger.info(
         {
           model,
+          verbosity: effectiveVerbosity,
           effectiveReasoningEffort,
           willSendReasoning: !!effectiveReasoningEffort,
           iteration: iterations,
@@ -266,10 +279,10 @@ export async function runModel(
                     name: responseFormat.json_schema.name,
                     schema: responseFormat.json_schema.schema,
                   },
-                  verbosity: verbosity,
+                  verbosity: effectiveVerbosity,
                 }
               : {
-                  verbosity: verbosity,
+                  verbosity: effectiveVerbosity,
                 },
             // Only apply reasoning for models that support it (not nano)
             ...(effectiveReasoningEffort && {

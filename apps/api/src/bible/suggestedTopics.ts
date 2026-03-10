@@ -95,7 +95,9 @@ export async function findSimilarChapters(
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: chapterSummary,
-      dimensions: EMBEDDING_DIMENSIONS,
+      ...(ENV.AI_PROVIDER === "groq"
+        ? {}
+        : { dimensions: EMBEDDING_DIMENSIONS }),
     });
 
     const queryEmbedding = response.data[0].embedding;
@@ -236,7 +238,9 @@ export async function findGoldenThreads(
     const response = await client.embeddings.create({
       model: EMBEDDING_MODEL,
       input: chapterSummary,
-      dimensions: EMBEDDING_DIMENSIONS,
+      ...(ENV.AI_PROVIDER === "groq"
+        ? {}
+        : { dimensions: EMBEDDING_DIMENSIONS }),
     });
 
     const queryEmbedding = response.data[0].embedding;
