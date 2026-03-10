@@ -8,6 +8,50 @@ import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
 
 const router = Router();
+const SYNOPSIS_INPUT_CHAR_LIMIT = 1200;
+const SYNOPSIS_MAX_OUTPUT_TOKENS = 120;
+
+const clampSynopsisInput = (
+  text: string,
+  charLimit: number = SYNOPSIS_INPUT_CHAR_LIMIT,
+): string => {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= charLimit) return cleaned;
+
+  // Preserve both opening and closing context for long highlights.
+  const headSize = Math.floor(charLimit * 0.65);
+  const tailSize = Math.max(120, charLimit - headSize - 7);
+  const head = cleaned.slice(0, headSize).trim();
+  const tail = cleaned.slice(-tailSize).trim();
+  return `${head} [...] ${tail}`;
+};
+
+const buildFallbackSynopsis = (text: string, maxWords: number): string => {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Unable to generate synopsis.";
+
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const words: string[] = [];
+  const source = sentences.length > 0 ? sentences : [cleaned];
+
+  for (const sentence of source) {
+    const sentenceWords = sentence.split(/\s+/).filter(Boolean);
+    for (const word of sentenceWords) {
+      if (words.length >= maxWords) break;
+      words.push(word);
+    }
+    if (words.length >= maxWords) break;
+    if (words.length >= Math.min(20, maxWords)) break;
+  }
+
+  const synopsis = words.join(" ").trim();
+  if (!synopsis) return "Unable to generate synopsis.";
+  return /[.!?]$/.test(synopsis) ? synopsis : `${synopsis}.`;
+};
 
 const formatVerseReference = (
   book: string,
@@ -49,6 +93,7 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       () => synopsisRequestSchema.parse(req.body),
       { file: "routes/synopsis.ts", fn: "synopsisRequestSchema.parse" },
     );
+    const synopsisInput = clampSynopsisInput(text);
 
     // Check if OpenAI client is available
     if (!ENV.AI_API_KEY) {
@@ -76,13 +121,14 @@ router.post("/", readOnlyLimiter, async (req, res) => {
               },
               {
                 role: "user",
-                content: SYNOPSIS_V1.buildUser(text, maxWords),
+                content: SYNOPSIS_V1.buildUser(synopsisInput, maxWords),
               },
             ],
             {
               model: synopsisModel,
               taskType: "synopsis",
               verbosity: "low",
+              maxOutputTokens: SYNOPSIS_MAX_OUTPUT_TOKENS,
             },
           ),
           new Promise((_, reject) =>
@@ -103,7 +149,19 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         await: "client.responses.create",
         model: synopsisModel,
       },
-    )) as RunModelResult;
+    ).catch((error) => {
+      const message =
+        error instanceof Error ? error.message : "Synopsis model failed";
+      if (message.includes("timed out")) {
+        const fallbackSynopsis = buildFallbackSynopsis(synopsisInput, maxWords);
+        return {
+          text: fallbackSynopsis,
+          citations: [],
+          tools_used: [],
+        } as RunModelResult;
+      }
+      throw error;
+    })) as RunModelResult;
 
     // Extract the synopsis and enforce word count at sentence boundary
     let synopsis =
@@ -128,6 +186,9 @@ router.post("/", readOnlyLimiter, async (req, res) => {
         synopsis = truncated.trim();
         if (!synopsis.endsWith(".")) synopsis += ".";
       }
+    }
+    if (synopsis === "Unable to generate synopsis." || words.length < 4) {
+      synopsis = buildFallbackSynopsis(synopsisInput, maxWords);
     }
 
     // Log token usage for telemetry

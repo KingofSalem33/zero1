@@ -157,6 +157,7 @@ export interface RunModelOptions {
   // These parameters are for advanced optimization
   promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
   promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
+  maxOutputTokens?: number; // Per-call output token cap override
   // Model routing - use task type for automatic model selection
   taskType?: TaskType;
 }
@@ -191,6 +192,7 @@ export async function runModel(
     responseFormat,
     promptCacheRetention, // Optional: "24h" for extended cache retention
     promptCacheKey, // Optional: Custom key for cache routing
+    maxOutputTokens,
     taskType,
   } = options;
 
@@ -269,7 +271,7 @@ export async function runModel(
             input: conversationMessages,
             tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
             tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-            max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
+            max_output_tokens: maxOutputTokens ?? 16000,
             parallel_tool_calls: true,
             // Groq rejects `verbosity`; only send it on OpenAI.
             ...(responseFormat
