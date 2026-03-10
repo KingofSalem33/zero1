@@ -34,7 +34,7 @@ const isProduction = nodeEnv === "production";
 const configuredCorsOrigins = parseCsv(process.env.CORS_ALLOWED_ORIGINS);
 const strictEnv = parseBoolean(process.env.STRICT_ENV, isProduction);
 const openaiApiKey = process.env.OPENAI_API_KEY || "";
-const openaiModelName = process.env.OPENAI_MODEL_NAME || "gpt-5-mini";
+const openaiModelName = process.env.OPENAI_MODEL_NAME || "gpt-4.1-mini";
 const defaultEmbeddingModel =
   process.env.EMBEDDING_MODEL_NAME ||
   process.env.OPENAI_EMBEDDING_MODEL ||
@@ -45,11 +45,11 @@ const embeddingApiKey = openaiApiKey;
 const resolvedFastModel =
   process.env.OPENAI_FAST_MODEL ||
   process.env.OPENAI_MODEL_NAME ||
-  "gpt-5-nano";
+  "gpt-4.1-nano";
 const resolvedSmartModel =
   process.env.OPENAI_SMART_MODEL ||
   process.env.OPENAI_MODEL_NAME ||
-  "gpt-5-mini";
+  "gpt-4.1-mini";
 const mergedProductionCorsOrigins = Array.from(
   new Set([...configuredCorsOrigins, ...LOCAL_DESKTOP_CORS_ORIGINS]),
 );
