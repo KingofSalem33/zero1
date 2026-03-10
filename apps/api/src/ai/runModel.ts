@@ -271,19 +271,27 @@ export async function runModel(
             tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
             max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
             parallel_tool_calls: true,
-            // Text configuration with structured outputs and verbosity
-            text: responseFormat
+            // Groq rejects `verbosity`; only send it on OpenAI.
+            ...(responseFormat
               ? {
-                  format: {
-                    type: "json_schema" as const,
-                    name: responseFormat.json_schema.name,
-                    schema: responseFormat.json_schema.schema,
+                  text: {
+                    format: {
+                      type: "json_schema" as const,
+                      name: responseFormat.json_schema.name,
+                      schema: responseFormat.json_schema.schema,
+                    },
+                    ...(ENV.AI_PROVIDER === "groq"
+                      ? {}
+                      : { verbosity: effectiveVerbosity }),
                   },
-                  verbosity: effectiveVerbosity,
                 }
-              : {
-                  verbosity: effectiveVerbosity,
-                },
+              : ENV.AI_PROVIDER === "groq"
+                ? {}
+                : {
+                    text: {
+                      verbosity: effectiveVerbosity,
+                    },
+                  }),
             // Only apply reasoning for models that support it (not nano)
             ...(effectiveReasoningEffort && {
               reasoning: {
