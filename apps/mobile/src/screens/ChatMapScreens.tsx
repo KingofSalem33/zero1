@@ -1763,23 +1763,10 @@ export function ChatScreen({
   }, []);
 
   useEffect(() => {
-    if (nav.isActive) {
-      const timerA = setTimeout(() => {
-        composerInputRef.current?.focus();
-      }, 40);
-      const timerB = setTimeout(() => {
-        if (!composerInputRef.current?.isFocused()) {
-          composerInputRef.current?.focus();
-        }
-      }, 220);
-      return () => {
-        clearTimeout(timerA);
-        clearTimeout(timerB);
-      };
-    }
-
     composerInputRef.current?.blur();
     Keyboard.dismiss();
+    setKeyboardVisible(false);
+    setKeyboardHeight(0);
   }, [nav.isActive]);
 
   useEffect(() => {
@@ -3017,6 +3004,14 @@ export function MapViewerScreen({
     [mapNodes],
   );
   const selectedNode = selectedNodeId ? nodeLookup.get(selectedNodeId) : null;
+  const mapSaveTitle = useMemo(() => {
+    if (title?.trim()) return title.trim();
+    if (visualBundle?.nodes[0]) {
+      const node = visualBundle.nodes[0];
+      return `${node.book_name} ${node.chapter}:${node.verse}`;
+    }
+    return "Saved map";
+  }, [title, visualBundle]);
 
   const panResponder = useMemo(
     () =>
@@ -3082,7 +3077,21 @@ export function MapViewerScreen({
               setPan({ x: 0, y: 0 });
             }}
           />
+          <ActionButton
+            variant="primary"
+            label={controller.libraryMapMutationBusy ? "Saving..." : "Save map"}
+            disabled={controller.libraryMapMutationBusy}
+            onPress={() =>
+              void controller.handleSaveLibraryMapFromBundle(
+                visualBundle,
+                mapSaveTitle,
+              )
+            }
+          />
         </View>
+        {controller.libraryMapMutationError ? (
+          <Text style={styles.error}>{controller.libraryMapMutationError}</Text>
+        ) : null}
       </SurfaceCard>
 
       <View style={localStyles.mapViewport} {...panResponder.panHandlers}>

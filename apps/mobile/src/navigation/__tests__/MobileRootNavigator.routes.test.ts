@@ -12,9 +12,6 @@ describe("MobileRootNavigator route config", () => {
   it("registers all expected app detail routes", () => {
     expect(APP_DETAIL_ROUTES).toEqual([
       "MapViewer",
-      "LibraryMapCreate",
-      "BookmarkCreate",
-      "BookmarkDetail",
       "HighlightCreate",
       "HighlightDetail",
     ]);

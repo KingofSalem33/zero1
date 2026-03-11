@@ -375,3 +375,70 @@ P1 (after P0 validation): 4. Visual polish parity with web tooltip motion and sp
 
 1. Web popover dropdowns are implemented as mobile bottom-sheet style modals.
 2. Web hover/focus affordances are replaced by touch-first active states and subtle motion presets.
+
+---
+
+## Library Function Deep Dive (2026-03-10)
+
+### Deliverable
+
+- Canonical deliverable: `apps/mobile/LIBRARY_PARITY_DELIVERABLE.md`
+
+### Library parity status from current code review
+
+1. Web Library remains the source of truth for shell, connection detail behavior, export, highlight analysis, and notes as a first-class tab.
+2. Mobile Library is functional for connections, maps, bookmarks, and highlights, but it is still missing:
+   - connection detail and metadata editing
+   - notes tab implementation
+   - export and share parity
+   - highlight analysis entry
+   - unified shell polish
+3. Mobile already has the protected API wrappers needed for connection and map mutation, so no new backend endpoints are required for the main parity slice.
+4. Mobile reader already stores verse notes locally, so notes parity can ship without waiting on server work.
+
+### Reconciled decisions
+
+1. Library parity is now a P0 mobile product slice.
+2. Connection detail parity is the highest-leverage missing behavior.
+3. Notes are in scope for the same implementation wave because the data already exists on device.
+4. Native concessions are limited to presentation:
+   - bottom sheets instead of floating modals
+   - native share sheet instead of browser download UI
+   - long-press or overflow actions instead of hover affordances
+
+### Backlog summary
+
+1. Rebuild the Library shell into a cleaner unified workspace.
+2. Add native connection detail sheet with edit, delete, chat, and map continuation.
+3. Implement notes indexing and notes tab parity.
+4. Add continuity actions and highlight analysis entry.
+5. Finish export, loading-state, and test parity.
+
+### Implementation status update (2026-03-10)
+
+Completed in native mobile:
+
+1. Library shell cleanup with compact mode tabs and reduced chrome.
+2. Connection detail sheet with note and tag editing plus delete, chat, and map continuation.
+3. Map detail editing inside Library.
+4. First-class Notes tab backed by shared native verse-note state.
+5. Highlight analysis entry on mobile.
+6. Native export sheet for copy text, share text, and share JSON.
+7. Exact verse-focus handoff from Library notes plus bookmark and highlight detail routes into Reader.
+8. Contextual map save from native map surfaces; manual Library map-create route removed.
+9. Unified Library status banner and cleaner export copy for mobile empty/loading/error states.
+10. Bookmarks moved out of primary Library IA and into Reader header interactions on native mobile.
+11. Library shell simplified into a slim top rail with page-style tabs and left/right swipe navigation between Connections, Maps, Highlights, and Notes.
+12. Library top-level export removed; highlight sharing now lives on highlight quick actions and detail screens.
+
+Reader bookmark model:
+
+1. Tap the Reader header bookmark icon to toggle a chapter bookmark.
+2. Long-press the same icon to open a bookmark list modal aligned with the Reader header.
+3. Bookmarks now behave as Reader return-points rather than as a first-class Library tab.
+
+Library navigation model:
+
+1. Library uses a minimal rail instead of a large summary card.
+2. Tabs remain visible, but users can also move horizontally via swipe/fling gestures.
+3. Pull-to-refresh remains the only explicit refresh pattern inside Library lists.

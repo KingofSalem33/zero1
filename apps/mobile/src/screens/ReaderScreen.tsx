@@ -45,6 +45,7 @@ import { styles, T } from "../theme/mobileStyles";
 import type { MobileGoDeeperPayload } from "../types/chat";
 import { isVisualContextBundle } from "../types/visualization";
 import { ensureMinLoaderDuration } from "../utils/ensureMinLoaderDuration";
+import { formatRelativeDate } from "./common/EntityCards";
 
 const DOUBLE_TAP_WINDOW_MS = 380;
 const HEADER_HIDE_SCROLL_DISTANCE = 34;
@@ -52,7 +53,6 @@ const HEADER_TOGGLE_ANIMATION_MS = 180;
 const CHAPTER_SWIPE_COOLDOWN_MS = 280;
 const READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY =
   "biblelot:mobile:reader:last-chapters-by-book";
-const READER_VERSE_NOTES_STORAGE_KEY = "biblelot:mobile:reader:verse-notes";
 const DEFAULT_MARKER_COLOR = "#D4AF37";
 const PARAGRAPH_INDENT = "\u2003";
 const MIN_SELECTION_SYNOPSIS_LOADING_MS = 220;
@@ -60,8 +60,6 @@ const MIN_REFERENCE_MODAL_LOADING_MS = 300;
 const INITIAL_REFERENCE_ROWS_PER_GROUP = 3;
 type IoniconName = keyof typeof Ionicons.glyphMap;
 type ReferenceGroup = "parallel" | "prophecy" | "thematic";
-type VerseNoteMap = Record<string, string>;
-
 const OT_BOOKS = new Set([
   "Genesis",
   "Exodus",
@@ -379,6 +377,7 @@ export function ReaderScreen({
   const controller = useMobileApp();
   const [bookSelectorVisible, setBookSelectorVisible] = useState(false);
   const [chapterSelectorVisible, setChapterSelectorVisible] = useState(false);
+  const [bookmarkSelectorVisible, setBookmarkSelectorVisible] = useState(false);
   const [chapterSelectionBook, setChapterSelectionBook] = useState<
     string | null
   >(null);
@@ -399,6 +398,9 @@ export function ReaderScreen({
   const [selectionView, setSelectionView] = useState<"synopsis" | "root">(
     "synopsis",
   );
+  const [selectionNoteEditorVisible, setSelectionNoteEditorVisible] =
+    useState(false);
+  const [selectionNoteDraft, setSelectionNoteDraft] = useState("");
   const {
     isLoading: rootLoading,
     language: rootLanguage,
@@ -451,7 +453,6 @@ export function ReaderScreen({
   const [referenceView, setReferenceView] = useState<"explore" | "root">(
     "explore",
   );
-  const [referenceNotes, setReferenceNotes] = useState<VerseNoteMap>({});
   const [referenceNoteEditorVisible, setReferenceNoteEditorVisible] =
     useState(false);
   const [referenceNoteDraft, setReferenceNoteDraft] = useState("");
@@ -494,12 +495,16 @@ export function ReaderScreen({
   const verseLayoutByNumberRef = useRef<Record<number, number>>({});
   const chapterSwipeLockRef = useRef(false);
   const chapterSwipeLastAtRef = useRef(0);
+  const suppressBookmarkTogglePressRef = useRef(false);
+  const selectionNoteInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     setSelectionDraft(null);
     setSelectionModalVisible(false);
     setSelectionSynopsis(null);
     setSelectionSynopsisError(null);
+    setSelectionNoteEditorVisible(false);
+    setSelectionNoteDraft("");
     setPendingRemovalVerses([]);
     setReferenceModalVisible(false);
     setReferenceStack([]);
@@ -561,35 +566,20 @@ export function ReaderScreen({
   }, []);
 
   useEffect(() => {
-    let active = true;
-    void AsyncStorage.getItem(READER_VERSE_NOTES_STORAGE_KEY)
-      .then((raw) => {
-        if (!active || !raw) return;
-        try {
-          const parsed = JSON.parse(raw) as unknown;
-          if (!parsed || typeof parsed !== "object") return;
-          const next: VerseNoteMap = {};
-          Object.entries(parsed as Record<string, unknown>).forEach(
-            ([key, value]) => {
-              if (typeof key !== "string" || typeof value !== "string") return;
-              const normalizedKey = normalizeReferenceString(key);
-              if (!normalizedKey) return;
-              const note = value.trim();
-              if (!note) return;
-              next[normalizedKey] = note;
-            },
-          );
-          setReferenceNotes(next);
-        } catch {
-          setReferenceNotes({});
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      active = false;
-    };
-  }, []);
+    const target = controller.pendingReaderFocusTarget;
+    if (!target) return;
+    if (navigationFocusTimerRef.current) {
+      clearTimeout(navigationFocusTimerRef.current);
+      navigationFocusTimerRef.current = null;
+    }
+    navigationFocusKeyRef.current = target.key;
+    navigationFocusHandledKeyRef.current = null;
+    setPendingVerseNavigation(target);
+    controller.clearPendingReaderFocusTarget(target.key);
+  }, [
+    controller.pendingReaderFocusTarget,
+    controller.clearPendingReaderFocusTarget,
+  ]);
 
   useEffect(() => {
     const book = controller.reader.book;
@@ -606,7 +596,8 @@ export function ReaderScreen({
   }, [controller.reader.book, controller.reader.chapter]);
 
   useEffect(() => {
-    const selectorVisible = bookSelectorVisible || chapterSelectorVisible;
+    const selectorVisible =
+      bookSelectorVisible || chapterSelectorVisible || bookmarkSelectorVisible;
     if (!selectorVisible) {
       selectorDropAnim.setValue(0);
       return;
@@ -619,7 +610,12 @@ export function ReaderScreen({
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [bookSelectorVisible, chapterSelectorVisible, selectorDropAnim]);
+  }, [
+    bookSelectorVisible,
+    bookmarkSelectorVisible,
+    chapterSelectorVisible,
+    selectorDropAnim,
+  ]);
 
   useEffect(() => {
     Animated.timing(headerVisibilityAnim, {
@@ -633,6 +629,7 @@ export function ReaderScreen({
   useEffect(() => {
     if (
       !bookSelectorVisible &&
+      !bookmarkSelectorVisible &&
       !chapterSelectorVisible &&
       !selectionModalVisible &&
       !referenceModalVisible
@@ -644,6 +641,7 @@ export function ReaderScreen({
     headerScrollDeltaRef.current = 0;
   }, [
     bookSelectorVisible,
+    bookmarkSelectorVisible,
     chapterSelectorVisible,
     referenceModalVisible,
     selectionModalVisible,
@@ -717,6 +715,32 @@ export function ReaderScreen({
       .join(" ")
       .trim();
   }, [controller.reader.verses, selectedVerses]);
+  const selectedHighlightForSelection = useMemo(() => {
+    if (selectedVerses.length === 0) return null;
+    const selectedVerseSet = new Set(selectedVerses);
+    const exactMatch = controller.highlights.find(
+      (item) =>
+        item.book.toLowerCase() === controller.reader.book.toLowerCase() &&
+        item.chapter === controller.reader.chapter &&
+        item.verses.length === selectedVerses.length &&
+        item.verses.every((verse) => selectedVerseSet.has(verse)),
+    );
+    return (
+      exactMatch ??
+      controller.highlights.find(
+        (item) =>
+          item.book.toLowerCase() === controller.reader.book.toLowerCase() &&
+          item.chapter === controller.reader.chapter &&
+          item.verses.some((verse) => selectedVerseSet.has(verse)),
+      ) ??
+      null
+    );
+  }, [
+    controller.highlights,
+    controller.reader.book,
+    controller.reader.chapter,
+    selectedVerses,
+  ]);
   const currentChapterVerseTextMap = useMemo(
     () =>
       new Map(
@@ -784,8 +808,11 @@ export function ReaderScreen({
   );
   const canGoBackReference = referenceStack.length > 1;
   const activeReferenceNote = useMemo(
-    () => (activeReference ? (referenceNotes[activeReference] ?? "") : ""),
-    [activeReference, referenceNotes],
+    () =>
+      activeReference
+        ? (controller.verseNotes[activeReference]?.text ?? "")
+        : "",
+    [activeReference, controller.verseNotes],
   );
   const groupedReferenceSections = useMemo(() => {
     if (!activeReferenceParsed)
@@ -859,6 +886,34 @@ export function ReaderScreen({
   const footerNextDisabled =
     currentBookIndex >= BIBLE_BOOKS.length - 1 &&
     controller.reader.chapter >= currentBookChapterCount;
+  const currentChapterBookmark = useMemo(
+    () =>
+      controller.bookmarks.find((item) => {
+        const parsed = tryParseBookmarkReference(item.text);
+        if (!parsed || parsed.verse !== undefined) return false;
+        const canonicalBook = resolveBibleBookName(parsed.book);
+        if (!canonicalBook) return false;
+        return (
+          canonicalBook.toLowerCase() ===
+            controller.reader.book.toLowerCase() &&
+          parsed.chapter === controller.reader.chapter
+        );
+      }) ?? null,
+    [controller.bookmarks, controller.reader.book, controller.reader.chapter],
+  );
+  const sortedBookmarks = useMemo(
+    () =>
+      [...controller.bookmarks].sort((left, right) => {
+        const leftTime = left.createdAt
+          ? new Date(left.createdAt).getTime()
+          : 0;
+        const rightTime = right.createdAt
+          ? new Date(right.createdAt).getTime()
+          : 0;
+        return rightTime - leftTime;
+      }),
+    [controller.bookmarks],
+  );
 
   const verseHighlightMap = useMemo(() => {
     const map = new Map<
@@ -1033,15 +1088,73 @@ export function ReaderScreen({
     }, 0);
   }
 
+  function closeBookmarkSelector() {
+    setBookmarkSelectorVisible(false);
+  }
+
+  async function handleOpenBookmarkSelector() {
+    if (!controller.bookmarksLoadedAt && !controller.bookmarksLoading) {
+      await controller.loadBookmarks();
+    }
+    setBookmarkSelectorVisible(true);
+  }
+
+  async function handleOpenBookmarkItem(reference: string) {
+    const parsed = tryParseBookmarkReference(reference);
+    if (!parsed) return;
+    const canonicalBook = resolveBibleBookName(parsed.book);
+    if (!canonicalBook) return;
+    if (parsed.verse !== undefined) {
+      controller.queueReaderFocusTarget(
+        canonicalBook,
+        parsed.chapter,
+        parsed.verse,
+      );
+    }
+    closeBookmarkSelector();
+    scrollReaderToTop();
+    await controller.navigateReaderTo(canonicalBook, parsed.chapter);
+  }
+
+  async function handleToggleCurrentChapterBookmark() {
+    if (suppressBookmarkTogglePressRef.current) {
+      suppressBookmarkTogglePressRef.current = false;
+      return;
+    }
+    if (controller.bookmarkMutationBusy || controller.busy) return;
+    triggerSelectionHaptic();
+    if (currentChapterBookmark) {
+      await controller.handleDeleteBookmark(currentChapterBookmark.id);
+      return;
+    }
+    await controller.handleReaderBookmarkChapter();
+  }
+
   function clearSelection() {
     setSelectionDraft(null);
     setSelectionModalVisible(false);
     setSelectionSynopsis(null);
     setSelectionSynopsisError(null);
     setSelectionView("synopsis");
+    setSelectionNoteEditorVisible(false);
+    setSelectionNoteDraft("");
     resetRootTranslation();
     lastVerseTapRef.current = null;
   }
+
+  useEffect(() => {
+    if (!selectionModalVisible) return;
+    setSelectionNoteEditorVisible(false);
+    setSelectionNoteDraft(selectedHighlightForSelection?.note ?? "");
+  }, [selectedHighlightForSelection?.id, selectionModalVisible]);
+
+  useEffect(() => {
+    if (!selectionNoteEditorVisible) return;
+    const timer = setTimeout(() => {
+      selectionNoteInputRef.current?.focus();
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [selectionNoteEditorVisible]);
 
   function scrollReaderToTop() {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
@@ -1264,12 +1377,22 @@ export function ReaderScreen({
     clearSelection();
   }
 
-  function persistReferenceNotes(next: VerseNoteMap) {
-    setReferenceNotes(next);
-    void AsyncStorage.setItem(
-      READER_VERSE_NOTES_STORAGE_KEY,
-      JSON.stringify(next),
-    ).catch(() => {});
+  async function handleSaveSelectionNote() {
+    const payload = selectionDraft
+      ? buildSelectionPayload(selectionDraft)
+      : { text: selectedText, verses: selectedVerses };
+    if (!payload.text || payload.verses.length === 0) return;
+
+    payload.verses.forEach((verse) =>
+      runHighlightFeedbackPulse(verse, controller.readerHighlightColor),
+    );
+    await controller.handleReaderHighlightNoteSelection(
+      payload.verses,
+      payload.text,
+      selectionNoteDraft,
+      controller.readerHighlightColor,
+    );
+    clearSelection();
   }
 
   function closeReferenceModal() {
@@ -1355,14 +1478,7 @@ export function ReaderScreen({
 
   function handleSaveReferenceNote() {
     if (!activeReference) return;
-    const nextDraft = referenceNoteDraft.trim();
-    const next: VerseNoteMap = { ...referenceNotes };
-    if (nextDraft) {
-      next[activeReference] = nextDraft;
-    } else {
-      delete next[activeReference];
-    }
-    persistReferenceNotes(next);
+    void controller.saveVerseNote(activeReference, referenceNoteDraft);
     setReferenceNoteEditorVisible(false);
   }
 
@@ -1555,6 +1671,7 @@ export function ReaderScreen({
     }
     if (
       bookSelectorVisible ||
+      bookmarkSelectorVisible ||
       chapterSelectorVisible ||
       selectionModalVisible ||
       referenceModalVisible
@@ -1741,6 +1858,41 @@ export function ReaderScreen({
                 }
                 name="chevron-forward"
                 size={18}
+              />
+            </PressableScale>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={
+                currentChapterBookmark
+                  ? `Remove bookmark for ${controller.reader.book} ${controller.reader.chapter}`
+                  : `Save bookmark for ${controller.reader.book} ${controller.reader.chapter}`
+              }
+              disabled={controller.bookmarkMutationBusy || controller.busy}
+              motionPreset="quiet"
+              onLongPress={() => {
+                suppressBookmarkTogglePressRef.current = true;
+                void handleOpenBookmarkSelector();
+              }}
+              onPress={() => {
+                void handleToggleCurrentChapterBookmark();
+              }}
+              style={[
+                localStyles.headerChapterNavButton,
+                currentChapterBookmark
+                  ? localStyles.headerBookmarkButtonActive
+                  : null,
+              ]}
+            >
+              <Ionicons
+                color={
+                  controller.bookmarkMutationBusy
+                    ? "rgba(228, 228, 231, 0.36)"
+                    : currentChapterBookmark
+                      ? T.colors.accentStrong
+                      : "rgba(228, 228, 231, 0.88)"
+                }
+                name={currentChapterBookmark ? "bookmark" : "bookmark-outline"}
+                size={17}
               />
             </PressableScale>
           </View>
@@ -2390,6 +2542,112 @@ export function ReaderScreen({
       </Modal>
 
       <Modal
+        visible={bookmarkSelectorVisible}
+        animationType="none"
+        transparent
+        onRequestClose={closeBookmarkSelector}
+      >
+        <View style={localStyles.selectorOverlayTop}>
+          <Pressable
+            onPress={closeBookmarkSelector}
+            style={localStyles.modalBackdrop}
+          />
+          <Animated.View
+            style={[
+              localStyles.selectorDropdownCard,
+              {
+                opacity: selectorDropAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 1],
+                }),
+                transform: [
+                  {
+                    translateY: selectorDropAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-20, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={localStyles.modalHeaderRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.panelTitle}>Bookmarks</Text>
+                <Text style={styles.caption}>
+                  Tap to reopen a saved place in Reader.
+                </Text>
+              </View>
+              <ActionButton
+                label="Close"
+                variant="ghost"
+                motionPreset="quiet"
+                onPress={closeBookmarkSelector}
+              />
+            </View>
+            <ScrollView
+              style={localStyles.selectorScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {controller.bookmarksLoading ? (
+                <LoadingDotsNative label="Loading bookmarks..." />
+              ) : null}
+              {!controller.bookmarksLoading && sortedBookmarks.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyTitle}>No bookmarks yet</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Tap the bookmark icon in the header to save this chapter.
+                  </Text>
+                </View>
+              ) : null}
+              {!controller.bookmarksLoading && sortedBookmarks.length > 0 ? (
+                <View style={localStyles.selectorSection}>
+                  <Text style={localStyles.selectorSectionLabel}>
+                    Saved Places
+                  </Text>
+                  {sortedBookmarks.map((item) => {
+                    const isActive = item.id === currentChapterBookmark?.id;
+                    return (
+                      <PressableScale
+                        key={item.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open bookmark ${item.text}`}
+                        motionPreset="quiet"
+                        disabled={controller.readerLoading}
+                        onPress={() => void handleOpenBookmarkItem(item.text)}
+                        style={[
+                          localStyles.selectorRowButton,
+                          isActive ? localStyles.selectorRowButtonActive : null,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            localStyles.selectorRowLabel,
+                            isActive
+                              ? localStyles.selectorRowLabelActive
+                              : null,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {item.text}
+                        </Text>
+                        <Text style={localStyles.selectorRowMeta}>
+                          {formatRelativeDate(item.createdAt)}
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+              ) : null}
+              {!controller.bookmarksLoading && controller.bookmarksError ? (
+                <Text style={styles.error}>{controller.bookmarksError}</Text>
+              ) : null}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={bookSelectorVisible}
         animationType="none"
         transparent
@@ -2701,7 +2959,68 @@ export function ReaderScreen({
                         localStyles.rootActionLabel,
                       ]}
                     />
+                    <ActionButton
+                      label="Note"
+                      variant="ghost"
+                      motionPreset="quiet"
+                      disabled={
+                        selectionSynopsisLoading ||
+                        controller.highlightMutationBusy
+                      }
+                      onPress={() => setSelectionNoteEditorVisible(true)}
+                      style={[
+                        localStyles.compactHeaderAction,
+                        localStyles.selectionActionButton,
+                      ]}
+                      labelStyle={[
+                        localStyles.compactHeaderActionLabel,
+                        localStyles.selectionActionButtonLabel,
+                      ]}
+                    />
                   </View>
+
+                  {selectionNoteEditorVisible ? (
+                    <View style={localStyles.modalPanel}>
+                      <TextInput
+                        ref={selectionNoteInputRef}
+                        accessibilityLabel="Selection note"
+                        multiline
+                        placeholder="Write a note for this highlight..."
+                        placeholderTextColor={T.colors.textMuted}
+                        style={localStyles.referenceNoteInput}
+                        value={selectionNoteDraft}
+                        onChangeText={setSelectionNoteDraft}
+                      />
+                      <View style={localStyles.referenceNoteActions}>
+                        <ActionButton
+                          label="Cancel"
+                          variant="ghost"
+                          motionPreset="quiet"
+                          onPress={() => {
+                            setSelectionNoteEditorVisible(false);
+                            setSelectionNoteDraft(
+                              selectedHighlightForSelection?.note ?? "",
+                            );
+                          }}
+                          style={localStyles.compactHeaderAction}
+                          labelStyle={localStyles.compactHeaderActionLabel}
+                        />
+                        <ActionButton
+                          label={
+                            controller.highlightMutationBusy
+                              ? "Saving..."
+                              : "Save"
+                          }
+                          variant="primary"
+                          motionPreset="quiet"
+                          disabled={controller.highlightMutationBusy}
+                          onPress={() => void handleSaveSelectionNote()}
+                          style={localStyles.compactPrimaryButton}
+                          labelStyle={localStyles.compactPrimaryButtonLabel}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
                 </>
               ) : (
                 <RootTranslationPanel
@@ -2762,6 +3081,10 @@ const localStyles = StyleSheet.create({
     backgroundColor: "rgba(24, 24, 27, 0.84)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  headerBookmarkButtonActive: {
+    borderColor: "rgba(212, 175, 55, 0.4)",
+    backgroundColor: "rgba(212, 175, 55, 0.14)",
   },
   headerPickerButton: {
     minHeight: 38,

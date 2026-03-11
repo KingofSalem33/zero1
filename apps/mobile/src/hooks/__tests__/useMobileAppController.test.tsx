@@ -4,6 +4,7 @@ import { act, render, waitFor } from "@testing-library/react-native";
 import mockAsyncStorage from "@react-native-async-storage/async-storage/jest/async-storage-mock";
 import type { MobileHighlightItem, ProtectedProbeResult } from "../../lib/api";
 import {
+  createLibraryBundle,
   createLibraryMap,
   createBookmark,
   createHighlightViaSync,
@@ -54,6 +55,7 @@ jest.mock("../../lib/api", () => ({
   fetchProtectedProbe: jest.fn(),
   fetchLibraryConnections: jest.fn(),
   fetchLibraryMaps: jest.fn(),
+  createLibraryBundle: jest.fn(),
   createLibraryMap: jest.fn(),
   deleteLibraryMap: jest.fn(),
   fetchBookmarks: jest.fn(),
@@ -166,14 +168,17 @@ describe("useMobileAppController", () => {
     expect(latest?.bookmarks[0]?.id).toBe("bm-1");
   });
 
-  it("creates library map via controller action", async () => {
+  it("saves library map from a live bundle via controller action", async () => {
+    (createLibraryBundle as jest.Mock).mockResolvedValue({
+      bundleId: "bundle-live-1",
+    });
     (createLibraryMap as jest.Mock).mockResolvedValue({
-      id: "map-1",
-      bundleId: "bundle-1",
-      title: "Map 1",
+      id: "map-live-1",
+      bundleId: "bundle-live-1",
+      title: "Generated Map",
       tags: [],
-      createdAt: "2026-03-01T00:00:00.000Z",
-      updatedAt: "2026-03-01T00:00:00.000Z",
+      createdAt: "2026-03-10T00:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
     });
 
     render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
@@ -182,26 +187,31 @@ describe("useMobileAppController", () => {
       expect(latest?.user?.id).toBe("user-1");
     });
 
-    await act(async () => {
-      latest?.setLibraryMapDraft({
-        bundleId: "bundle-1",
-        title: "Map 1",
-      });
-    });
+    const bundle = {
+      nodes: [{ id: "n1", label: "Faith" }],
+      edges: [],
+    };
 
     await act(async () => {
-      await latest?.handleCreateLibraryMap();
+      await latest?.handleSaveLibraryMapFromBundle(bundle, "Generated Map");
     });
 
     await waitFor(() => {
+      expect(createLibraryBundle).toHaveBeenCalledTimes(1);
       expect(createLibraryMap).toHaveBeenCalledTimes(1);
     });
+    expect(createLibraryBundle).toHaveBeenCalledWith(
+      expect.objectContaining({ bundle }),
+    );
     expect(createLibraryMap).toHaveBeenCalledWith(
       expect.objectContaining({
-        payload: { bundleId: "bundle-1", title: "Map 1" },
+        payload: {
+          bundleId: "bundle-live-1",
+          title: "Generated Map",
+        },
       }),
     );
-    expect(latest?.libraryMaps[0]?.id).toBe("map-1");
+    expect(latest?.libraryMaps[0]?.id).toBe("map-live-1");
   });
 
   it("deletes library map via controller action", async () => {

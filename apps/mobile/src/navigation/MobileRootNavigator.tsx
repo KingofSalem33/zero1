@@ -34,9 +34,6 @@ type AppStackParamList = {
     | { mode?: AppMode; prompt?: MobileGoDeeperPayload; autoSend?: boolean }
     | undefined;
   MapViewer: { title?: string; bundle?: unknown } | undefined;
-  LibraryMapCreate: undefined;
-  BookmarkCreate: undefined;
-  BookmarkDetail: { bookmarkId: string };
   HighlightCreate: undefined;
   HighlightDetail: { highlightId: string };
 };
@@ -58,9 +55,6 @@ export interface MobileRootNavigatorProps {
     clearPendingPrompt: () => void;
   }) => ReactNode;
   renderLibrary: (nav: {
-    openMapCreate: () => void;
-    openBookmarkCreate: () => void;
-    openBookmarkDetail: (bookmarkId: string) => void;
     openHighlightCreate: () => void;
     openHighlightDetail: (highlightId: string) => void;
     openMapViewer: (title?: string, bundle?: unknown) => void;
@@ -68,9 +62,6 @@ export interface MobileRootNavigatorProps {
   }) => ReactNode;
   renderAccount: () => ReactNode;
   renderMapViewer: (payload: { title?: string; bundle?: unknown }) => ReactNode;
-  renderLibraryMapCreate: () => ReactNode;
-  renderBookmarkCreate: () => ReactNode;
-  renderBookmarkDetail: (bookmarkId: string) => ReactNode;
   renderHighlightCreate: () => ReactNode;
   renderHighlightDetail: (highlightId: string) => ReactNode;
 }
@@ -109,9 +100,6 @@ export function resolveRootFlow(
 
 export const APP_DETAIL_ROUTES: Array<keyof AppStackParamList> = [
   "MapViewer",
-  "LibraryMapCreate",
-  "BookmarkCreate",
-  "BookmarkDetail",
   "HighlightCreate",
   "HighlightDetail",
 ];
@@ -253,10 +241,6 @@ function ModeShellScreen({
             ]}
           >
             {props.renderLibrary({
-              openMapCreate: () => navigation.navigate("LibraryMapCreate"),
-              openBookmarkCreate: () => navigation.navigate("BookmarkCreate"),
-              openBookmarkDetail: (bookmarkId) =>
-                navigation.navigate("BookmarkDetail", { bookmarkId }),
               openHighlightCreate: () => navigation.navigate("HighlightCreate"),
               openHighlightDetail: (highlightId) =>
                 navigation.navigate("HighlightDetail", { highlightId }),
@@ -421,21 +405,6 @@ function AppStackNavigator(
           })
         }
       </AppStack.Screen>
-      <AppStack.Screen name="LibraryMapCreate" options={{ title: "New Map" }}>
-        {() => props.renderLibraryMapCreate()}
-      </AppStack.Screen>
-      <AppStack.Screen
-        name="BookmarkCreate"
-        options={{ title: "New Bookmark" }}
-      >
-        {() => props.renderBookmarkCreate()}
-      </AppStack.Screen>
-      <AppStack.Screen
-        name="BookmarkDetail"
-        options={{ title: "Bookmark Detail" }}
-      >
-        {({ route }) => props.renderBookmarkDetail(route.params.bookmarkId)}
-      </AppStack.Screen>
       <AppStack.Screen
         name="HighlightCreate"
         options={{ title: "New Highlight" }}
@@ -460,9 +429,6 @@ export function MobileRootNavigator(props: MobileRootNavigatorProps) {
     renderLibrary: props.renderLibrary,
     renderAccount: props.renderAccount,
     renderMapViewer: props.renderMapViewer,
-    renderLibraryMapCreate: props.renderLibraryMapCreate,
-    renderBookmarkCreate: props.renderBookmarkCreate,
-    renderBookmarkDetail: props.renderBookmarkDetail,
     renderHighlightCreate: props.renderHighlightCreate,
     renderHighlightDetail: props.renderHighlightDetail,
   };
