@@ -12,11 +12,8 @@ import { LibraryScreen } from "./screens/DataListScreens";
 import { ReaderScreen } from "./screens/ReaderScreen";
 import { ChatScreen, MapViewerScreen } from "./screens/ChatMapScreens";
 import {
-  BookmarkCreateScreen,
-  BookmarkDetailScreen,
   HighlightCreateScreen,
   HighlightDetailScreen,
-  LibraryMapCreateScreen,
 } from "./screens/DetailScreens";
 import { styles } from "./theme/mobileStyles";
 import { finishPerfSpan, startPerfSpan } from "./lib/perfTelemetry";
@@ -61,11 +58,6 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
             renderAccount={() => <AccountScreen />}
             renderMapViewer={(payload) => (
               <MapViewerScreen title={payload.title} bundle={payload.bundle} />
-            )}
-            renderLibraryMapCreate={() => <LibraryMapCreateScreen />}
-            renderBookmarkCreate={() => <BookmarkCreateScreen />}
-            renderBookmarkDetail={(bookmarkId) => (
-              <BookmarkDetailScreen bookmarkId={bookmarkId} />
             )}
             renderHighlightCreate={() => <HighlightCreateScreen />}
             renderHighlightDetail={(highlightId) => (

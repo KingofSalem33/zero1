@@ -1,5 +1,6 @@
 import {
   Alert,
+  Share,
   ScrollView,
   Text,
   TextInput,
@@ -23,6 +24,22 @@ const HIGHLIGHT_PRESET_COLORS = [
   "#A78BFA",
   "#F43F5E",
 ];
+
+function formatHighlightShareText(args: {
+  referenceLabel: string;
+  text: string;
+  color: string;
+  note?: string;
+}): string {
+  return [
+    args.referenceLabel,
+    args.text,
+    `Color: ${args.color}`,
+    args.note?.trim() ? `Note: ${args.note.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 export function BookmarkCreateScreen() {
   const controller = useMobileApp();
@@ -155,78 +172,6 @@ export function BookmarkCreateScreen() {
   );
 }
 
-export function LibraryMapCreateScreen() {
-  const controller = useMobileApp();
-
-  return (
-    <ScrollView contentContainerStyle={styles.routeScrollContent}>
-      <SurfaceCard>
-        <Text style={styles.panelTitle}>New Map</Text>
-        <Text style={styles.panelSubtitle}>
-          Create a map record from an existing bundle ID.
-        </Text>
-        <Text style={styles.caption}>Bundle ID</Text>
-        <TextInput
-          autoCapitalize="none"
-          placeholder="Bundle ID"
-          accessibilityLabel="Map bundle ID"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
-          value={controller.libraryMapDraft.bundleId}
-          onChangeText={(value) =>
-            controller.setLibraryMapDraft((current) => ({
-              ...current,
-              bundleId: value,
-            }))
-          }
-        />
-        {controller.libraryMapBundleSuggestions.length > 0 ? (
-          <View style={styles.suggestionRow}>
-            {controller.libraryMapBundleSuggestions.map((bundleId) => (
-              <PressableScale
-                key={bundleId}
-                onPress={() =>
-                  controller.selectLibraryMapBundleSuggestion(bundleId)
-                }
-                style={styles.suggestionChip}
-                accessibilityRole="button"
-                accessibilityLabel={`Select bundle ${bundleId}`}
-              >
-                <Text style={styles.suggestionChipLabel}>{bundleId}</Text>
-              </PressableScale>
-            ))}
-          </View>
-        ) : null}
-        <Text style={styles.caption}>Map title (optional)</Text>
-        <TextInput
-          placeholder="Map title"
-          accessibilityLabel="Map title"
-          placeholderTextColor={T.colors.textMuted}
-          style={styles.input}
-          value={controller.libraryMapDraft.title}
-          onChangeText={(value) =>
-            controller.setLibraryMapDraft((current) => ({
-              ...current,
-              title: value,
-            }))
-          }
-        />
-        <View style={styles.row}>
-          <ActionButton
-            disabled={controller.libraryMapMutationBusy || controller.busy}
-            label={controller.libraryMapMutationBusy ? "Saving..." : "Save map"}
-            onPress={() => void controller.handleCreateLibraryMap()}
-            variant="primary"
-          />
-        </View>
-        {controller.libraryMapMutationError ? (
-          <Text style={styles.error}>{controller.libraryMapMutationError}</Text>
-        ) : null}
-      </SurfaceCard>
-    </ScrollView>
-  );
-}
-
 export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
   const navigation = useNavigation<any>();
   const controller = useMobileApp();
@@ -264,6 +209,13 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
             onPress={() => {
               try {
                 const reference = parseBookmarkReference(bookmark.text);
+                if (reference.verse !== undefined) {
+                  controller.queueReaderFocusTarget(
+                    reference.book,
+                    reference.chapter,
+                    reference.verse,
+                  );
+                }
                 void controller.navigateReaderTo(
                   reference.book,
                   reference.chapter,
@@ -518,24 +470,6 @@ export function HighlightDetailScreen({
         <Text style={styles.meta}>{highlight.referenceLabel}</Text>
         <Text style={styles.connectionSynopsis}>{highlight.text}</Text>
         <Text style={styles.fieldLabel}>Color</Text>
-        <View style={styles.colorChipRow}>
-          {HIGHLIGHT_PRESET_COLORS.map((color) => (
-            <PressableScale
-              key={color}
-              onPress={() => controller.setHighlightEditColor(color)}
-              style={[
-                styles.colorChip,
-                { backgroundColor: color },
-                controller.highlightEditColor.trim().toLowerCase() ===
-                color.toLowerCase()
-                  ? styles.colorChipActive
-                  : null,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={`Set highlight color ${color}`}
-            />
-          ))}
-        </View>
         <TextInput
           autoCapitalize="none"
           placeholder="#facc15"
@@ -563,6 +497,14 @@ export function HighlightDetailScreen({
             disabled={controller.highlightMutationBusy || controller.busy}
             label="Open in reader"
             onPress={() => {
+              const firstVerse = highlight.verses.at(0);
+              if (firstVerse !== undefined) {
+                controller.queueReaderFocusTarget(
+                  highlight.book,
+                  highlight.chapter,
+                  firstVerse,
+                );
+              }
               void controller.navigateReaderTo(
                 highlight.book,
                 highlight.chapter,
@@ -571,6 +513,24 @@ export function HighlightDetailScreen({
             }}
             variant="secondary"
           />
+          <ActionButton
+            disabled={controller.highlightMutationBusy || controller.busy}
+            label="Share"
+            onPress={() =>
+              void Share.share({
+                title: highlight.referenceLabel,
+                message: formatHighlightShareText({
+                  referenceLabel: highlight.referenceLabel,
+                  text: highlight.text,
+                  color: highlight.color,
+                  note: highlight.note,
+                }),
+              })
+            }
+            variant="ghost"
+          />
+        </View>
+        <View style={styles.row}>
           <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
             label={

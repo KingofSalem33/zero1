@@ -13,8 +13,10 @@ import {
 import {
   fetchChapterFooter,
   createBookmark,
+  createLibraryBundle,
   createHighlightViaSync,
   createLibraryMap,
+  deleteLibraryConnection,
   deleteBookmark,
   deleteHighlight,
   deleteLibraryMap,
@@ -31,6 +33,8 @@ import {
   type MobileHighlightItem,
   type ProtectedProbeResult,
   type VerseCrossReferenceItem,
+  updateLibraryConnection,
+  updateLibraryMap,
   updateHighlight,
 } from "../lib/api";
 import { getBibleBook, type BibleChapterVerse } from "../lib/bibleBookCache";
@@ -46,6 +50,14 @@ import {
 } from "../lib/authRedirect";
 import { supabase } from "../lib/supabase";
 import { finishPerfSpan, startPerfSpan } from "../lib/perfTelemetry";
+import {
+  sanitizeVerseNoteMap,
+  toVerseNoteItems,
+  upsertVerseNote,
+  VERSE_NOTES_STORAGE_KEY,
+  type VerseNoteItem,
+  type VerseNoteMap,
+} from "../lib/verseNotes";
 
 export interface HighlightDraftForm {
   book: string;
@@ -62,15 +74,29 @@ export interface BookmarkDraftForm {
   verse: string;
 }
 
-export interface LibraryMapDraftForm {
-  bundleId: string;
+export interface LibraryConnectionEditForm {
+  note: string;
+  tags: string;
+}
+
+export interface LibraryMapEditForm {
   title: string;
+  note: string;
+  tags: string;
 }
 
 export interface ReaderState {
   book: string;
   chapter: number;
   verses: BibleChapterVerse[];
+}
+
+export interface ReaderFocusTarget {
+  book: string;
+  chapter: number;
+  verse: number;
+  key: string;
+  startedAt: number;
 }
 
 function parseVersesInput(value: string): number[] {
@@ -161,13 +187,6 @@ function createDefaultBookmarkDraft(): BookmarkDraftForm {
   };
 }
 
-function createDefaultLibraryMapDraft(): LibraryMapDraftForm {
-  return {
-    bundleId: "",
-    title: "",
-  };
-}
-
 function createDefaultReaderState(): ReaderState {
   return {
     book: "Matthew",
@@ -196,16 +215,13 @@ export interface MobileAppController {
   libraryMapsError: string | null;
   libraryLoadedAt: string | null;
   libraryMapsLoadedAt: string | null;
-  libraryMapDraft: LibraryMapDraftForm;
-  setLibraryMapDraft: (
-    value:
-      | LibraryMapDraftForm
-      | ((current: LibraryMapDraftForm) => LibraryMapDraftForm),
-  ) => void;
-  libraryMapBundleSuggestions: string[];
-  selectLibraryMapBundleSuggestion: (bundleId: string) => void;
   libraryMapMutationBusy: boolean;
   libraryMapMutationError: string | null;
+  libraryConnectionMutationBusy: boolean;
+  libraryConnectionMutationError: string | null;
+  verseNotes: VerseNoteMap;
+  verseNoteItems: VerseNoteItem[];
+  saveVerseNote: (reference: string, text: string) => Promise<void>;
   reader: ReaderState;
   readerLoading: boolean;
   readerError: string | null;
@@ -219,6 +235,13 @@ export interface MobileAppController {
   readerFooterError: string | null;
   readerHighlightColor: string;
   setReaderHighlightColor: (value: string) => void;
+  pendingReaderFocusTarget: ReaderFocusTarget | null;
+  queueReaderFocusTarget: (
+    book: string,
+    chapter: number,
+    verse: number,
+  ) => void;
+  clearPendingReaderFocusTarget: (key?: string) => void;
   bookmarks: MobileBookmarkItem[];
   bookmarksLoading: boolean;
   bookmarksError: string | null;
@@ -267,18 +290,37 @@ export interface MobileAppController {
   loadBookmarks: () => Promise<void>;
   loadHighlights: () => Promise<void>;
   refreshDashboard: () => Promise<void>;
-  handleCreateLibraryMap: () => Promise<void>;
+  handleSaveLibraryMapFromBundle: (
+    bundle: unknown,
+    title?: string,
+  ) => Promise<void>;
+  handleSaveLibraryMapMeta: (
+    id: string,
+    updates: LibraryMapEditForm,
+  ) => Promise<void>;
   handleDeleteLibraryMap: (id: string) => Promise<void>;
+  handleSaveLibraryConnectionMeta: (
+    id: string,
+    updates: LibraryConnectionEditForm,
+  ) => Promise<void>;
+  handleDeleteLibraryConnection: (id: string) => Promise<void>;
   navigateReaderTo: (book: string, chapter: number) => Promise<void>;
   goToPreviousReaderChapter: () => Promise<void>;
   goToNextReaderChapter: () => Promise<void>;
   selectReaderVerse: (verse: number) => Promise<void>;
   clearReaderVerseSelection: () => void;
+  handleReaderBookmarkChapter: () => Promise<void>;
   handleReaderBookmarkVerse: (verse: number) => Promise<void>;
   handleReaderHighlightVerse: (verse: number, text: string) => Promise<void>;
   handleReaderHighlightSelection: (
     verses: number[],
     text: string,
+    color?: string,
+  ) => Promise<void>;
+  handleReaderHighlightNoteSelection: (
+    verses: number[],
+    text: string,
+    note: string,
     color?: string,
   ) => Promise<void>;
   handleReaderRemoveHighlightSelection: (verses: number[]) => Promise<void>;
@@ -323,14 +365,18 @@ export function useMobileAppController(
   const [libraryMapsLoadedAt, setLibraryMapsLoadedAt] = useState<string | null>(
     null,
   );
-  const [libraryMapDraft, setLibraryMapDraft] = useState<LibraryMapDraftForm>(
-    createDefaultLibraryMapDraft(),
-  );
   const [libraryMapMutationBusy, setLibraryMapMutationBusy] = useState(false);
   const [libraryMapMutationError, setLibraryMapMutationError] = useState<
     string | null
   >(null);
+  const [libraryConnectionMutationBusy, setLibraryConnectionMutationBusy] =
+    useState(false);
+  const [libraryConnectionMutationError, setLibraryConnectionMutationError] =
+    useState<string | null>(null);
+  const [verseNotes, setVerseNotes] = useState<VerseNoteMap>({});
   const [reader, setReader] = useState<ReaderState>(createDefaultReaderState());
+  const [pendingReaderFocusTarget, setPendingReaderFocusTarget] =
+    useState<ReaderFocusTarget | null>(null);
   const [readerLoading, setReaderLoading] = useState(false);
   const [readerError, setReaderError] = useState<string | null>(null);
   const [readerLoadedAt, setReaderLoadedAt] = useState<string | null>(null);
@@ -413,6 +459,10 @@ export function useMobileAppController(
     () => highlights.find((item) => item.id === selectedHighlightId) ?? null,
     [highlights, selectedHighlightId],
   );
+  const verseNoteItems = useMemo(
+    () => toVerseNoteItems(verseNotes),
+    [verseNotes],
+  );
 
   useEffect(() => {
     let active = true;
@@ -430,6 +480,27 @@ export function useMobileAppController(
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(VERSE_NOTES_STORAGE_KEY)
+      .then((value) => {
+        if (!active || !value) return;
+        try {
+          const parsed = JSON.parse(value) as unknown;
+          setVerseNotes(sanitizeVerseNoteMap(parsed));
+        } catch {
+          setVerseNotes({});
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setVerseNotes({});
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     void AsyncStorage.setItem(
       READER_HIGHLIGHT_COLOR_STORAGE_KEY,
       readerHighlightColor,
@@ -439,6 +510,43 @@ export function useMobileAppController(
   function setReaderHighlightColor(value: string) {
     if (!isReaderHighlightColor(value)) return;
     setReaderHighlightColorState(value);
+  }
+
+  function queueReaderFocusTarget(
+    book: string,
+    chapter: number,
+    verse: number,
+  ) {
+    if (!Number.isInteger(chapter) || chapter <= 0) return;
+    if (!Number.isInteger(verse) || verse <= 0) return;
+    const canonicalBook = resolveBibleBookName(book);
+    if (!canonicalBook) return;
+    setPendingReaderFocusTarget({
+      book: canonicalBook,
+      chapter,
+      verse,
+      key: `${canonicalBook}:${chapter}:${verse}:${Date.now()}`,
+      startedAt: Date.now(),
+    });
+  }
+
+  function clearPendingReaderFocusTarget(key?: string) {
+    setPendingReaderFocusTarget((current) => {
+      if (!current) return current;
+      if (key && current.key !== key) return current;
+      return null;
+    });
+  }
+
+  async function saveVerseNote(reference: string, text: string) {
+    setVerseNotes((current) => {
+      const next = upsertVerseNote(current, reference, text);
+      void AsyncStorage.setItem(
+        VERSE_NOTES_STORAGE_KEY,
+        JSON.stringify(next),
+      ).catch(() => {});
+      return next;
+    });
   }
   const bookmarkBookSuggestions = useMemo(() => {
     const query = bookmarkDraft.book.trim();
@@ -481,28 +589,6 @@ export function useMobileAppController(
 
     return "Book name not recognized. Use a full canonical book name.";
   }, [bookmarkDraft.book, bookmarkBookSuggestions]);
-  const libraryMapBundleSuggestions = useMemo(() => {
-    const query = libraryMapDraft.bundleId.trim().toLowerCase();
-    const candidates = Array.from(
-      new Set(
-        [
-          ...libraryConnections.map((item) => item.bundleId),
-          ...libraryMaps.map((item) => item.bundleId),
-        ]
-          .filter((value): value is string => Boolean(value && value.trim()))
-          .map((value) => value.trim()),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-
-    if (!query) {
-      return candidates.slice(0, 6);
-    }
-
-    return candidates
-      .filter((value) => value.toLowerCase().includes(query))
-      .slice(0, 6);
-  }, [libraryConnections, libraryMaps, libraryMapDraft.bundleId]);
-
   useEffect(() => {
     if (!selectedHighlight) return;
     setHighlightEditColor(selectedHighlight.color || "#facc15");
@@ -525,13 +611,6 @@ export function useMobileAppController(
         chapter: nextChapter,
       };
     });
-  }
-
-  function selectLibraryMapBundleSuggestion(bundleId: string) {
-    setLibraryMapDraft((current) => ({
-      ...current,
-      bundleId,
-    }));
   }
 
   const authLabel = useMemo(() => {
@@ -618,8 +697,8 @@ export function useMobileAppController(
       setLibraryMaps([]);
       setLibraryMapsError(null);
       setLibraryMapsLoadedAt(null);
-      setLibraryMapDraft(createDefaultLibraryMapDraft());
       setLibraryMapMutationError(null);
+      setLibraryConnectionMutationError(null);
       setReader(createDefaultReaderState());
       setReaderError(null);
       setReaderLoadedAt(null);
@@ -1127,13 +1206,16 @@ export function useMobileAppController(
     setReaderCrossReferencesError(null);
   }
 
-  async function handleReaderBookmarkVerse(verse: number) {
+  async function saveReaderBookmark(verse?: number) {
     const canonicalBook = resolveBibleBookName(reader.book);
     if (!canonicalBook) {
       setBookmarkMutationError("Reader book could not be resolved.");
       return;
     }
-    if (!Number.isInteger(verse) || verse <= 0) {
+    if (
+      verse !== undefined &&
+      (!Number.isInteger(verse) || Number.isNaN(verse) || verse <= 0)
+    ) {
       setBookmarkMutationError("Verse must be a positive whole number.");
       return;
     }
@@ -1169,6 +1251,14 @@ export function useMobileAppController(
     } finally {
       setBookmarkMutationBusy(false);
     }
+  }
+
+  async function handleReaderBookmarkChapter() {
+    await saveReaderBookmark();
+  }
+
+  async function handleReaderBookmarkVerse(verse: number) {
+    await saveReaderBookmark(verse);
   }
 
   async function handleReaderHighlightSelection(
@@ -1393,34 +1483,44 @@ export function useMobileAppController(
     ]);
   }
 
-  async function handleCreateLibraryMap() {
-    const bundleId = libraryMapDraft.bundleId.trim();
-    const title = libraryMapDraft.title.trim();
-
-    if (!bundleId) {
-      setLibraryMapMutationError("Bundle ID is required to create a map.");
-      return;
-    }
+  async function handleSaveLibraryMapFromBundle(
+    bundle: unknown,
+    title?: string,
+  ) {
+    const normalizedTitle = title?.trim() ?? "";
 
     setLibraryMapMutationBusy(true);
     setLibraryMapMutationError(null);
     try {
+      const bundleResult = await withAccessToken((accessToken) =>
+        createLibraryBundle({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          bundle,
+        }),
+      );
       const created = await withAccessToken((accessToken) =>
         createLibraryMap({
           apiBaseUrl: MOBILE_ENV.API_URL,
           accessToken,
           payload: {
-            bundleId,
-            title: title.length > 0 ? title : undefined,
+            bundleId: bundleResult.bundleId,
+            title: normalizedTitle.length > 0 ? normalizedTitle : undefined,
           },
         }),
       );
-      setLibraryMaps((current) => [created, ...current]);
+      setLibraryMaps((current) => {
+        const existingIndex = current.findIndex(
+          (item) => item.id === created.id,
+        );
+        if (existingIndex < 0) {
+          return [created, ...current];
+        }
+        const next = [...current];
+        next[existingIndex] = created;
+        return next;
+      });
       setLibraryMapsLoadedAt(new Date().toISOString());
-      setLibraryMapDraft((current) => ({
-        ...current,
-        title: "",
-      }));
       notify("success", "Map saved.");
     } catch (error) {
       setLibraryMapMutationError(
@@ -1429,6 +1529,176 @@ export function useMobileAppController(
       notify(
         "error",
         error instanceof Error ? error.message : "Failed to save map.",
+      );
+    } finally {
+      setLibraryMapMutationBusy(false);
+    }
+  }
+
+  async function handleReaderHighlightNoteSelection(
+    verses: number[],
+    text: string,
+    note: string,
+    color = readerHighlightColor,
+  ) {
+    const trimmedText = text.trim();
+    const trimmedNote = note.trim();
+    const canonicalBook = resolveBibleBookName(reader.book);
+    const normalizedVerses = Array.from(new Set(verses))
+      .filter((entry) => Number.isInteger(entry) && entry > 0)
+      .sort((a, b) => a - b);
+
+    if (!canonicalBook) {
+      setHighlightMutationError("Reader book could not be resolved.");
+      return;
+    }
+    if (normalizedVerses.length === 0) {
+      setHighlightMutationError("Select at least one verse.");
+      return;
+    }
+    if (!trimmedText) {
+      setHighlightMutationError("Highlight text is required.");
+      return;
+    }
+    if (!trimmedNote) {
+      setHighlightMutationError("Note is required.");
+      return;
+    }
+
+    const selectedVerseSet = new Set(normalizedVerses);
+    const exactMatch = highlights.find(
+      (item) =>
+        item.book.toLowerCase() === canonicalBook.toLowerCase() &&
+        item.chapter === reader.chapter &&
+        item.verses.length === normalizedVerses.length &&
+        item.verses.every((verse) => selectedVerseSet.has(verse)),
+    );
+    const overlappingMatch =
+      exactMatch ??
+      highlights.find(
+        (item) =>
+          item.book.toLowerCase() === canonicalBook.toLowerCase() &&
+          item.chapter === reader.chapter &&
+          item.verses.some((verse) => selectedVerseSet.has(verse)),
+      );
+
+    setHighlightMutationBusy(true);
+    setHighlightMutationError(null);
+    try {
+      if (overlappingMatch) {
+        const updated = await withAccessToken((accessToken) =>
+          updateHighlight({
+            apiBaseUrl: MOBILE_ENV.API_URL,
+            accessToken,
+            id: overlappingMatch.id,
+            updates: {
+              note: trimmedNote,
+            },
+          }),
+        );
+        setHighlights((current) =>
+          current.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        setSelectedHighlightId(updated.id);
+        setHighlightsLoadedAt(new Date().toISOString());
+        notify("success", "Highlight note saved.");
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const verseLabel = formatVerseRangeLabel(normalizedVerses);
+      const textByVerse = new Map(
+        reader.verses.map((entry) => [entry.verse, entry.text]),
+      );
+      const newItem: MobileHighlightItem = {
+        id: makeUuidLike(),
+        book: canonicalBook,
+        chapter: reader.chapter,
+        verses: normalizedVerses,
+        text: trimmedText,
+        color: color.trim() || "#facc15",
+        note: trimmedNote,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        referenceLabel: `${canonicalBook} ${reader.chapter}:${verseLabel}`,
+      };
+
+      const adjustedHighlights = trimHighlightOverlaps({
+        highlights,
+        book: canonicalBook,
+        chapter: reader.chapter,
+        selectedVerses: selectedVerseSet,
+        buildTextForVerses: (remainingVerses) =>
+          remainingVerses
+            .map((verse) => `${verse}. ${textByVerse.get(verse) ?? ""}`.trim())
+            .join(" ")
+            .trim(),
+      });
+      const nextHighlights = await withAccessToken((accessToken) =>
+        createHighlightViaSync({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          currentHighlights: adjustedHighlights,
+          newHighlight: newItem,
+        }),
+      );
+      setHighlights(nextHighlights);
+      setSelectedHighlightId(newItem.id);
+      setHighlightsLoadedAt(new Date().toISOString());
+      notify("success", "Highlight note saved.");
+    } catch (error) {
+      setHighlightMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Failed to save highlight note.",
+      );
+    } finally {
+      setHighlightMutationBusy(false);
+    }
+  }
+
+  async function handleSaveLibraryMapMeta(
+    id: string,
+    updates: LibraryMapEditForm,
+  ) {
+    const title = updates.title.trim();
+    const note = updates.note.trim();
+    const tags = updates.tags
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    setLibraryMapMutationBusy(true);
+    setLibraryMapMutationError(null);
+    try {
+      const updated = await withAccessToken((accessToken) =>
+        updateLibraryMap({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          id,
+          payload: {
+            title: title.length > 0 ? title : undefined,
+            note: note.length > 0 ? note : undefined,
+            tags,
+          },
+        }),
+      );
+      setLibraryMaps((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setLibraryMapsLoadedAt(new Date().toISOString());
+      notify("success", "Map updated.");
+    } catch (error) {
+      setLibraryMapMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to update map.",
       );
     } finally {
       setLibraryMapMutationBusy(false);
@@ -1459,6 +1729,77 @@ export function useMobileAppController(
       );
     } finally {
       setLibraryMapMutationBusy(false);
+    }
+  }
+
+  async function handleSaveLibraryConnectionMeta(
+    id: string,
+    updates: LibraryConnectionEditForm,
+  ) {
+    const note = updates.note.trim();
+    const tags = updates.tags
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    setLibraryConnectionMutationBusy(true);
+    setLibraryConnectionMutationError(null);
+    try {
+      const updated = await withAccessToken((accessToken) =>
+        updateLibraryConnection({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          id,
+          payload: {
+            note: note.length > 0 ? note : undefined,
+            tags,
+          },
+        }),
+      );
+      setLibraryConnections((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setLibraryLoadedAt(new Date().toISOString());
+      notify("success", "Connection updated.");
+    } catch (error) {
+      setLibraryConnectionMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to update connection.",
+      );
+    } finally {
+      setLibraryConnectionMutationBusy(false);
+    }
+  }
+
+  async function handleDeleteLibraryConnection(id: string) {
+    setLibraryConnectionMutationBusy(true);
+    setLibraryConnectionMutationError(null);
+    try {
+      await withAccessToken((accessToken) =>
+        deleteLibraryConnection({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          id,
+        }),
+      );
+      setLibraryConnections((current) =>
+        current.filter((item) => item.id !== id),
+      );
+      setLibraryLoadedAt(new Date().toISOString());
+      notify("success", "Connection deleted.");
+    } catch (error) {
+      setLibraryConnectionMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to delete connection.",
+      );
+    } finally {
+      setLibraryConnectionMutationBusy(false);
     }
   }
 
@@ -1732,12 +2073,13 @@ export function useMobileAppController(
     libraryMapsError,
     libraryLoadedAt,
     libraryMapsLoadedAt,
-    libraryMapDraft,
-    setLibraryMapDraft,
-    libraryMapBundleSuggestions,
-    selectLibraryMapBundleSuggestion,
     libraryMapMutationBusy,
     libraryMapMutationError,
+    libraryConnectionMutationBusy,
+    libraryConnectionMutationError,
+    verseNotes,
+    verseNoteItems,
+    saveVerseNote,
     reader,
     readerLoading,
     readerError,
@@ -1751,6 +2093,9 @@ export function useMobileAppController(
     readerFooterError,
     readerHighlightColor,
     setReaderHighlightColor,
+    pendingReaderFocusTarget,
+    queueReaderFocusTarget,
+    clearPendingReaderFocusTarget,
     bookmarks,
     bookmarksLoading,
     bookmarksError,
@@ -1791,16 +2136,21 @@ export function useMobileAppController(
     loadBookmarks,
     loadHighlights,
     refreshDashboard,
-    handleCreateLibraryMap,
+    handleSaveLibraryMapFromBundle,
+    handleSaveLibraryMapMeta,
     handleDeleteLibraryMap,
+    handleSaveLibraryConnectionMeta,
+    handleDeleteLibraryConnection,
     navigateReaderTo,
     goToPreviousReaderChapter,
     goToNextReaderChapter,
     selectReaderVerse,
     clearReaderVerseSelection,
+    handleReaderBookmarkChapter,
     handleReaderBookmarkVerse,
     handleReaderHighlightVerse,
     handleReaderHighlightSelection,
+    handleReaderHighlightNoteSelection,
     handleReaderRemoveHighlightSelection,
     handleCreateBookmark,
     handleDeleteBookmark,

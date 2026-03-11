@@ -1,5 +1,4 @@
 import { Text, View } from "react-native";
-import { ActionButton } from "../../components/native/ActionButton";
 import { PressableScale } from "../../components/native/PressableScale";
 import type {
   LibraryConnectionItem,
@@ -8,6 +7,14 @@ import type {
   MobileHighlightItem,
 } from "../../lib/api";
 import { styles } from "../../theme/mobileStyles";
+import type { VerseNoteItem } from "../../lib/verseNotes";
+
+function formatTagSummary(tags: string[]): string | null {
+  const cleaned = tags.map((tag) => tag.trim()).filter(Boolean);
+  if (cleaned.length === 0) return null;
+  if (cleaned.length <= 2) return cleaned.join(", ");
+  return `${cleaned.slice(0, 2).join(", ")} +${cleaned.length - 2}`;
+}
 
 export function formatRelativeDate(value?: string): string {
   if (!value) return "Unknown";
@@ -28,15 +35,27 @@ export function formatRelativeDate(value?: string): string {
 
 export function ConnectionCard({
   item,
+  selected,
+  onPress,
+  onLongPress,
+  onEdit,
   onGoDeeper,
+  onDelete,
   onOpenMap,
+  showQuickActions,
 }: {
   item: LibraryConnectionItem;
+  selected?: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  onEdit?: () => void;
   onGoDeeper?: () => void;
+  onDelete?: () => void;
   onOpenMap?: () => void;
+  showQuickActions?: boolean;
 }) {
-  return (
-    <View style={styles.featureCard}>
+  const content = (
+    <>
       <View style={styles.connectionHeaderRow}>
         <Text style={styles.connectionRoute} numberOfLines={1}>
           {item.fromVerse.reference} {"->"} {item.toVerse.reference}
@@ -67,25 +86,68 @@ export function ConnectionCard({
           {formatRelativeDate(item.createdAt)}
         </Text>
       ) : null}
-      {onGoDeeper || onOpenMap ? (
-        <View style={styles.row}>
+      {showQuickActions ? (
+        <View style={styles.quickActionsRow}>
+          <PressableScale
+            onPress={onEdit ?? onPress}
+            style={styles.quickActionButton}
+            accessibilityRole="button"
+            accessibilityLabel="Edit connection"
+          >
+            <Text style={styles.quickActionButtonLabel}>Edit</Text>
+          </PressableScale>
           {onGoDeeper ? (
-            <ActionButton
-              label="Go deeper"
+            <PressableScale
               onPress={onGoDeeper}
-              variant="secondary"
-            />
+              style={styles.quickActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Go deeper on connection"
+            >
+              <Text style={styles.quickActionButtonLabel}>Go deeper</Text>
+            </PressableScale>
           ) : null}
           {onOpenMap ? (
-            <ActionButton
-              label="Open map"
+            <PressableScale
               onPress={onOpenMap}
-              variant="ghost"
-            />
+              style={styles.quickActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open connection map"
+            >
+              <Text style={styles.quickActionButtonLabel}>Open map</Text>
+            </PressableScale>
+          ) : null}
+          {onDelete ? (
+            <PressableScale
+              onPress={onDelete}
+              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+              accessibilityRole="button"
+              accessibilityLabel="Delete connection"
+            >
+              <Text
+                style={[
+                  styles.quickActionButtonLabel,
+                  styles.quickActionButtonLabelDanger,
+                ]}
+              >
+                Delete
+              </Text>
+            </PressableScale>
           ) : null}
         </View>
       ) : null}
-    </View>
+    </>
+  );
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={[styles.featureCard, selected && styles.featureCardSelected]}
+      accessibilityRole="button"
+      accessibilityLabel={`Connection ${item.fromVerse.reference} to ${item.toVerse.reference}`}
+    >
+      {content}
+    </PressableScale>
   );
 }
 
@@ -159,6 +221,7 @@ export function HighlightCard({
   onPress,
   onLongPress,
   onEdit,
+  onExport,
   onDelete,
   showQuickActions,
 }: {
@@ -167,6 +230,7 @@ export function HighlightCard({
   onPress?: () => void;
   onLongPress?: () => void;
   onEdit?: () => void;
+  onExport?: () => void;
   onDelete?: () => void;
   showQuickActions?: boolean;
 }) {
@@ -182,14 +246,6 @@ export function HighlightCard({
         <Text style={styles.connectionRoute} numberOfLines={1}>
           {item.referenceLabel}
         </Text>
-        <View style={styles.highlightColorBadgeWrap}>
-          <View
-            style={[styles.highlightColorDot, { backgroundColor: item.color }]}
-          />
-          <Text style={styles.highlightColorCode} numberOfLines={1}>
-            {item.color}
-          </Text>
-        </View>
       </View>
       <Text style={styles.connectionSynopsis} numberOfLines={3}>
         {item.text || "No highlight text"}
@@ -212,6 +268,16 @@ export function HighlightCard({
           >
             <Text style={styles.quickActionButtonLabel}>Edit</Text>
           </PressableScale>
+          {onExport ? (
+            <PressableScale
+              onPress={onExport}
+              style={styles.quickActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Share highlight"
+            >
+              <Text style={styles.quickActionButtonLabel}>Share</Text>
+            </PressableScale>
+          ) : null}
           <PressableScale
             onPress={onDelete}
             style={[styles.quickActionButton, styles.quickActionButtonDanger]}
@@ -235,22 +301,39 @@ export function HighlightCard({
 
 export function LibraryMapCard({
   item,
+  selected,
   mutationBusy,
+  onPress,
+  onLongPress,
   onOpen,
+  onEdit,
   onDelete,
+  showQuickActions,
 }: {
   item: LibraryMapItem;
+  selected?: boolean;
   mutationBusy?: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
   onOpen?: () => void;
+  onEdit?: () => void;
   onDelete?: () => void;
+  showQuickActions?: boolean;
 }) {
+  const tagSummary = formatTagSummary(item.tags);
   return (
-    <View style={styles.featureCard}>
+    <PressableScale
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={[styles.featureCard, selected && styles.featureCardSelected]}
+      accessibilityRole="button"
+      accessibilityLabel={`Map ${item.title?.trim() || "Untitled map"}`}
+    >
       <View style={styles.connectionHeaderRow}>
         <Text style={styles.connectionRoute} numberOfLines={1}>
           {item.title?.trim() || "Untitled map"}
         </Text>
-        <Text style={styles.metaPill}>Bundle {item.bundleId ?? "unknown"}</Text>
+        {tagSummary ? <Text style={styles.metaPill}>{tagSummary}</Text> : null}
       </View>
       {item.note ? (
         <Text style={styles.connectionNote} numberOfLines={3}>
@@ -263,8 +346,8 @@ export function LibraryMapCard({
             Anchor {item.bundleMeta.anchorRef}
           </Text>
         ) : null}
-        {item.tags.length > 0 ? (
-          <Text style={styles.metaPill}>Tags {item.tags.join(", ")}</Text>
+        {tagSummary ? (
+          <Text style={styles.metaPill}>Tags {tagSummary}</Text>
         ) : null}
       </View>
       {item.updatedAt ? (
@@ -272,26 +355,130 @@ export function LibraryMapCard({
           Updated {formatRelativeDate(item.updatedAt)}
         </Text>
       ) : null}
-      {onOpen || onDelete ? (
-        <View style={styles.row}>
-          {onOpen ? (
-            <ActionButton
+      {showQuickActions ? (
+        <View style={styles.quickActionsRow}>
+          {onEdit ? (
+            <PressableScale
               disabled={mutationBusy}
-              label="Open map"
+              onPress={onEdit}
+              style={styles.quickActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Edit map"
+            >
+              <Text style={styles.quickActionButtonLabel}>Edit</Text>
+            </PressableScale>
+          ) : null}
+          {onOpen ? (
+            <PressableScale
+              disabled={mutationBusy}
               onPress={onOpen}
-              variant="secondary"
-            />
+              style={styles.quickActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open map"
+            >
+              <Text style={styles.quickActionButtonLabel}>Open map</Text>
+            </PressableScale>
           ) : null}
           {onDelete ? (
-            <ActionButton
+            <PressableScale
               disabled={mutationBusy}
-              label={mutationBusy ? "Deleting..." : "Delete map"}
               onPress={onDelete}
-              variant="danger"
-            />
+              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+              accessibilityRole="button"
+              accessibilityLabel="Delete map"
+            >
+              <Text
+                style={[
+                  styles.quickActionButtonLabel,
+                  styles.quickActionButtonLabelDanger,
+                ]}
+              >
+                {mutationBusy ? "Deleting..." : "Delete"}
+              </Text>
+            </PressableScale>
           ) : null}
         </View>
       ) : null}
-    </View>
+    </PressableScale>
+  );
+}
+
+export function VerseNoteCard({
+  item,
+  selected,
+  onPress,
+  onLongPress,
+  onOpenReader,
+  onDelete,
+  showQuickActions,
+}: {
+  item: VerseNoteItem;
+  selected?: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+  onOpenReader?: () => void;
+  onDelete?: () => void;
+  showQuickActions?: boolean;
+}) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={[styles.featureCard, selected && styles.featureCardSelected]}
+      accessibilityRole="button"
+      accessibilityLabel={`Note ${item.reference}`}
+    >
+      <View style={styles.connectionHeaderRow}>
+        <Text style={styles.connectionRoute} numberOfLines={1}>
+          {item.reference}
+        </Text>
+        <Text style={styles.metaPill}>Note</Text>
+      </View>
+      <Text style={styles.connectionSynopsis} numberOfLines={4}>
+        {item.text}
+      </Text>
+      <Text style={styles.connectionTimestamp}>
+        Updated {formatRelativeDate(item.updatedAt)}
+      </Text>
+      {showQuickActions ? (
+        <View style={styles.quickActionsRow}>
+          <PressableScale
+            onPress={onPress}
+            style={styles.quickActionButton}
+            accessibilityRole="button"
+            accessibilityLabel="Edit note"
+          >
+            <Text style={styles.quickActionButtonLabel}>Edit</Text>
+          </PressableScale>
+          {onOpenReader ? (
+            <PressableScale
+              onPress={onOpenReader}
+              style={styles.quickActionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open note in reader"
+            >
+              <Text style={styles.quickActionButtonLabel}>Open</Text>
+            </PressableScale>
+          ) : null}
+          {onDelete ? (
+            <PressableScale
+              onPress={onDelete}
+              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+              accessibilityRole="button"
+              accessibilityLabel="Delete note"
+            >
+              <Text
+                style={[
+                  styles.quickActionButtonLabel,
+                  styles.quickActionButtonLabelDanger,
+                ]}
+              >
+                Delete
+              </Text>
+            </PressableScale>
+          ) : null}
+        </View>
+      ) : null}
+    </PressableScale>
   );
 }
