@@ -7,9 +7,14 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import {
+  useNavigation,
+  type NavigationProp,
+  type ParamListBase,
+} from "@react-navigation/native";
 import { parseBookmarkReference } from "@zero1/shared";
 import { ActionButton } from "../components/native/ActionButton";
+import { ChipButton } from "../components/native/ChipButton";
 import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
@@ -113,15 +118,14 @@ export function BookmarkCreateScreen() {
         {controller.bookmarkBookSuggestions.length > 0 ? (
           <View style={styles.suggestionRow}>
             {controller.bookmarkBookSuggestions.map((book) => (
-              <PressableScale
+              <ChipButton
                 key={book}
                 onPress={() => controller.selectBookmarkBookSuggestion(book)}
-                style={styles.suggestionChip}
-                accessibilityRole="button"
                 accessibilityLabel={`Select ${book}`}
-              >
-                <Text style={styles.suggestionChipLabel}>{book}</Text>
-              </PressableScale>
+                label={book}
+                style={styles.suggestionChip}
+                labelStyle={styles.suggestionChipLabel}
+              />
             ))}
           </View>
         ) : null}
@@ -173,7 +177,7 @@ export function BookmarkCreateScreen() {
 }
 
 export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const controller = useMobileApp();
   const bookmark = controller.bookmarks.find((item) => item.id === bookmarkId);
   if (!bookmark) {
@@ -445,7 +449,7 @@ export function HighlightDetailScreen({
 }: {
   highlightId: string;
 }) {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const controller = useMobileApp();
   const highlight = controller.highlights.find(
     (item) => item.id === highlightId,

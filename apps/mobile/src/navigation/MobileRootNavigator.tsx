@@ -19,6 +19,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { IconButton } from "../components/native/IconButton";
 import { MOBILE_TOKENS } from "../theme/tokens";
 import type { MobileGoDeeperPayload } from "../types/chat";
 
@@ -176,17 +177,17 @@ function ModeShellScreen({
       <View style={localStyles.shellRoot}>
         {activeMode === "Reader" ? null : (
           <View style={localStyles.topBar}>
-            <Pressable
-              accessibilityRole="button"
+            <IconButton
               accessibilityLabel="Open mode menu"
               onPress={() => {
                 Keyboard.dismiss();
                 setDrawerOpen(true);
               }}
               style={localStyles.topBarIconButton}
-            >
-              <Ionicons color={T.colors.textMuted} name="menu" size={20} />
-            </Pressable>
+              icon={
+                <Ionicons color={T.colors.textMuted} name="menu" size={20} />
+              }
+            />
             <Text style={localStyles.topBarTitle}>{viewTitle}</Text>
             <View style={localStyles.topBarSpacer} />
           </View>
@@ -269,17 +270,21 @@ function ModeShellScreen({
             >
               <View style={localStyles.drawerHeaderRow}>
                 <Text style={localStyles.drawerTitle}>Biblelot</Text>
-                <Pressable
-                  accessibilityRole="button"
+                <IconButton
                   accessibilityLabel="Close mode menu"
                   onPress={() => {
                     Keyboard.dismiss();
                     setDrawerOpen(false);
                   }}
                   style={localStyles.drawerCloseButton}
-                >
-                  <Ionicons color={T.colors.textMuted} name="close" size={20} />
-                </Pressable>
+                  icon={
+                    <Ionicons
+                      color={T.colors.textMuted}
+                      name="close"
+                      size={20}
+                    />
+                  }
+                />
               </View>
 
               <View style={localStyles.drawerModesWrap}>
@@ -534,14 +539,8 @@ const localStyles = StyleSheet.create({
     fontSize: T.typography.subheading,
   },
   drawerCloseButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 34,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: T.colors.surface,
+    width: T.touchTarget.min,
+    height: T.touchTarget.min,
   },
   drawerModesWrap: {
     gap: T.spacing.sm,

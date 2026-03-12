@@ -5,7 +5,6 @@ import {
   Keyboard,
   type GestureResponderEvent,
   type PanResponderGestureState,
-  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -25,6 +24,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { resolveBibleBookName, type BibleBookName } from "@zero1/shared";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
+import { BottomSheetSurface } from "../components/native/BottomSheetSurface";
+import { ChipButton } from "../components/native/ChipButton";
+import { IconButton } from "../components/native/IconButton";
 import { ChatThinkingState } from "../components/native/loading/ChatThinkingState";
 import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNative";
 import { PressableScale } from "../components/native/PressableScale";
@@ -1533,7 +1535,8 @@ export function ChatScreen({
   const composerInputRef = useRef<TextInput | null>(null);
   const isEmptyState = messages.length === 0;
   const canSendDraft = draft.trim().length > 0;
-  const showEmptyThreadChips = isEmptyState && !canSendDraft;
+  const showCenteredEmptyState = isEmptyState && !canSendDraft;
+  const showEmptyThreadChips = showCenteredEmptyState;
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const keyboardLift = keyboardVisible
@@ -2082,6 +2085,10 @@ export function ChatScreen({
     handledPromptRef.current = signature;
 
     nav.clearPendingPrompt();
+    composerInputRef.current?.blur();
+    Keyboard.dismiss();
+    setKeyboardVisible(false);
+    setKeyboardHeight(0);
     setDraft(displayText);
     if (normalizedPrompt.visualBundle) {
       setActiveVisualBundle(normalizedPrompt.visualBundle);
@@ -2552,23 +2559,25 @@ export function ChatScreen({
         </View>
       ) : null}
       <View style={localStyles.chatComposer}>
-        <PressableScale
-          accessibilityRole="button"
+        <IconButton
           accessibilityLabel={
             traceModeEnabled ? "Trace mode enabled" : "Trace mode disabled"
           }
           onPress={() => setTraceModeEnabled((current) => !current)}
+          shape="rounded"
+          tone={traceModeEnabled ? "accent" : "default"}
           style={[
             localStyles.traceToggleButton,
             traceModeEnabled ? localStyles.traceToggleButtonActive : null,
           ]}
-        >
-          <Ionicons
-            color={traceModeEnabled ? T.colors.accent : T.colors.textMuted}
-            name="git-network-outline"
-            size={16}
-          />
-        </PressableScale>
+          icon={
+            <Ionicons
+              color={traceModeEnabled ? T.colors.accent : T.colors.textMuted}
+              name="git-network-outline"
+              size={16}
+            />
+          }
+        />
         <TextInput
           ref={composerInputRef}
           autoFocus={false}
@@ -2584,48 +2593,49 @@ export function ChatScreen({
           onChangeText={setDraft}
           style={localStyles.chatInput}
         />
-        <PressableScale
-          accessibilityRole="button"
+        <IconButton
           accessibilityLabel={busy ? "Stop generating" : "Send message"}
           disabled={!busy && !canSendDraft}
           onPress={() => (busy ? handleStopStreaming() : void handleSend())}
+          shape="rounded"
+          tone={busy ? "danger" : canSendDraft ? "accent" : "default"}
           style={[
             localStyles.sendButton,
             !busy && !canSendDraft ? localStyles.sendButtonDisabled : null,
             !busy && canSendDraft ? localStyles.sendButtonReady : null,
             busy ? localStyles.sendButtonStop : null,
           ]}
-        >
-          <Ionicons
-            color={
-              busy
-                ? "rgba(254,202,202,0.95)"
-                : canSendDraft
-                  ? T.colors.accent
-                  : T.colors.textMuted
-            }
-            name={busy ? "stop" : "arrow-up"}
-            size={14}
-          />
-        </PressableScale>
+          icon={
+            <Ionicons
+              color={
+                busy
+                  ? "rgba(254,202,202,0.95)"
+                  : canSendDraft
+                    ? T.colors.accent
+                    : T.colors.textMuted
+              }
+              name={busy ? "stop" : "arrow-up"}
+              size={14}
+            />
+          }
+        />
       </View>
       {!isEmptyState ? (
-        <PressableScale
-          accessibilityRole="button"
+        <ChipButton
           accessibilityLabel="Start a new session"
           disabled={busy}
           onPress={handleResetSession}
+          label="New Session"
           style={localStyles.newSessionButton}
-        >
-          <Text style={localStyles.newSessionButtonLabel}>New Session</Text>
-        </PressableScale>
+          labelStyle={localStyles.newSessionButtonLabel}
+        />
       ) : null}
     </View>
   );
 
   return (
     <View style={localStyles.chatRoot}>
-      {isEmptyState ? (
+      {showCenteredEmptyState ? (
         <View
           style={[
             localStyles.emptyLayout,
@@ -2642,7 +2652,10 @@ export function ChatScreen({
             data={messages}
             keyExtractor={(item) => item.id}
             style={localStyles.chatList}
-            contentContainerStyle={localStyles.chatListContent}
+            contentContainerStyle={[
+              localStyles.chatListContent,
+              isEmptyState ? localStyles.chatListContentEmpty : null,
+            ]}
             renderItem={({ item }) => {
               const isThinkingMessage =
                 item.role === "assistant" &&
@@ -2797,164 +2810,120 @@ export function ChatScreen({
         </>
       )}
 
-      <Modal
+      <BottomSheetSurface
         visible={Boolean(versePreviewReference)}
-        animationType="fade"
-        transparent
-        onRequestClose={closeVersePreview}
+        onClose={closeVersePreview}
+        title={versePreviewReference || "Verse"}
+        snapPoints={["54%"]}
       >
-        <View style={localStyles.referenceModalOverlay}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close verse preview"
-            onPress={closeVersePreview}
-            style={localStyles.referenceModalBackdrop}
-          />
-          <View style={localStyles.referenceModalCard}>
-            <View style={localStyles.referenceModalHeader}>
-              <Text style={localStyles.referenceModalTitle}>
-                {versePreviewReference || "Verse"}
+        <View style={localStyles.referenceModalCard}>
+          <View style={localStyles.referenceModalBody}>
+            {versePreviewLoading ? (
+              <LoadingDotsNative label="Loading verse..." />
+            ) : null}
+            {versePreviewError ? (
+              <Text style={styles.error}>{versePreviewError}</Text>
+            ) : null}
+            {!versePreviewLoading && !versePreviewError ? (
+              <Text style={localStyles.referenceModalVerseText}>
+                {versePreviewText || "Could not load verse text"}
               </Text>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel="Close verse preview"
-                onPress={closeVersePreview}
-                style={localStyles.referenceModalCloseButton}
-              >
-                <Text style={localStyles.referenceModalCloseLabel}>Close</Text>
-              </PressableScale>
-            </View>
+            ) : null}
+          </View>
 
-            <View style={localStyles.referenceModalBody}>
-              {versePreviewLoading ? (
-                <LoadingDotsNative label="Loading verse..." />
-              ) : null}
-              {versePreviewError ? (
-                <Text style={styles.error}>{versePreviewError}</Text>
-              ) : null}
-              {!versePreviewLoading && !versePreviewError ? (
-                <Text style={localStyles.referenceModalVerseText}>
-                  {versePreviewText || "Could not load verse text"}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={localStyles.referenceModalActions}>
-              <ActionButton
-                label={versePreviewTraceLoading ? "Tracing..." : "Trace"}
-                variant="primary"
-                disabled={versePreviewTraceLoading}
-                onPress={() => void handleTraceVersePreview()}
-                style={localStyles.compactAction}
-                labelStyle={localStyles.compactActionLabel}
-              />
-              <ActionButton
-                label="View"
-                variant="secondary"
-                onPress={openVersePreviewInReader}
-                style={localStyles.compactAction}
-                labelStyle={localStyles.compactActionLabel}
-              />
-            </View>
+          <View style={localStyles.referenceModalActions}>
+            <ActionButton
+              label={versePreviewTraceLoading ? "Tracing..." : "Trace"}
+              variant="primary"
+              disabled={versePreviewTraceLoading}
+              onPress={() => void handleTraceVersePreview()}
+              style={localStyles.compactAction}
+              labelStyle={localStyles.compactActionLabel}
+            />
+            <ActionButton
+              label="View"
+              variant="secondary"
+              onPress={openVersePreviewInReader}
+              style={localStyles.compactAction}
+              labelStyle={localStyles.compactActionLabel}
+            />
           </View>
         </View>
-      </Modal>
+      </BottomSheetSurface>
 
-      <Modal
+      <BottomSheetSurface
         visible={Boolean(chainModalMessageId)}
-        animationType="fade"
-        transparent
-        onRequestClose={closeChainModal}
+        onClose={closeChainModal}
+        title="Verses Used"
+        subtitle="Verses used in this response."
+        snapPoints={["62%"]}
       >
-        <View style={localStyles.chainModalOverlay}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close chain modal"
-            onPress={closeChainModal}
-            style={localStyles.chainModalBackdrop}
-          />
-          <View style={localStyles.chainModalCard}>
-            <View style={localStyles.chainModalHeader}>
-              <Text style={localStyles.chainModalTitle}>Verses Used</Text>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel="Close chain modal"
-                onPress={closeChainModal}
-                style={localStyles.referenceModalCloseButton}
-              >
-                <Text style={localStyles.referenceModalCloseLabel}>Close</Text>
-              </PressableScale>
-            </View>
-            <Text style={localStyles.chainModalHint}>
-              Verses used in this response.
-            </Text>
-
-            <View style={localStyles.chainModalBody}>
-              {chainBusyMessageId === chainModalMessageId ? (
-                <LoadingDotsNative label="Building chain..." />
-              ) : null}
-              {chainModalError ? (
-                <Text style={styles.error}>{chainModalError}</Text>
-              ) : null}
-              {chainResourceItems.length > 0 &&
-              chainBusyMessageId !== chainModalMessageId ? (
-                <ScrollView style={localStyles.chainModalScroll}>
-                  <View style={localStyles.chainResourceList}>
-                    {chainResourceItems.map((item, index) => (
-                      <View key={`chain-resource-${index}-${item.reference}`}>
-                        <PressableScale
-                          disabled={!item.tappable}
-                          onPress={() =>
-                            handleChainVersePress(item.reference, item.tappable)
-                          }
-                          style={[
-                            localStyles.chainResourceRow,
-                            !item.tappable
-                              ? localStyles.chainResourceRowMuted
-                              : null,
-                          ]}
+        <View style={localStyles.chainModalCard}>
+          <View style={localStyles.chainModalBody}>
+            {chainBusyMessageId === chainModalMessageId ? (
+              <LoadingDotsNative label="Building chain..." />
+            ) : null}
+            {chainModalError ? (
+              <Text style={styles.error}>{chainModalError}</Text>
+            ) : null}
+            {chainResourceItems.length > 0 &&
+            chainBusyMessageId !== chainModalMessageId ? (
+              <ScrollView style={localStyles.chainModalScroll}>
+                <View style={localStyles.chainResourceList}>
+                  {chainResourceItems.map((item, index) => (
+                    <View key={`chain-resource-${index}-${item.reference}`}>
+                      <PressableScale
+                        disabled={!item.tappable}
+                        onPress={() =>
+                          handleChainVersePress(item.reference, item.tappable)
+                        }
+                        style={[
+                          localStyles.chainResourceRow,
+                          !item.tappable
+                            ? localStyles.chainResourceRowMuted
+                            : null,
+                        ]}
+                      >
+                        <Text style={localStyles.chainResourceTitle}>
+                          {item.title}
+                        </Text>
+                        <Text
+                          numberOfLines={2}
+                          style={localStyles.chainResourceSnippet}
                         >
-                          <Text style={localStyles.chainResourceTitle}>
-                            {item.title}
-                          </Text>
-                          <Text
-                            numberOfLines={2}
-                            style={localStyles.chainResourceSnippet}
-                          >
-                            {item.snippet}
-                          </Text>
-                        </PressableScale>
-                        {index < chainResourceItems.length - 1 ? (
-                          <View style={localStyles.chainResourceDivider} />
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              ) : null}
-            </View>
+                          {item.snippet}
+                        </Text>
+                      </PressableScale>
+                      {index < chainResourceItems.length - 1 ? (
+                        <View style={localStyles.chainResourceDivider} />
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            ) : null}
+          </View>
 
-            <View style={localStyles.chainModalActions}>
-              {chainModalMessageId && chainModalError ? (
-                <ActionButton
-                  label="Retry"
-                  variant="secondary"
-                  onPress={() => {
-                    const target = messages.find(
-                      (item) => item.id === chainModalMessageId,
-                    );
-                    if (target) {
-                      void handleOpenChain(target, { forceRefresh: true });
-                    }
-                  }}
-                  style={localStyles.compactAction}
-                  labelStyle={localStyles.compactActionLabel}
-                />
-              ) : null}
-            </View>
+          <View style={localStyles.chainModalActions}>
+            {chainModalMessageId && chainModalError ? (
+              <ActionButton
+                label="Retry"
+                variant="secondary"
+                onPress={() => {
+                  const target = messages.find(
+                    (item) => item.id === chainModalMessageId,
+                  );
+                  if (target) {
+                    void handleOpenChain(target, { forceRefresh: true });
+                  }
+                }}
+                style={localStyles.compactAction}
+                labelStyle={localStyles.compactActionLabel}
+              />
+            ) : null}
           </View>
         </View>
-      </Modal>
+      </BottomSheetSurface>
     </View>
   );
 }
@@ -3208,6 +3177,9 @@ const localStyles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 14,
     gap: 14,
+  },
+  chatListContentEmpty: {
+    justifyContent: "flex-end",
   },
   messageRow: {
     width: "100%",
@@ -3599,14 +3571,11 @@ const localStyles = StyleSheet.create({
     paddingBottom: 9,
   },
   traceToggleButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(12,12,14,0.58)",
-    alignItems: "center",
-    justifyContent: "center",
+    width: T.touchTarget.min,
+    height: T.touchTarget.min,
+    borderRadius: T.radius.md,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(24,24,27,0.84)",
   },
   traceToggleButtonActive: {
     borderColor: "rgba(212,175,55,0.45)",
@@ -3622,14 +3591,11 @@ const localStyles = StyleSheet.create({
     paddingVertical: 0,
   },
   sendButton: {
-    minHeight: 32,
-    minWidth: 32,
-    borderRadius: 8,
-    borderWidth: 1,
+    minHeight: T.touchTarget.min,
+    minWidth: T.touchTarget.min,
+    borderRadius: T.radius.md,
     borderColor: "transparent",
     backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
     paddingHorizontal: 6,
     paddingVertical: 6,
   },
@@ -3637,7 +3603,7 @@ const localStyles = StyleSheet.create({
     backgroundColor: "rgba(212,175,55,0.12)",
   },
   sendButtonDisabled: {
-    opacity: 0.42,
+    opacity: 0.5,
   },
   sendButtonStop: {
     borderColor: "rgba(239,68,68,0.3)",
@@ -3664,17 +3630,17 @@ const localStyles = StyleSheet.create({
     paddingRight: 18,
   },
   quickPromptButton: {
-    minHeight: 42,
+    minHeight: 48,
     width: 164,
-    borderRadius: 10,
+    borderRadius: T.radius.md,
     borderWidth: 1,
     borderColor: T.colors.border,
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     alignItems: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 4,
   },
   quickPromptButtonRandom: {
     borderColor: "rgba(203, 213, 225, 0.32)",
@@ -3696,7 +3662,7 @@ const localStyles = StyleSheet.create({
     opacity: 0.82,
   },
   quickPromptLabel: {
-    fontSize: 9,
+    fontSize: T.typography.caption,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.35,
@@ -3713,9 +3679,9 @@ const localStyles = StyleSheet.create({
   },
   quickPromptTopic: {
     color: T.colors.text,
-    fontSize: 10.5,
-    lineHeight: 13,
-    fontWeight: "500",
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: "600",
     width: "100%",
   },
   quickPromptLoading: {
@@ -3725,18 +3691,14 @@ const localStyles = StyleSheet.create({
   },
   newSessionButton: {
     alignSelf: "center",
-    minHeight: 30,
-    borderRadius: T.radius.pill,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
+    minHeight: 36,
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 8,
   },
   newSessionButtonLabel: {
     color: T.colors.textMuted,
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: T.typography.caption,
+    fontWeight: "700",
   },
   mapViewport: {
     flex: 1,

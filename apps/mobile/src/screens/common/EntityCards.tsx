@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import { ChipButton } from "../../components/native/ChipButton";
 import { PressableScale } from "../../components/native/PressableScale";
 import type {
   LibraryConnectionItem,
@@ -88,50 +89,43 @@ export function ConnectionCard({
       ) : null}
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
-          <PressableScale
+          <ChipButton
             onPress={onEdit ?? onPress}
-            style={styles.quickActionButton}
-            accessibilityRole="button"
             accessibilityLabel="Edit connection"
-          >
-            <Text style={styles.quickActionButtonLabel}>Edit</Text>
-          </PressableScale>
+            label="Edit"
+            style={styles.quickActionButton}
+            labelStyle={styles.quickActionButtonLabel}
+          />
           {onGoDeeper ? (
-            <PressableScale
+            <ChipButton
               onPress={onGoDeeper}
-              style={styles.quickActionButton}
-              accessibilityRole="button"
               accessibilityLabel="Go deeper on connection"
-            >
-              <Text style={styles.quickActionButtonLabel}>Go deeper</Text>
-            </PressableScale>
+              label="Go deeper"
+              style={styles.quickActionButton}
+              labelStyle={styles.quickActionButtonLabel}
+            />
           ) : null}
           {onOpenMap ? (
-            <PressableScale
+            <ChipButton
               onPress={onOpenMap}
-              style={styles.quickActionButton}
-              accessibilityRole="button"
               accessibilityLabel="Open connection map"
-            >
-              <Text style={styles.quickActionButtonLabel}>Open map</Text>
-            </PressableScale>
+              label="Open map"
+              style={styles.quickActionButton}
+              labelStyle={styles.quickActionButtonLabel}
+            />
           ) : null}
           {onDelete ? (
-            <PressableScale
+            <ChipButton
               onPress={onDelete}
-              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
-              accessibilityRole="button"
               accessibilityLabel="Delete connection"
-            >
-              <Text
-                style={[
-                  styles.quickActionButtonLabel,
-                  styles.quickActionButtonLabelDanger,
-                ]}
-              >
-                Delete
-              </Text>
-            </PressableScale>
+              label="Delete"
+              tone="danger"
+              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+              labelStyle={[
+                styles.quickActionButtonLabel,
+                styles.quickActionButtonLabelDanger,
+              ]}
+            />
           ) : null}
         </View>
       ) : null}
@@ -186,29 +180,24 @@ export function BookmarkCard({
       ) : null}
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
-          <PressableScale
+          <ChipButton
             onPress={onEdit}
-            style={styles.quickActionButton}
-            accessibilityRole="button"
             accessibilityLabel="Edit bookmark"
-          >
-            <Text style={styles.quickActionButtonLabel}>Edit</Text>
-          </PressableScale>
-          <PressableScale
+            label="Edit"
+            style={styles.quickActionButton}
+            labelStyle={styles.quickActionButtonLabel}
+          />
+          <ChipButton
             onPress={onDelete}
-            style={[styles.quickActionButton, styles.quickActionButtonDanger]}
-            accessibilityRole="button"
             accessibilityLabel="Delete bookmark"
-          >
-            <Text
-              style={[
-                styles.quickActionButtonLabel,
-                styles.quickActionButtonLabelDanger,
-              ]}
-            >
-              Delete
-            </Text>
-          </PressableScale>
+            label="Delete"
+            tone="danger"
+            style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+            labelStyle={[
+              styles.quickActionButtonLabel,
+              styles.quickActionButtonLabelDanger,
+            ]}
+          />
         </View>
       ) : null}
     </PressableScale>
@@ -260,39 +249,33 @@ export function HighlightCard({
       ) : null}
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
-          <PressableScale
+          <ChipButton
             onPress={onEdit}
-            style={styles.quickActionButton}
-            accessibilityRole="button"
             accessibilityLabel="Edit highlight"
-          >
-            <Text style={styles.quickActionButtonLabel}>Edit</Text>
-          </PressableScale>
+            label="Edit"
+            style={styles.quickActionButton}
+            labelStyle={styles.quickActionButtonLabel}
+          />
           {onExport ? (
-            <PressableScale
+            <ChipButton
               onPress={onExport}
-              style={styles.quickActionButton}
-              accessibilityRole="button"
               accessibilityLabel="Share highlight"
-            >
-              <Text style={styles.quickActionButtonLabel}>Share</Text>
-            </PressableScale>
+              label="Share"
+              style={styles.quickActionButton}
+              labelStyle={styles.quickActionButtonLabel}
+            />
           ) : null}
-          <PressableScale
+          <ChipButton
             onPress={onDelete}
-            style={[styles.quickActionButton, styles.quickActionButtonDanger]}
-            accessibilityRole="button"
             accessibilityLabel="Delete highlight"
-          >
-            <Text
-              style={[
-                styles.quickActionButtonLabel,
-                styles.quickActionButtonLabelDanger,
-              ]}
-            >
-              Delete
-            </Text>
-          </PressableScale>
+            label="Delete"
+            tone="danger"
+            style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+            labelStyle={[
+              styles.quickActionButtonLabel,
+              styles.quickActionButtonLabelDanger,
+            ]}
+          />
         </View>
       ) : null}
     </PressableScale>
@@ -358,44 +341,38 @@ export function LibraryMapCard({
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
           {onEdit ? (
-            <PressableScale
+            <ChipButton
               disabled={mutationBusy}
               onPress={onEdit}
-              style={styles.quickActionButton}
-              accessibilityRole="button"
               accessibilityLabel="Edit map"
-            >
-              <Text style={styles.quickActionButtonLabel}>Edit</Text>
-            </PressableScale>
+              label="Edit"
+              style={styles.quickActionButton}
+              labelStyle={styles.quickActionButtonLabel}
+            />
           ) : null}
           {onOpen ? (
-            <PressableScale
+            <ChipButton
               disabled={mutationBusy}
               onPress={onOpen}
-              style={styles.quickActionButton}
-              accessibilityRole="button"
               accessibilityLabel="Open map"
-            >
-              <Text style={styles.quickActionButtonLabel}>Open map</Text>
-            </PressableScale>
+              label="Open map"
+              style={styles.quickActionButton}
+              labelStyle={styles.quickActionButtonLabel}
+            />
           ) : null}
           {onDelete ? (
-            <PressableScale
+            <ChipButton
               disabled={mutationBusy}
               onPress={onDelete}
-              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
-              accessibilityRole="button"
               accessibilityLabel="Delete map"
-            >
-              <Text
-                style={[
-                  styles.quickActionButtonLabel,
-                  styles.quickActionButtonLabelDanger,
-                ]}
-              >
-                {mutationBusy ? "Deleting..." : "Delete"}
-              </Text>
-            </PressableScale>
+              label={mutationBusy ? "Deleting..." : "Delete"}
+              tone="danger"
+              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+              labelStyle={[
+                styles.quickActionButtonLabel,
+                styles.quickActionButtonLabelDanger,
+              ]}
+            />
           ) : null}
         </View>
       ) : null}
@@ -442,40 +419,34 @@ export function VerseNoteCard({
       </Text>
       {showQuickActions ? (
         <View style={styles.quickActionsRow}>
-          <PressableScale
+          <ChipButton
             onPress={onPress}
-            style={styles.quickActionButton}
-            accessibilityRole="button"
             accessibilityLabel="Edit note"
-          >
-            <Text style={styles.quickActionButtonLabel}>Edit</Text>
-          </PressableScale>
+            label="Edit"
+            style={styles.quickActionButton}
+            labelStyle={styles.quickActionButtonLabel}
+          />
           {onOpenReader ? (
-            <PressableScale
+            <ChipButton
               onPress={onOpenReader}
-              style={styles.quickActionButton}
-              accessibilityRole="button"
               accessibilityLabel="Open note in reader"
-            >
-              <Text style={styles.quickActionButtonLabel}>Open</Text>
-            </PressableScale>
+              label="Open"
+              style={styles.quickActionButton}
+              labelStyle={styles.quickActionButtonLabel}
+            />
           ) : null}
           {onDelete ? (
-            <PressableScale
+            <ChipButton
               onPress={onDelete}
-              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
-              accessibilityRole="button"
               accessibilityLabel="Delete note"
-            >
-              <Text
-                style={[
-                  styles.quickActionButtonLabel,
-                  styles.quickActionButtonLabelDanger,
-                ]}
-              >
-                Delete
-              </Text>
-            </PressableScale>
+              label="Delete"
+              tone="danger"
+              style={[styles.quickActionButton, styles.quickActionButtonDanger]}
+              labelStyle={[
+                styles.quickActionButtonLabel,
+                styles.quickActionButtonLabelDanger,
+              ]}
+            />
           ) : null}
         </View>
       ) : null}
