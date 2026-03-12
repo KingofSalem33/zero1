@@ -373,11 +373,11 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.colors.border,
     backgroundColor: T.colors.surface,
-    paddingHorizontal: T.spacing.md,
-    paddingVertical: 8,
+    paddingHorizontal: T.spacing.sm,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
-    gap: T.spacing.xs,
+    gap: 0,
   },
   libraryModeTabActive: {
     borderColor: T.colors.accent,
@@ -385,7 +385,7 @@ export const styles = StyleSheet.create({
   },
   libraryModeTabLabel: {
     color: T.colors.text,
-    fontSize: T.typography.caption,
+    fontSize: 11,
     fontWeight: "700",
     fontFamily: T.fonts.sans,
   },
@@ -482,6 +482,11 @@ export const styles = StyleSheet.create({
     paddingBottom: T.spacing.lg,
     gap: T.spacing.sm,
   },
+  noteEditorPanel: {
+    maxHeight: undefined,
+    borderTopLeftRadius: T.radius.lg,
+    borderTopRightRadius: T.radius.lg,
+  },
   librarySheetHandle: {
     alignSelf: "center",
     width: 48,
@@ -506,6 +511,13 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.colors.border,
     padding: T.spacing.md,
+  },
+  noteEditorBody: {
+    flex: 1,
+  },
+  noteEditorInput: {
+    flex: 1,
+    textAlignVertical: "top",
   },
   libraryLargeTextArea: {
     minHeight: 140,

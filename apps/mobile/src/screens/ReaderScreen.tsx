@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Easing,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,10 +23,20 @@ import {
   tryParseBookmarkReference,
 } from "@zero1/shared";
 import { ActionButton } from "../components/native/ActionButton";
+import { BottomSheetSurface } from "../components/native/BottomSheetSurface";
+import { ChipButton } from "../components/native/ChipButton";
+import { CompactButton } from "../components/native/CompactButton";
+import { IconButton } from "../components/native/IconButton";
+import { ListRowButton } from "../components/native/ListRowButton";
+import { NoteEditorModal } from "../components/native/NoteEditorModal";
 import { PressableScale } from "../components/native/PressableScale";
 import { RootTranslationPanel } from "../components/native/RootTranslationPanel";
 import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNative";
 import { ReaderChapterSkeleton } from "../components/native/loading/ReaderChapterSkeleton";
+import {
+  SkeletonBlock,
+  SkeletonTextLines,
+} from "../components/native/loading/SkeletonNative";
 import { useMobileApp } from "../context/MobileAppContext";
 import { useRootTranslationMobile } from "../hooks/useRootTranslationMobile";
 import {
@@ -484,7 +492,6 @@ export function ReaderScreen({
   );
   const feedbackVerseColorRef = useRef<string>(controller.readerHighlightColor);
   const headerVisibilityAnim = useRef(new Animated.Value(1)).current;
-  const selectorDropAnim = useRef(new Animated.Value(0)).current;
   const navigationFocusAnim = useRef(new Animated.Value(0)).current;
   const navigationFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -496,8 +503,6 @@ export function ReaderScreen({
   const chapterSwipeLockRef = useRef(false);
   const chapterSwipeLastAtRef = useRef(0);
   const suppressBookmarkTogglePressRef = useRef(false);
-  const selectionNoteInputRef = useRef<TextInput | null>(null);
-
   useEffect(() => {
     setSelectionDraft(null);
     setSelectionModalVisible(false);
@@ -594,28 +599,6 @@ export function ReaderScreen({
       return next;
     });
   }, [controller.reader.book, controller.reader.chapter]);
-
-  useEffect(() => {
-    const selectorVisible =
-      bookSelectorVisible || chapterSelectorVisible || bookmarkSelectorVisible;
-    if (!selectorVisible) {
-      selectorDropAnim.setValue(0);
-      return;
-    }
-
-    selectorDropAnim.setValue(0);
-    Animated.timing(selectorDropAnim, {
-      toValue: 1,
-      duration: 170,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [
-    bookSelectorVisible,
-    bookmarkSelectorVisible,
-    chapterSelectorVisible,
-    selectorDropAnim,
-  ]);
 
   useEffect(() => {
     Animated.timing(headerVisibilityAnim, {
@@ -1147,14 +1130,6 @@ export function ReaderScreen({
     setSelectionNoteEditorVisible(false);
     setSelectionNoteDraft(selectedHighlightForSelection?.note ?? "");
   }, [selectedHighlightForSelection?.id, selectionModalVisible]);
-
-  useEffect(() => {
-    if (!selectionNoteEditorVisible) return;
-    const timer = setTimeout(() => {
-      selectionNoteInputRef.current?.focus();
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [selectionNoteEditorVisible]);
 
   function scrollReaderToTop() {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
@@ -1786,33 +1761,31 @@ export function ReaderScreen({
       >
         <View style={localStyles.headerBar}>
           <View style={localStyles.headerControlsTopRow}>
-            <PressableScale
-              accessibilityRole="button"
+            <IconButton
               accessibilityLabel="Open mode menu"
               motionPreset="quiet"
               onPress={nav.openModeMenu}
-              style={localStyles.headerMenuButton}
-            >
-              <Ionicons color={T.colors.textMuted} name="menu" size={18} />
-            </PressableScale>
-            <PressableScale
-              accessibilityRole="button"
+              icon={
+                <Ionicons color={T.colors.textMuted} name="menu" size={18} />
+              }
+            />
+            <IconButton
               accessibilityLabel="Previous chapter"
               disabled={controller.readerLoading}
               motionPreset="quiet"
               onPress={() => void handleGoToPreviousChapter()}
-              style={localStyles.headerChapterNavButton}
-            >
-              <Ionicons
-                color={
-                  controller.readerLoading
-                    ? "rgba(228, 228, 231, 0.36)"
-                    : "rgba(228, 228, 231, 0.88)"
-                }
-                name="chevron-back"
-                size={18}
-              />
-            </PressableScale>
+              icon={
+                <Ionicons
+                  color={
+                    controller.readerLoading
+                      ? "rgba(228, 228, 231, 0.36)"
+                      : "rgba(228, 228, 231, 0.88)"
+                  }
+                  name="chevron-back"
+                  size={18}
+                />
+              }
+            />
 
             <PressableScale
               accessibilityRole="button"
@@ -1842,26 +1815,24 @@ export function ReaderScreen({
               />
             </PressableScale>
 
-            <PressableScale
-              accessibilityRole="button"
+            <IconButton
               accessibilityLabel="Next chapter"
               disabled={controller.readerLoading}
               motionPreset="quiet"
               onPress={() => void handleGoToNextChapter()}
-              style={localStyles.headerChapterNavButton}
-            >
-              <Ionicons
-                color={
-                  controller.readerLoading
-                    ? "rgba(228, 228, 231, 0.36)"
-                    : "rgba(228, 228, 231, 0.88)"
-                }
-                name="chevron-forward"
-                size={18}
-              />
-            </PressableScale>
-            <PressableScale
-              accessibilityRole="button"
+              icon={
+                <Ionicons
+                  color={
+                    controller.readerLoading
+                      ? "rgba(228, 228, 231, 0.36)"
+                      : "rgba(228, 228, 231, 0.88)"
+                  }
+                  name="chevron-forward"
+                  size={18}
+                />
+              }
+            />
+            <IconButton
               accessibilityLabel={
                 currentChapterBookmark
                   ? `Remove bookmark for ${controller.reader.book} ${controller.reader.chapter}`
@@ -1876,25 +1847,23 @@ export function ReaderScreen({
               onPress={() => {
                 void handleToggleCurrentChapterBookmark();
               }}
-              style={[
-                localStyles.headerChapterNavButton,
-                currentChapterBookmark
-                  ? localStyles.headerBookmarkButtonActive
-                  : null,
-              ]}
-            >
-              <Ionicons
-                color={
-                  controller.bookmarkMutationBusy
-                    ? "rgba(228, 228, 231, 0.36)"
-                    : currentChapterBookmark
-                      ? T.colors.accentStrong
-                      : "rgba(228, 228, 231, 0.88)"
-                }
-                name={currentChapterBookmark ? "bookmark" : "bookmark-outline"}
-                size={17}
-              />
-            </PressableScale>
+              tone={currentChapterBookmark ? "accent" : "default"}
+              icon={
+                <Ionicons
+                  color={
+                    controller.bookmarkMutationBusy
+                      ? "rgba(228, 228, 231, 0.36)"
+                      : currentChapterBookmark
+                        ? T.colors.accentStrong
+                        : "rgba(228, 228, 231, 0.88)"
+                  }
+                  name={
+                    currentChapterBookmark ? "bookmark" : "bookmark-outline"
+                  }
+                  size={17}
+                />
+              }
+            />
           </View>
 
           {selectionDraft ? (
@@ -1902,10 +1871,8 @@ export function ReaderScreen({
               <Text style={styles.caption} numberOfLines={1}>
                 Selection: {selectedVerseLabel}
               </Text>
-              <ActionButton
+              <CompactButton
                 label="Clear"
-                variant="ghost"
-                motionPreset="quiet"
                 onPress={clearSelection}
                 style={localStyles.compactHeaderAction}
                 labelStyle={localStyles.compactHeaderActionLabel}
@@ -2075,24 +2042,23 @@ export function ReaderScreen({
               ) : null}
 
               <View style={localStyles.footerChapterNavRow}>
-                <PressableScale
-                  accessibilityRole="button"
+                <IconButton
                   accessibilityLabel="Previous chapter"
                   disabled={footerPrevDisabled || controller.readerLoading}
                   motionPreset="quiet"
                   onPress={() => void handleGoToPreviousChapter()}
-                  style={localStyles.footerChapterNavButton}
-                >
-                  <Ionicons
-                    color={
-                      footerPrevDisabled
-                        ? "rgba(228, 228, 231, 0.36)"
-                        : "rgba(228, 228, 231, 0.88)"
-                    }
-                    name="chevron-back"
-                    size={18}
-                  />
-                </PressableScale>
+                  icon={
+                    <Ionicons
+                      color={
+                        footerPrevDisabled
+                          ? "rgba(228, 228, 231, 0.36)"
+                          : "rgba(228, 228, 231, 0.88)"
+                      }
+                      name="chevron-back"
+                      size={18}
+                    />
+                  }
+                />
 
                 <View style={localStyles.footerChapterIndicator}>
                   <Text
@@ -2103,24 +2069,23 @@ export function ReaderScreen({
                   </Text>
                 </View>
 
-                <PressableScale
-                  accessibilityRole="button"
+                <IconButton
                   accessibilityLabel="Next chapter"
                   disabled={footerNextDisabled || controller.readerLoading}
                   motionPreset="quiet"
                   onPress={() => void handleGoToNextChapter()}
-                  style={localStyles.footerChapterNavButton}
-                >
-                  <Ionicons
-                    color={
-                      footerNextDisabled
-                        ? "rgba(228, 228, 231, 0.36)"
-                        : "rgba(228, 228, 231, 0.88)"
-                    }
-                    name="chevron-forward"
-                    size={18}
-                  />
-                </PressableScale>
+                  icon={
+                    <Ionicons
+                      color={
+                        footerNextDisabled
+                          ? "rgba(228, 228, 231, 0.36)"
+                          : "rgba(228, 228, 231, 0.88)"
+                      }
+                      name="chevron-forward"
+                      size={18}
+                    />
+                  }
+                />
               </View>
 
               <View style={localStyles.chapterFooterSection}>
@@ -2249,795 +2214,575 @@ export function ReaderScreen({
         </FlingGestureHandler>
       </FlingGestureHandler>
 
-      <Modal
+      <BottomSheetSurface
         visible={referenceModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={closeReferenceModal}
+        onClose={closeReferenceModal}
+        title="Verse References"
+        subtitle={activeReference ?? ""}
+        snapPoints={["72%"]}
+        headerRight={
+          canGoBackReference ? (
+            <ActionButton
+              label="Back"
+              variant="ghost"
+              motionPreset="quiet"
+              onPress={popReference}
+            />
+          ) : undefined
+        }
       >
-        <View style={localStyles.centerModalOverlay}>
-          <Pressable
-            onPress={closeReferenceModal}
-            style={localStyles.modalBackdrop}
-          />
-          <View style={localStyles.referenceModalCard}>
-            <View style={localStyles.modalHeaderRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Verse References</Text>
-                <Text style={styles.caption}>{activeReference ?? ""}</Text>
-              </View>
-              {canGoBackReference ? (
-                <ActionButton
-                  label="Back"
-                  variant="ghost"
-                  motionPreset="quiet"
-                  onPress={popReference}
-                />
-              ) : null}
-              <ActionButton
-                label="Close"
-                variant="ghost"
-                motionPreset="quiet"
-                onPress={closeReferenceModal}
+        <View style={localStyles.referenceModalCard}>
+          {referenceActionError ? (
+            <Text style={styles.error}>{referenceActionError}</Text>
+          ) : null}
+
+          <ScrollView style={localStyles.modalContent}>
+            {referenceView === "root" ? (
+              <RootTranslationPanel
+                isLoading={referenceRootLoading}
+                language={referenceRootLanguage}
+                words={referenceRootWords}
+                lostContext={referenceRootLostContext}
+                fallbackText={referenceRootFallbackText}
+                selectedWordIndex={referenceRootWordIndex}
+                onSelectWord={setReferenceRootWordIndex}
+                onBack={handleBackToReferenceExplore}
               />
-            </View>
-
-            {referenceActionError ? (
-              <Text style={styles.error}>{referenceActionError}</Text>
-            ) : null}
-
-            <ScrollView style={localStyles.modalContent}>
-              {referenceView === "root" ? (
-                <RootTranslationPanel
-                  isLoading={referenceRootLoading}
-                  language={referenceRootLanguage}
-                  words={referenceRootWords}
-                  lostContext={referenceRootLostContext}
-                  fallbackText={referenceRootFallbackText}
-                  selectedWordIndex={referenceRootWordIndex}
-                  onSelectWord={setReferenceRootWordIndex}
-                  onBack={handleBackToReferenceExplore}
-                />
-              ) : (
-                <>
-                  <View style={localStyles.modalPanel}>
-                    {referenceVerseTextLoading ? (
-                      <LoadingDotsNative label="Loading verse..." />
-                    ) : null}
-                    {referenceVerseTextError ? (
-                      <Text style={styles.error}>
-                        {referenceVerseTextError}
-                      </Text>
-                    ) : null}
-                    {!referenceVerseTextLoading && referenceVerseText ? (
-                      <Text style={localStyles.referenceVerseText}>
-                        {referenceVerseText}
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  <View style={localStyles.referencePrimaryActionRow}>
-                    <ActionButton
-                      label={referenceTraceLoading ? "Tracing..." : "Trace"}
-                      variant="primary"
-                      motionPreset="quiet"
-                      disabled={referenceTraceLoading}
-                      onPress={() => void handleTraceReference()}
-                      style={[
-                        localStyles.compactPrimaryButton,
-                        localStyles.referenceActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactPrimaryButtonLabel,
-                        localStyles.referenceActionButtonLabel,
-                      ]}
-                    />
-                    <ActionButton
-                      label="Go Deeper"
-                      variant="ghost"
-                      motionPreset="quiet"
-                      onPress={handleGoDeeperReference}
-                      style={[
-                        localStyles.compactHeaderAction,
-                        localStyles.referenceActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactHeaderActionLabel,
-                        localStyles.referenceActionButtonLabel,
-                      ]}
-                    />
-                    <ActionButton
-                      label="View"
-                      variant="ghost"
-                      motionPreset="quiet"
-                      disabled={Boolean(pendingVerseNavigation)}
-                      onPress={() => void handleViewReference()}
-                      style={[
-                        localStyles.compactHeaderAction,
-                        localStyles.referenceActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactHeaderActionLabel,
-                        localStyles.referenceActionButtonLabel,
-                      ]}
-                    />
-                    <ActionButton
-                      label={referenceRootLoading ? "ROOT..." : "ROOT"}
-                      variant="ghost"
-                      motionPreset="quiet"
-                      disabled={
-                        referenceVerseTextLoading ||
-                        referenceRootLoading ||
-                        !referenceVerseText.trim()
-                      }
-                      onPress={() => void handleReferenceRootTranslation()}
-                      style={[
-                        localStyles.compactHeaderAction,
-                        localStyles.referenceActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactHeaderActionLabel,
-                        localStyles.referenceActionButtonLabel,
-                        localStyles.rootActionLabel,
-                      ]}
-                    />
-                  </View>
-
-                  {referenceNoteEditorVisible ? (
-                    <View style={localStyles.modalPanel}>
-                      <TextInput
-                        accessibilityLabel="Verse note"
-                        multiline
-                        placeholder="Write a note for this verse..."
-                        placeholderTextColor={T.colors.textMuted}
-                        style={localStyles.referenceNoteInput}
-                        value={referenceNoteDraft}
-                        onChangeText={setReferenceNoteDraft}
+            ) : (
+              <>
+                <View
+                  style={[
+                    localStyles.modalPanel,
+                    localStyles.referenceVersePanel,
+                  ]}
+                >
+                  {referenceVerseTextLoading ? (
+                    <View style={localStyles.referenceVerseSkeleton}>
+                      <SkeletonBlock width={96} height={12} radius={6} />
+                      <SkeletonTextLines
+                        lines={["100%", "98%", "94%", "86%", "92%"]}
+                        gap={10}
                       />
-                      <View style={localStyles.referenceNoteActions}>
-                        <ActionButton
-                          label="Cancel"
-                          variant="ghost"
-                          motionPreset="quiet"
-                          onPress={() => {
-                            setReferenceNoteEditorVisible(false);
-                            setReferenceNoteDraft(activeReferenceNote);
-                          }}
-                          style={localStyles.compactHeaderAction}
-                          labelStyle={localStyles.compactHeaderActionLabel}
-                        />
-                        <ActionButton
-                          label="Save"
-                          variant="primary"
-                          motionPreset="quiet"
-                          onPress={handleSaveReferenceNote}
-                          style={localStyles.compactPrimaryButton}
-                          labelStyle={localStyles.compactPrimaryButtonLabel}
-                        />
-                      </View>
                     </View>
                   ) : null}
-
-                  <View style={localStyles.referenceListSection}>
-                    <View style={localStyles.referenceListHeaderRow}>
-                      <Text style={localStyles.referenceListLabel}>
-                        Cross-References
-                      </Text>
-                      <Text style={localStyles.referenceListCount}>
-                        {totalReferenceCount}
-                      </Text>
-                    </View>
-                    {totalReferenceCount > 0 ? (
-                      <View style={localStyles.referenceDisclosureRow}>
-                        {hasCollapsedReferenceRows ? (
-                          <PressableScale
-                            onPress={() =>
-                              setReferenceShowAllCrossReferences(
-                                (current) => !current,
-                              )
-                            }
-                            motionPreset="quiet"
-                            pressedStyle={
-                              localStyles.referenceDisclosureButtonPressed
-                            }
-                            style={[
-                              localStyles.referenceDisclosureButton,
-                              referenceShowAllCrossReferences
-                                ? localStyles.referenceDisclosureButtonActive
-                                : null,
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityLabel={
-                              referenceShowAllCrossReferences
-                                ? "Show fewer references"
-                                : "Show all references"
-                            }
-                          >
-                            <Text
-                              style={[
-                                localStyles.referenceDisclosureLabel,
-                                referenceShowAllCrossReferences
-                                  ? localStyles.referenceDisclosureLabelActive
-                                  : null,
-                              ]}
-                            >
-                              {referenceShowAllCrossReferences
-                                ? "Show less"
-                                : `Show all (${totalReferenceCount})`}
-                            </Text>
-                          </PressableScale>
-                        ) : null}
-                      </View>
-                    ) : null}
-                    {referenceCrossReferencesLoading ? (
-                      <LoadingDotsNative label="Loading references..." />
-                    ) : null}
-                    {referenceCrossReferencesError ? (
-                      <Text style={styles.error}>
-                        {referenceCrossReferencesError}
-                      </Text>
-                    ) : null}
-                    {!referenceCrossReferencesLoading &&
-                    !referenceCrossReferencesError &&
-                    groupedReferenceSections.length === 0 ? (
-                      <Text style={localStyles.referenceEmptyLabel}>
-                        No cross-references found.
-                      </Text>
-                    ) : null}
-                    {!referenceCrossReferencesLoading &&
-                      groupedReferenceSections.map((section) => (
-                        <View
-                          key={`reference-group-${section.type}`}
-                          style={localStyles.referenceGroup}
-                        >
-                          {groupedReferenceSections.length > 1 ? (
-                            <Text style={localStyles.referenceGroupLabel}>
-                              {REFERENCE_GROUP_LABELS[section.type]}
-                            </Text>
-                          ) : null}
-                          {(referenceShowAllCrossReferences
-                            ? section.refs
-                            : section.refs.slice(
-                                0,
-                                INITIAL_REFERENCE_ROWS_PER_GROUP,
-                              )
-                          ).map((ref, index) => {
-                            const label = `${ref.book} ${ref.chapter}:${ref.verse}`;
-                            return (
-                              <PressableScale
-                                key={`${section.type}-${label}-${index}`}
-                                onPress={() => pushReference(label)}
-                                motionPreset="quiet"
-                                pressedStyle={
-                                  localStyles.referenceRowButtonPressed
-                                }
-                                style={localStyles.referenceRowButton}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Open ${label}`}
-                              >
-                                <Text style={localStyles.referenceRowLabel}>
-                                  {label}
-                                </Text>
-                              </PressableScale>
-                            );
-                          })}
-                          {!referenceShowAllCrossReferences &&
-                          section.refs.length >
-                            INITIAL_REFERENCE_ROWS_PER_GROUP ? (
-                            <Text style={localStyles.referenceGroupMoreLabel}>
-                              +
-                              {section.refs.length -
-                                INITIAL_REFERENCE_ROWS_PER_GROUP}{" "}
-                              more
-                            </Text>
-                          ) : null}
-                        </View>
-                      ))}
-                  </View>
-                </>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={bookmarkSelectorVisible}
-        animationType="none"
-        transparent
-        onRequestClose={closeBookmarkSelector}
-      >
-        <View style={localStyles.selectorOverlayTop}>
-          <Pressable
-            onPress={closeBookmarkSelector}
-            style={localStyles.modalBackdrop}
-          />
-          <Animated.View
-            style={[
-              localStyles.selectorDropdownCard,
-              {
-                opacity: selectorDropAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 1],
-                }),
-                transform: [
-                  {
-                    translateY: selectorDropAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={localStyles.modalHeaderRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Bookmarks</Text>
-                <Text style={styles.caption}>
-                  Tap to reopen a saved place in Reader.
-                </Text>
-              </View>
-              <ActionButton
-                label="Close"
-                variant="ghost"
-                motionPreset="quiet"
-                onPress={closeBookmarkSelector}
-              />
-            </View>
-            <ScrollView
-              style={localStyles.selectorScroll}
-              showsVerticalScrollIndicator={false}
-            >
-              {controller.bookmarksLoading ? (
-                <LoadingDotsNative label="Loading bookmarks..." />
-              ) : null}
-              {!controller.bookmarksLoading && sortedBookmarks.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyTitle}>No bookmarks yet</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Tap the bookmark icon in the header to save this chapter.
-                  </Text>
+                  {referenceVerseTextError ? (
+                    <Text style={styles.error}>{referenceVerseTextError}</Text>
+                  ) : null}
+                  {!referenceVerseTextLoading && referenceVerseText ? (
+                    <Text style={localStyles.referenceVerseText}>
+                      {referenceVerseText}
+                    </Text>
+                  ) : null}
                 </View>
-              ) : null}
-              {!controller.bookmarksLoading && sortedBookmarks.length > 0 ? (
-                <View style={localStyles.selectorSection}>
-                  <Text style={localStyles.selectorSectionLabel}>
-                    Saved Places
-                  </Text>
-                  {sortedBookmarks.map((item) => {
-                    const isActive = item.id === currentChapterBookmark?.id;
-                    return (
-                      <PressableScale
-                        key={item.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open bookmark ${item.text}`}
-                        motionPreset="quiet"
-                        disabled={controller.readerLoading}
-                        onPress={() => void handleOpenBookmarkItem(item.text)}
-                        style={[
-                          localStyles.selectorRowButton,
-                          isActive ? localStyles.selectorRowButtonActive : null,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            localStyles.selectorRowLabel,
-                            isActive
-                              ? localStyles.selectorRowLabelActive
+
+                <View style={localStyles.referencePrimaryActionRow}>
+                  <CompactButton
+                    label={referenceTraceLoading ? "Tracing..." : "Trace"}
+                    variant="primary"
+                    disabled={referenceTraceLoading}
+                    onPress={() => void handleTraceReference()}
+                    style={localStyles.referenceActionButton}
+                    labelStyle={localStyles.referenceActionButtonLabel}
+                  />
+                  <CompactButton
+                    label="Go Deeper"
+                    variant="ghost"
+                    onPress={handleGoDeeperReference}
+                    style={[
+                      localStyles.compactHeaderAction,
+                      localStyles.referenceActionButton,
+                    ]}
+                    labelStyle={[
+                      localStyles.compactHeaderActionLabel,
+                      localStyles.referenceActionButtonLabel,
+                    ]}
+                  />
+                  <CompactButton
+                    label="View"
+                    variant="ghost"
+                    disabled={Boolean(pendingVerseNavigation)}
+                    onPress={() => void handleViewReference()}
+                    style={[
+                      localStyles.compactHeaderAction,
+                      localStyles.referenceActionButton,
+                    ]}
+                    labelStyle={[
+                      localStyles.compactHeaderActionLabel,
+                      localStyles.referenceActionButtonLabel,
+                    ]}
+                  />
+                  <CompactButton
+                    label={referenceRootLoading ? "ROOT..." : "ROOT"}
+                    variant="ghost"
+                    disabled={
+                      referenceVerseTextLoading ||
+                      referenceRootLoading ||
+                      !referenceVerseText.trim()
+                    }
+                    onPress={() => void handleReferenceRootTranslation()}
+                    style={[
+                      localStyles.compactHeaderAction,
+                      localStyles.referenceActionButton,
+                    ]}
+                    labelStyle={[
+                      localStyles.compactHeaderActionLabel,
+                      localStyles.referenceActionButtonLabel,
+                      localStyles.rootActionLabel,
+                    ]}
+                  />
+                </View>
+
+                {referenceNoteEditorVisible ? (
+                  <View style={localStyles.modalPanel}>
+                    <TextInput
+                      accessibilityLabel="Verse note"
+                      multiline
+                      placeholder="Write a note for this verse..."
+                      placeholderTextColor={T.colors.textMuted}
+                      style={localStyles.referenceNoteInput}
+                      value={referenceNoteDraft}
+                      onChangeText={setReferenceNoteDraft}
+                    />
+                    <View style={localStyles.referenceNoteActions}>
+                      <CompactButton
+                        label="Cancel"
+                        variant="ghost"
+                        onPress={() => {
+                          setReferenceNoteEditorVisible(false);
+                          setReferenceNoteDraft(activeReferenceNote);
+                        }}
+                        style={localStyles.compactHeaderAction}
+                        labelStyle={localStyles.compactHeaderActionLabel}
+                      />
+                      <CompactButton
+                        label="Save"
+                        variant="primary"
+                        onPress={handleSaveReferenceNote}
+                        style={localStyles.compactHeaderAction}
+                        labelStyle={localStyles.compactHeaderActionLabel}
+                      />
+                    </View>
+                  </View>
+                ) : null}
+
+                <View
+                  style={[
+                    localStyles.referenceListSection,
+                    localStyles.referenceListSectionStable,
+                  ]}
+                >
+                  <View style={localStyles.referenceListHeaderRow}>
+                    <Text style={localStyles.referenceListLabel}>
+                      Cross-References
+                    </Text>
+                    <Text style={localStyles.referenceListCount}>
+                      {totalReferenceCount}
+                    </Text>
+                  </View>
+                  {totalReferenceCount > 0 ? (
+                    <View style={localStyles.referenceDisclosureRow}>
+                      {hasCollapsedReferenceRows ? (
+                        <ChipButton
+                          onPress={() =>
+                            setReferenceShowAllCrossReferences(
+                              (current) => !current,
+                            )
+                          }
+                          selected={referenceShowAllCrossReferences}
+                          accessibilityLabel={
+                            referenceShowAllCrossReferences
+                              ? "Show fewer references"
+                              : "Show all references"
+                          }
+                          label={
+                            referenceShowAllCrossReferences
+                              ? "Show less"
+                              : `Show all (${totalReferenceCount})`
+                          }
+                          style={localStyles.referenceDisclosureButton}
+                          labelStyle={[
+                            localStyles.referenceDisclosureLabel,
+                            referenceShowAllCrossReferences
+                              ? localStyles.referenceDisclosureLabelActive
                               : null,
                           ]}
-                          numberOfLines={1}
-                        >
-                          {item.text}
-                        </Text>
-                        <Text style={localStyles.selectorRowMeta}>
-                          {formatRelativeDate(item.createdAt)}
-                        </Text>
-                      </PressableScale>
-                    );
-                  })}
-                </View>
-              ) : null}
-              {!controller.bookmarksLoading && controller.bookmarksError ? (
-                <Text style={styles.error}>{controller.bookmarksError}</Text>
-              ) : null}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={bookSelectorVisible}
-        animationType="none"
-        transparent
-        onRequestClose={() => setBookSelectorVisible(false)}
-      >
-        <View style={localStyles.selectorOverlayTop}>
-          <Pressable
-            onPress={() => setBookSelectorVisible(false)}
-            style={localStyles.modalBackdrop}
-          />
-          <Animated.View
-            style={[
-              localStyles.selectorDropdownCard,
-              {
-                opacity: selectorDropAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 1],
-                }),
-                transform: [
-                  {
-                    translateY: selectorDropAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={localStyles.modalHeaderRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Select Book</Text>
-              </View>
-              <ActionButton
-                label="Close"
-                variant="ghost"
-                motionPreset="quiet"
-                onPress={() => setBookSelectorVisible(false)}
-              />
-            </View>
-            <TextInput
-              autoCapitalize="words"
-              autoCorrect={false}
-              placeholder="Search books..."
-              placeholderTextColor={T.colors.textMuted}
-              style={localStyles.bookSearchInput}
-              value={bookFilter}
-              onChangeText={setBookFilter}
-            />
-            <ScrollView
-              style={localStyles.selectorScroll}
-              showsVerticalScrollIndicator={false}
-            >
-              {filteredOldTestamentBooks.length > 0 ? (
-                <View style={localStyles.selectorSection}>
-                  <Text style={localStyles.selectorSectionLabel}>
-                    Old Testament
-                  </Text>
-                  {filteredOldTestamentBooks.map((book) => (
-                    <PressableScale
-                      key={book}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${book}`}
-                      motionPreset="quiet"
-                      disabled={controller.readerLoading}
-                      onPress={() => void handleSelectBook(book)}
-                      style={[
-                        localStyles.selectorRowButton,
-                        book === controller.reader.book
-                          ? localStyles.selectorRowButtonActive
-                          : null,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          localStyles.selectorRowLabel,
-                          book === controller.reader.book
-                            ? localStyles.selectorRowLabelActive
-                            : null,
-                        ]}
-                      >
-                        {book}
-                      </Text>
-                      <Text style={localStyles.selectorRowMeta}>
-                        Ch {lastChapterByBook[book] ?? 1}
-                      </Text>
-                    </PressableScale>
-                  ))}
-                </View>
-              ) : null}
-              {filteredNewTestamentBooks.length > 0 ? (
-                <View style={localStyles.selectorSection}>
-                  <Text style={localStyles.selectorSectionLabel}>
-                    New Testament
-                  </Text>
-                  {filteredNewTestamentBooks.map((book) => (
-                    <PressableScale
-                      key={book}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${book}`}
-                      motionPreset="quiet"
-                      disabled={controller.readerLoading}
-                      onPress={() => void handleSelectBook(book)}
-                      style={[
-                        localStyles.selectorRowButton,
-                        book === controller.reader.book
-                          ? localStyles.selectorRowButtonActive
-                          : null,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          localStyles.selectorRowLabel,
-                          book === controller.reader.book
-                            ? localStyles.selectorRowLabelActive
-                            : null,
-                        ]}
-                      >
-                        {book}
-                      </Text>
-                      <Text style={localStyles.selectorRowMeta}>
-                        Ch {lastChapterByBook[book] ?? 1}
-                      </Text>
-                    </PressableScale>
-                  ))}
-                </View>
-              ) : null}
-              {filteredBooks.length === 0 ? (
-                <Text style={styles.caption}>
-                  No books match "{bookFilter}".
-                </Text>
-              ) : null}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={chapterSelectorVisible}
-        animationType="none"
-        transparent
-        onRequestClose={closeChapterSelector}
-      >
-        <View style={localStyles.selectorOverlayTop}>
-          <Pressable
-            onPress={closeChapterSelector}
-            style={localStyles.modalBackdrop}
-          />
-          <Animated.View
-            style={[
-              localStyles.selectorDropdownCard,
-              {
-                opacity: selectorDropAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 1],
-                }),
-                transform: [
-                  {
-                    translateY: selectorDropAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [-20, 0],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={localStyles.modalHeaderRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Select Chapter</Text>
-                <Text style={styles.caption}>{chapterSelectionBookName}</Text>
-              </View>
-              <ActionButton
-                label="Close"
-                variant="ghost"
-                motionPreset="quiet"
-                onPress={closeChapterSelector}
-              />
-            </View>
-            <ScrollView
-              style={localStyles.selectorScroll}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={localStyles.chapterGrid}>
-                {chapterOptions.map((chapter) => (
-                  <PressableScale
-                    key={`chapter-${chapter}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open chapter ${chapter}`}
-                    motionPreset="quiet"
-                    disabled={controller.readerLoading}
-                    onPress={() => void handleSelectChapter(chapter)}
-                    style={[
-                      localStyles.chapterChip,
-                      chapter === suggestedChapterForSelectedBook
-                        ? localStyles.chapterChipActive
-                        : null,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        localStyles.chapterChipLabel,
-                        chapter === suggestedChapterForSelectedBook
-                          ? localStyles.chapterChipLabelActive
-                          : null,
-                      ]}
-                    >
-                      {chapter}
-                    </Text>
-                  </PressableScale>
-                ))}
-              </View>
-            </ScrollView>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={selectionModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={clearSelection}
-      >
-        <View style={localStyles.modalOverlay}>
-          <Pressable
-            onPress={clearSelection}
-            style={localStyles.modalBackdrop}
-          />
-          <View style={localStyles.modalCard}>
-            <View style={localStyles.modalHeaderRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.panelTitle}>Selection tools</Text>
-                <Text style={styles.caption}>{selectedVerseLabel}</Text>
-              </View>
-              <ActionButton
-                label="Close"
-                variant="ghost"
-                motionPreset="quiet"
-                onPress={clearSelection}
-              />
-            </View>
-
-            <ScrollView style={localStyles.modalContent}>
-              {selectionView === "synopsis" && modalFeedbackLabel ? (
-                <Text style={localStyles.modalFeedbackText}>
-                  {modalFeedbackLabel}
-                </Text>
-              ) : null}
-
-              {selectionView === "synopsis" ? (
-                <>
-                  <View style={localStyles.modalPanel}>
-                    {selectionSynopsisLoading ? (
-                      <LoadingDotsNative label="Analyzing selection..." />
-                    ) : null}
-                    {selectionSynopsisError ? (
-                      <Text style={styles.error}>{selectionSynopsisError}</Text>
-                    ) : null}
-                    {selectionSynopsis && !selectionSynopsisLoading ? (
-                      <Text style={styles.connectionSynopsis}>
-                        {selectionSynopsis.synopsis}
-                      </Text>
-                    ) : null}
-                  </View>
-
-                  <View style={localStyles.modalActionRow}>
-                    <ActionButton
-                      label={selectionMapLoading ? "Tracing..." : "Trace"}
-                      variant="primary"
-                      motionPreset="quiet"
-                      disabled={selectionMapLoading}
-                      onPress={() => void handleTraceSelection()}
-                      style={[
-                        localStyles.compactPrimaryButton,
-                        localStyles.selectionActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactPrimaryButtonLabel,
-                        localStyles.selectionActionButtonLabel,
-                      ]}
-                    />
-                    <ActionButton
-                      label="Go Deeper"
-                      variant="ghost"
-                      motionPreset="quiet"
-                      onPress={handleGoDeeperSelection}
-                      style={[
-                        localStyles.compactHeaderAction,
-                        localStyles.selectionActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactHeaderActionLabel,
-                        localStyles.selectionActionButtonLabel,
-                      ]}
-                    />
-                    <ActionButton
-                      label={rootLoading ? "ROOT..." : "ROOT"}
-                      variant="ghost"
-                      motionPreset="quiet"
-                      disabled={selectionSynopsisLoading || rootLoading}
-                      onPress={() => void handleRootTranslation()}
-                      style={[
-                        localStyles.compactHeaderAction,
-                        localStyles.selectionActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactHeaderActionLabel,
-                        localStyles.selectionActionButtonLabel,
-                        localStyles.rootActionLabel,
-                      ]}
-                    />
-                    <ActionButton
-                      label="Note"
-                      variant="ghost"
-                      motionPreset="quiet"
-                      disabled={
-                        selectionSynopsisLoading ||
-                        controller.highlightMutationBusy
-                      }
-                      onPress={() => setSelectionNoteEditorVisible(true)}
-                      style={[
-                        localStyles.compactHeaderAction,
-                        localStyles.selectionActionButton,
-                      ]}
-                      labelStyle={[
-                        localStyles.compactHeaderActionLabel,
-                        localStyles.selectionActionButtonLabel,
-                      ]}
-                    />
-                  </View>
-
-                  {selectionNoteEditorVisible ? (
-                    <View style={localStyles.modalPanel}>
-                      <TextInput
-                        ref={selectionNoteInputRef}
-                        accessibilityLabel="Selection note"
-                        multiline
-                        placeholder="Write a note for this highlight..."
-                        placeholderTextColor={T.colors.textMuted}
-                        style={localStyles.referenceNoteInput}
-                        value={selectionNoteDraft}
-                        onChangeText={setSelectionNoteDraft}
-                      />
-                      <View style={localStyles.referenceNoteActions}>
-                        <ActionButton
-                          label="Cancel"
-                          variant="ghost"
-                          motionPreset="quiet"
-                          onPress={() => {
-                            setSelectionNoteEditorVisible(false);
-                            setSelectionNoteDraft(
-                              selectedHighlightForSelection?.note ?? "",
-                            );
-                          }}
-                          style={localStyles.compactHeaderAction}
-                          labelStyle={localStyles.compactHeaderActionLabel}
                         />
-                        <ActionButton
-                          label={
-                            controller.highlightMutationBusy
-                              ? "Saving..."
-                              : "Save"
-                          }
-                          variant="primary"
-                          motionPreset="quiet"
-                          disabled={controller.highlightMutationBusy}
-                          onPress={() => void handleSaveSelectionNote()}
-                          style={localStyles.compactPrimaryButton}
-                          labelStyle={localStyles.compactPrimaryButtonLabel}
-                        />
-                      </View>
+                      ) : null}
                     </View>
                   ) : null}
-                </>
-              ) : (
-                <RootTranslationPanel
-                  isLoading={rootLoading}
-                  language={rootLanguage}
-                  words={rootWords}
-                  lostContext={rootLostContext}
-                  fallbackText={rootFallbackText}
-                  selectedWordIndex={rootSelectedWordIndex}
-                  onSelectWord={setRootSelectedWordIndex}
-                  onBack={handleBackToSynopsis}
-                />
-              )}
-            </ScrollView>
-          </View>
+                  {referenceCrossReferencesLoading ? (
+                    <View style={localStyles.referenceListSkeleton}>
+                      <SkeletonBlock width={112} height={12} radius={6} />
+                      <SkeletonTextLines
+                        lines={["100%", "92%", "96%", "88%"]}
+                        gap={10}
+                      />
+                    </View>
+                  ) : null}
+                  {referenceCrossReferencesError ? (
+                    <Text style={styles.error}>
+                      {referenceCrossReferencesError}
+                    </Text>
+                  ) : null}
+                  {!referenceCrossReferencesLoading &&
+                  !referenceCrossReferencesError &&
+                  groupedReferenceSections.length === 0 ? (
+                    <Text style={localStyles.referenceEmptyLabel}>
+                      No cross-references found.
+                    </Text>
+                  ) : null}
+                  {!referenceCrossReferencesLoading &&
+                    groupedReferenceSections.map((section) => (
+                      <View
+                        key={`reference-group-${section.type}`}
+                        style={localStyles.referenceGroup}
+                      >
+                        {groupedReferenceSections.length > 1 ? (
+                          <Text style={localStyles.referenceGroupLabel}>
+                            {REFERENCE_GROUP_LABELS[section.type]}
+                          </Text>
+                        ) : null}
+                        {(referenceShowAllCrossReferences
+                          ? section.refs
+                          : section.refs.slice(
+                              0,
+                              INITIAL_REFERENCE_ROWS_PER_GROUP,
+                            )
+                        ).map((ref, index) => {
+                          const label = `${ref.book} ${ref.chapter}:${ref.verse}`;
+                          return (
+                            <PressableScale
+                              key={`${section.type}-${label}-${index}`}
+                              onPress={() => pushReference(label)}
+                              motionPreset="quiet"
+                              pressedStyle={
+                                localStyles.referenceRowButtonPressed
+                              }
+                              style={localStyles.referenceRowButton}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Open ${label}`}
+                            >
+                              <Text style={localStyles.referenceRowLabel}>
+                                {label}
+                              </Text>
+                            </PressableScale>
+                          );
+                        })}
+                        {!referenceShowAllCrossReferences &&
+                        section.refs.length >
+                          INITIAL_REFERENCE_ROWS_PER_GROUP ? (
+                          <Text style={localStyles.referenceGroupMoreLabel}>
+                            +
+                            {section.refs.length -
+                              INITIAL_REFERENCE_ROWS_PER_GROUP}{" "}
+                            more
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
+                </View>
+              </>
+            )}
+          </ScrollView>
         </View>
-      </Modal>
+      </BottomSheetSurface>
+
+      <BottomSheetSurface
+        visible={bookmarkSelectorVisible}
+        onClose={closeBookmarkSelector}
+        title="Bookmarks"
+        subtitle="Tap to reopen a saved place in Reader."
+        snapPoints={["60%"]}
+      >
+        <ScrollView
+          style={localStyles.selectorScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {controller.bookmarksLoading ? (
+            <LoadingDotsNative label="Loading bookmarks..." />
+          ) : null}
+          {!controller.bookmarksLoading && sortedBookmarks.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No bookmarks yet</Text>
+              <Text style={styles.emptySubtitle}>
+                Tap the bookmark icon in the header to save this chapter.
+              </Text>
+            </View>
+          ) : null}
+          {!controller.bookmarksLoading && sortedBookmarks.length > 0 ? (
+            <View style={localStyles.selectorSection}>
+              <Text style={localStyles.selectorSectionLabel}>Saved Places</Text>
+              {sortedBookmarks.map((item) => {
+                const isActive = item.id === currentChapterBookmark?.id;
+                return (
+                  <ListRowButton
+                    key={item.id}
+                    accessibilityLabel={`Open bookmark ${item.text}`}
+                    motionPreset="quiet"
+                    disabled={controller.readerLoading}
+                    onPress={() => void handleOpenBookmarkItem(item.text)}
+                    selected={isActive}
+                    label={item.text}
+                    meta={formatRelativeDate(item.createdAt)}
+                    style={localStyles.selectorRowButton}
+                    labelStyle={[
+                      localStyles.selectorRowLabel,
+                      isActive ? localStyles.selectorRowLabelActive : null,
+                    ]}
+                    metaStyle={localStyles.selectorRowMeta}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
+          {!controller.bookmarksLoading && controller.bookmarksError ? (
+            <Text style={styles.error}>{controller.bookmarksError}</Text>
+          ) : null}
+        </ScrollView>
+      </BottomSheetSurface>
+
+      <BottomSheetSurface
+        visible={bookSelectorVisible}
+        onClose={() => setBookSelectorVisible(false)}
+        title="Select Book"
+        snapPoints={["74%"]}
+      >
+        <TextInput
+          autoCapitalize="words"
+          autoCorrect={false}
+          placeholder="Search books..."
+          placeholderTextColor={T.colors.textMuted}
+          style={localStyles.bookSearchInput}
+          value={bookFilter}
+          onChangeText={setBookFilter}
+        />
+        <ScrollView
+          style={localStyles.selectorScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {filteredOldTestamentBooks.length > 0 ? (
+            <View style={localStyles.selectorSection}>
+              <Text style={localStyles.selectorSectionLabel}>
+                Old Testament
+              </Text>
+              {filteredOldTestamentBooks.map((book) => (
+                <ListRowButton
+                  key={book}
+                  accessibilityLabel={`Open ${book}`}
+                  motionPreset="quiet"
+                  disabled={controller.readerLoading}
+                  onPress={() => void handleSelectBook(book)}
+                  selected={book === controller.reader.book}
+                  label={book}
+                  meta={`Ch ${lastChapterByBook[book] ?? 1}`}
+                  style={localStyles.selectorRowButton}
+                  labelStyle={[
+                    localStyles.selectorRowLabel,
+                    book === controller.reader.book
+                      ? localStyles.selectorRowLabelActive
+                      : null,
+                  ]}
+                  metaStyle={localStyles.selectorRowMeta}
+                />
+              ))}
+            </View>
+          ) : null}
+          {filteredNewTestamentBooks.length > 0 ? (
+            <View style={localStyles.selectorSection}>
+              <Text style={localStyles.selectorSectionLabel}>
+                New Testament
+              </Text>
+              {filteredNewTestamentBooks.map((book) => (
+                <ListRowButton
+                  key={book}
+                  accessibilityLabel={`Open ${book}`}
+                  motionPreset="quiet"
+                  disabled={controller.readerLoading}
+                  onPress={() => void handleSelectBook(book)}
+                  selected={book === controller.reader.book}
+                  label={book}
+                  meta={`Ch ${lastChapterByBook[book] ?? 1}`}
+                  style={localStyles.selectorRowButton}
+                  labelStyle={[
+                    localStyles.selectorRowLabel,
+                    book === controller.reader.book
+                      ? localStyles.selectorRowLabelActive
+                      : null,
+                  ]}
+                  metaStyle={localStyles.selectorRowMeta}
+                />
+              ))}
+            </View>
+          ) : null}
+          {filteredBooks.length === 0 ? (
+            <Text style={styles.caption}>No books match "{bookFilter}".</Text>
+          ) : null}
+        </ScrollView>
+      </BottomSheetSurface>
+
+      <BottomSheetSurface
+        visible={chapterSelectorVisible}
+        onClose={closeChapterSelector}
+        title="Select Chapter"
+        subtitle={chapterSelectionBookName}
+        snapPoints={["56%"]}
+      >
+        <ScrollView
+          style={localStyles.selectorScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={localStyles.chapterGrid}>
+            {chapterOptions.map((chapter) => (
+              <ChipButton
+                key={`chapter-${chapter}`}
+                accessibilityLabel={`Open chapter ${chapter}`}
+                motionPreset="quiet"
+                disabled={controller.readerLoading}
+                onPress={() => void handleSelectChapter(chapter)}
+                selected={chapter === suggestedChapterForSelectedBook}
+                label={String(chapter)}
+                style={localStyles.chapterChip}
+                labelStyle={[
+                  localStyles.chapterChipLabel,
+                  chapter === suggestedChapterForSelectedBook
+                    ? localStyles.chapterChipLabelActive
+                    : null,
+                ]}
+              />
+            ))}
+          </View>
+        </ScrollView>
+      </BottomSheetSurface>
+
+      <BottomSheetSurface
+        visible={selectionModalVisible && !selectionNoteEditorVisible}
+        onClose={clearSelection}
+        title="Selection tools"
+        subtitle={selectedVerseLabel}
+        snapPoints={["64%"]}
+      >
+        <View style={[localStyles.modalCard, localStyles.selectionModalCard]}>
+          <ScrollView style={localStyles.modalContent}>
+            {selectionView === "synopsis" && modalFeedbackLabel ? (
+              <Text style={localStyles.modalFeedbackText}>
+                {modalFeedbackLabel}
+              </Text>
+            ) : null}
+
+            {selectionView === "synopsis" ? (
+              <>
+                <View
+                  style={[
+                    localStyles.modalPanel,
+                    localStyles.selectionSynopsisPanel,
+                  ]}
+                >
+                  {selectionSynopsisLoading ? (
+                    <View style={localStyles.selectionSynopsisSkeleton}>
+                      <SkeletonBlock width={120} height={12} radius={6} />
+                      <SkeletonTextLines
+                        lines={["100%", "100%", "96%", "88%", "92%", "74%"]}
+                        gap={10}
+                      />
+                    </View>
+                  ) : null}
+                  {selectionSynopsisError ? (
+                    <Text style={styles.error}>{selectionSynopsisError}</Text>
+                  ) : null}
+                  {selectionSynopsis && !selectionSynopsisLoading ? (
+                    <Text style={styles.connectionSynopsis}>
+                      {selectionSynopsis.synopsis}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View style={localStyles.modalActionRow}>
+                  <CompactButton
+                    label={selectionMapLoading ? "Tracing..." : "Trace"}
+                    variant="primary"
+                    disabled={selectionMapLoading}
+                    onPress={() => void handleTraceSelection()}
+                    style={localStyles.selectionActionButton}
+                    labelStyle={localStyles.selectionActionButtonLabel}
+                  />
+                  <CompactButton
+                    label="Go Deeper"
+                    variant="ghost"
+                    onPress={handleGoDeeperSelection}
+                    style={[
+                      localStyles.compactHeaderAction,
+                      localStyles.selectionActionButton,
+                    ]}
+                    labelStyle={[
+                      localStyles.compactHeaderActionLabel,
+                      localStyles.selectionActionButtonLabel,
+                    ]}
+                  />
+                  <CompactButton
+                    label={rootLoading ? "ROOT..." : "ROOT"}
+                    variant="ghost"
+                    disabled={selectionSynopsisLoading || rootLoading}
+                    onPress={() => void handleRootTranslation()}
+                    style={[
+                      localStyles.compactHeaderAction,
+                      localStyles.selectionActionButton,
+                    ]}
+                    labelStyle={[
+                      localStyles.compactHeaderActionLabel,
+                      localStyles.selectionActionButtonLabel,
+                      localStyles.rootActionLabel,
+                    ]}
+                  />
+                  <CompactButton
+                    label="Note"
+                    variant="ghost"
+                    disabled={
+                      selectionSynopsisLoading ||
+                      controller.highlightMutationBusy
+                    }
+                    onPress={() => setSelectionNoteEditorVisible(true)}
+                    style={[
+                      localStyles.compactHeaderAction,
+                      localStyles.selectionActionButton,
+                    ]}
+                    labelStyle={[
+                      localStyles.compactHeaderActionLabel,
+                      localStyles.selectionActionButtonLabel,
+                    ]}
+                  />
+                </View>
+              </>
+            ) : (
+              <RootTranslationPanel
+                isLoading={rootLoading}
+                language={rootLanguage}
+                words={rootWords}
+                lostContext={rootLostContext}
+                fallbackText={rootFallbackText}
+                selectedWordIndex={rootSelectedWordIndex}
+                onSelectWord={setRootSelectedWordIndex}
+                onBack={handleBackToSynopsis}
+              />
+            )}
+          </ScrollView>
+        </View>
+      </BottomSheetSurface>
+
+      <NoteEditorModal
+        visible={selectionModalVisible && selectionNoteEditorVisible}
+        title="Selection note"
+        subtitle={selectedVerseLabel}
+        value={selectionNoteDraft}
+        onChangeText={setSelectionNoteDraft}
+        onClose={() => {
+          setSelectionNoteEditorVisible(false);
+          setSelectionNoteDraft(selectedHighlightForSelection?.note ?? "");
+        }}
+        onSave={() => void handleSaveSelectionNote()}
+        busy={controller.highlightMutationBusy}
+        error={controller.highlightMutationError}
+        placeholder="Write a note for this highlight..."
+      />
     </View>
   );
 }
@@ -3110,33 +2855,27 @@ const localStyles = StyleSheet.create({
   },
   compactPrimaryButton: {
     flex: 0,
-    minHeight: 32,
-    borderRadius: 7,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    minWidth: 0,
   },
   compactPrimaryButtonPressed: {
     backgroundColor: "rgba(252, 211, 77, 0.86)",
     borderColor: "rgba(252, 211, 77, 0.92)",
   },
   compactPrimaryButtonLabel: {
-    fontSize: 10.5,
+    fontSize: 13,
     fontWeight: "700",
   },
   compactHeaderAction: {
     flex: 0,
-    minHeight: 32,
-    borderRadius: 7,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    minWidth: 0,
   },
   compactHeaderActionPressed: {
     backgroundColor: "rgba(255, 255, 255, 0.14)",
     borderColor: "rgba(255, 255, 255, 0.22)",
   },
   compactHeaderActionLabel: {
-    fontSize: 10.5,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
   },
   selectionStatusRow: {
     flexDirection: "row",
@@ -3414,22 +3153,18 @@ const localStyles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
-  centerModalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 14,
-  },
   referenceModalCard: {
     width: "100%",
-    maxWidth: 420,
-    maxHeight: "84%",
-    borderRadius: T.radius.lg,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.ink,
-    padding: T.spacing.md,
+    paddingHorizontal: T.spacing.lg,
+    paddingBottom: T.spacing.xs,
     gap: T.spacing.sm,
+  },
+  referenceVersePanel: {
+    minHeight: 132,
+    justifyContent: "center",
+  },
+  referenceVerseSkeleton: {
+    gap: 14,
   },
   referenceVerseText: {
     color: T.colors.text,
@@ -3486,6 +3221,12 @@ const localStyles = StyleSheet.create({
     gap: 8,
     marginBottom: T.spacing.md,
   },
+  referenceListSectionStable: {
+    minHeight: 148,
+  },
+  referenceListSkeleton: {
+    gap: 14,
+  },
   referenceListHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3537,7 +3278,7 @@ const localStyles = StyleSheet.create({
   },
   referenceDisclosureLabel: {
     color: "rgba(252, 211, 77, 0.94)",
-    fontSize: 10,
+    fontSize: T.typography.caption,
     fontWeight: "700",
     letterSpacing: 0.45,
     textTransform: "uppercase",
@@ -3595,15 +3336,11 @@ const localStyles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.62)",
   },
   modalCard: {
-    maxHeight: "84%",
-    borderTopLeftRadius: T.radius.lg,
-    borderTopRightRadius: T.radius.lg,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.ink,
-    padding: T.spacing.md,
+    paddingHorizontal: T.spacing.lg,
+    paddingBottom: T.spacing.xs,
     gap: T.spacing.sm,
   },
+  selectionModalCard: {},
   selectorOverlayTop: {
     flex: 1,
     justifyContent: "flex-start",
@@ -3645,16 +3382,7 @@ const localStyles = StyleSheet.create({
     marginTop: 4,
   },
   selectorRowButton: {
-    minHeight: 40,
-    borderRadius: T.radius.md,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
-    paddingHorizontal: T.spacing.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
+    paddingHorizontal: T.spacing.md,
   },
   selectorRowButtonActive: {
     borderColor: T.colors.accent,
@@ -3663,7 +3391,7 @@ const localStyles = StyleSheet.create({
   selectorRowLabel: {
     color: T.colors.text,
     fontSize: T.typography.bodySm,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   selectorRowLabelActive: {
     color: T.colors.accentStrong,
@@ -3681,13 +3409,7 @@ const localStyles = StyleSheet.create({
   },
   chapterChip: {
     width: 56,
-    minHeight: 40,
-    borderRadius: T.radius.md,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
+    minHeight: T.touchTarget.min,
   },
   chapterChipActive: {
     borderColor: T.colors.accent,
@@ -3737,20 +3459,29 @@ const localStyles = StyleSheet.create({
     gap: T.spacing.sm,
     marginBottom: T.spacing.sm,
   },
+  selectionSynopsisPanel: {
+    minHeight: 132,
+    justifyContent: "center",
+  },
+  selectionSynopsisSkeleton: {
+    gap: 14,
+  },
   modalActionRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 2,
+    gap: 4,
+    paddingHorizontal: 0,
     marginBottom: T.spacing.sm,
     width: "100%",
   },
   selectionActionButton: {
     flex: 1,
     minWidth: 0,
+    paddingHorizontal: 8,
   },
   selectionActionButtonLabel: {
     textAlign: "center",
+    fontSize: 11,
   },
   rootActionLabel: {
     color: T.colors.accent,

@@ -16,7 +16,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { PressableScale } from "../components/native/PressableScale";
+import { ActionButton } from "../components/native/ActionButton";
 
 type WebShellErrorType = "network" | "http" | "timeout";
 
@@ -244,33 +244,27 @@ export function WebAppShellScreen({
             ))}
           </View>
           <View style={styles.buttonRow}>
-            <PressableScale
+            <ActionButton
               onPress={handleReload}
-              style={styles.reloadButton}
-              accessibilityRole="button"
               accessibilityLabel="Retry web app load"
-            >
-              <Text style={styles.reloadButtonLabel}>Retry</Text>
-            </PressableScale>
-            <PressableScale
+              label="Retry"
+              variant="primary"
+            />
+            <ActionButton
               onPress={() => {
                 void handleExternalRequest(webUrl);
               }}
-              style={styles.browserButton}
-              accessibilityRole="button"
               accessibilityLabel="Open web app in browser"
-            >
-              <Text style={styles.browserButtonLabel}>Open in Browser</Text>
-            </PressableScale>
+              label="Open in Browser"
+              variant="secondary"
+            />
             {allowFallbackToNative && onFallbackToNative ? (
-              <PressableScale
+              <ActionButton
                 onPress={onFallbackToNative}
-                style={styles.fallbackButton}
-                accessibilityRole="button"
                 accessibilityLabel="Use native shell"
-              >
-                <Text style={styles.fallbackButtonLabel}>Use Native Shell</Text>
-              </PressableScale>
+                label="Use Native Shell"
+                variant="ghost"
+              />
             ) : null}
           </View>
         </View>
@@ -481,47 +475,5 @@ const styles = StyleSheet.create({
   buttonRow: {
     width: "100%",
     gap: 10,
-  },
-  reloadButton: {
-    backgroundColor: "#D4AF37",
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  reloadButtonLabel: {
-    color: "#09090B",
-    fontWeight: "600",
-  },
-  browserButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  browserButtonLabel: {
-    color: "#E4E4E7",
-    fontWeight: "700",
-  },
-  fallbackButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fallbackButtonLabel: {
-    color: "#E4E4E7",
-    fontWeight: "600",
   },
 });

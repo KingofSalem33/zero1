@@ -2,7 +2,6 @@ import {
   Alert,
   Animated,
   FlatList,
-  Modal,
   ScrollView,
   Share,
   Text,
@@ -11,15 +10,16 @@ import {
   Easing,
 } from "react-native";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigation } from "@react-navigation/native";
-import { parseBookmarkReference } from "@zero1/shared";
 import {
   Directions,
   FlingGestureHandler,
   State,
 } from "react-native-gesture-handler";
 import { ActionButton } from "../components/native/ActionButton";
+import { BottomSheetSurface } from "../components/native/BottomSheetSurface";
+import { ChipButton } from "../components/native/ChipButton";
 import { EmptyState } from "../components/native/EmptyState";
+import { NoteEditorModal } from "../components/native/NoteEditorModal";
 import {
   BookmarkCardSkeleton,
   ConnectionCardSkeleton,
@@ -37,7 +37,6 @@ import {
   ConnectionCard,
   HighlightCard,
   LibraryMapCard,
-  VerseNoteCard,
   formatRelativeDate,
 } from "./common/EntityCards";
 import type {
@@ -45,7 +44,6 @@ import type {
   LibraryMapItem,
   MobileHighlightItem,
 } from "../lib/api";
-import type { VerseNoteItem } from "../lib/verseNotes";
 import type { MobileGoDeeperPayload } from "../types/chat";
 
 function includesQuery(
@@ -60,20 +58,18 @@ function includesQuery(
   return haystack.includes(normalizedQuery);
 }
 
-type LibraryMode = "connections" | "maps" | "highlights" | "notes";
+type LibraryMode = "connections" | "maps" | "highlights";
 
 const LIBRARY_MODES: Array<{ key: LibraryMode; label: string }> = [
   { key: "connections", label: "Connections" },
   { key: "maps", label: "Maps" },
   { key: "highlights", label: "Highlights" },
-  { key: "notes", label: "Notes" },
 ];
 
 const LIBRARY_MODE_EMPTY_HINTS: Record<LibraryMode, string> = {
   connections: "Save a connection from discovery or chat to build this tab.",
   maps: "Save a map from Chat or Connection detail to build this tab.",
   highlights: "Use New highlight to create one, then pull down to sync.",
-  notes: "Open a verse in Reader and save a note to build this tab.",
 };
 
 const LIBRARY_MODE_ORDER = LIBRARY_MODES.map((mode) => mode.key);
@@ -87,6 +83,18 @@ function formatHighlightShareText(item: MobileHighlightItem): string {
     item.text,
     `Color: ${item.color}`,
     item.note?.trim() ? `Note: ${item.note.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function formatConnectionShareText(item: LibraryConnectionItem): string {
+  return [
+    `${item.fromVerse.reference} -> ${item.toVerse.reference}`,
+    item.synopsis,
+    item.explanation?.trim() ? item.explanation.trim() : null,
+    item.note?.trim() ? `Note: ${item.note.trim()}` : null,
+    item.tags.length > 0 ? `Tags: ${item.tags.join(", ")}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -220,11 +228,9 @@ function buildHighlightsInsightPayload(
 
 function LibraryModeTabs({
   activeMode,
-  counts,
   onChange,
 }: {
   activeMode: LibraryMode;
-  counts: Record<LibraryMode, number>;
   onChange: (mode: LibraryMode) => void;
 }) {
   return (
@@ -236,34 +242,19 @@ function LibraryModeTabs({
       {LIBRARY_MODES.map((mode) => {
         const active = mode.key === activeMode;
         return (
-          <PressableScale
+          <ChipButton
             key={mode.key}
             onPress={() => onChange(mode.key)}
-            style={[
-              styles.libraryModeTab,
-              active ? styles.libraryModeTabActive : null,
-            ]}
-            accessibilityRole="button"
+            selected={active}
             accessibilityState={{ selected: active }}
             accessibilityLabel={`Open ${mode.label}`}
-          >
-            <Text
-              style={[
-                styles.libraryModeTabLabel,
-                active ? styles.libraryModeTabLabelActive : null,
-              ]}
-            >
-              {mode.label}
-            </Text>
-            <Text
-              style={[
-                styles.libraryModeTabCount,
-                active ? styles.libraryModeTabCountActive : null,
-              ]}
-            >
-              {counts[mode.key]}
-            </Text>
-          </PressableScale>
+            label={mode.label}
+            style={styles.libraryModeTab}
+            labelStyle={[
+              styles.libraryModeTabLabel,
+              active ? styles.libraryModeTabLabelActive : null,
+            ]}
+          />
         );
       })}
     </ScrollView>
@@ -284,39 +275,20 @@ function LibrarySheet({
   children: ReactNode;
 }) {
   return (
-    <Modal
-      animationType="slide"
-      transparent
+    <BottomSheetSurface
       visible={visible}
-      onRequestClose={onClose}
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      snapPoints={["68%"]}
     >
-      <View style={styles.librarySheetBackdrop}>
-        <PressableScale
-          onPress={onClose}
-          style={styles.librarySheetScrim}
-          accessibilityRole="button"
-          accessibilityLabel="Close detail sheet"
-        />
-        <View style={styles.librarySheetPanel}>
-          <View style={styles.librarySheetHandle} />
-          <View style={styles.librarySheetHeaderRow}>
-            <View style={styles.flex1}>
-              <Text style={styles.panelTitle}>{title}</Text>
-              {subtitle ? (
-                <Text style={styles.panelSubtitle}>{subtitle}</Text>
-              ) : null}
-            </View>
-            <ActionButton label="Close" onPress={onClose} variant="ghost" />
-          </View>
-          <ScrollView
-            contentContainerStyle={styles.librarySheetScrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {children}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+      <ScrollView
+        contentContainerStyle={styles.librarySheetScrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </ScrollView>
+    </BottomSheetSurface>
   );
 }
 
@@ -328,27 +300,21 @@ function ConnectionDetailSheet({
   onClose,
   onSave,
   onDelete,
-  onGoDeeper,
-  onOpenMap,
 }: {
   item: LibraryConnectionItem | null;
   visible: boolean;
   mutationBusy: boolean;
   mutationError: string | null;
   onClose: () => void;
-  onSave: (note: string, tags: string) => void;
+  onSave: (note: string) => void | Promise<void>;
   onDelete: (id: string) => void;
-  onGoDeeper: (item: LibraryConnectionItem) => void;
-  onOpenMap: (item: LibraryConnectionItem) => void;
 }) {
   const [noteDraft, setNoteDraft] = useState("");
-  const [tagsDraft, setTagsDraft] = useState("");
   const [noteEditorVisible, setNoteEditorVisible] = useState(false);
 
   useEffect(() => {
     if (!item) return;
     setNoteDraft(item.note ?? "");
-    setTagsDraft(item.tags.join(", "));
     setNoteEditorVisible(false);
   }, [item?.id]);
 
@@ -360,109 +326,91 @@ function ConnectionDetailSheet({
       : [item.fromVerse, item.toVerse];
 
   return (
-    <LibrarySheet
-      visible={visible}
-      title="Connection"
-      subtitle={`${item.fromVerse.reference} -> ${item.toVerse.reference}`}
-      onClose={onClose}
-    >
-      <View style={styles.featureCard}>
-        <Text style={styles.connectionSynopsis}>{item.synopsis}</Text>
-        {item.explanation ? (
-          <Text style={styles.connectionNote}>{item.explanation}</Text>
-        ) : null}
-        <View style={styles.connectionMetaWrap}>
-          <Text style={styles.metaPill}>{item.connectionType}</Text>
-          <Text style={styles.metaPill}>
-            Similarity {Math.round(item.similarity * 100)}%
-          </Text>
-          {connectedVerses.slice(0, 2).map((verse) => (
-            <Text key={`${item.id}-${verse.reference}`} style={styles.metaPill}>
-              {verse.reference}
-            </Text>
-          ))}
-          {connectedVerses.length > 2 ? (
+    <>
+      <LibrarySheet
+        visible={visible && !noteEditorVisible}
+        title="Connection"
+        subtitle={`${item.fromVerse.reference} -> ${item.toVerse.reference}`}
+        onClose={onClose}
+      >
+        <View style={styles.featureCard}>
+          <Text style={styles.connectionSynopsis}>{item.synopsis}</Text>
+          {item.explanation ? (
+            <Text style={styles.connectionNote}>{item.explanation}</Text>
+          ) : null}
+          <View style={styles.connectionMetaWrap}>
+            <Text style={styles.metaPill}>{item.connectionType}</Text>
             <Text style={styles.metaPill}>
-              +{connectedVerses.length - 2} more
+              Similarity {Math.round(item.similarity * 100)}%
             </Text>
+            {connectedVerses.slice(0, 2).map((verse) => (
+              <Text
+                key={`${item.id}-${verse.reference}`}
+                style={styles.metaPill}
+              >
+                {verse.reference}
+              </Text>
+            ))}
+            {connectedVerses.length > 2 ? (
+              <Text style={styles.metaPill}>
+                +{connectedVerses.length - 2} more
+              </Text>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.libraryEditorCard}>
+          <View style={styles.row}>
+            <ActionButton
+              label="Note"
+              onPress={() => setNoteEditorVisible(true)}
+              disabled={mutationBusy}
+              variant="secondary"
+            />
+            <ActionButton
+              label="Share"
+              onPress={() =>
+                void Share.share({
+                  title: `${item.fromVerse.reference} -> ${item.toVerse.reference}`,
+                  message: formatConnectionShareText(item),
+                })
+              }
+              disabled={mutationBusy}
+              variant="ghost"
+            />
+            <ActionButton
+              label="Delete"
+              onPress={() => onDelete(item.id)}
+              disabled={mutationBusy}
+              variant="danger"
+            />
+          </View>
+          {mutationError ? (
+            <Text style={styles.error}>{mutationError}</Text>
           ) : null}
         </View>
-      </View>
-
-      <View style={styles.libraryEditorCard}>
-        <View style={styles.row}>
-          <ActionButton
-            label="Note"
-            onPress={() => setNoteEditorVisible(true)}
-            disabled={mutationBusy}
-            variant="secondary"
-          />
-          <ActionButton
-            label="Go deeper"
-            onPress={() => onGoDeeper(item)}
-            disabled={mutationBusy}
-            variant="ghost"
-          />
-          <ActionButton
-            label="Open"
-            onPress={() => onOpenMap(item)}
-            disabled={mutationBusy || !item.bundle}
-            variant="ghost"
-          />
-          <ActionButton
-            label="Delete"
-            onPress={() => onDelete(item.id)}
-            disabled={mutationBusy}
-            variant="danger"
-          />
-        </View>
-        {noteEditorVisible ? (
-          <View style={styles.calloutMuted}>
-            <Text style={styles.fieldLabel}>Note</Text>
-            <TextInput
-              multiline
-              placeholder="Add context for this connection"
-              placeholderTextColor={T.colors.textMuted}
-              style={[styles.input, styles.textAreaInputSmall]}
-              value={noteDraft}
-              onChangeText={setNoteDraft}
-            />
-            <Text style={styles.fieldLabel}>Tags</Text>
-            <TextInput
-              placeholder="faith, covenant, mercy"
-              placeholderTextColor={T.colors.textMuted}
-              style={styles.input}
-              value={tagsDraft}
-              onChangeText={setTagsDraft}
-            />
-            <View style={styles.row}>
-              <ActionButton
-                label="Cancel"
-                onPress={() => {
-                  setNoteEditorVisible(false);
-                  setNoteDraft(item.note ?? "");
-                  setTagsDraft(item.tags.join(", "));
-                }}
-                disabled={mutationBusy}
-                variant="ghost"
-              />
-              <ActionButton
-                label={mutationBusy ? "Saving..." : "Save"}
-                onPress={() => {
-                  void onSave(noteDraft, tagsDraft);
-                  setNoteEditorVisible(false);
-                }}
-                disabled={mutationBusy}
-                variant="primary"
-              />
-            </View>
-          </View>
-        ) : null}
-        {mutationError ? (
-          <Text style={styles.error}>{mutationError}</Text>
-        ) : null}
-      </View>
-    </LibrarySheet>
+      </LibrarySheet>
+      <NoteEditorModal
+        visible={visible && noteEditorVisible}
+        title="Connection note"
+        subtitle={`${item.fromVerse.reference} -> ${item.toVerse.reference}`}
+        value={noteDraft}
+        onChangeText={setNoteDraft}
+        onClose={() => {
+          setNoteEditorVisible(false);
+          setNoteDraft(item.note ?? "");
+          onClose();
+        }}
+        onSave={async () => {
+          await onSave(noteDraft);
+          setNoteEditorVisible(false);
+          onClose();
+        }}
+        busy={mutationBusy}
+        error={mutationError}
+        placeholder="Add context for this connection"
+      />
+    </>
   );
 }
 
@@ -481,56 +429,106 @@ function MapDetailSheet({
   mutationBusy: boolean;
   mutationError: string | null;
   onClose: () => void;
-  onSave: (title: string, note: string, tags: string) => void;
+  onSave: (title: string, note: string, tags: string) => void | Promise<void>;
   onOpen: (item: LibraryMapItem) => void;
   onDelete: (id: string) => void;
 }) {
   const [titleDraft, setTitleDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [tagsDraft, setTagsDraft] = useState("");
+  const [noteEditorVisible, setNoteEditorVisible] = useState(false);
 
   useEffect(() => {
     if (!item) return;
     setTitleDraft(item.title ?? "");
     setNoteDraft(item.note ?? "");
     setTagsDraft(item.tags.join(", "));
+    setNoteEditorVisible(false);
   }, [item?.id]);
 
   if (!item) return null;
 
   return (
-    <LibrarySheet
-      visible={visible}
-      title={item.title?.trim() || "Saved map"}
-      subtitle={item.bundleMeta?.anchorRef || item.bundleId || "Map detail"}
-      onClose={onClose}
-    >
-      <View style={styles.featureCard}>
-        {item.note?.trim() ? (
-          <Text style={styles.connectionSynopsis}>{item.note.trim()}</Text>
-        ) : (
-          <Text style={styles.caption}>Saved map details</Text>
-        )}
-        <View style={styles.connectionMetaWrap}>
-          {item.bundleMeta?.anchorRef ? (
-            <Text style={styles.metaPill}>
-              Anchor {item.bundleMeta.anchorRef}
-            </Text>
-          ) : null}
-          {item.bundleMeta?.verseCount ? (
-            <Text style={styles.metaPill}>
-              {item.bundleMeta.verseCount} verses
-            </Text>
-          ) : null}
-          {item.bundleMeta?.edgeCount ? (
-            <Text style={styles.metaPill}>
-              {item.bundleMeta.edgeCount} connections
-            </Text>
-          ) : null}
+    <>
+      <LibrarySheet
+        visible={visible && !noteEditorVisible}
+        title={item.title?.trim() || "Saved map"}
+        subtitle={item.bundleMeta?.anchorRef || item.bundleId || "Map detail"}
+        onClose={onClose}
+      >
+        <View style={styles.featureCard}>
+          {item.note?.trim() ? (
+            <Text style={styles.connectionSynopsis}>{item.note.trim()}</Text>
+          ) : (
+            <Text style={styles.caption}>Saved map details</Text>
+          )}
+          <View style={styles.connectionMetaWrap}>
+            {item.bundleMeta?.anchorRef ? (
+              <Text style={styles.metaPill}>
+                Anchor {item.bundleMeta.anchorRef}
+              </Text>
+            ) : null}
+            {item.bundleMeta?.verseCount ? (
+              <Text style={styles.metaPill}>
+                {item.bundleMeta.verseCount} verses
+              </Text>
+            ) : null}
+            {item.bundleMeta?.edgeCount ? (
+              <Text style={styles.metaPill}>
+                {item.bundleMeta.edgeCount} connections
+              </Text>
+            ) : null}
+          </View>
         </View>
-      </View>
 
-      <View style={styles.libraryEditorCard}>
+        <View style={styles.libraryEditorCard}>
+          {mutationError ? (
+            <Text style={styles.error}>{mutationError}</Text>
+          ) : null}
+          <View style={styles.row}>
+            <ActionButton
+              label="Note"
+              onPress={() => setNoteEditorVisible(true)}
+              disabled={mutationBusy}
+              variant="secondary"
+            />
+            <ActionButton
+              label="Open"
+              onPress={() => onOpen(item)}
+              disabled={mutationBusy || !item.bundle}
+              variant="ghost"
+            />
+            <ActionButton
+              label="Delete"
+              onPress={() => onDelete(item.id)}
+              disabled={mutationBusy}
+              variant="danger"
+            />
+          </View>
+        </View>
+      </LibrarySheet>
+      <NoteEditorModal
+        visible={visible && noteEditorVisible}
+        title="Map note"
+        subtitle={item.bundleMeta?.anchorRef || item.bundleId || "Saved map"}
+        value={noteDraft}
+        onChangeText={setNoteDraft}
+        onClose={() => {
+          setNoteEditorVisible(false);
+          setTitleDraft(item.title ?? "");
+          setNoteDraft(item.note ?? "");
+          setTagsDraft(item.tags.join(", "));
+          onClose();
+        }}
+        onSave={async () => {
+          await onSave(titleDraft, noteDraft, tagsDraft);
+          setNoteEditorVisible(false);
+          onClose();
+        }}
+        busy={mutationBusy}
+        error={mutationError}
+        placeholder="Add a note for this map"
+      >
         <Text style={styles.fieldLabel}>Title</Text>
         <TextInput
           placeholder="Map title"
@@ -538,15 +536,6 @@ function MapDetailSheet({
           style={styles.input}
           value={titleDraft}
           onChangeText={setTitleDraft}
-        />
-        <Text style={styles.fieldLabel}>Note</Text>
-        <TextInput
-          multiline
-          placeholder="Optional note"
-          placeholderTextColor={T.colors.textMuted}
-          style={[styles.input, styles.textAreaInputSmall]}
-          value={noteDraft}
-          onChangeText={setNoteDraft}
         />
         <Text style={styles.fieldLabel}>Tags</Text>
         <TextInput
@@ -556,102 +545,8 @@ function MapDetailSheet({
           value={tagsDraft}
           onChangeText={setTagsDraft}
         />
-        {mutationError ? (
-          <Text style={styles.error}>{mutationError}</Text>
-        ) : null}
-        <View style={styles.row}>
-          <ActionButton
-            label="Open"
-            onPress={() => onOpen(item)}
-            disabled={mutationBusy || !item.bundle}
-            variant="secondary"
-          />
-        </View>
-        <View style={styles.row}>
-          <ActionButton
-            label={mutationBusy ? "Saving..." : "Save"}
-            onPress={() => onSave(titleDraft, noteDraft, tagsDraft)}
-            disabled={mutationBusy}
-            variant="primary"
-          />
-          <ActionButton
-            label="Delete"
-            onPress={() => onDelete(item.id)}
-            disabled={mutationBusy}
-            variant="danger"
-          />
-        </View>
-      </View>
-    </LibrarySheet>
-  );
-}
-
-function NoteDetailSheet({
-  item,
-  visible,
-  onClose,
-  onSave,
-  onDelete,
-  onOpenReader,
-}: {
-  item: VerseNoteItem | null;
-  visible: boolean;
-  onClose: () => void;
-  onSave: (reference: string, text: string) => void;
-  onDelete: (reference: string) => void;
-  onOpenReader: (reference: string) => void;
-}) {
-  const [draft, setDraft] = useState("");
-
-  useEffect(() => {
-    if (!item) return;
-    setDraft(item.text);
-  }, [item?.reference, item?.updatedAt]);
-
-  if (!item) return null;
-
-  return (
-    <LibrarySheet
-      visible={visible}
-      title="Verse note"
-      subtitle={item.reference}
-      onClose={onClose}
-    >
-      <View style={styles.featureCard}>
-        <Text style={styles.connectionSynopsis}>{item.text || "No note"}</Text>
-      </View>
-
-      <View style={styles.libraryEditorCard}>
-        <Text style={styles.fieldLabel}>Note</Text>
-        <TextInput
-          multiline
-          placeholder="Add a note for this verse"
-          placeholderTextColor={T.colors.textMuted}
-          style={[styles.input, styles.libraryLargeTextArea]}
-          value={draft}
-          onChangeText={setDraft}
-        />
-        <View style={styles.row}>
-          <ActionButton
-            label="Open"
-            onPress={() => onOpenReader(item.reference)}
-            variant="secondary"
-          />
-        </View>
-        <View style={styles.row}>
-          <ActionButton
-            label="Save"
-            onPress={() => onSave(item.reference, draft)}
-            variant="primary"
-          />
-          <ActionButton
-            label="Delete"
-            onPress={() => onDelete(item.reference)}
-            variant="danger"
-          />
-        </View>
-      </View>
-    </LibrarySheet>
+      </NoteEditorModal>
+    </>
   );
 }
 
@@ -674,97 +569,77 @@ function HighlightDetailSheet({
   noteDraft: string;
   onClose: () => void;
   onNoteChange: (value: string) => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onDelete: (id: string) => void;
   onShare: (item: MobileHighlightItem) => void | Promise<void>;
 }) {
   const [noteEditorVisible, setNoteEditorVisible] = useState(false);
-  const noteInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     setNoteEditorVisible(false);
   }, [item?.id, visible]);
 
-  useEffect(() => {
-    if (!noteEditorVisible) return;
-    const timer = setTimeout(() => {
-      noteInputRef.current?.focus();
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [noteEditorVisible]);
-
   if (!item) return null;
 
   return (
-    <LibrarySheet
-      visible={visible}
-      title="Highlight"
-      subtitle={item.referenceLabel}
-      onClose={onClose}
-    >
-      <View style={styles.featureCard}>
-        <Text style={styles.connectionSynopsis}>{item.text}</Text>
-      </View>
-
-      <View style={styles.libraryEditorCard}>
-        <View style={styles.row}>
-          <ActionButton
-            label="Note"
-            onPress={() => setNoteEditorVisible(true)}
-            disabled={mutationBusy}
-            variant="secondary"
-          />
-          <ActionButton
-            label="Share"
-            onPress={() => void onShare(item)}
-            disabled={mutationBusy}
-            variant="ghost"
-          />
-          <ActionButton
-            label={mutationBusy ? "Deleting..." : "Delete"}
-            onPress={() => onDelete(item.id)}
-            disabled={mutationBusy}
-            variant="danger"
-          />
+    <>
+      <LibrarySheet
+        visible={visible && !noteEditorVisible}
+        title="Highlight"
+        subtitle={item.referenceLabel}
+        onClose={onClose}
+      >
+        <View style={styles.featureCard}>
+          <Text style={styles.connectionSynopsis}>{item.text}</Text>
         </View>
-        {noteEditorVisible ? (
-          <View style={styles.calloutMuted}>
-            <TextInput
-              ref={noteInputRef}
-              accessibilityLabel="Highlight note"
-              multiline
-              placeholder="Write a note for this highlight..."
-              placeholderTextColor={T.colors.textMuted}
-              style={styles.input}
-              value={noteDraft}
-              onChangeText={onNoteChange}
+
+        <View style={styles.libraryEditorCard}>
+          <View style={styles.row}>
+            <ActionButton
+              label="Note"
+              onPress={() => setNoteEditorVisible(true)}
+              disabled={mutationBusy}
+              variant="secondary"
             />
-            <View style={styles.row}>
-              <ActionButton
-                label="Cancel"
-                variant="ghost"
-                onPress={() => {
-                  setNoteEditorVisible(false);
-                  onNoteChange(item.note ?? "");
-                }}
-              />
-              <ActionButton
-                label={mutationBusy ? "Saving..." : "Save"}
-                variant="primary"
-                disabled={mutationBusy}
-                onPress={() => {
-                  void onSave();
-                  setNoteEditorVisible(false);
-                }}
-              />
-            </View>
+            <ActionButton
+              label="Share"
+              onPress={() => void onShare(item)}
+              disabled={mutationBusy}
+              variant="ghost"
+            />
+            <ActionButton
+              label={mutationBusy ? "Deleting..." : "Delete"}
+              onPress={() => onDelete(item.id)}
+              disabled={mutationBusy}
+              variant="danger"
+            />
           </View>
-        ) : null}
-        {mutationError ? (
-          <Text style={styles.error}>{mutationError}</Text>
-        ) : null}
-      </View>
-    </LibrarySheet>
+          {mutationError ? (
+            <Text style={styles.error}>{mutationError}</Text>
+          ) : null}
+        </View>
+      </LibrarySheet>
+      <NoteEditorModal
+        visible={visible && noteEditorVisible}
+        title="Highlight note"
+        subtitle={item.referenceLabel}
+        value={noteDraft}
+        onChangeText={onNoteChange}
+        onClose={() => {
+          setNoteEditorVisible(false);
+          onNoteChange(item.note ?? "");
+          onClose();
+        }}
+        onSave={async () => {
+          await onSave();
+          setNoteEditorVisible(false);
+          onClose();
+        }}
+        busy={mutationBusy}
+        error={mutationError}
+        placeholder="Write a note for this highlight..."
+      />
+    </>
   );
 }
 
@@ -778,12 +653,10 @@ export function LibraryScreen({
     openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
   };
 }) {
-  const navigation = useNavigation<any>();
   const controller = useMobileApp();
   const [mode, setMode] = useState<LibraryMode>("connections");
   const [connectionQuery, setConnectionQuery] = useState("");
   const [mapQuery, setMapQuery] = useState("");
-  const [noteQuery, setNoteQuery] = useState("");
   const [selectedConnectionId, setSelectedConnectionId] = useState<
     string | null
   >(null);
@@ -791,22 +664,15 @@ export function LibraryScreen({
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(
     null,
   );
-  const [selectedNoteReference, setSelectedNoteReference] = useState<
-    string | null
-  >(null);
   const [actionConnectionId, setActionConnectionId] = useState<string | null>(
     null,
   );
   const [actionMapId, setActionMapId] = useState<string | null>(null);
-  const [actionNoteReference, setActionNoteReference] = useState<string | null>(
-    null,
-  );
   const modeSwipeLastAtRef = useRef(0);
   const libraryRailMotion = useScrollHideHeader(mode);
   const pageHeaderMotion = useScrollHideHeader(mode);
   const normalizedConnectionQuery = connectionQuery.trim().toLowerCase();
   const normalizedMapQuery = mapQuery.trim().toLowerCase();
-  const normalizedNoteQuery = noteQuery.trim().toLowerCase();
   const filteredConnections = useMemo(
     () =>
       controller.libraryConnections.filter((item) =>
@@ -841,17 +707,8 @@ export function LibraryScreen({
       ),
     [controller.libraryMaps, normalizedMapQuery],
   );
-  const filteredNotes = useMemo(
-    () =>
-      controller.verseNoteItems.filter((item) =>
-        includesQuery([item.reference, item.text], normalizedNoteQuery),
-      ),
-    [controller.verseNoteItems, normalizedNoteQuery],
-  );
   const connectionsCount = controller.libraryConnections.length;
   const mapsCount = controller.libraryMaps.length;
-  const highlightsCount = controller.highlights.length;
-  const notesCount = controller.verseNoteItems.length;
   const selectedConnection = useMemo(
     () =>
       controller.libraryConnections.find(
@@ -870,31 +727,6 @@ export function LibraryScreen({
       null,
     [controller.highlights, selectedHighlightId],
   );
-  const selectedNote = useMemo(
-    () =>
-      controller.verseNoteItems.find(
-        (item) => item.reference === selectedNoteReference,
-      ) ?? null,
-    [controller.verseNoteItems, selectedNoteReference],
-  );
-  async function handleOpenReference(reference: string) {
-    try {
-      const parsed = parseBookmarkReference(reference);
-      if (parsed.verse !== undefined) {
-        controller.queueReaderFocusTarget(
-          parsed.book,
-          parsed.chapter,
-          parsed.verse,
-        );
-      }
-      await controller.navigateReaderTo(parsed.book, parsed.chapter);
-      navigation.navigate("Tabs", { mode: "Reader" } as never);
-      setSelectedNoteReference(null);
-    } catch {
-      // Keep the user in Library if the reference is malformed.
-    }
-  }
-
   function handleDeleteConnection(id: string) {
     Alert.alert(
       "Delete connection?",
@@ -927,20 +759,6 @@ export function LibraryScreen({
     ]);
   }
 
-  function handleDeleteNote(reference: string) {
-    Alert.alert("Delete note?", "This removes the note for this verse.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          void controller.saveVerseNote(reference, "");
-          setSelectedNoteReference(null);
-        },
-      },
-    ]);
-  }
-
   function handleDeleteHighlight(id: string) {
     Alert.alert(
       "Delete highlight?",
@@ -965,7 +783,6 @@ export function LibraryScreen({
     setActionMapId(null);
     setSelectedHighlightId(null);
     controller.setSelectedHighlightId(null);
-    setActionNoteReference(null);
   }
 
   function handleLibraryModeFling(direction: "next" | "previous") {
@@ -1001,16 +818,7 @@ export function LibraryScreen({
       style={libraryRailMotion.animatedStyle}
     >
       <View style={styles.libraryTopRail}>
-        <LibraryModeTabs
-          activeMode={mode}
-          counts={{
-            connections: connectionsCount,
-            maps: mapsCount,
-            highlights: highlightsCount,
-            notes: notesCount,
-          }}
-          onChange={handleLibraryModeChange}
-        />
+        <LibraryModeTabs activeMode={mode} onChange={handleLibraryModeChange} />
       </View>
     </Animated.View>
   );
@@ -1209,78 +1017,6 @@ export function LibraryScreen({
     />
   );
 
-  const notesPage = (
-    <FlatList
-      data={filteredNotes}
-      keyExtractor={(item) => item.reference}
-      contentContainerStyle={styles.listContent}
-      onScroll={(event) => {
-        const yOffset = event.nativeEvent.contentOffset.y;
-        libraryRailMotion.handleScroll(yOffset);
-        pageHeaderMotion.handleScroll(yOffset);
-      }}
-      scrollEventThrottle={16}
-      ListHeaderComponent={
-        <Animated.View
-          onLayout={(event) =>
-            pageHeaderMotion.handleLayout(
-              Math.round(event.nativeEvent.layout.height),
-            )
-          }
-          style={pageHeaderMotion.animatedStyle}
-        >
-          <View style={styles.libraryPageHeader}>
-            <View style={styles.libraryPageTitleRow}>
-              <Text style={styles.panelTitle}>Notes</Text>
-              <Text style={styles.caption}>{notesCount}</Text>
-            </View>
-            <SearchInput
-              placeholder="Search verse notes"
-              value={noteQuery}
-              onChangeText={setNoteQuery}
-            />
-            {normalizedNoteQuery ? (
-              <Text style={styles.caption}>
-                Showing {filteredNotes.length} of {notesCount}
-              </Text>
-            ) : null}
-          </View>
-        </Animated.View>
-      }
-      renderItem={({ item }) => (
-        <VerseNoteCard
-          item={item}
-          selected={
-            item.reference === selectedNoteReference ||
-            item.reference === actionNoteReference
-          }
-          onPress={() => {
-            setActionNoteReference(null);
-            setSelectedNoteReference(item.reference);
-          }}
-          onLongPress={() =>
-            setActionNoteReference((current) =>
-              current === item.reference ? null : item.reference,
-            )
-          }
-          onOpenReader={() => void handleOpenReference(item.reference)}
-          onDelete={() => handleDeleteNote(item.reference)}
-          showQuickActions={item.reference === actionNoteReference}
-        />
-      )}
-      ListEmptyComponent={
-        <EmptyState
-          title={normalizedNoteQuery ? "No matching notes" : "No notes yet"}
-          subtitle={
-            normalizedNoteQuery
-              ? "Try a broader search query."
-              : LIBRARY_MODE_EMPTY_HINTS.notes
-          }
-        />
-      }
-    />
-  );
-
   const currentPage =
     mode === "connections" ? (
       connectionsPage
@@ -1304,9 +1040,7 @@ export function LibraryScreen({
           libraryRailMotion.handleScroll(yOffset)
         }
       />
-    ) : (
-      notesPage
-    );
+    ) : null;
 
   return (
     <View style={styles.flex1}>
@@ -1335,33 +1069,18 @@ export function LibraryScreen({
         mutationBusy={controller.libraryConnectionMutationBusy}
         mutationError={controller.libraryConnectionMutationError}
         onClose={() => setSelectedConnectionId(null)}
-        onSave={(note, tags) =>
+        onSave={(note) =>
           selectedConnection
             ? void controller.handleSaveLibraryConnectionMeta(
                 selectedConnection.id,
                 {
                   note,
-                  tags,
+                  tags: selectedConnection.tags.join(", "),
                 },
               )
             : undefined
         }
         onDelete={handleDeleteConnection}
-        onGoDeeper={(item) =>
-          nav.openChat(
-            item.goDeeperPrompt ||
-              `Explain the connection between ${item.fromVerse.reference} and ${item.toVerse.reference}.`,
-            true,
-          )
-        }
-        onOpenMap={(item) => {
-          if (!item.bundle) return;
-          nav.openMapViewer(
-            item.bundleMeta?.anchorRef || "Connection map",
-            item.bundle,
-          );
-          setSelectedConnectionId(null);
-        }}
       />
 
       <MapDetailSheet
@@ -1385,18 +1104,6 @@ export function LibraryScreen({
           setSelectedMapId(null);
         }}
         onDelete={handleDeleteMap}
-      />
-
-      <NoteDetailSheet
-        item={selectedNote}
-        visible={Boolean(selectedNote)}
-        onClose={() => setSelectedNoteReference(null)}
-        onSave={(reference, text) => {
-          void controller.saveVerseNote(reference, text);
-          setSelectedNoteReference(reference);
-        }}
-        onDelete={handleDeleteNote}
-        onOpenReader={(reference) => void handleOpenReference(reference)}
       />
 
       <HighlightDetailSheet

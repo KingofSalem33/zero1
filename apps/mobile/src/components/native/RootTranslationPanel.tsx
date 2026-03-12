@@ -4,6 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import type { RootTranslationWord } from "../../lib/api";
 import { chunkLostContext } from "../../utils/lostContextChunker";
 import { styles, T } from "../../theme/mobileStyles";
+import { ChipButton } from "./ChipButton";
+import { IconButton } from "./IconButton";
 import { PressableScale } from "./PressableScale";
 import { LoadingDotsNative } from "./loading/LoadingDotsNative";
 
@@ -51,15 +53,14 @@ export function RootTranslationPanel({
 
   return (
     <View style={localStyles.rootWrap}>
-      <PressableScale
-        accessibilityRole="button"
+      <ChipButton
         accessibilityLabel={backLabel}
         motionPreset="quiet"
         onPress={onBack}
+        label={backLabel}
         style={localStyles.backButton}
-      >
-        <Text style={localStyles.backButtonLabel}>{backLabel}</Text>
-      </PressableScale>
+        labelStyle={localStyles.backButtonLabel}
+      />
 
       {isLoading ? (
         <LoadingDotsNative
@@ -156,36 +157,34 @@ export function RootTranslationPanel({
 
               {lostContextTotal > 1 ? (
                 <View style={localStyles.lostPagerRow}>
-                  <PressableScale
-                    accessibilityRole="button"
+                  <IconButton
                     accessibilityLabel="Previous lost context page"
                     motionPreset="quiet"
                     disabled={!canPrevLostContext}
                     onPress={() =>
                       setLostContextPage((current) => Math.max(current - 1, 0))
                     }
-                    style={[
-                      localStyles.pagerArrowButton,
+                    icon={
+                      <Ionicons
+                        name="chevron-back"
+                        size={14}
+                        color={
+                          canPrevLostContext
+                            ? "rgba(228, 228, 231, 0.88)"
+                            : "rgba(228, 228, 231, 0.36)"
+                        }
+                      />
+                    }
+                    style={
                       !canPrevLostContext
                         ? localStyles.pagerButtonDisabled
-                        : null,
-                    ]}
-                  >
-                    <Ionicons
-                      name="chevron-back"
-                      size={14}
-                      color={
-                        canPrevLostContext
-                          ? "rgba(228, 228, 231, 0.88)"
-                          : "rgba(228, 228, 231, 0.36)"
-                      }
-                    />
-                  </PressableScale>
+                        : undefined
+                    }
+                  />
                   <Text style={localStyles.pagerCounterLabel}>
                     {lostContextPage + 1}/{lostContextTotal}
                   </Text>
-                  <PressableScale
-                    accessibilityRole="button"
+                  <IconButton
                     accessibilityLabel="Next lost context page"
                     motionPreset="quiet"
                     disabled={!canNextLostContext}
@@ -194,23 +193,23 @@ export function RootTranslationPanel({
                         Math.min(current + 1, lostContextTotal - 1),
                       )
                     }
-                    style={[
-                      localStyles.pagerArrowButton,
+                    icon={
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color={
+                          canNextLostContext
+                            ? "rgba(228, 228, 231, 0.88)"
+                            : "rgba(228, 228, 231, 0.36)"
+                        }
+                      />
+                    }
+                    style={
                       !canNextLostContext
                         ? localStyles.pagerButtonDisabled
-                        : null,
-                    ]}
-                  >
-                    <Ionicons
-                      name="chevron-forward"
-                      size={14}
-                      color={
-                        canNextLostContext
-                          ? "rgba(228, 228, 231, 0.88)"
-                          : "rgba(228, 228, 231, 0.36)"
-                      }
-                    />
-                  </PressableScale>
+                        : undefined
+                    }
+                  />
                 </View>
               ) : null}
             </View>
@@ -231,17 +230,13 @@ const localStyles = StyleSheet.create({
   },
   backButton: {
     alignSelf: "flex-start",
-    borderRadius: T.radius.md,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    paddingHorizontal: T.spacing.sm,
-    paddingVertical: 5,
-    backgroundColor: T.colors.surface,
+    paddingHorizontal: T.spacing.md,
+    paddingVertical: 8,
   },
   backButtonLabel: {
     color: T.colors.textMuted,
     fontSize: T.typography.caption,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   contentWrap: {
     gap: T.spacing.sm,
@@ -325,14 +320,8 @@ const localStyles = StyleSheet.create({
     gap: 10,
   },
   pagerArrowButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.14)",
-    backgroundColor: "rgba(39, 39, 42, 0.72)",
-    alignItems: "center",
-    justifyContent: "center",
+    width: T.touchTarget.min,
+    height: T.touchTarget.min,
   },
   pagerCounterLabel: {
     color: T.colors.textMuted,

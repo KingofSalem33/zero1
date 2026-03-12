@@ -1,6 +1,7 @@
 import { Component, type ReactNode, Suspense, lazy } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { LoadingDotsNative } from "./src/components/native/loading/LoadingDotsNative";
 import { styles } from "./src/theme/mobileStyles";
@@ -58,11 +59,13 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <BootErrorBoundary>
-          <Suspense fallback={<BootFallback />}>
-            <AppRuntime />
-          </Suspense>
-        </BootErrorBoundary>
+        <BottomSheetModalProvider>
+          <BootErrorBoundary>
+            <Suspense fallback={<BootFallback />}>
+              <AppRuntime />
+            </Suspense>
+          </BootErrorBoundary>
+        </BottomSheetModalProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
