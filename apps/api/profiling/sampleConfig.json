@@ -1,0 +1,129 @@
+[
+  {
+    "name": "health",
+    "method": "GET",
+    "path": "/health",
+    "count": 50,
+    "responseType": "json"
+  },
+  {
+    "name": "health_db",
+    "method": "GET",
+    "path": "/api/health/db",
+    "count": 50,
+    "responseType": "json"
+  },
+  {
+    "name": "pericope_random",
+    "method": "GET",
+    "path": "/api/pericope/random",
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "verse_get",
+    "method": "GET",
+    "path": "/api/verse/John%203:16",
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "verse_cross_refs",
+    "method": "GET",
+    "path": "/api/verse/John%203:16/cross-references",
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "synopsis",
+    "method": "POST",
+    "path": "/api/synopsis",
+    "body": {
+      "text": "In the beginning God created the heaven and the earth.",
+      "maxWords": 34
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "semantic_connection",
+    "method": "POST",
+    "path": "/api/semantic-connection/synopsis",
+    "body": {
+      "verseIds": [88334, 88330],
+      "connectionType": "GOLD",
+      "similarity": 0.92
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "discover_connections",
+    "method": "POST",
+    "path": "/api/discover-connections",
+    "body": {
+      "verseIds": [88334, 88330, 90602]
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "trace",
+    "method": "POST",
+    "path": "/api/trace",
+    "body": {
+      "text": "John 3:16"
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "root_translation",
+    "method": "POST",
+    "path": "/api/root-translation",
+    "body": {
+      "selectedText": "For God so loved the world",
+      "book": "John",
+      "chapter": 3,
+      "verse": 16
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "chat",
+    "method": "POST",
+    "path": "/api/chat",
+    "body": {
+      "message": "Explain John 3:16 in brief.",
+      "format": "text",
+      "history": []
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "json"
+  },
+  {
+    "name": "chat_stream",
+    "method": "POST",
+    "path": "/api/chat/stream",
+    "headers": {
+      "Accept": "text/event-stream"
+    },
+    "body": {
+      "message": "Explain John 3:16 in brief.",
+      "promptMode": "go_deeper_short"
+    },
+    "count": 50,
+    "pauseMs": 9000,
+    "responseType": "sse"
+  }
+]

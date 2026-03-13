@@ -1,0 +1,12 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+build
+.next
+out
+
+# Strong's Concordance Bible data (large JSON files)
+public/bible/strongs/*.json
+apps/web/public/bible/strongs/*.json

@@ -1,16 +1,39 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { RouterProvider } from "react-router-dom";
+import * as Sentry from "@sentry/react";
 import "./index.css";
-import App from "./App.tsx";
-import ErrorBoundary from "./components/ErrorBoundary.tsx";
+import { router } from "./router.tsx";
 import { AuthProvider } from "./contexts/AuthContext.tsx";
+import { WEB_ENV } from "./lib/env";
+import { supabase } from "./lib/supabase";
+import { installNativeAuthBridge } from "./lib/nativeAuthBridge";
+
+const sentryDsn = WEB_ENV.SENTRY_DSN;
+const sentryEnabled = WEB_ENV.IS_PRODUCTION && Boolean(sentryDsn);
+
+Sentry.init({
+  dsn: sentryDsn,
+  environment: WEB_ENV.MODE,
+  enabled: sentryEnabled,
+  integrations: [
+    Sentry.browserTracingIntegration(),
+    Sentry.replayIntegration({
+      maskAllText: false,
+      blockAllMedia: false,
+    }),
+  ],
+  tracesSampleRate: 0.2,
+  replaysSessionSampleRate: 0.05,
+  replaysOnErrorSampleRate: 1.0,
+});
+
+installNativeAuthBridge(supabase);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </ErrorBoundary>
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
   </StrictMode>,
 );

@@ -1,0 +1,49 @@
+name: Desktop Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+jobs:
+  build-desktop-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_LINK: ${{ secrets.DESKTOP_WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.DESKTOP_WINDOWS_CSC_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build signed Windows release (tag publish)
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: npm --prefix apps/desktop run dist:win:publish
+
+      - name: Build Windows artifacts (manual run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/desktop-v') }}
+        run: npm --prefix apps/desktop run dist:win
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zero1-desktop-windows
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/*.yml
+          if-no-files-found: error

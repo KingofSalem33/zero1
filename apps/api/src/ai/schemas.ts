@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROMPT_MODES } from "../prompts/system/systemPrompts";
 
 export const webSearchSchema = z.object({
   q: z.string().describe("Search query"),
@@ -41,6 +42,61 @@ export const chatRequestSchema = z.object({
     )
     .optional()
     .describe("Conversation history"),
+  promptMode: z
+    .enum(PROMPT_MODES)
+    .optional()
+    .describe("Prompt formatting mode for streaming exegesis"),
+  mapMode: z
+    .enum(["fast", "full"])
+    .optional()
+    .describe("Map generation mode for streaming responses"),
+  visualBundle: z
+    .object({
+      nodes: z.array(z.any()),
+      edges: z.array(z.any()),
+      rootId: z.number(),
+      lens: z.string(),
+    })
+    .passthrough()
+    .optional()
+    .describe("Pre-built visual context bundle to skip tree rebuilding"),
+  mapSession: z
+    .object({
+      cluster: z
+        .object({
+          baseId: z.number(),
+          verseIds: z.array(z.number()),
+          connectionType: z.string(),
+        })
+        .optional(),
+      currentConnection: z
+        .object({
+          fromId: z.number(),
+          toId: z.number(),
+          connectionType: z.string(),
+        })
+        .optional(),
+      previousConnection: z
+        .object({
+          fromId: z.number(),
+          toId: z.number(),
+          connectionType: z.string(),
+        })
+        .optional(),
+      nextConnection: z
+        .object({
+          fromId: z.number(),
+          toId: z.number(),
+          connectionType: z.string(),
+        })
+        .nullable()
+        .optional(),
+      visitedEdgeKeys: z.array(z.string()).optional(),
+      offMapReferences: z.array(z.string()).optional(),
+      exhausted: z.boolean().optional(),
+    })
+    .optional()
+    .describe("Active map session metadata for grounded traversal"),
 });
 
 export const chatJsonResponseSchema = z.object({

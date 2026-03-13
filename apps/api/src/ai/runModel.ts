@@ -3,8 +3,21 @@ import { toolMap, type ToolName, type ToolMap } from "./tools";
 import { ZodError } from "zod";
 import pino from "pino";
 import { ENV } from "../env";
+import { profileTime } from "../profiling/requestProfiler";
+import { type TaskType, getModelConfig, recordModelUsage } from "./modelRouter";
 
 const logger = pino({ name: "runModel" });
+
+function resolveModelVerbosity(
+  model: string,
+  requested: "low" | "medium" | "high",
+): "low" | "medium" | "high" {
+  // gpt-4o-mini currently rejects "low" verbosity and supports "medium".
+  if (model.includes("gpt-4o-mini") && requested === "low") {
+    return "medium";
+  }
+  return requested;
+}
 
 function extractTextFromItem(msg: any): string {
   const content = msg?.content;
@@ -21,6 +34,66 @@ function extractTextFromItem(msg: any): string {
       .filter(Boolean)
       .join(" ");
   }
+  return "";
+}
+
+function extractTextFromContentArray(content: any): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((item: any) => {
+      if (!item) return "";
+      if (typeof item === "string") return item;
+      if (typeof item.text === "string") return item.text;
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+function extractTextFromResponse(
+  response: any,
+  assistantMessage?: any,
+): string {
+  // Preferred: SDK-provided convenience field
+  const outputText = response?.output_text;
+  if (typeof outputText === "string" && outputText.trim().length > 0) {
+    return outputText;
+  }
+
+  if (Array.isArray(outputText)) {
+    const joined = outputText
+      .map((item: any) =>
+        typeof item === "string" ? item : (item?.text ?? ""),
+      )
+      .filter(Boolean)
+      .join("");
+    if (joined.trim().length > 0) return joined;
+  }
+
+  // Legacy/common path: assistant message content array
+  const assistantText = extractTextFromContentArray(assistantMessage?.content);
+  if (assistantText.trim().length > 0) {
+    return assistantText;
+  }
+
+  // Fallback: scan output items directly for text-bearing entries
+  if (Array.isArray(response?.output)) {
+    const fromOutputItems = response.output
+      .map((item: any) => {
+        if (!item) return "";
+        if (typeof item.text === "string") return item.text;
+        if (Array.isArray(item.content)) {
+          return extractTextFromContentArray(item.content);
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("");
+    if (fromOutputItems.trim().length > 0) {
+      return fromOutputItems;
+    }
+  }
+
   return "";
 }
 
@@ -139,12 +212,28 @@ export interface RunModelOptions {
       schema: Record<string, unknown>;
     };
   };
+  // Prompt caching optimization (OpenAI API)
+  // Note: Prompt caching is automatic for prompts > 1024 tokens
+  // These parameters are for advanced optimization
+  promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
+  promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
+  maxOutputTokens?: number; // Per-call output token cap override
+  // Model routing - use task type for automatic model selection
+  taskType?: TaskType;
 }
 
 export interface RunModelResult {
   text: string;
   citations?: string[];
   tools_used?: ToolActivity[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+    };
+  };
 }
 
 export async function runModel(
@@ -155,18 +244,56 @@ export async function runModel(
     toolSpecs = [],
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
-    model = ENV.OPENAI_MODEL_NAME, // Use configured model (gpt-5-mini)
-    reasoningEffort = "high", // Leverage GPT-5's reasoning capabilities
+    reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
     onToolCall,
     onToolResult,
     onToolError,
     responseFormat,
+    promptCacheRetention, // Optional: "24h" for extended cache retention
+    promptCacheKey, // Optional: Custom key for cache routing
+    maxOutputTokens,
+    taskType,
   } = options;
+
+  // Resolve model from task type or use explicit model or default
+  const resolvedConfig = taskType ? getModelConfig(taskType) : null;
+  const model = options.model ?? resolvedConfig?.model ?? ENV.OPENAI_MODEL_NAME;
+  const effectiveVerbosity = resolveModelVerbosity(model, verbosity);
+  const startTime = Date.now();
+
+  // Helper to record usage and return result
+  const recordAndReturn = (result: RunModelResult): RunModelResult => {
+    if (taskType && result.usage) {
+      recordModelUsage({
+        task: taskType,
+        model,
+        tokenUsage: {
+          prompt: result.usage.prompt_tokens || 0,
+          completion: result.usage.completion_tokens || 0,
+          total: result.usage.total_tokens || 0,
+          cached: result.usage.prompt_tokens_details?.cached_tokens,
+        },
+        latencyMs: Date.now() - startTime,
+        timestamp: startTime,
+      });
+    }
+    return result;
+  };
+
+  // Set reasoning effort based on model capabilities
+  // Nano doesn't support reasoning mode - only mini/pro/opus do
+  // IMPORTANT: Only use reasoning if explicitly requested (no default)
+  const effectiveReasoningEffort =
+    model.startsWith("gpt-5") &&
+    !model.includes("nano") &&
+    reasoningEffort !== undefined
+      ? reasoningEffort
+      : undefined;
 
   const client = makeOpenAI();
   if (!client) {
-    throw new Error("OpenAI client not configured");
+    throw new Error("AI client not configured");
   }
 
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
@@ -174,6 +301,7 @@ export async function runModel(
   const toolActivity: ToolActivity[] = [];
   const MAX_TOOL_ACTIVITY = 100; // ✅ Fix #10: Limit tool activity tracking to prevent unbounded growth
   let iterations = 0;
+  let lastUsageData: any = undefined; // Track usage from last API call
 
   logger.info(
     { messageCount: messages.length, toolCount: toolSpecs.length },
@@ -184,48 +312,98 @@ export async function runModel(
     iterations++;
 
     try {
-      const response = await client.responses.create({
-        model,
-        input: conversationMessages,
-        tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
-        tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-        temperature: 0.3,
-        max_output_tokens: 16000, // Increased to leverage GPT-5-mini's 128k output capacity
-        parallel_tool_calls: true,
-        // Text configuration with structured outputs and verbosity
-        text: responseFormat
-          ? {
-              format: {
-                type: "json_schema" as const,
-                name: responseFormat.json_schema.name,
-                schema: responseFormat.json_schema.schema,
-              },
-              verbosity: verbosity,
-            }
-          : {
-              verbosity: verbosity,
-            },
-        // GPT-5 specific reasoning parameters
-        ...(model.startsWith("gpt-5") && {
-          reasoning: {
-            effort: reasoningEffort,
-          },
-        }),
-      });
+      logger.info(
+        {
+          model,
+          verbosity: effectiveVerbosity,
+          effectiveReasoningEffort,
+          willSendReasoning: !!effectiveReasoningEffort,
+          iteration: iterations,
+        },
+        "Model configuration for iteration",
+      );
 
-      // Extract assistant message from output array
-      const assistantMessage = response.output.find(
+      const response = await profileTime(
+        "llm.responses_create",
+        () =>
+          client.responses.create({
+            model,
+            input: conversationMessages,
+            tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
+            tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
+            max_output_tokens: maxOutputTokens ?? 16000,
+            parallel_tool_calls: true,
+            ...(responseFormat
+              ? {
+                  text: {
+                    format: {
+                      type: "json_schema" as const,
+                      name: responseFormat.json_schema.name,
+                      schema: responseFormat.json_schema.schema,
+                    },
+                    verbosity: effectiveVerbosity,
+                  },
+                }
+              : {
+                  text: {
+                    verbosity: effectiveVerbosity,
+                  },
+                }),
+            // Only apply reasoning for models that support it (not nano)
+            ...(effectiveReasoningEffort && {
+              reasoning: {
+                effort: effectiveReasoningEffort,
+              },
+            }),
+            // Note: OpenAI prompt caching parameters (if supported by SDK version)
+            // Prompt caching is automatic for prompts > 1024 tokens
+            // These parameters are for advanced optimization when supported
+            ...(promptCacheRetention && {
+              prompt_cache_retention: promptCacheRetention,
+            }),
+            ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
+          }),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+          model,
+        },
+      );
+
+      // Log prompt cache performance if available
+      if ((response as any).usage?.prompt_tokens_details?.cached_tokens) {
+        const cached = (response as any).usage.prompt_tokens_details
+          .cached_tokens;
+        const total = (response as any).usage?.prompt_tokens || 0;
+        const cacheHitRate =
+          total > 0 ? ((cached / total) * 100).toFixed(1) : "0";
+        logger.info(
+          {
+            cached_tokens: cached,
+            total_prompt_tokens: total,
+            cache_hit_rate: `${cacheHitRate}%`,
+            model,
+          },
+          "Prompt cache hit",
+        );
+      }
+
+      // Store usage data for telemetry
+      lastUsageData = (response as any).usage;
+
+      const outputItems = Array.isArray(response.output) ? response.output : [];
+
+      // Extract assistant message from output array (legacy shape)
+      const assistantMessage = outputItems.find(
         (item: any) => item.type === "message" && item.role === "assistant",
       ) as any;
-
-      if (!assistantMessage) {
-        throw new Error("No assistant message in response");
-      }
       // Extract tool calls from output array
       // Be tolerant of SDK/event shape differences (id vs call_id)
       const toolCalls = (
-        response.output.filter(
-          (item: any) => item.type === "function_tool_call",
+        outputItems.filter(
+          (item: any) =>
+            item.type === "function_tool_call" || item.type === "function_call",
         ) as any[]
       ).map((item: any) => ({
         // Prefer call_id if present; fall back to id
@@ -237,13 +415,14 @@ export async function runModel(
       logger.info(
         {
           iteration: iterations,
+          hasAssistantMessage: !!assistantMessage,
           hasToolCalls: toolCalls.length > 0,
         },
         "Received model response",
       );
 
       // Add all output items to conversation for context
-      for (const outputItem of response.output) {
+      for (const outputItem of outputItems) {
         conversationMessages.push(outputItem);
       }
 
@@ -252,32 +431,34 @@ export async function runModel(
         // No tool calls, return final response
         // Get text content from assistant message
         // Handle both "text" and "output_text" types (Responses API format)
-        const textContent =
-          assistantMessage.content
-            ?.filter((c: any) => c.type === "text" || c.type === "output_text")
-            .map((c: any) => c.text)
-            .join("") || "";
+        const textContent = extractTextFromResponse(response, assistantMessage);
 
         // Log if text content is empty to help debug
         if (!textContent) {
           logger.warn(
             {
-              assistantMessageType: assistantMessage.type,
-              contentType: typeof assistantMessage.content,
-              contentIsArray: Array.isArray(assistantMessage.content),
-              contentLength: assistantMessage.content?.length,
-              firstContentItem: assistantMessage.content?.[0],
+              outputLength: outputItems.length,
+              outputTypes: outputItems
+                .map((item: any) => item?.type)
+                .slice(0, 8),
+              outputTextType: typeof response?.output_text,
+              assistantMessageType: assistantMessage?.type,
+              contentType: typeof assistantMessage?.content,
+              contentIsArray: Array.isArray(assistantMessage?.content),
+              contentLength: assistantMessage?.content?.length,
+              firstContentItem: assistantMessage?.content?.[0],
             },
             "Empty text content extracted from assistant message",
           );
         }
 
-        return {
+        return recordAndReturn({
           text: textContent,
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
-        };
+          usage: lastUsageData,
+        });
       }
 
       // Process tool calls
@@ -299,7 +480,8 @@ export async function runModel(
           continue;
         }
 
-        if (!providedToolMap[toolName]) {
+        const toolFn = providedToolMap[toolName];
+        if (!toolFn) {
           logger.error({ toolName }, "Unknown tool requested");
           conversationMessages.push({
             type: "function_call_output",
@@ -366,7 +548,15 @@ export async function runModel(
           onToolCall?.(toolName, args);
 
           // Execute tool function with validation
-          const result = await providedToolMap[toolName](args);
+          const result = await profileTime(
+            `tool.${toolName}`,
+            async () => toolFn(args) as unknown,
+            {
+              file: "ai/tools",
+              fn: toolName,
+              await: "tool_execution",
+            },
+          );
 
           // Track tool call success
           // ✅ Fix #10: Only track if under limit
@@ -461,12 +651,13 @@ export async function runModel(
             .map((c: any) => c.text)
             .join("") || "An error occurred during processing";
 
-        return {
+        return recordAndReturn({
           text: textContent,
           citations:
             allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
           tools_used: toolActivity.length > 0 ? toolActivity : undefined,
-        };
+          usage: lastUsageData,
+        });
       }
     }
   }
@@ -488,9 +679,10 @@ export async function runModel(
       .map((c: any) => c.text)
       .join("") || "Maximum iterations reached without completion";
 
-  return {
+  return recordAndReturn({
     text: textContent,
     citations: allCitations.length > 0 ? [...new Set(allCitations)] : undefined,
     tools_used: toolActivity.length > 0 ? toolActivity : undefined,
-  };
+    usage: lastUsageData,
+  });
 }

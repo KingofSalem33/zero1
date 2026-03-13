@@ -1,0 +1,535 @@
+import React, { useEffect } from "react";
+import { Linking, Text } from "react-native";
+import { act, render, waitFor } from "@testing-library/react-native";
+import mockAsyncStorage from "@react-native-async-storage/async-storage/jest/async-storage-mock";
+import type { MobileHighlightItem, ProtectedProbeResult } from "../../lib/api";
+import {
+  createLibraryBundle,
+  createLibraryMap,
+  createBookmark,
+  createHighlightViaSync,
+  deleteLibraryMap,
+  deleteBookmark,
+  deleteHighlight,
+  fetchChapterFooter,
+  fetchBookmarks,
+  fetchHighlights,
+  fetchLibraryConnections,
+  fetchLibraryMaps,
+  fetchProtectedProbe,
+  updateHighlight,
+} from "../../lib/api";
+import {
+  useMobileAppController,
+  type MobileAppController,
+} from "../useMobileAppController";
+
+jest.mock("@react-native-async-storage/async-storage", () => mockAsyncStorage);
+
+const mockSupabaseSession = {
+  access_token: "test-access-token",
+  user: { id: "user-1", email: "user@example.com" },
+} as const;
+
+jest.mock("../../lib/supabase", () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn(async () => ({
+        data: { session: mockSupabaseSession },
+      })),
+      onAuthStateChange: jest.fn(() => ({
+        data: { subscription: { unsubscribe: jest.fn() } },
+      })),
+      signInWithPassword: jest.fn(async () => ({ error: null })),
+      signInWithOtp: jest.fn(async () => ({ error: null })),
+      signInWithOAuth: jest.fn(async () => ({
+        data: { url: "https://example.com" },
+        error: null,
+      })),
+      signOut: jest.fn(async () => ({ error: null })),
+    },
+  },
+}));
+
+jest.mock("../../lib/api", () => ({
+  fetchProtectedProbe: jest.fn(),
+  fetchLibraryConnections: jest.fn(),
+  fetchLibraryMaps: jest.fn(),
+  createLibraryBundle: jest.fn(),
+  createLibraryMap: jest.fn(),
+  deleteLibraryMap: jest.fn(),
+  fetchBookmarks: jest.fn(),
+  fetchHighlights: jest.fn(),
+  createBookmark: jest.fn(),
+  deleteBookmark: jest.fn(),
+  createHighlightViaSync: jest.fn(),
+  updateHighlight: jest.fn(),
+  deleteHighlight: jest.fn(),
+  fetchChapterFooter: jest.fn(),
+}));
+
+jest.mock("expo-web-browser", () => ({
+  openAuthSessionAsync: jest.fn(async () => ({ type: "cancel" })),
+}));
+
+function HookHarness({
+  onUpdate,
+}: {
+  onUpdate: (controller: MobileAppController) => void;
+}) {
+  const controller = useMobileAppController();
+  useEffect(() => {
+    onUpdate(controller);
+  }, [controller, onUpdate]);
+
+  return <Text>{controller.user ? "auth-ready" : "auth-pending"}</Text>;
+}
+
+describe("useMobileAppController", () => {
+  let latest: MobileAppController | null = null;
+  let linkingListenerSpy: jest.SpyInstance;
+  let linkingInitialUrlSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    latest = null;
+    linkingListenerSpy = jest
+      .spyOn(Linking, "addEventListener")
+      .mockReturnValue({ remove: jest.fn() } as unknown as ReturnType<
+        typeof Linking.addEventListener
+      >);
+    linkingInitialUrlSpy = jest
+      .spyOn(Linking, "getInitialURL")
+      .mockResolvedValue(null);
+
+    (fetchProtectedProbe as jest.Mock).mockResolvedValue({
+      bookmarksCount: 0,
+      highlightsCount: 1,
+      libraryConnectionsCount: 0,
+    } as ProtectedProbeResult);
+    (fetchLibraryConnections as jest.Mock).mockResolvedValue([]);
+    (fetchLibraryMaps as jest.Mock).mockResolvedValue([]);
+    (fetchBookmarks as jest.Mock).mockResolvedValue([]);
+    (fetchChapterFooter as jest.Mock).mockResolvedValue({
+      orientation: "",
+      cards: [],
+    });
+    (fetchHighlights as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-1",
+        book: "Genesis",
+        chapter: 1,
+        verses: [1],
+        text: "In the beginning",
+        color: "#facc15",
+        referenceLabel: "Genesis 1:1",
+        note: "seed",
+      } as MobileHighlightItem,
+    ]);
+  });
+
+  afterEach(() => {
+    linkingListenerSpy.mockRestore();
+    linkingInitialUrlSpy.mockRestore();
+    jest.clearAllMocks();
+  });
+
+  it("creates bookmark via controller action", async () => {
+    (createBookmark as jest.Mock).mockResolvedValue({
+      id: "bm-1",
+      text: "Genesis 1:1",
+      createdAt: "2026-02-27T00:00:00.000Z",
+    });
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "Genesis",
+        chapter: "1",
+        verse: "1",
+      }));
+    });
+
+    await act(async () => {
+      await latest?.handleCreateBookmark();
+    });
+
+    await waitFor(() => {
+      expect(createBookmark).toHaveBeenCalledTimes(1);
+    });
+    expect(createBookmark).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Genesis 1:1" }),
+    );
+    expect(latest?.bookmarks[0]?.id).toBe("bm-1");
+  });
+
+  it("saves library map from a live bundle via controller action", async () => {
+    (createLibraryBundle as jest.Mock).mockResolvedValue({
+      bundleId: "bundle-live-1",
+    });
+    (createLibraryMap as jest.Mock).mockResolvedValue({
+      id: "map-live-1",
+      bundleId: "bundle-live-1",
+      title: "Generated Map",
+      tags: [],
+      createdAt: "2026-03-10T00:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+    });
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    const bundle = {
+      nodes: [{ id: "n1", label: "Faith" }],
+      edges: [],
+    };
+
+    await act(async () => {
+      await latest?.handleSaveLibraryMapFromBundle(bundle, "Generated Map");
+    });
+
+    await waitFor(() => {
+      expect(createLibraryBundle).toHaveBeenCalledTimes(1);
+      expect(createLibraryMap).toHaveBeenCalledTimes(1);
+    });
+    expect(createLibraryBundle).toHaveBeenCalledWith(
+      expect.objectContaining({ bundle }),
+    );
+    expect(createLibraryMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          bundleId: "bundle-live-1",
+          title: "Generated Map",
+        },
+      }),
+    );
+    expect(latest?.libraryMaps[0]?.id).toBe("map-live-1");
+  });
+
+  it("deletes library map via controller action", async () => {
+    (deleteLibraryMap as jest.Mock).mockResolvedValue(undefined);
+    (fetchLibraryMaps as jest.Mock).mockResolvedValue([
+      {
+        id: "map-1",
+        bundleId: "bundle-1",
+        title: "Map 1",
+        tags: [],
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      },
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      await latest?.loadLibraryMaps();
+    });
+
+    expect(latest?.libraryMaps.length).toBe(1);
+
+    await act(async () => {
+      await latest?.handleDeleteLibraryMap("map-1");
+    });
+
+    await waitFor(() => {
+      expect(deleteLibraryMap).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "map-1" }),
+      );
+    });
+    expect(latest?.libraryMaps.length).toBe(0);
+  });
+
+  it("blocks bookmark creation when chapter exceeds book bounds", async () => {
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "Jude",
+        chapter: "2",
+        verse: "",
+      }));
+    });
+
+    await act(async () => {
+      await latest?.handleCreateBookmark();
+    });
+
+    expect(createBookmark).not.toHaveBeenCalled();
+    expect(latest?.bookmarkMutationError).toContain("Jude has 1 chapters");
+  });
+
+  it("shows guidance text for ambiguous book prefixes", async () => {
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "jo",
+      }));
+    });
+
+    expect(latest?.bookmarkBookGuidance).toContain('Multiple books match "jo"');
+  });
+
+  it("saves bookmark after selecting a suggested book from ambiguous input", async () => {
+    (createBookmark as jest.Mock).mockResolvedValue({
+      id: "bm-2",
+      text: "John 3:16",
+      createdAt: "2026-02-27T00:00:00.000Z",
+    });
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user?.id).toBe("user-1");
+    });
+
+    await act(async () => {
+      latest?.setBookmarkDraft((current) => ({
+        ...current,
+        book: "jo",
+        chapter: "3",
+        verse: "16",
+      }));
+    });
+
+    expect(latest?.bookmarkBookGuidance).toContain('Multiple books match "jo"');
+    expect(latest?.bookmarkBookSuggestions.length).toBeGreaterThan(1);
+
+    await act(async () => {
+      latest?.selectBookmarkBookSuggestion("John");
+    });
+
+    expect(latest?.bookmarkDraft.book).toBe("John");
+    expect(latest?.bookmarkBookGuidance).toBeNull();
+
+    await act(async () => {
+      await latest?.handleCreateBookmark();
+    });
+
+    await waitFor(() => {
+      expect(createBookmark).toHaveBeenCalledTimes(1);
+    });
+    expect(createBookmark).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "John 3:16" }),
+    );
+    expect(latest?.bookmarks[0]?.id).toBe("bm-2");
+  });
+
+  it("deletes bookmark via controller action", async () => {
+    (fetchBookmarks as jest.Mock).mockResolvedValue([
+      {
+        id: "bm-1",
+        text: "Genesis 1:1",
+        createdAt: "2026-02-27T00:00:00.000Z",
+      },
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.bookmarks.length).toBe(1);
+    });
+
+    await act(async () => {
+      await latest?.handleDeleteBookmark("bm-1");
+    });
+
+    await waitFor(() => {
+      expect(deleteBookmark).toHaveBeenCalledTimes(1);
+    });
+    expect(latest?.bookmarks).toEqual([]);
+  });
+
+  it("creates highlight via controller action", async () => {
+    const createdHighlight: MobileHighlightItem = {
+      id: "hl-2",
+      book: "Genesis",
+      chapter: 1,
+      verses: [1],
+      text: "Created highlight",
+      color: "#facc15",
+      referenceLabel: "Genesis 1:1",
+      note: "created",
+    };
+
+    (createHighlightViaSync as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-1",
+        book: "Genesis",
+        chapter: 1,
+        verses: [1],
+        text: "In the beginning",
+        color: "#facc15",
+        referenceLabel: "Genesis 1:1",
+        note: "seed",
+      },
+      createdHighlight,
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.highlights.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      latest?.setHighlightCreateDraft((current) => ({
+        ...current,
+        book: "Genesis",
+        chapter: "1",
+        verses: "1",
+        text: "Created highlight",
+        color: "#facc15",
+        note: "created",
+      }));
+    });
+
+    await act(async () => {
+      await latest?.handleCreateHighlight();
+    });
+
+    await waitFor(() => {
+      expect(createHighlightViaSync).toHaveBeenCalledTimes(1);
+    });
+    expect(latest?.highlights.some((item) => item.id === "hl-2")).toBe(true);
+  });
+
+  it("preserves non-overlapping verses when reader highlight overlaps existing highlight", async () => {
+    (fetchHighlights as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-overlap",
+        book: "Matthew",
+        chapter: 1,
+        verses: [1, 2, 3],
+        text: "Blessed are they...",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:1-3",
+      } as MobileHighlightItem,
+    ]);
+    (createHighlightViaSync as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-overlap",
+        book: "Matthew",
+        chapter: 1,
+        verses: [1, 2],
+        text: "Blessed are they...",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:1-2",
+      },
+      {
+        id: "hl-new",
+        book: "Matthew",
+        chapter: 1,
+        verses: [3, 4],
+        text: "Created highlight",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:3-4",
+      },
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.highlights.length).toBe(1);
+    });
+
+    await act(async () => {
+      await latest?.handleReaderHighlightSelection(
+        [3, 4],
+        "Created highlight",
+        "#facc15",
+      );
+    });
+
+    await waitFor(() => {
+      expect(createHighlightViaSync).toHaveBeenCalledTimes(1);
+    });
+
+    const syncCall = (createHighlightViaSync as jest.Mock).mock.calls[0]?.[0];
+    expect(syncCall.currentHighlights).toHaveLength(1);
+    expect(syncCall.currentHighlights[0]).toEqual(
+      expect.objectContaining({
+        id: "hl-overlap",
+        verses: [1, 2],
+      }),
+    );
+  });
+
+  it("updates selected highlight via controller action", async () => {
+    (updateHighlight as jest.Mock).mockResolvedValue({
+      id: "hl-1",
+      book: "Genesis",
+      chapter: 1,
+      verses: [1],
+      text: "In the beginning",
+      color: "#00ffcc",
+      referenceLabel: "Genesis 1:1",
+      note: "updated note",
+      updatedAt: "2026-02-27T00:05:00.000Z",
+    } as MobileHighlightItem);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.highlights.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      latest?.setSelectedHighlightId("hl-1");
+      latest?.setHighlightEditColor("#00ffcc");
+      latest?.setHighlightEditNote("updated note");
+    });
+
+    await act(async () => {
+      await latest?.handleSaveHighlightEdits();
+    });
+
+    await waitFor(() => {
+      expect(updateHighlight).toHaveBeenCalledTimes(1);
+    });
+    expect(latest?.highlights[0]?.note).toBe("updated note");
+  });
+
+  it("deletes selected highlight via controller action", async () => {
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.highlights.length).toBeGreaterThan(0);
+    });
+
+    await act(async () => {
+      latest?.setSelectedHighlightId("hl-1");
+    });
+
+    await act(async () => {
+      await latest?.handleDeleteHighlight("hl-1");
+    });
+
+    await waitFor(() => {
+      expect(deleteHighlight).toHaveBeenCalledTimes(1);
+    });
+    expect(latest?.highlights).toEqual([]);
+  });
+});

@@ -12,10 +12,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@zero1/shared": "file:../../packages/shared",
+    "@zero1/shared-client": "file:../../packages/shared-client",
+    "@sentry/react": "^10.32.1",
     "@supabase/supabase-js": "^2.57.4",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "@types/d3-force": "^3.0.10",
+    "@xyflow/react": "^12.9.3",
+    "d3-force": "^3.0.0",
+    "dagre": "^0.8.5",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.13.0",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
@@ -24,6 +32,7 @@
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "@tailwindcss/postcss": "^4.1.13",
+    "@types/dagre": "^0.7.53",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",

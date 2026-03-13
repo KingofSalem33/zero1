@@ -1,147 +1,85 @@
-// Updated: 2025-11-21 06:25 AM - Phase 1 UX improvements (outcome-focused labels)
-// VERSION: 2.1.0 - Outcome-focused roadmap labels
 import React, { useState, useEffect } from "react";
-import CircularProgress from "./CircularProgress";
-import { ArtifactUploadButton } from "./ArtifactUploadButton";
 
-interface RoadmapStep {
+interface Chat {
   id: string;
-  step_number: number;
   title: string;
-  description: string;
-  estimated_complexity: number;
-  status: "pending" | "active" | "completed" | "skipped";
-  acceptance_criteria: string[];
-  plan_status?: "not_generated" | "generated" | "approved" | "rejected";
-  current_micro_step?: number;
-}
-
-interface PhaseSubstep {
-  id: string;
-  substep_number: number;
-  title: string;
-  description: string;
-  estimated_complexity: number;
-  status: "pending" | "active" | "completed" | "skipped";
-  acceptance_criteria: string[];
-}
-
-interface RoadmapPhase {
-  id: string;
-  phase_number: number;
-  phase_id: string; // "P0", "P1", etc.
-  title: string;
-  goal: string;
-  pedagogical_purpose: string;
-  visible_win: string;
-  status: "locked" | "active" | "completed";
-  substeps: PhaseSubstep[];
-}
-
-interface ProjectV2 {
-  id: string;
-  goal: string;
-  current_step: number;
-  current_phase?: number;
-  roadmap_status: "generating" | "ready" | "in_progress" | "completed";
-  metadata: {
-    total_steps: number;
-    total_phases?: number;
-    completion_percentage: number;
-    roadmap_type?: "dynamic" | "phase_based";
-  };
-  steps?: RoadmapStep[]; // Old flat model
-  phases?: RoadmapPhase[]; // New phase-based model
+  lastMessage: string;
+  timestamp: Date;
 }
 
 interface RoadmapSidebarV2Props {
-  project: ProjectV2 | null;
+  project: unknown;
   onOpenFileManager: () => void;
   onOpenMemoryManager: () => void;
   onAskAI: () => void;
   onRefreshProject?: () => void;
   onExitToLibrary?: () => void;
+  currentChatId?: string;
+  chats?: Chat[];
+  onNewChat?: () => void;
+  onSelectChat?: (chatId: string) => void;
+  showBible?: boolean;
+  onToggleBible?: () => void;
+  onEnterBibleStudy?: () => void;
+  onOpenLibrary?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: (collapsed: boolean) => void;
+  activeView?: "reader" | "chat" | "library";
 }
 
 const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
-  project,
-  onOpenFileManager,
-  onOpenMemoryManager,
-  onAskAI,
-  onRefreshProject,
-  onExitToLibrary,
+  currentChatId,
+  chats = [],
+  onNewChat: _onNewChat,
+  onSelectChat,
+  showBible = false,
+  onToggleBible,
+  onEnterBibleStudy,
+  onOpenLibrary,
+  isCollapsed = false,
+  onToggleCollapse,
+  activeView = "reader",
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("roadmapCollapsed");
-    return saved === "true";
+  const [showRecentChats, setShowRecentChats] = useState(() => {
+    const saved = localStorage.getItem("showRecentChats");
+    return saved !== "false"; // Default to true
   });
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [showCompleted, setShowCompleted] = useState(false);
-  const [showUpcoming, setShowUpcoming] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem("roadmapCollapsed", String(isCollapsed));
-  }, [isCollapsed]);
+    localStorage.setItem("showRecentChats", String(showRecentChats));
+  }, [showRecentChats]);
 
-  if (!project) return null;
-
-  // Detect if this is a phase-based project
-  // Use phase-based UI whenever phases exist (outcome-focused display)
-  const isPhaseBasedProject = !!project.phases && project.phases.length > 0;
-
-  // For step-based projects (old model)
-  const currentStep = project.steps?.find(
-    (s) => s.step_number === project.current_step,
-  );
-  const completedSteps =
-    project.steps?.filter((s) => s.status === "completed") || [];
-  const upcomingSteps =
-    project.steps?.filter((s) => s.step_number > project.current_step) || [];
-
-  // Removed micro-steps check - "Ask AI" button works normally now
-
-  // For phase-based projects
-  const currentPhase = project.phases?.find((p) => p.status === "active");
-  const completedPhases =
-    project.phases?.filter((p) => p.status === "completed") || [];
-  const lockedPhases =
-    project.phases?.filter((p) => p.status === "locked") || [];
-
-  const progress = project.metadata?.completion_percentage || 0;
-
-  // Complexity indicator
-  const getComplexityDots = (complexity: number): string => {
-    if (complexity <= 3) return "●";
-    if (complexity <= 6) return "●●";
-    return "●●●";
-  };
-
-  const getComplexityColor = (complexity: number): string => {
-    if (complexity <= 3) return "text-green-400";
-    if (complexity <= 6) return "text-yellow-400";
-    return "text-red-400";
-  };
-
-  const getComplexityLabel = (complexity: number): string => {
-    if (complexity <= 3) return "Quick";
-    if (complexity <= 6) return "Medium";
-    return "Complex";
+  const handleToggleCollapse = (collapsed: boolean) => {
+    localStorage.setItem("roadmapCollapsed", String(collapsed));
+    onToggleCollapse?.(collapsed);
   };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-neutral-700/50">
-        <h3 className="text-xs font-bold text-neutral-400 tracking-wider">
-          ZERO1 BUILDER <span className="text-green-500">v2.1</span>
-        </h3>
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-4 border-b border-neutral-700/50">
+        <div className="flex items-center gap-2">
+          <svg
+            className="w-5 h-5 text-brand-primary-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+            />
+          </svg>
+          <h3 className="text-sm font-bold text-white tracking-wide">
+            Biblelot
+          </h3>
+        </div>
         <button
-          onClick={() => {
-            setIsCollapsed(true);
-            setIsMobileOpen(false);
-          }}
-          className="text-neutral-400 hover:text-white transition-colors p-1 hover:bg-neutral-700/30 rounded"
-          title="Close"
+          onClick={() => handleToggleCollapse(true)}
+          className="text-neutral-400 hover:text-white transition-colors p-1.5 hover:bg-neutral-700/30 rounded"
+          title="Collapse sidebar"
         >
           <svg
             className="w-4 h-4"
@@ -153,39 +91,27 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
+              d="M15 19l-7-7 7-7"
             />
           </svg>
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Progress Circle */}
-        <div className="flex flex-col items-center py-2">
-          <CircularProgress value={progress} size="lg" />
-          <div className="text-sm font-semibold text-white mt-2">
-            Your Journey
-          </div>
-          <p className="text-xs text-neutral-400 mt-1 text-center line-clamp-2 px-2">
-            {project.goal}
-          </p>
-          {isPhaseBasedProject && (
-            <div className="text-xs text-neutral-600 mt-1">
-              Phase {(project.current_phase ?? 0) + 1}/{" "}
-              {project.metadata?.total_phases || 8}
-            </div>
-          )}
-        </div>
-
-        {/* Exit Project Button */}
-        {onExitToLibrary && (
+      {/* Content - Chat History */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {/* Action Buttons */}
+        <div className="space-y-1 mb-4">
+          {/* Bible Toggle Button */}
           <button
-            onClick={onExitToLibrary}
-            className="w-full px-3 py-2 text-sm font-medium text-neutral-300 hover:text-white bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 rounded-lg transition-all flex items-center gap-2 justify-center"
+            onClick={onToggleBible}
+            className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              showBible
+                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+            }`}
           >
             <svg
-              className="w-4 h-4"
+              className="w-4 h-4 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -194,373 +120,23 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
               />
             </svg>
-            Exit Project
+            <span className="text-sm font-medium">Bible</span>
           </button>
-        )}
 
-        {/* Divider */}
-        <div className="h-px bg-neutral-700/30" />
-
-        {/* PHASE-BASED UI */}
-        {isPhaseBasedProject ? (
-          <>
-            {/* Current Phase & Substep */}
-            {currentPhase && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-brand-primary-400 animate-pulse" />
-                  <span className="text-xs font-bold text-brand-primary-400 tracking-wider">
-                    BUILDING NOW
-                  </span>
-                </div>
-
-                <div className="p-4 bg-neutral-800/30 border border-brand-primary-500/20 rounded-lg space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="text-base font-bold text-brand-primary-300 mb-2 leading-snug">
-                        ✨ {currentPhase.visible_win}
-                      </div>
-                      <div className="text-xs text-neutral-500 mb-1">
-                        {currentPhase.phase_id} · {currentPhase.title}
-                      </div>
-                      <div className="text-xs text-neutral-400">
-                        {currentPhase.goal}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Hide current substep details - focus on phase outcome only */}
-
-                  {/* Phase Progress Indicator - Just show count, not all substeps */}
-                  {currentPhase.substeps.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-xs text-neutral-500">
-                        {
-                          currentPhase.substeps.filter(
-                            (s) => s.status === "completed",
-                          ).length
-                        }
-                        /{currentPhase.substeps.length} steps complete
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={onAskAI}
-                    className="btn-primary flex-1"
-                    title="Ask AI for help"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                    <span>Ask AI</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Divider */}
-            <div className="h-px bg-neutral-700/30" />
-
-            {/* Completed Phases */}
-            {completedPhases.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setShowCompleted(!showCompleted)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <span className="text-xs font-bold text-green-400 tracking-wider">
-                    ✓ WHAT YOU'VE BUILT ({completedPhases.length})
-                  </span>
-                  <svg
-                    className={`w-3 h-3 text-neutral-400 transition-transform ${showCompleted ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showCompleted && (
-                  <div className="space-y-2 pl-2">
-                    {completedPhases.map((phase) => (
-                      <div
-                        key={phase.id}
-                        className="text-xs flex items-start gap-2"
-                      >
-                        <span className="text-green-400 mt-0.5">✓</span>
-                        <div className="flex-1">
-                          <div className="text-neutral-400 font-medium">
-                            {phase.visible_win}
-                          </div>
-                          <div className="text-neutral-600 text-[11px] mt-0.5">
-                            {phase.phase_id} · {phase.title}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Locked Phases */}
-            {lockedPhases.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setShowUpcoming(!showUpcoming)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <span className="text-xs font-bold text-neutral-500 tracking-wider">
-                    COMING NEXT ({lockedPhases.length})
-                  </span>
-                  <svg
-                    className={`w-3 h-3 text-neutral-400 transition-transform ${showUpcoming ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showUpcoming && (
-                  <div className="space-y-2 pl-2">
-                    {lockedPhases.map((phase) => (
-                      <div key={phase.id} className="text-xs space-y-1">
-                        <div className="flex items-start gap-2 text-neutral-600">
-                          <span className="mt-0.5">→</span>
-                          <div className="flex-1">
-                            <div className="font-medium text-neutral-500">
-                              {phase.visible_win}
-                            </div>
-                            <div className="text-neutral-700 text-[11px] mt-0.5">
-                              {phase.phase_id} · {phase.title}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
-          /* STEP-BASED UI (OLD MODEL) */
-          <>
-            {/* Current Step */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-brand-primary-400 animate-pulse" />
-                <span className="text-xs font-bold text-brand-primary-400 tracking-wider">
-                  BUILDING NOW
-                </span>
-              </div>
-
-              {!currentStep ? (
-                <div className="space-y-3 animate-pulse">
-                  <div className="h-3 bg-neutral-700/30 rounded-full w-3/4" />
-                  <div className="h-3 bg-neutral-700/30 rounded-full w-full" />
-                  <div className="h-3 bg-neutral-700/30 rounded-full w-2/3" />
-                </div>
-              ) : (
-                <div className="p-4 bg-neutral-800/30 border border-brand-primary-500/20 rounded-lg space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="text-lg font-bold text-white mb-1">
-                        {currentStep.title}
-                      </div>
-                      <div className="text-xs text-neutral-400 flex items-center gap-2">
-                        <span
-                          className={getComplexityColor(
-                            currentStep.estimated_complexity,
-                          )}
-                        >
-                          {getComplexityDots(currentStep.estimated_complexity)}{" "}
-                          {getComplexityLabel(currentStep.estimated_complexity)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-neutral-300 leading-relaxed">
-                    {currentStep.description}
-                  </div>
-
-                  {currentStep.acceptance_criteria &&
-                    currentStep.acceptance_criteria.length > 0 && (
-                      <div className="text-xs space-y-1">
-                        <div className="text-neutral-500 font-semibold">
-                          Acceptance Criteria:
-                        </div>
-                        {currentStep.acceptance_criteria.map(
-                          (criteria, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-start gap-2 text-neutral-400"
-                            >
-                              <span>•</span>
-                              <span>{criteria}</span>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={onAskAI}
-                  className="btn-primary flex-1"
-                  title="Ask AI for help"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  <span>Ask AI</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="h-px bg-neutral-700/30" />
-
-            {/* Completed Steps */}
-            {completedSteps.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setShowCompleted(!showCompleted)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <span className="text-xs font-bold text-green-400 tracking-wider">
-                    ✓ WHAT YOU'VE BUILT ({completedSteps.length})
-                  </span>
-                  <svg
-                    className={`w-3 h-3 text-neutral-400 transition-transform ${showCompleted ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showCompleted && (
-                  <div className="space-y-1 pl-2">
-                    {completedSteps.map((step) => (
-                      <div
-                        key={step.id}
-                        className="text-xs text-neutral-500 flex items-start gap-2"
-                      >
-                        <span className="text-green-400 mt-0.5">✓</span>
-                        <span className="flex-1">{step.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Upcoming Steps */}
-            {upcomingSteps.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setShowUpcoming(!showUpcoming)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <span className="text-xs font-bold text-neutral-500 tracking-wider">
-                    COMING NEXT ({upcomingSteps.length})
-                  </span>
-                  <svg
-                    className={`w-3 h-3 text-neutral-400 transition-transform ${showUpcoming ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-                {showUpcoming && (
-                  <div className="space-y-2 pl-2">
-                    {upcomingSteps.slice(0, 5).map((step) => (
-                      <div key={step.id} className="text-xs space-y-1">
-                        <div className="flex items-start gap-2 text-neutral-400">
-                          <span className="text-neutral-600 mt-0.5">→</span>
-                          <span className="flex-1 font-medium">
-                            {step.title}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {upcomingSteps.length > 5 && (
-                      <div className="text-xs text-neutral-600 italic pl-4">
-                        ...and {upcomingSteps.length - 5} more steps
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Bottom Actions */}
-      <div className="flex-shrink-0 border-t border-neutral-700/50 p-4 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
+          {/* Chat Button */}
           <button
-            onClick={onOpenFileManager}
-            className="btn-ghost flex-col gap-1 text-xs"
+            onClick={onEnterBibleStudy}
+            className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              activeView === "chat"
+                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+            }`}
           >
             <svg
-              className="w-4 h-4"
+              className="w-4 h-4 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -568,18 +144,24 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                strokeWidth={1.8}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
-            <span>Knowledge</span>
+            <span className="text-sm font-medium">Chat</span>
           </button>
+
+          {/* Library Button */}
           <button
-            onClick={onOpenMemoryManager}
-            className="btn-ghost flex-col gap-1 text-xs"
+            onClick={onOpenLibrary}
+            className={`w-full flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              activeView === "library"
+                ? "bg-brand-primary-500/20 text-brand-primary-300"
+                : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+            }`}
           >
             <svg
-              className="w-4 h-4"
+              className="w-4 h-4 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -588,37 +170,29 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
               />
             </svg>
-            <span>Context</span>
+            <span className="text-sm font-medium">Library</span>
           </button>
         </div>
 
-        <ArtifactUploadButton
-          projectId={project?.id || null}
-          onUploadComplete={() => onRefreshProject?.()}
-          variant="button"
-          label="AI Review"
-          showIcon={false}
-        />
-      </div>
-    </div>
-  );
-
-  // Collapsed view
-  if (isCollapsed) {
-    return (
-      <>
-        {/* Desktop: Collapsed sidebar */}
-        <aside className="hidden lg:flex sticky top-14 h-[calc(100vh-56px)] w-14 bg-neutral-900 border-r border-neutral-700/50 flex-col items-center py-3 space-y-3 z-30">
+        {/* Recent Chats */}
+        <div className="pt-2">
           <button
-            onClick={() => setIsCollapsed(false)}
-            className="text-neutral-400 hover:text-white transition-colors p-2 hover:bg-neutral-800/50 rounded-lg"
-            title="Expand"
+            onClick={() => setShowRecentChats(!showRecentChats)}
+            className="w-full flex items-center gap-2 px-4 py-2 text-neutral-400 hover:text-neutral-300 transition-colors"
           >
+            <span className="text-xs font-medium">Recent Chats</span>
+            {chats.length > 0 && (
+              <span className="text-[10px] text-neutral-500 ml-auto mr-1">
+                {chats.length}
+              </span>
+            )}
             <svg
-              className="w-5 h-5"
+              className={`w-3 h-3 flex-shrink-0 transition-transform ${
+                showRecentChats ? "rotate-90" : ""
+              }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -631,133 +205,180 @@ const RoadmapSidebarV2: React.FC<RoadmapSidebarV2Props> = ({
               />
             </svg>
           </button>
+          {showRecentChats && (
+            <div className="space-y-1">
+              {chats.length === 0 ? (
+                <div className="text-center py-8 px-2">
+                  <div className="text-neutral-500 text-sm">No chats yet</div>
+                </div>
+              ) : (
+                chats.map((chat) => {
+                  // Capitalize first letter and truncate to 4 words
+                  const words = chat.title.split(" ");
+                  const truncatedTitle = words.slice(0, 4).join(" ");
+                  const capitalizedTitle =
+                    truncatedTitle.charAt(0).toUpperCase() +
+                    truncatedTitle.slice(1);
 
-          <div className="text-center">
-            <div className="text-xl font-bold text-white">{progress}</div>
-            <div className="text-xs text-neutral-500">%</div>
-          </div>
-
-          <div className="flex-1" />
-
-          <div className="space-y-2">
-            <button
-              onClick={onOpenFileManager}
-              className="w-10 h-10 flex items-center justify-center hover:bg-neutral-800/50 rounded-lg transition-colors"
-              title="Knowledge"
-            >
-              <svg
-                className="w-5 h-5 text-neutral-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-            </button>
-            <button
-              onClick={onOpenMemoryManager}
-              className="w-10 h-10 flex items-center justify-center hover:bg-neutral-800/50 rounded-lg transition-colors"
-              title="Context"
-            >
-              <svg
-                className="w-5 h-5 text-neutral-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                />
-              </svg>
-            </button>
-          </div>
-        </aside>
-
-        {/* Mobile: FAB */}
-        <button
-          onClick={() => setIsMobileOpen(true)}
-          className="lg:hidden fixed bottom-6 left-6 w-14 h-14 rounded-full bg-gradient-brand shadow-lg shadow-glow flex items-center justify-center text-white z-40 hover:scale-110 transition-transform"
-          title="Open roadmap"
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-            />
-          </svg>
-        </button>
-
-        {/* Mobile: Drawer */}
-        {isMobileOpen && (
-          <>
-            <div
-              className="fixed inset-0 bg-black/70 z-40 lg:hidden"
-              onClick={() => setIsMobileOpen(false)}
-            />
-            <div className="fixed inset-y-0 left-0 w-80 bg-neutral-900 border-r border-neutral-700/50 z-50 lg:hidden overflow-y-auto shadow-2xl">
-              <SidebarContent />
+                  return (
+                    <button
+                      key={chat.id}
+                      onClick={() => onSelectChat?.(chat.id)}
+                      className={`w-full text-left px-4 py-2 rounded-lg transition-all group ${
+                        currentChatId === chat.id
+                          ? "bg-brand-primary-500/20 border border-brand-primary-500/30"
+                          : "hover:bg-neutral-800/50 border border-transparent"
+                      }`}
+                    >
+                      <div
+                        className={`text-sm font-medium truncate ${
+                          currentChatId === chat.id
+                            ? "text-brand-primary-300"
+                            : "text-neutral-300"
+                        }`}
+                      >
+                        {capitalizedTitle}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
-          </>
-        )}
-      </>
-    );
-  }
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
-  // Expanded view
   return (
     <>
-      {/* Desktop: Expanded sidebar */}
-      <aside className="hidden lg:flex sticky top-14 h-[calc(100vh-56px)] w-72 bg-neutral-900 border-r border-neutral-700/50 flex-col z-30 overflow-hidden">
-        <SidebarContent />
+      {/* Desktop Sidebar - Always visible, toggles between narrow and wide */}
+      <aside
+        className={`hidden md:flex flex-col bg-neutral-900/50 border-r border-neutral-800/50 fixed left-0 top-0 h-screen z-40 transition-all duration-300 ${
+          isCollapsed ? "w-16" : "w-64"
+        }`}
+      >
+        {isCollapsed ? (
+          // Collapsed: Icon-only view
+          <div className="flex flex-col h-full py-4">
+            {/* Expand button at top */}
+            <button
+              onClick={() => handleToggleCollapse(false)}
+              className="mx-auto mb-6 p-2 text-neutral-400 hover:text-white transition-colors"
+              title="Expand sidebar"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
+
+            {/* Icon-only buttons */}
+            <div className="flex-1 flex flex-col items-center gap-4 px-2">
+              {/* Bible Toggle */}
+              <button
+                onClick={onToggleBible}
+                className={`p-3 rounded-lg transition-all ${
+                  showBible
+                    ? "bg-brand-primary-500/20 text-brand-primary-300"
+                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+                }`}
+                title="Bible"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+              </button>
+
+              {/* Chat */}
+              <button
+                onClick={onEnterBibleStudy}
+                className={`p-3 rounded-lg transition-all ${
+                  activeView === "chat"
+                    ? "bg-brand-primary-500/20 text-brand-primary-300"
+                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+                }`}
+                title="Chat"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+              </button>
+
+              {/* Library */}
+              <button
+                onClick={onOpenLibrary}
+                className={`p-3 rounded-lg transition-all ${
+                  activeView === "library"
+                    ? "bg-brand-primary-500/20 text-brand-primary-300"
+                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300"
+                }`}
+                title="Library"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ) : (
+          // Expanded: Full sidebar
+          <SidebarContent />
+        )}
       </aside>
 
-      {/* Mobile: FAB */}
-      <button
-        onClick={() => setIsMobileOpen(true)}
-        className="lg:hidden fixed bottom-6 left-6 w-14 h-14 rounded-full bg-gradient-brand shadow-lg shadow-glow flex items-center justify-center text-white z-40 hover:scale-110 transition-transform"
-        title="Open roadmap"
-      >
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+      {/* Mobile Overlay - Only when expanded */}
+      {!isCollapsed && (
+        <div
+          className="md:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+          onClick={() => handleToggleCollapse(true)}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-          />
-        </svg>
-      </button>
-
-      {/* Mobile: Drawer */}
-      {isMobileOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/70 z-40 lg:hidden"
-            onClick={() => setIsMobileOpen(false)}
-          />
-          <div className="fixed inset-y-0 left-0 w-80 bg-neutral-900 border-r border-neutral-700/50 z-50 lg:hidden overflow-y-auto shadow-2xl">
+          <aside
+            className="w-64 bg-neutral-900 border-r border-neutral-800 h-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <SidebarContent />
-          </div>
-        </>
+          </aside>
+        </div>
       )}
     </>
   );

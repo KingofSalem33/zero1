@@ -3,18 +3,23 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev": "concurrently -k \"npm:dev:*\"",
     "dev:api": "npm --prefix apps/api run dev",
     "dev:web": "npm --prefix apps/web run dev",
+    "dev:desktop": "npm --prefix apps/desktop run dev",
+    "dev:mobile": "npm --prefix apps/mobile run start",
     "build": "npm run build:api && npm run build:web",
     "build:api": "npm --prefix apps/api run build",
     "build:web": "npm --prefix apps/web run build",
-    "lint": "eslint \"apps/**/*.{ts,tsx,js}\"",
+    "build:desktop": "npm --prefix apps/desktop run build",
+    "typecheck:mobile": "npm --prefix apps/mobile run typecheck",
+    "lint": "eslint \"apps/**/*.{ts,tsx,js}\" \"packages/**/*.{ts,tsx,js}\"",
     "format": "prettier -w .",
-    "prepare": "husky"
+    "prepare": "husky || echo \"Skipping husky in CI/build environment\""
   },
   "lint-staged": {
     "*.{ts,tsx,js}": [
@@ -26,19 +31,34 @@
     ]
   },
   "devDependencies": {
+    "@types/bun": "^1.3.5",
     "@types/formidable": "^3.4.5",
     "@types/node": "^24.5.0",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
     "@typescript-eslint/parser": "^8.44.0",
+    "baseline-browser-mapping": "^2.8.32",
     "concurrently": "^9.2.1",
     "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6",
+    "playwright": "^1.57.0",
     "prettier": "^3.6.2",
+    "react-test-renderer": "19.1.0",
     "rimraf": "^6.0.1",
+    "terser": "^5.44.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "openai": "^6.15.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-test-renderer": "19.1.0"
   }
 }

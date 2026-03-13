@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development"
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "autoIncrement": true
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_WEB_APP_URL": "https://biblelot.vercel.app",
+        "EXPO_PUBLIC_ENABLE_WEB_SHELL": "true",
+        "EXPO_PUBLIC_WEB_APP_ALLOWED_HOSTS": "biblelot.vercel.app",
+        "EXPO_PUBLIC_WEB_SHELL_ALLOW_ANY_HOST": "false",
+        "EXPO_PUBLIC_WEB_SHELL_FALLBACK_TO_NATIVE": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

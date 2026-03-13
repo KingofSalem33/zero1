@@ -1,0 +1,253 @@
+(node:10160) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+--import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("ts-node/esm", pathToFileURL("./"));'
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:10160) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[profileSample] health_db failed on run 1: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 2: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 3: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 4: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 5: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 6: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 7: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 8: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 9: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 10: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 11: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 12: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 13: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 14: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 15: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 16: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 17: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 18: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 19: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 20: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 21: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 22: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 23: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 24: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 25: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 26: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 27: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 28: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 29: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 30: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 31: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 32: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 33: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 34: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 35: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 36: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 37: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 38: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 39: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 40: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 41: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 42: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 43: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 44: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 45: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 46: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 47: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 48: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 49: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] health_db failed on run 50: Error: health_db 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 1: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 2: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 3: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 4: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 5: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 6: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 7: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 8: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 9: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 10: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] pericope_random failed on run 11: Error: pericope_random 429: {"error":"Too many requests","message":"You have exceeded the rate limit. Please try again later.","retryAfter":"15 minutes"}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)
+[profileSample] root_translation failed on run 30: Error: root_translation 500: {"error":{"message":"Failed to generate root translation","type":"internal_server_error","code":"root_translation_failed"}}
+    at runRequest (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:145:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (C:\Users\coryh\zero1\apps\api\scripts\profileSample.ts:182:9)

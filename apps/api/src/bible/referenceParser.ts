@@ -1,0 +1,261 @@
+/**
+ * Bible Reference Parser
+ *
+ * Parses explicit verse references from user input:
+ * - "John 3:16"
+ * - "Genesis 1:1-3"
+ * - "Psalm 23"
+ * - "Romans 8:28-30"
+ *
+ * Handles both full names and abbreviations.
+ */
+
+import { BOOK_NAMES } from "./bookNames";
+import { levenshteinDistance } from "./fuzzyMatch";
+
+export interface ParsedReference {
+  book: string; // Abbreviation (e.g., "jn", "ge")
+  chapter: number;
+  verse: number;
+  endVerse?: number; // For ranges like "John 3:16-18"
+}
+
+// Build regex pattern for all book names and abbreviations
+const bookPatterns = [
+  ...Object.keys(BOOK_NAMES), // Abbreviations: gn, ex, le, etc.
+  ...Object.values(BOOK_NAMES), // Full names: Genesis, Exodus, etc.
+].map((name) => name.replace(/\s/g, "\\s?")); // Handle "1 John" vs "1John"
+
+const bookPattern = bookPatterns.join("|");
+
+// Regex patterns for different reference formats
+const patterns = [
+  // Full format: "John 3:16" or "John 3:16-18"
+  new RegExp(`\\b(${bookPattern})\\s+(\\d+):(\\d+)(?:-(\\d+))?\\b`, "i"),
+  // Chapter only: "Psalm 23" (defaults to verse 1)
+  new RegExp(`\\b(${bookPattern})\\s+(\\d+)\\b`, "i"),
+];
+
+/**
+ * Parse explicit verse reference from user input
+ *
+ * Examples:
+ * - "John 3:16" -> { book: "jn", chapter: 3, verse: 16 }
+ * - "Genesis 1:1-3" -> { book: "gn", chapter: 1, verse: 1, endVerse: 3 }
+ * - "Psalm 23" -> { book: "ps", chapter: 23, verse: 1 }
+ *
+ * Returns null if no match found.
+ */
+export function parseExplicitReference(input: string): ParsedReference | null {
+  for (const pattern of patterns) {
+    const match = input.match(pattern);
+    if (match) {
+      const bookInput = match[1].trim();
+      const chapter = parseInt(match[2], 10);
+      const verse = match[3] ? parseInt(match[3], 10) : 1; // Default to verse 1 for chapter-only
+      const endVerse = match[4] ? parseInt(match[4], 10) : undefined;
+
+      // Convert book name to abbreviation
+      const bookAbbrev = normalizeBookName(bookInput);
+      if (!bookAbbrev) {
+        continue; // Invalid book name, try next pattern
+      }
+
+      return {
+        book: bookAbbrev,
+        chapter,
+        verse,
+        endVerse,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Common alternative abbreviations
+ * Maps user input -> canonical database abbreviation
+ *
+ * IMPORTANT: All mappings verified against BOOK_NAMES in bookNames.ts
+ */
+const ABBREVIATION_ALIASES: Record<string, string> = {
+  // OLD TESTAMENT
+  gen: "gn", // Genesis
+  exo: "ex", // Exodus
+  exod: "ex", // Exodus
+  lev: "lv", // Leviticus
+  num: "nm", // Numbers ✓ FIXED: was "nu"
+  nums: "nm", // Numbers ✓ FIXED: was "nu"
+  deut: "dt", // Deuteronomy
+  deu: "dt", // Deuteronomy
+  josh: "js", // Joshua
+  judg: "jud", // Judges ✓ FIXED: was "jg"
+  judges: "jud", // Judges
+  psa: "ps", // Psalms
+  psalm: "ps", // Psalms
+  psalms: "ps", // Psalms
+  prov: "prv", // Proverbs ✓ FIXED: was "pr"
+  proverbs: "prv", // Proverbs
+  ecc: "ec", // Ecclesiastes
+  eccl: "ec", // Ecclesiastes
+  song: "so", // Song of Solomon
+  sos: "so", // Song of Solomon
+  isa: "is", // Isaiah
+  isaiah: "is", // Isaiah
+  jer: "jr", // Jeremiah
+  jeremiah: "jr", // Jeremiah
+  lam: "lm", // Lamentations
+  eze: "ez", // Ezekiel ✓ FIXED: was "ek"
+  ezek: "ez", // Ezekiel ✓ FIXED: was "ek"
+  ezekiel: "ez", // Ezekiel
+  dan: "dn", // Daniel
+  daniel: "dn", // Daniel
+  hos: "ho", // Hosea ✓ FIXED: was "hs"
+  hosea: "ho", // Hosea
+  joe: "jl", // Joel
+  joel: "jl", // Joel
+  amo: "am", // Amos
+  amos: "am", // Amos
+  oba: "ob", // Obadiah
+  obad: "ob", // Obadiah
+  obadiah: "ob", // Obadiah
+  jon: "jn", // Jonah ✓ FIXED: was "jo" (John)
+  jonah: "jn", // Jonah ✓ FIXED: was "jo" (John)
+  mic: "mi", // Micah
+  micah: "mi", // Micah
+  nah: "na", // Nahum
+  nahum: "na", // Nahum
+  hab: "hk", // Habakkuk
+  habakkuk: "hk", // Habakkuk
+  zep: "zp", // Zephaniah
+  zeph: "zp", // Zephaniah
+  zephaniah: "zp", // Zephaniah
+  hag: "hg", // Haggai
+  haggai: "hg", // Haggai
+  zec: "zc", // Zechariah
+  zech: "zc", // Zechariah
+  zechariah: "zc", // Zechariah
+  mal: "ml", // Malachi
+  malachi: "ml", // Malachi
+
+  // NEW TESTAMENT
+  matt: "mt", // Matthew
+  matthew: "mt", // Matthew
+  mar: "mk", // Mark
+  mark: "mk", // Mark
+  luk: "lk", // Luke
+  luke: "lk", // Luke
+  joh: "jo", // John (Gospel) ✓ FIXED: was "jn"
+  john: "jo", // John (Gospel)
+  acts: "act", // Acts ✓ FIXED: was "ac"
+  rom: "rm", // Romans ✓ FIXED: was "ro"
+  romans: "rm", // Romans
+  gal: "gl", // Galatians
+  galatians: "gl", // Galatians
+  eph: "eph", // Ephesians ✓ FIXED: was "ep"
+  ephesians: "eph", // Ephesians
+  phil: "ph", // Philippians ✓ FIXED: was "pp"
+  php: "ph", // Philippians ✓ FIXED: was "pp"
+  philippians: "ph", // Philippians
+  col: "cl", // Colossians
+  colossians: "cl", // Colossians
+  thess: "1ts", // 1 Thessalonians ✓ FIXED: was "1th"
+  thessalonians: "1ts", // 1 Thessalonians (default to 1st)
+  tim: "1tm", // 1 Timothy
+  timothy: "1tm", // 1 Timothy (default to 1st)
+  tit: "tt", // Titus ✓ FIXED: was "ti"
+  titus: "tt", // Titus
+  philemon: "phm", // Philemon ✓ FIXED: was "pm"
+  phlm: "phm", // Philemon ✓ FIXED: was "pm"
+  heb: "hb", // Hebrews
+  hebrews: "hb", // Hebrews
+  jam: "jm", // James
+  jas: "jm", // James
+  james: "jm", // James
+  pet: "1pe", // 1 Peter (default to 1st)
+  peter: "1pe", // 1 Peter (default to 1st)
+  rev: "re", // Revelation ✓ FIXED: was "rv"
+  revel: "re", // Revelation ✓ FIXED: was "rv"
+  revelation: "re", // Revelation
+  jude: "jd", // Jude
+};
+
+/**
+ * Normalize book name to abbreviation
+ *
+ * Handles:
+ * - Full names: "Genesis" -> "gn", "John" -> "jo", "Jonah" -> "jn" ✓ FIXED
+ * - Abbreviations: "gen" -> "gn", "jo" -> "jo"
+ * - Aliases: "jon" -> "jn" (Jonah) ✓ FIXED
+ * - Case-insensitive matching
+ * - Fuzzy matching for misspellings: "salamon" -> "so" (Solomon)
+ */
+function normalizeBookName(input: string): string | null {
+  const lower = input.toLowerCase().trim();
+
+  // Check aliases first (these are explicit mappings)
+  if (ABBREVIATION_ALIASES[lower]) {
+    return ABBREVIATION_ALIASES[lower];
+  }
+
+  // Check if it's already a valid abbreviation in BOOK_NAMES
+  if (BOOK_NAMES[lower]) {
+    return lower;
+  }
+
+  // Check if it matches a full book name (exact)
+  for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+    if (fullName.toLowerCase() === lower) {
+      return abbrev;
+    }
+  }
+
+  // Check for partial matches (e.g., "gen" -> "gn")
+  for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+    if (fullName.toLowerCase().startsWith(lower) && lower.length >= 3) {
+      return abbrev;
+    }
+  }
+
+  // FUZZY MATCHING: Handle misspellings like "salamon" -> "Solomon"
+  if (lower.length >= 4) {
+    let bestMatch: string | null = null;
+    let bestDistance = Infinity;
+    const threshold = lower.length <= 5 ? 1 : 2; // Allow 1-2 character difference
+
+    // Check against full book names
+    for (const [abbrev, fullName] of Object.entries(BOOK_NAMES)) {
+      const distance = levenshteinDistance(lower, fullName.toLowerCase());
+      if (distance <= threshold && distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = abbrev;
+      }
+    }
+
+    // Also check against common aliases
+    for (const [alias, abbrev] of Object.entries(ABBREVIATION_ALIASES)) {
+      const distance = levenshteinDistance(lower, alias);
+      if (distance <= threshold && distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = abbrev;
+      }
+    }
+
+    if (bestMatch) {
+      console.log(
+        `[Reference Parser] Fuzzy matched "${input}" -> "${bestMatch}" (distance: ${bestDistance})`,
+      );
+      return bestMatch;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Test if input contains an explicit reference
+ */
+export function hasExplicitReference(input: string): boolean {
+  return parseExplicitReference(input) !== null;
+}

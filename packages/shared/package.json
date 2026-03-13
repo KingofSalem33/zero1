@@ -1,0 +1,16 @@
+{
+  "name": "@zero1/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./graph/narrativeMapGraph": "./src/graph/narrativeMapGraph.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@types/d3-force": "^3.0.10",
+    "d3-force": "^3.0.0",
+    "zod": "^3.25.76"
+  }
+}

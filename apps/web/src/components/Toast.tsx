@@ -1,161 +1,200 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 
-interface ToastProps {
+/**
+ * Subtle toast notification system.
+ * Designed to feel inevitable - confirms actions without demanding attention.
+ */
+
+interface Toast {
+  id: string;
   message: string;
-  duration?: number; // in milliseconds, 0 = permanent
-  onClose?: () => void;
-  type?: "info" | "success" | "warning" | "error";
+  type?: "default" | "success" | "error";
+  duration?: number;
+  onUndo?: () => void;
 }
 
-export const Toast: React.FC<ToastProps> = ({
-  message,
-  duration = 4000,
-  onClose,
-  type = "info",
-}) => {
-  const [isVisible, setIsVisible] = useState(false);
+interface ToastContextValue {
+  toast: (message: string, options?: Omit<Toast, "id" | "message">) => void;
+  dismiss: (id: string) => void;
+}
+
+const ToastContext = createContext<ToastContextValue | null>(null);
+
+export function useToast() {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error("useToast must be used within a ToastProvider");
+  }
+  return context;
+}
+
+/** Individual toast item */
+function ToastItem({
+  toast,
+  onDismiss,
+}: {
+  toast: Toast;
+  onDismiss: (id: string) => void;
+}) {
   const [isExiting, setIsExiting] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Entrance animation
-  useEffect(() => {
-    // Trigger entrance animation after mount
-    const timer = setTimeout(() => {
-      setIsVisible(true);
-    }, 10);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Auto-dismiss timer
-  useEffect(() => {
-    if (duration === 0) return; // Permanent toast
-
-    const timer = setTimeout(() => {
-      handleClose();
-    }, duration);
-
-    return () => clearTimeout(timer);
-  }, [duration]);
-
-  const handleClose = () => {
+  const handleDismiss = useCallback(() => {
     setIsExiting(true);
-    // Wait for exit animation
-    setTimeout(() => {
-      onClose?.();
-    }, 200);
+    setTimeout(() => onDismiss(toast.id), 150);
+  }, [toast.id, onDismiss]);
+
+  const handleUndo = useCallback(() => {
+    if (toast.onUndo) {
+      toast.onUndo();
+      handleDismiss();
+    }
+  }, [toast.onUndo, handleDismiss]);
+
+  useEffect(() => {
+    const duration = toast.duration ?? 2500;
+    timerRef.current = setTimeout(handleDismiss, duration);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [toast.duration, handleDismiss]);
+
+  // Pause timer on hover
+  const handleMouseEnter = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
   };
 
-  const typeStyles = {
-    info: {
-      bg: "from-blue-600 to-purple-600",
-      border: "border-blue-400/30",
-      shadow: "shadow-blue-500/30",
-    },
-    success: {
-      bg: "from-green-600 to-emerald-600",
-      border: "border-green-400/30",
-      shadow: "shadow-green-500/30",
-    },
-    warning: {
-      bg: "from-amber-600 to-orange-600",
-      border: "border-amber-400/30",
-      shadow: "shadow-amber-500/30",
-    },
-    error: {
-      bg: "from-red-600 to-rose-600",
-      border: "border-red-400/30",
-      shadow: "shadow-red-500/30",
-    },
+  const handleMouseLeave = () => {
+    const duration = toast.duration ?? 2500;
+    timerRef.current = setTimeout(handleDismiss, duration);
   };
-
-  const style = typeStyles[type];
 
   return (
     <div
-      className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
-        isVisible && !isExiting
-          ? "opacity-100 translate-y-0"
-          : "opacity-0 translate-y-2"
-      }`}
-      role="alert"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className={`
+        flex items-center gap-2 px-4 py-2
+        bg-neutral-900/90 backdrop-blur-xl
+        border border-white/10
+        rounded-lg shadow-lg
+        text-sm text-neutral-300
+        transition-all duration-150 ease-out
+        ${isExiting ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"}
+      `}
+      role="status"
       aria-live="polite"
     >
-      <div
-        className={`bg-gradient-to-r ${style.bg} text-white px-6 py-3.5 rounded-2xl shadow-2xl ${style.shadow} backdrop-blur-sm border ${style.border} max-w-md text-center font-medium flex items-center gap-3`}
-      >
-        <span className="flex-1">{message}</span>
-        {duration === 0 && (
-          <button
-            onClick={handleClose}
-            className="flex-shrink-0 w-5 h-5 rounded-full hover:bg-white/20 transition-colors flex items-center justify-center"
-            aria-label="Close"
-          >
-            <svg
-              className="w-3 h-3"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
+      {/* Subtle status indicator with animation */}
+      {toast.type === "success" && (
+        <svg
+          className="w-4 h-4 text-green-500/70 flex-shrink-0 checkmark-animated"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M5 13l4 4L19 7"
+          />
+        </svg>
+      )}
+      {toast.type === "error" && (
+        <svg
+          className="w-4 h-4 text-red-500/70 flex-shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      )}
+
+      <span className="flex-1">{toast.message}</span>
+
+      {toast.onUndo && (
+        <button
+          onClick={handleUndo}
+          className="text-neutral-500 hover:text-neutral-300 text-xs font-medium transition-colors"
+        >
+          Undo
+        </button>
+      )}
     </div>
   );
-};
+}
 
-// Toast hook for programmatic usage
-export const useToast = () => {
-  const [toasts, setToasts] = useState<
-    Array<{
-      id: number;
-      message: string;
-      type: ToastProps["type"];
-      duration?: number;
-    }>
-  >([]);
+/** Toast container - positioned at bottom center */
+function ToastContainer({
+  toasts,
+  onDismiss,
+}: {
+  toasts: Toast[];
+  onDismiss: (id: string) => void;
+}) {
+  if (toasts.length === 0) return null;
 
-  const showToast = (
-    message: string,
-    type: ToastProps["type"] = "info",
-    duration = 4000,
-  ) => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type, duration }]);
-  };
-
-  const hideToast = (id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const ToastContainer = () => (
-    <>
-      {toasts.map((toast, index) => (
-        <div
-          key={toast.id}
-          style={{
-            position: "fixed",
-            bottom: `${2 + index * 4.5}rem`,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 50,
-          }}
-        >
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            duration={toast.duration}
-            onClose={() => hideToast(toast.id)}
-          />
+  return (
+    <div
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"
+      aria-label="Notifications"
+    >
+      {toasts.map((toast) => (
+        <div key={toast.id} className="pointer-events-auto">
+          <ToastItem toast={toast} onDismiss={onDismiss} />
         </div>
       ))}
-    </>
+    </div>
+  );
+}
+
+/** Toast provider - wrap your app with this */
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const toast = useCallback(
+    (message: string, options: Omit<Toast, "id" | "message"> = {}) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const newToast: Toast = {
+        id,
+        message,
+        type: options.type ?? "default",
+        duration: options.duration,
+        onUndo: options.onUndo,
+      };
+
+      setToasts((prev) => [...prev, newToast]);
+    },
+    [],
   );
 
-  return { showToast, ToastContainer };
-};
+  const dismiss = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  return (
+    <ToastContext.Provider value={{ toast, dismiss }}>
+      {children}
+      <ToastContainer toasts={toasts} onDismiss={dismiss} />
+    </ToastContext.Provider>
+  );
+}

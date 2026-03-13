@@ -12,7 +12,6 @@ import {
   extractSafeMetadata,
   SECURITY_CONFIG,
 } from "./security";
-import { withRetry, getToolRetryConfig } from "./retry";
 import pino from "pino";
 
 const logger = pino({ name: "http_fetch" });
@@ -220,7 +219,7 @@ async function fetchWithSecurity(urlString: string): Promise<FetchResult> {
 }
 
 /**
- * Main http_fetch function with retry logic
+ * Main http_fetch function
  */
 export async function http_fetch(
   params: HttpFetchParams,
@@ -228,18 +227,12 @@ export async function http_fetch(
   const { url: urlString } = params;
 
   try {
-    // Wrap fetch with retry logic
-    const retryConfig = getToolRetryConfig("http_fetch");
-
-    return await withRetry(
-      () => fetchWithSecurity(urlString),
-      "http_fetch",
-      retryConfig,
-    );
+    // Call fetch directly (retry removed)
+    return await fetchWithSecurity(urlString);
   } catch (error) {
     logger.error(
       { url: urlString, error: error instanceof Error ? error.message : error },
-      "HTTP fetch failed after retries",
+      "HTTP fetch failed",
     );
 
     // Return error in safe format

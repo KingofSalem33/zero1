@@ -1,0 +1,48 @@
+{
+  "gate": "phase2.5-mobile-production-smoke",
+  "generatedAt": "2026-03-04T02:56:36.577Z",
+  "build": "25",
+  "appVersion": "1.0.0",
+  "tester": "Cory Hanson",
+  "notes": null,
+  "steps": [
+    {
+      "key": "launch",
+      "name": "App launch",
+      "requirement": "App opens from TestFlight without crash/white screen.",
+      "status": "pass",
+      "passed": true
+    },
+    {
+      "key": "auth",
+      "name": "Auth flow",
+      "requirement": "User signs in and lands in authenticated experience.",
+      "status": "pass",
+      "passed": true
+    },
+    {
+      "key": "library",
+      "name": "Library load",
+      "requirement": "Library/saved content loads without 401/session errors.",
+      "status": "pass",
+      "passed": true
+    },
+    {
+      "key": "map",
+      "name": "Map save",
+      "requirement": "Create/save map succeeds and persists after reload.",
+      "status": "pass",
+      "passed": true
+    },
+    {
+      "key": "highlight",
+      "name": "Highlight flow",
+      "requirement": "Create/view highlight succeeds and remains visible after navigation/reload.",
+      "status": "pass",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "rollbackTriggered": false,
+  "rollbackReason": null
+}

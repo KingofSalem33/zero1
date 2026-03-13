@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import type { User, Session } from "@supabase/supabase-js";
+import type { User, Session, SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 
 interface AuthContextType {
@@ -29,14 +29,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+  children: React.ReactNode;
+  client?: SupabaseClient;
+}
+
+export function AuthProvider({ children, client }: AuthProviderProps) {
+  const authClient = client ?? supabase;
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    authClient.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -45,17 +51,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = authClient.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [authClient]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await authClient.auth.signInWithPassword({
       email,
       password,
     });
@@ -63,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { error } = await authClient.auth.signUp({
       email,
       password,
     });
@@ -71,13 +77,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await authClient.auth.signOut();
   };
 
   const getAccessToken = async (): Promise<string | null> => {
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await authClient.auth.getSession();
     return session?.access_token ?? null;
   };
 

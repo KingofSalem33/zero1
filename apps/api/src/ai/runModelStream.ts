@@ -4,8 +4,31 @@ import { ZodError } from "zod";
 import pino from "pino";
 import { ENV } from "../env";
 import type { Response } from "express";
+import { profileSpan, profileTime } from "../profiling/requestProfiler";
+import {
+  validateExegesisOutput,
+  type ValidationResult,
+  type ValidationOptions,
+} from "./outputValidation";
+import { enforceGuardrails, type GuardrailResult } from "./guardrails";
+import {
+  generateRequestId,
+  logResponseMetadata,
+  createMetadataBuilder,
+} from "../feedback";
 
 const logger = pino({ name: "runModelStream" });
+
+function resolveModelVerbosity(
+  model: string,
+  requested: "low" | "medium" | "high",
+): "low" | "medium" | "high" {
+  // gpt-4o-mini currently rejects "low" verbosity and supports "medium".
+  if (model.includes("gpt-4o-mini") && requested === "low") {
+    return "medium";
+  }
+  return requested;
+}
 
 /**
  * Extract keywords from context to build a search query
@@ -206,6 +229,20 @@ export interface RunModelStreamOptions {
   model?: string;
   reasoningEffort?: "low" | "medium" | "high";
   verbosity?: "low" | "medium" | "high";
+  // Prompt caching optimization (OpenAI API)
+  // Note: Prompt caching is automatic for prompts > 1024 tokens
+  // These parameters are for advanced optimization
+  promptCacheRetention?: "24h"; // Extended retention for frequently-used prompts
+  promptCacheKey?: string; // Custom key to improve cache hit rates for shared prefixes
+  keepAlive?: boolean; // If true, don't send done event or close response (caller will handle)
+  // Validation options
+  validation?: ValidationOptions;
+  enableValidation?: boolean; // Default: true
+  enableGuardrails?: boolean; // Default: true
+  // Metadata tracking
+  requestId?: string; // For feedback correlation
+  userId?: string;
+  taskType?: string; // For model routing analytics
 }
 
 /**
@@ -228,13 +265,50 @@ export async function runModelStream(
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
     model = ENV.OPENAI_MODEL_NAME,
-    reasoningEffort = "high",
+    reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
+    promptCacheRetention, // Optional: "24h" for extended cache retention
+    promptCacheKey, // Optional: Custom key for cache routing
+    keepAlive = false, // If true, caller will handle done event and closing response
+    validation,
+    enableValidation = true,
+    enableGuardrails = true,
+    requestId = generateRequestId(),
+    userId,
+    taskType,
   } = options;
+  const effectiveVerbosity = resolveModelVerbosity(model, verbosity);
+
+  // Create metadata builder for tracking
+  const metadataBuilder = createMetadataBuilder(requestId);
+  metadataBuilder.setModel(model);
+  if (taskType) metadataBuilder.setTaskType(taskType);
+  if (userId) metadataBuilder.setUserId(userId);
+
+  // Set reasoning effort based on model capabilities
+  // Nano doesn't support reasoning mode - only mini/pro/opus do
+  // IMPORTANT: Only use reasoning if explicitly requested, otherwise undefined for true streaming
+  const effectiveReasoningEffort =
+    model.startsWith("gpt-5") &&
+    !model.includes("nano") &&
+    reasoningEffort !== undefined
+      ? reasoningEffort
+      : undefined;
+
+  logger.info(
+    {
+      model,
+      requestedReasoningEffort: reasoningEffort,
+      effectiveReasoningEffort,
+      verbosity: effectiveVerbosity,
+      isNano: model.includes("nano"),
+    },
+    "Model configuration for streaming",
+  );
 
   const client = makeOpenAI();
   if (!client) {
-    throw new Error("OpenAI client not configured");
+    throw new Error("AI client not configured");
   }
 
   // Helper to send SSE event
@@ -250,11 +324,21 @@ export async function runModelStream(
     );
     res.write(eventStr);
     res.write(dataStr);
+
+    // ✅ CRITICAL: Flush immediately to prevent Node.js buffering
+    // This ensures each SSE event is sent to the client right away
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   };
 
   // Helper to send heartbeat (keeps connection alive through proxies)
   const sendHeartbeat = () => {
     res.write(`:\n\n`);
+    // Flush heartbeat too to ensure it's sent immediately
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   };
 
   // Send initial heartbeat
@@ -281,9 +365,84 @@ export async function runModelStream(
     logger.info("Client disconnected, cleaned up resources");
   });
 
+  // Helper to finalize stream with validation and metadata
+  const finalizeStream = async (
+    finalText: string,
+    citations: string[],
+  ): Promise<void> => {
+    // Run validation if enabled
+    let validationResult: ValidationResult | null = null;
+    if (enableValidation && finalText.length > 0) {
+      validationResult = validateExegesisOutput(finalText, validation);
+      if (!validationResult.valid || validationResult.issues.length > 0) {
+        logger.warn(
+          {
+            valid: validationResult.valid,
+            issueCount: validationResult.issues.length,
+            metrics: validationResult.metrics,
+          },
+          "Output validation issues detected",
+        );
+      }
+    }
+
+    // Run guardrails if enabled
+    let guardrailResult: GuardrailResult | null = null;
+    if (enableGuardrails && finalText.length > 0) {
+      guardrailResult = enforceGuardrails(finalText);
+      if (!guardrailResult.passed || guardrailResult.violations.length > 0) {
+        logger.warn(
+          {
+            passed: guardrailResult.passed,
+            violationCount: guardrailResult.violations.length,
+          },
+          "Guardrail violations detected",
+        );
+      }
+    }
+
+    // Update metadata with content metrics
+    if (validationResult) {
+      metadataBuilder.setContentMetrics({
+        citations: validationResult.metrics.citationCount,
+        words: validationResult.metrics.wordCount,
+        hasH2: validationResult.metrics.hasH2Header,
+      });
+      metadataBuilder.setQualitySignals({
+        validation: validationResult.valid,
+        guardrails: guardrailResult?.passed ?? true,
+        warnings: validationResult.issues.length,
+      });
+    }
+
+    // Log metadata for analytics
+    try {
+      await logResponseMetadata(metadataBuilder.build());
+    } catch (err) {
+      logger.error({ err }, "Failed to log response metadata");
+    }
+
+    // Send done event with request ID for feedback correlation
+    if (!keepAlive) {
+      sendEvent("done", {
+        requestId,
+        citations: [...new Set(citations)],
+        validation: validationResult
+          ? {
+              valid: validationResult.valid,
+              metrics: validationResult.metrics,
+              issueCount: validationResult.issues.length,
+            }
+          : undefined,
+      });
+      res.end();
+    }
+  };
+
   const conversationMessages: any[] = [...messages]; // ResponseInputItem[]
   const allCitations: string[] = [];
   let iterations = 0;
+  let streamStartNs: bigint | null = null;
   let accumulatedResponse = ""; // Accumulate text across ALL iterations
 
   logger.info(
@@ -301,30 +460,65 @@ export async function runModelStream(
         JSON.stringify(conversationMessages, null, 2),
       );
 
-      const stream = await client.responses.create({
-        model,
-        input: conversationMessages,
-        tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
-        tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-        temperature: 0.3,
-        max_output_tokens: 16000,
-        parallel_tool_calls: true,
-        stream: true,
-        text: {
-          verbosity: verbosity,
-        },
-        ...(model.startsWith("gpt-5") && {
-          reasoning: {
-            effort: reasoningEffort,
-          },
+      console.log(
+        "[runModelStream] Model config:",
+        JSON.stringify({
+          model,
+          verbosity: effectiveVerbosity,
+          effectiveReasoningEffort,
+          willSendReasoning: !!effectiveReasoningEffort,
         }),
-      });
+      );
+
+      streamStartNs = process.hrtime.bigint();
+      const stream = await profileTime(
+        "llm.stream_create",
+        () =>
+          client.responses.create({
+            model,
+            input: conversationMessages,
+            tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
+            tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
+            max_output_tokens: 16000,
+            parallel_tool_calls: true,
+            stream: true,
+            text: {
+              verbosity: effectiveVerbosity,
+            },
+            // Only apply reasoning for models that support it (not nano)
+            ...(effectiveReasoningEffort && {
+              reasoning: {
+                effort: effectiveReasoningEffort,
+              },
+            }),
+            // Note: OpenAI prompt caching parameters (if supported by SDK version)
+            // Prompt caching is automatic for prompts > 1024 tokens
+            // These parameters are for advanced optimization when supported
+            ...(promptCacheRetention && {
+              prompt_cache_retention: promptCacheRetention,
+            }),
+            ...(promptCacheKey && { prompt_cache_key: promptCacheKey }),
+          }),
+        {
+          file: "ai/runModelStream.ts",
+          fn: "runModelStream",
+          await: "client.responses.create",
+          model,
+        },
+      );
 
       let currentIterationContent = ""; // Content from THIS iteration only
       const outputItems: any[] = [];
+      let firstDeltaLogged = false;
 
       // Process stream chunks - Responses API has different event structure
       for await (const event of stream) {
+        // 🔍 DEBUG: Log EVERY event type to understand what's being emitted
+        console.log(
+          `[runModelStream] 🔍 EVENT: type="${event.type}" | full event:`,
+          JSON.stringify(event, null, 2),
+        );
+
         // Collect all output items as they're added
         if (event.type === "response.output_item.added") {
           outputItems.push(event.item);
@@ -334,14 +528,35 @@ export async function runModelStream(
         }
 
         // Stream text deltas to the user in real-time
-        if (event.type === "response.output_text.delta") {
+        // Handle ALL delta types: reasoning, reasoning summary, and output text
+        if (
+          event.type === "response.output_text.delta" ||
+          event.type === "response.reasoning_text.delta" ||
+          event.type === "response.reasoning_summary_text.delta"
+        ) {
           const delta = (event as any).delta;
           if (delta) {
             currentIterationContent += delta;
             accumulatedResponse += delta; // Also accumulate across iterations
             console.log(
-              `[runModelStream] Iteration ${iterations}: Text delta received (${delta.length} chars)`,
+              `[runModelStream] Iteration ${iterations}: ✅ ${event.type} delta received (${delta.length} chars)`,
             );
+            if (!firstDeltaLogged) {
+              firstDeltaLogged = true;
+              if (streamStartNs) {
+                profileSpan(
+                  "llm.stream_ttft",
+                  streamStartNs,
+                  process.hrtime.bigint(),
+                  {
+                    file: "ai/runModelStream.ts",
+                    fn: "runModelStream",
+                    await: "first_delta",
+                    model,
+                  },
+                );
+              }
+            }
             sendEvent("content", { delta });
           }
         }
@@ -421,10 +636,24 @@ export async function runModelStream(
         console.log(
           `[runModelStream] No tool calls in iteration ${iterations}. Ending stream with ${accumulatedResponse.length} total chars.`,
         );
-        cleanup(); // ✅ Use cleanup function
-        sendEvent("done", { citations: [...new Set(allCitations)] });
-        res.end();
-        return accumulatedResponse; // Return accumulated response across all iterations
+        if (streamStartNs) {
+          profileSpan(
+            "llm.stream_total",
+            streamStartNs,
+            process.hrtime.bigint(),
+            {
+              file: "ai/runModelStream.ts",
+              fn: "runModelStream",
+              await: "stream_complete",
+              model,
+            },
+          );
+        }
+        cleanup();
+
+        // Finalize with validation and metadata
+        await finalizeStream(accumulatedResponse, allCitations);
+        return accumulatedResponse;
       }
 
       // Convert output items to tool call format for processing
@@ -449,9 +678,23 @@ export async function runModelStream(
       // If all tool calls were malformed, we're done
       if (validToolCalls.length === 0) {
         logger.warn("All tool calls were malformed, ending stream");
-        cleanup(); // ✅ Use cleanup function
-        sendEvent("done", { citations: [...new Set(allCitations)] });
-        res.end();
+        if (streamStartNs) {
+          profileSpan(
+            "llm.stream_total",
+            streamStartNs,
+            process.hrtime.bigint(),
+            {
+              file: "ai/runModelStream.ts",
+              fn: "runModelStream",
+              await: "stream_complete",
+              model,
+            },
+          );
+        }
+        cleanup();
+
+        // Finalize with validation and metadata
+        await finalizeStream(accumulatedResponse, allCitations);
         return accumulatedResponse;
       }
 
@@ -532,7 +775,15 @@ export async function runModelStream(
           if (!toolFn) {
             throw new Error(`Tool function not found: ${toolName}`);
           }
-          const result = await toolFn(args);
+          const result = await profileTime(
+            `tool.${toolName}`,
+            async () => toolFn(args) as unknown,
+            {
+              file: "ai/tools",
+              fn: toolName,
+              await: "tool_execution",
+            },
+          );
 
           // Emit tool_result event
           sendEvent("tool_result", { tool: toolName, result });
@@ -593,17 +844,43 @@ export async function runModelStream(
     console.log(
       `[runModelStream] Max iterations reached. Returning ${accumulatedResponse.length} total chars.`,
     );
-    cleanup(); // ✅ Use cleanup function
-    sendEvent("done", { citations: [...new Set(allCitations)] });
-    res.end();
+    if (streamStartNs) {
+      profileSpan("llm.stream_total", streamStartNs, process.hrtime.bigint(), {
+        file: "ai/runModelStream.ts",
+        fn: "runModelStream",
+        await: "stream_complete",
+        model,
+      });
+    }
+    cleanup();
+
+    // Finalize with validation and metadata
+    await finalizeStream(accumulatedResponse, allCitations);
     return accumulatedResponse;
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : error },
       "Streaming failed",
     );
-    cleanup(); // ✅ Use cleanup function
+    if (streamStartNs) {
+      profileSpan("llm.stream_total", streamStartNs, process.hrtime.bigint(), {
+        file: "ai/runModelStream.ts",
+        fn: "runModelStream",
+        await: "stream_complete",
+        model,
+      });
+    }
+    cleanup();
+
+    // Log metadata even on error
+    try {
+      await logResponseMetadata(metadataBuilder.build());
+    } catch (err) {
+      logger.error({ err }, "Failed to log response metadata on error");
+    }
+
     sendEvent("error", {
+      requestId,
       message:
         error instanceof Error ? error.message : "Unknown streaming error",
     });
@@ -627,6 +904,10 @@ export function sendCompletionDetectedEvent(
   try {
     res.write(`event: completion_detected\n`);
     res.write(`data: ${JSON.stringify(detection)}\n\n`);
+    // Flush to ensure immediate delivery
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   } catch (err) {
     logger.warn({ err }, "Failed to emit completion_detected SSE");
   }
@@ -644,6 +925,10 @@ export function sendCompletionNudgeEvent(
   try {
     res.write(`event: completion_nudge\n`);
     res.write(`data: ${JSON.stringify(nudge)}\n\n`);
+    // Flush to ensure immediate delivery
+    if (typeof (res as any).flush === "function") {
+      (res as any).flush();
+    }
   } catch (err) {
     logger.warn({ err }, "Failed to emit completion_nudge SSE");
   }
