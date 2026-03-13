@@ -103,6 +103,38 @@ export interface ChainOfThoughtResult {
   citations: string[];
 }
 
+export interface SemanticConnectionSynopsisResult {
+  title: string;
+  synopsis: string;
+  verses: Array<{
+    id: number;
+    reference: string;
+    text: string;
+  }>;
+  connectionType: string;
+  similarity: number;
+  verseCount: number;
+}
+
+export interface DiscoveredConnectionResult {
+  from: number;
+  to: number;
+  type:
+    | "TYPOLOGY"
+    | "FULFILLMENT"
+    | "CONTRAST"
+    | "PROGRESSION"
+    | "PATTERN"
+    | "ROOTS"
+    | "ECHOES"
+    | "PROPHECY"
+    | "NARRATIVE"
+    | "GENEALOGY"
+    | "ALLUSION";
+  explanation: string;
+  confidence: number;
+}
+
 export interface NextBranchOption {
   label: string;
   prompt: string;
@@ -196,10 +228,12 @@ export async function fetchTraceBundle({
   apiBaseUrl,
   text,
   accessToken,
+  signal,
 }: {
   apiBaseUrl: string;
   text: string;
   accessToken?: string;
+  signal?: globalThis.AbortSignal;
 }): Promise<VisualContextBundle> {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (accessToken) {
@@ -210,6 +244,7 @@ export async function fetchTraceBundle({
     method: "POST",
     headers,
     body: JSON.stringify({ text }),
+    signal,
   });
 
   if (!response.ok) {
@@ -531,6 +566,130 @@ export async function fetchRootTranslation({
   }
 
   return (await response.json()) as RootTranslationResponse;
+}
+
+export async function fetchSemanticConnectionSynopsis({
+  apiBaseUrl,
+  verseIds,
+  verses,
+  connectionType,
+  similarity,
+  isLlmDiscovered,
+  topicContext,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  verseIds: number[];
+  verses: Array<{ id: number; reference: string; text: string }>;
+  connectionType: string;
+  similarity: number;
+  isLlmDiscovered?: boolean;
+  topicContext?: Array<{
+    styleType: string;
+    label: string;
+    overlap: number;
+  }>;
+  accessToken?: string;
+}): Promise<SemanticConnectionSynopsisResult> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/semantic-connection/synopsis`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        verseIds,
+        verses,
+        connectionType,
+        similarity,
+        ...(isLlmDiscovered ? { isLLMDiscovered: true } : {}),
+        ...(topicContext && topicContext.length > 0 ? { topicContext } : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Semantic connection request failed (${response.status})`);
+  }
+
+  return (await response.json()) as SemanticConnectionSynopsisResult;
+}
+
+export async function fetchSemanticConnectionTopicTitles({
+  apiBaseUrl,
+  topics,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  topics: Array<{
+    type: string;
+    verses: Array<{
+      reference: string;
+      text: string;
+    }>;
+  }>;
+  accessToken?: string;
+}): Promise<Record<string, string>> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/semantic-connection/topic-titles`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ topics }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Semantic topic title request failed (${response.status})`);
+  }
+
+  const data = (await response.json()) as { titles?: Record<string, string> };
+  return data.titles ?? {};
+}
+
+export async function discoverConnections({
+  apiBaseUrl,
+  verseIds,
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  verseIds: number[];
+  accessToken?: string;
+}): Promise<{
+  connections: DiscoveredConnectionResult[];
+  fromCache: boolean;
+}> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(
+    `${normalizeBaseUrl(apiBaseUrl)}/api/discover-connections`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ verseIds }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Discover connections request failed (${response.status})`);
+  }
+
+  return (await response.json()) as {
+    connections: DiscoveredConnectionResult[];
+    fromCache: boolean;
+  };
 }
 
 export async function fetchProtectedProbe({

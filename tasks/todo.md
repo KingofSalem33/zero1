@@ -1,23 +1,111 @@
 # Todo
 
-- [x] Review existing shared button components and target Reader/Chat usages
-- [x] Add shared primitives for icon, compact, and chip buttons
-- [x] Migrate Reader high-impact buttons to shared primitives
-- [x] Migrate Chat high-impact buttons to shared primitives
-- [x] Run typecheck and document remaining button drift
-- [x] Extend the shared system for row-style selector buttons
-- [x] Migrate Library tabs and card quick-action pills
-- [x] Migrate Reader selector rows and chapter chips
-- [x] Migrate Web fallback shell buttons to shared primitives
-- [x] Migrate remaining detail/create suggestion chips to shared primitives
+- [x] Add a shared map visualization contract that matches the web bundle shape
+- [x] Migrate mobile map types and consumers to the richer visualization contract
+- [x] Refactor the native map viewer into a map-first layout with floating controls
+- [x] Add native onboarding/help and richer node/edge inspection surfaces
+- [x] Add mobile discovery flow parity with working-bundle edge merging
+- [x] Add semantic connection synopsis loading and save-connection parity from edge inspection
+- [x] Add native parallel-passage drill-in from node inspection
+- [x] Tighten chat map-prep and map-ready status affordances
+- [x] Add web-style chat full-map pending and live session continuity states
+- [x] Fix native map viewport centering, pan, and pinch exploration
+- [x] Port web-style map node layout and curved connection rendering into mobile
+- [x] Fix the native map runtime regression and restore mobile-safe graph interaction
+- [x] Move mobile map derivation onto the web graph logic foundation
+- [x] Run a focused four-agent audit on remaining node-click and edge-color UX parity gaps
+- [x] Implement web-style node-tap topic routing, spotlight focus state, and semantic connection sheet parity on mobile
+- [x] Run a focused four-agent audit on remaining map-modal content and logic parity gaps
+- [x] Rebuild the mobile node-press semantic connection card around the web modal content model
+- [x] Rebuild the mobile parallel-passages sheet around the web modal hierarchy
+- [x] Remove obsolete hidden semantic-sheet branches after the modal parity rebuild
+- [x] Add adaptive large-screen map composition with a persistent inspector rail
+- [x] Remove the remaining disabled legacy map inspector sheets after the rail migration
+- [x] Run mobile typecheck and targeted tests, then update the review notes
 
 ## Review
 
-- Added shared button primitives: `IconButton`, `CompactButton`, `ChipButton`, and `ListRowButton`.
-- Migrated Reader header/footer icon buttons, compact action rows, cross-reference disclosure chip, root-translation controls, selector rows, and chapter chips.
-- Migrated Chat trace/send/new-session controls and normalized quick-prompt sizing/typography.
-- Migrated Library mode tabs and card quick-action pills to the shared chip system.
-- Migrated navigation shell menu/close icon buttons and Web fallback shell actions to the shared button system.
-- Migrated bookmark suggestion chips in older detail/create flows to the shared chip system.
-- Validation: `npx tsc -p apps/mobile/tsconfig.json --noEmit`.
-- Residual drift is now mostly intentional specialty controls, such as color-picker chips and card-like surfaces, rather than one-off button systems.
+- Added shared visualization contracts in `packages/shared/src/contracts/visualizationContracts.ts` and exported them through `@zero1/shared`.
+- Replaced the narrow mobile-only map bundle typing with shared contract re-exports in `apps/mobile/src/types/visualization.ts`.
+- Rebuilt `MapViewerScreen` into a map-first native surface with:
+  - floating save/help/zoom/reset controls
+  - persistent anchor/context summary
+  - first-use onboarding overlay persisted in `AsyncStorage`
+  - native help/legend sheet
+  - richer node detail sheet
+  - edge inspection sheet with continuation into Chat
+- Extended `MapViewerScreen` with the next parity slice:
+  - mutable in-session working bundle so discovered edges merge into the active native map
+  - auto/manual `Discover More` pipeline against `/api/discover-connections`
+  - discovery progress overlay and unexplored-verse status
+  - semantic connection synopsis loading from `/api/semantic-connection/synopsis`
+  - save-connection flow from edge inspection into Library using the shared map session contract
+- Added the next continuity and node-detail slice:
+  - native parallel-passage sheet from node inspection, aligned to the web modal's information model
+  - Reader handoff from map nodes/parallels now queues direct verse focus instead of opening only the chapter
+  - chat assistant messages now expose explicit `Preparing map`, `Map ready`, verse-count, and connection-count status affordances
+- Added the next chat continuity slice:
+  - mobile chat now runs a background full `/api/trace` fetch for re-anchor trace requests while keeping the streamed fast map viewable
+  - assistant messages now distinguish `Preparing map`, `Loading full map`, `Richer connections loading`, and `Map ready - N verses` states using message-scoped continuity state
+  - follow-up requests no longer tear down an in-flight richer map fetch unless the conversation truly reanchors or resets
+  - mobile prefers the richer bundle when fast-stream and full-trace responses race, preventing late partial map data from downgrading the active session
+- Added the next map viewport UX slice:
+  - native map now computes graph bounds and fits the graph into the measured viewport instead of opening with a raw `pan=0` / `scale=1` canvas
+  - reset now behaves like a true fit-to-map action that recenters the anchor/graph in view
+  - one-finger drag and pinch-to-zoom now drive bounded native viewport transforms so users can explore the full graph without the map getting lost off-screen
+  - non-interactive overlays now pass touches through so map exploration stays fluid across more of the screen
+- Added the next map layout/rendering parity slice:
+  - mobile map now derives a renderable graph model closer to web by using visible nodes, explicit theological edges, and synthetic structural parent-child edges when needed
+  - native node placement now follows the web's anchor-centered BFS ring layout instead of the older depth-only placeholder layout
+  - connection lines now render as curved SVG paths anchored to node boundaries instead of rotated center-to-center bars
+  - mobile now uses family-based edge styling and depth rings so connection structure reads more like the web map
+- Added the regression stabilization slice:
+  - mobile no longer hard-crashes when the current native runtime lacks `RNSVGSvgView`; the map now falls back to a mobile-safe native edge renderer instead of red-screening
+  - mobile map once again renders the full node set instead of over-filtering to `isVisible` hints that do not match the current native expansion model
+  - the transformed map layers now explicitly pass pointer events through in the right places so pan/drag can work against the graph surface again
+- Added the graph-logic replication slice:
+  - the web force-layout and graph-derivation logic now lives in shared code instead of being approximated inside the mobile screen
+  - mobile now derives visible nodes, synthetic structure edges, node dimensions, connection families, and graph positions from the same foundation as web
+  - the non-SVG fallback renderer now approximates curved connections from the same bezier control points instead of collapsing back to a single straight bar
+- Added the focused four-agent UX parity audit:
+  - web node click is not just "open node details"; it first tries to resolve connection-topic groups and opens the semantic-connection modal when that is the stronger study affordance
+  - web edge semantics are visually opinionated: anchor rays stay gold, non-anchor semantic edges read as electric white with glow, and GREY structural edges remain subdued helpers
+  - web focus/hover state changes the whole graph via spotlight dimming and branch highlighting, while mobile still treats selection as a local sheet event instead of a graph-state transition
+- Added the node-tap / semantic-sheet parity slice:
+  - tapping a node now resolves graph-derived connection-topic groups first, matching the web modal-entry decision instead of always opening plain node details
+  - mobile now applies graph-wide spotlight dimming from the focused node or selected semantic topic so the selected branch reads as a graph state, not an isolated sheet event
+  - edge styling now follows the web hierarchy more closely: gold anchor rays, electric-white semantic edges, and muted grey structural helpers
+  - the mobile connection sheet now behaves more like the web semantic modal by switching topic groups, preserving cluster verse IDs, showing topic cues, and using the active semantic family for synopsis/save/go-deeper flows
+- Fixed the edge solidity regression in the native fallback renderer:
+  - fallback curved edges are now midpoint-anchored and slightly overlapped so they render as continuous solid connections instead of dashed-looking segmented strokes
+- Added the focused four-agent modal parity audit:
+  - mobile still treats the semantic connection sheet as a reduced bottom-sheet summary, while web treats `SemanticConnectionModal` as a richer study surface with verse-chip drill-in, topic navigation affordances, progressive verse reveal, and library metadata editing branches
+  - mobile does not yet mirror web support logic like topic-title enrichment, verse-tooltip interactions, or the saved-library branch of the semantic modal
+  - mobile parallel passages content is directionally aligned but still misses the web modal's exact information model and framing copy
+- Rebuilt the node-press semantic connection card closer to the web modal model:
+  - mobile semantic drill-in now leads with verse chips, progressive `Show all` / `Show fewer` reveal, synopsis-first reading order, and lightweight topic navigation
+  - topic-title enrichment now runs against `/api/semantic-connection/topic-titles` so topic labels can match the richer web modal behavior
+  - semantic synopsis requests now use a request-key cache on mobile to avoid recomputing the same topic-cluster analysis repeatedly
+  - when the selected semantic connection already exists in Library, the sheet now exposes notes/tags editing instead of only showing a save action
+- Rebuilt the mobile parallel-passages sheet closer to the web modal model:
+  - the sheet now uses the web modal's `Parallel Accounts` framing with explicit `Primary` and `Also Found In` sections
+  - parallel passage dedupe now uses the same normalized-reference and verse-key approach as the web modal helper path
+  - similarity treatment now mirrors the web modal's confidence hierarchy more closely by varying row emphasis while keeping the native bottom-sheet form factor
+  - the footer now uses the same direct drill-in affordance as web: `Tap a passage to open.`
+- Cleaned up the remaining hidden semantic-sheet legacy branches:
+  - removed obsolete dead JSX paths from the selected-edge sheet so the file now reflects the live semantic-card implementation instead of keeping unreachable pre-parity UI branches
+  - removed style definitions that were only referenced by those dead branches
+- Added the large-screen composition parity slice:
+  - added `useLayoutMode()` plus a thin `MapInspectorSurface` shell so mobile can switch between compact bottom sheets and an expanded right-hand inspector rail
+  - `MapViewerScreen` now derives a single active inspector from node, edge, and parallels state instead of relying on separate modal surfaces for large-screen composition
+  - expanded layouts now render the map and inspector as flex siblings, keeping the map visible and interactive while study content updates in place
+  - viewport resize behavior no longer blindly refits the whole graph on every layout change; expanded layouts now recenter the active passage inside the actual map pane width while preserving the current zoom level
+- Removed the final disabled legacy inspector sheets:
+  - deleted the old hidden node, parallels, and edge `BottomSheetSurface` blocks now that the adaptive inspector path is the only live map inspector implementation
+- Remaining parity gaps:
+  - semantic connection modal still lacks a native equivalent of the web verse-tooltip interaction model
+  - final large-screen workspace continuity polish and device-side tuning remain
+  - device-level tuning is still needed for exact edge glow/opacity feel against the web map on large live bundles
+- Validation:
+  - `npx tsc -p apps/mobile/tsconfig.json --noEmit`
+  - `npm test -- --runInBand` in `apps/mobile`
