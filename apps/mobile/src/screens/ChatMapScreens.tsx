@@ -3,8 +3,8 @@ import {
   Easing,
   FlatList,
   Keyboard,
+  type LayoutChangeEvent,
   type GestureResponderEvent,
-  type PanResponderGestureState,
   PanResponder,
   Platform,
   Pressable,
@@ -12,29 +12,54 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Path as SvgPath,
+  Stop,
+} from "react-native-svg";
 import {
   useNavigation,
   type NavigationProp,
   type ParamListBase,
 } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { resolveBibleBookName, type BibleBookName } from "@zero1/shared";
+import {
+  buildLibraryMapSession,
+  resolveBibleBookName,
+  type BibleBookName,
+} from "@zero1/shared";
+import {
+  deriveNarrativeMapGraph,
+  getNarrativeMapNodeDimensions,
+  type NarrativeMapConnectionFamily,
+  type NarrativeMapGraphEdge,
+  type NarrativeMapGraphNode,
+} from "@zero1/shared/graph/narrativeMapGraph";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
 import { BottomSheetSurface } from "../components/native/BottomSheetSurface";
 import { ChipButton } from "../components/native/ChipButton";
 import { IconButton } from "../components/native/IconButton";
+import { MapInspectorSurface } from "../components/native/MapInspectorSurface";
 import { ChatThinkingState } from "../components/native/loading/ChatThinkingState";
 import { LoadingDotsNative } from "../components/native/loading/LoadingDotsNative";
 import { PressableScale } from "../components/native/PressableScale";
 import { SurfaceCard } from "../components/native/SurfaceCard";
 import { useMobileApp } from "../context/MobileAppContext";
+import { useLayoutMode } from "../hooks/useLayoutMode";
 import {
+  discoverConnections,
   fetchChainOfThought,
   fetchNextBranches,
+  fetchSemanticConnectionSynopsis,
+  fetchSemanticConnectionTopicTitles,
   fetchTraceBundle,
   fetchVerseText,
   type NextBranchOption,
@@ -51,6 +76,7 @@ import {
 } from "../types/chat";
 import {
   type VisualContextBundle,
+  type VisualEdge,
   type VisualNode,
   isVisualContextBundle,
 } from "../types/visualization";
@@ -75,10 +101,50 @@ interface ChatHistoryMessage {
   content: string;
 }
 
-interface MapNodeLayout extends VisualNode {
-  x: number;
-  y: number;
+type MapNodeLayout = NarrativeMapGraphNode;
+type MapConnectionFamily = NarrativeMapConnectionFamily;
+type MapRenderableEdge = NarrativeMapGraphEdge;
+
+interface MapEdgeSelection {
+  edge: MapRenderableEdge;
+  from: MapNodeLayout;
+  to: MapNodeLayout;
+  baseNode?: MapNodeLayout | null;
+  connectedVerseIds?: number[];
+  topicGroups?: MapConnectionTopicGroup[];
+  styleType?: MapConnectionFamily;
 }
+
+interface MapEdgeAnalysis {
+  title: string;
+  synopsis: string;
+  verses: Array<{
+    id: number;
+    reference: string;
+    text: string;
+  }>;
+}
+
+interface MapConnectionTopicGroup {
+  styleType: MapConnectionFamily;
+  label: string;
+  displayLabel?: string;
+  labelSource?: "canonical" | "llm";
+  color: string;
+  count: number;
+  chips: string[];
+  verseIds: number[];
+  edgeIds: string[];
+}
+
+interface MapVersePreview {
+  id: number;
+  reference: string;
+  text: string;
+  isBase: boolean;
+}
+
+type MapParallelPassage = NonNullable<VisualNode["parallelPassages"]>[number];
 
 interface ParsedBibleStudyResult {
   content: string;
@@ -127,6 +193,7 @@ const MIN_VERSE_PREVIEW_LOADING_MS = 300;
 
 const MAP_CANVAS_SIZE = 1200;
 const MAP_CENTER = MAP_CANVAS_SIZE / 2;
+const MAP_ONBOARDING_STORAGE_KEY = "mobile-map-onboarding-complete";
 const REFERENCE_PARTS_REGEX =
   /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g;
 const REFERENCE_MATCH_REGEX =
@@ -167,6 +234,12 @@ const CHAT_QUICK_PROMPTS_FALLBACK = [
   },
 ] as const;
 const STREAM_CHARS_PER_FRAME = 4;
+const MAP_MIN_SCALE = 0.4;
+const MAP_MAX_SCALE = 2.8;
+const MAP_VIEWPORT_PADDING = 32;
+const MAP_PAN_MARGIN = 28;
+const MAP_RING_BASE_RADIUS = 180;
+const MAP_RING_STEP = 140;
 
 type QuickPromptEntry = {
   key: "random" | "ot" | "nt";
@@ -180,6 +253,32 @@ type AssistantBlock =
   | { kind: "heading"; text: string }
   | { kind: "paragraph"; text: string }
   | { kind: "bullet"; text: string };
+
+type MapViewportSize = {
+  width: number;
+  height: number;
+};
+
+type ActiveInspector =
+  | { kind: "none" }
+  | {
+      kind: "node";
+      node: MapNodeLayout;
+      title: string;
+      subtitle: string | null;
+    }
+  | {
+      kind: "edge";
+      edge: MapEdgeSelection;
+      title: string;
+      subtitle: string | null;
+    }
+  | {
+      kind: "parallels";
+      sourceNode: MapNodeLayout;
+      title: string;
+      subtitle: string | null;
+    };
 
 function stripMarkdownInline(text: string): string {
   return text
@@ -326,45 +425,250 @@ function parseAssistantBlocks(content: string): AssistantBlock[] {
   return blocks;
 }
 
-function toMapNodeLayouts(bundle: VisualContextBundle): MapNodeLayout[] {
-  const byDepth = new Map<number, VisualNode[]>();
-  bundle.nodes.forEach((node) => {
-    const depth = Number.isFinite(node.depth) ? node.depth : 0;
-    const list = byDepth.get(depth) ?? [];
-    list.push(node);
-    byDepth.set(depth, list);
+function clampValue(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function measureTouchDistance(
+  touches: GestureResponderEvent["nativeEvent"]["touches"],
+) {
+  if (touches.length < 2) return 0;
+  const [first, second] = touches;
+  const dx = second.locationX - first.locationX;
+  const dy = second.locationY - first.locationY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function measureTouchMidpoint(
+  touches: GestureResponderEvent["nativeEvent"]["touches"],
+) {
+  if (touches.length === 0) {
+    return { x: 0, y: 0 };
+  }
+  if (touches.length === 1) {
+    return {
+      x: touches[0].locationX,
+      y: touches[0].locationY,
+    };
+  }
+  const [first, second] = touches;
+  return {
+    x: (first.locationX + second.locationX) / 2,
+    y: (first.locationY + second.locationY) / 2,
+  };
+}
+
+function clampMapScale(scale: number) {
+  return clampValue(scale, MAP_MIN_SCALE, MAP_MAX_SCALE);
+}
+
+function getGraphBounds(nodes: MapNodeLayout[]) {
+  if (nodes.length === 0) {
+    return {
+      left: MAP_CENTER - 80,
+      right: MAP_CENTER + 80,
+      top: MAP_CENTER - 80,
+      bottom: MAP_CENTER + 80,
+      width: 160,
+      height: 160,
+      centerX: MAP_CENTER,
+      centerY: MAP_CENTER,
+    };
+  }
+
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  nodes.forEach((node) => {
+    const frame = getMapNodeFrame(node);
+    left = Math.min(left, node.x - frame.width / 2);
+    right = Math.max(right, node.x + frame.width / 2);
+    top = Math.min(top, node.y - frame.height / 2);
+    bottom = Math.max(bottom, node.y + frame.height / 2);
   });
 
-  const maxDepth = Math.max(...Array.from(byDepth.keys()), 0);
-  const radiusStep = maxDepth > 0 ? 140 : 0;
-  const positioned: MapNodeLayout[] = [];
+  left -= MAP_VIEWPORT_PADDING;
+  right += MAP_VIEWPORT_PADDING;
+  top -= MAP_VIEWPORT_PADDING;
+  bottom += MAP_VIEWPORT_PADDING;
 
-  Array.from(byDepth.entries())
-    .sort((a, b) => a[0] - b[0])
-    .forEach(([depth, nodes]) => {
-      if (depth === 0 || nodes.length === 1) {
-        nodes.forEach((node) => {
-          positioned.push({
-            ...node,
-            x: MAP_CENTER,
-            y: MAP_CENTER,
-          });
-        });
-        return;
-      }
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+  };
+}
 
-      const radius = depth * radiusStep;
-      nodes.forEach((node, index) => {
-        const angle = (2 * Math.PI * index) / nodes.length - Math.PI / 2;
-        positioned.push({
-          ...node,
-          x: MAP_CENTER + radius * Math.cos(angle),
-          y: MAP_CENTER + radius * Math.sin(angle),
-        });
-      });
-    });
+function getPanRangeForAxis({
+  viewportSize,
+  boundsStart,
+  boundsEnd,
+  canvasCenter,
+  scale,
+  margin,
+}: {
+  viewportSize: number;
+  boundsStart: number;
+  boundsEnd: number;
+  canvasCenter: number;
+  scale: number;
+  margin: number;
+}) {
+  const projectedStart = canvasCenter + scale * (boundsStart - canvasCenter);
+  const projectedEnd = canvasCenter + scale * (boundsEnd - canvasCenter);
+  const projectedSize = projectedEnd - projectedStart;
 
-  return positioned;
+  if (projectedSize <= viewportSize - margin * 2) {
+    const centeredPan = viewportSize / 2 - (projectedStart + projectedEnd) / 2;
+    return { min: centeredPan, max: centeredPan };
+  }
+
+  return {
+    min: viewportSize - margin - projectedEnd,
+    max: margin - projectedStart,
+  };
+}
+
+function clampPanToGraphBounds({
+  pan,
+  scale,
+  viewport,
+  bounds,
+}: {
+  pan: { x: number; y: number };
+  scale: number;
+  viewport: MapViewportSize;
+  bounds: ReturnType<typeof getGraphBounds>;
+}) {
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    return pan;
+  }
+
+  const xRange = getPanRangeForAxis({
+    viewportSize: viewport.width,
+    boundsStart: bounds.left,
+    boundsEnd: bounds.right,
+    canvasCenter: MAP_CENTER,
+    scale,
+    margin: MAP_PAN_MARGIN,
+  });
+  const yRange = getPanRangeForAxis({
+    viewportSize: viewport.height,
+    boundsStart: bounds.top,
+    boundsEnd: bounds.bottom,
+    canvasCenter: MAP_CENTER,
+    scale,
+    margin: MAP_PAN_MARGIN,
+  });
+
+  return {
+    x: clampValue(pan.x, xRange.min, xRange.max),
+    y: clampValue(pan.y, yRange.min, yRange.max),
+  };
+}
+
+function buildFittedViewport({
+  viewport,
+  bounds,
+}: {
+  viewport: MapViewportSize;
+  bounds: ReturnType<typeof getGraphBounds>;
+}) {
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    return { scale: 1, pan: { x: 0, y: 0 } };
+  }
+
+  const availableWidth = Math.max(1, viewport.width - MAP_VIEWPORT_PADDING * 2);
+  const availableHeight = Math.max(
+    1,
+    viewport.height - MAP_VIEWPORT_PADDING * 2,
+  );
+  const scale = clampMapScale(
+    Math.min(availableWidth / bounds.width, availableHeight / bounds.height),
+  );
+  const pan = clampPanToGraphBounds({
+    pan: {
+      x:
+        viewport.width / 2 -
+        (MAP_CENTER + scale * (bounds.centerX - MAP_CENTER)),
+      y:
+        viewport.height / 2 -
+        (MAP_CENTER + scale * (bounds.centerY - MAP_CENTER)),
+    },
+    scale,
+    viewport,
+    bounds,
+  });
+
+  return { scale, pan };
+}
+
+function getPanForCenteredNode({
+  node,
+  scale,
+  viewport,
+  bounds,
+}: {
+  node: MapNodeLayout;
+  scale: number;
+  viewport: MapViewportSize;
+  bounds: ReturnType<typeof getGraphBounds>;
+}) {
+  return clampPanToGraphBounds({
+    pan: {
+      x: viewport.width / 2 - (MAP_CENTER + scale * (node.x - MAP_CENTER)),
+      y: viewport.height / 2 - (MAP_CENTER + scale * (node.y - MAP_CENTER)),
+    },
+    scale,
+    viewport,
+    bounds,
+  });
+}
+
+function getPanForScaledFocalPoint({
+  currentPan,
+  currentScale,
+  nextScale,
+  focalPoint,
+}: {
+  currentPan: { x: number; y: number };
+  currentScale: number;
+  nextScale: number;
+  focalPoint: { x: number; y: number };
+}) {
+  const safeCurrentScale = Math.max(currentScale, 0.0001);
+  return {
+    x:
+      focalPoint.x -
+      MAP_CENTER -
+      (nextScale * (focalPoint.x - currentPan.x - MAP_CENTER)) /
+        safeCurrentScale,
+    y:
+      focalPoint.y -
+      MAP_CENTER -
+      (nextScale * (focalPoint.y - currentPan.y - MAP_CENTER)) /
+        safeCurrentScale,
+  };
+}
+
+function preferRicherBundle(
+  current: VisualContextBundle | null | undefined,
+  incoming: VisualContextBundle,
+): VisualContextBundle {
+  if (!current || current.rootId !== incoming.rootId) {
+    return incoming;
+  }
+
+  const currentScore = current.nodes.length + current.edges.length;
+  const incomingScore = incoming.nodes.length + incoming.edges.length;
+  return incomingScore >= currentScore ? incoming : current;
 }
 
 function parseSsePayload(raw: string): ParsedBibleStudyResult {
@@ -491,6 +795,31 @@ function compactReferenceLabel(reference: string): string {
   const parsed = parseScriptureReference(reference);
   if (!parsed) return reference;
   return `${compactBookLabel(parsed.book)} ${parsed.chapter}:${parsed.verse}`;
+}
+
+function getMapEdgeAppearance(edge: MapRenderableEdge) {
+  if (edge.isSynthetic || edge.styleType === "GREY") {
+    return {
+      stroke: "url(#mobileMapSyntheticEdge)",
+      glow: "rgba(148,163,184,0.16)",
+      opacity: 0.18,
+      width: 1.1,
+    };
+  }
+  if (edge.isAnchorRay) {
+    return {
+      stroke: "#C5B358",
+      glow: "rgba(224,197,122,0.32)",
+      opacity: 0.62,
+      width: 1.45,
+    };
+  }
+  return {
+    stroke: "rgba(248,250,252,0.96)",
+    glow: "rgba(248,250,252,0.22)",
+    opacity: 0.32,
+    width: 1.15,
+  };
 }
 
 function dedupeReferencesInOrder(candidates: string[]): string[] {
@@ -1487,6 +1816,10 @@ export function ChatScreen({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fullMapPending, setFullMapPending] = useState(false);
+  const [mapPendingFullMessageId, setMapPendingFullMessageId] = useState<
+    string | null
+  >(null);
   const [mapBusyMessageId, setMapBusyMessageId] = useState<string | null>(null);
   const [chainBusyMessageId, setChainBusyMessageId] = useState<string | null>(
     null,
@@ -1507,6 +1840,10 @@ export function ChatScreen({
   const [searchingVerses, setSearchingVerses] = useState<string[]>([]);
   const [, setErroredTools] = useState<string[]>([]);
   const [mapPrepActive, setMapPrepActive] = useState(false);
+  const [mapPrepCount, setMapPrepCount] = useState<number | null>(null);
+  const [mapReadyMessageId, setMapReadyMessageId] = useState<string | null>(
+    null,
+  );
   const [mapSession, setMapSession] = useState<MobileMapSession | null>(null);
   const [activeVisualBundle, setActiveVisualBundle] =
     useState<VisualContextBundle | null>(null);
@@ -1532,6 +1869,11 @@ export function ChatScreen({
   const streamAnimationFrameRef = useRef<number | null>(null);
   const streamAnimationRunningRef = useRef(false);
   const streamTargetMessageIdRef = useRef<string | null>(null);
+  const fullMapRequestRef = useRef<{
+    id: string;
+    assistantMessageId: string;
+    abortController: globalThis.AbortController;
+  } | null>(null);
   const composerInputRef = useRef<TextInput | null>(null);
   const isEmptyState = messages.length === 0;
   const canSendDraft = draft.trim().length > 0;
@@ -1694,17 +2036,105 @@ export function ChatScreen({
     });
   }, []);
 
+  const cancelFullMapRequest = useCallback(() => {
+    fullMapRequestRef.current?.abortController.abort();
+    fullMapRequestRef.current = null;
+    setFullMapPending(false);
+    setMapPendingFullMessageId(null);
+  }, []);
+
   const handleStopStreaming = useCallback(() => {
     cancelStreamTextAnimation();
     streamAbortRef.current?.abort();
-  }, [cancelStreamTextAnimation]);
+    if (
+      fullMapRequestRef.current &&
+      fullMapRequestRef.current.assistantMessageId ===
+        streamTargetMessageIdRef.current
+    ) {
+      cancelFullMapRequest();
+    }
+  }, [cancelFullMapRequest, cancelStreamTextAnimation]);
 
   useEffect(() => {
     return () => {
       cancelStreamTextAnimation();
       streamAbortRef.current?.abort();
+      fullMapRequestRef.current?.abortController.abort();
     };
   }, [cancelStreamTextAnimation]);
+
+  const startFullMapFetch = useCallback(
+    async ({
+      assistantMessageId,
+      promptText,
+    }: {
+      assistantMessageId: string;
+      promptText: string;
+    }) => {
+      const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      fullMapRequestRef.current?.abortController.abort();
+      const abortController = new globalThis.AbortController();
+      fullMapRequestRef.current = {
+        id: requestId,
+        assistantMessageId,
+        abortController,
+      };
+      setFullMapPending(true);
+      setMapPendingFullMessageId(assistantMessageId);
+
+      try {
+        const bundle = await fetchTraceBundle({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          text: promptText,
+          accessToken: controller.session?.access_token,
+          signal: abortController.signal,
+        });
+        if (!isVisualContextBundle(bundle)) {
+          throw new Error("Map response was malformed.");
+        }
+
+        const pendingRequest = fullMapRequestRef.current;
+        if (!pendingRequest || pendingRequest.id !== requestId) {
+          return;
+        }
+
+        setActiveVisualBundle((current) => preferRicherBundle(current, bundle));
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === assistantMessageId
+              ? {
+                  ...item,
+                  mapBundle: preferRicherBundle(item.mapBundle, bundle),
+                }
+              : item,
+          ),
+        );
+        setMapSession((current) => {
+          if (!current) return current;
+          const { session } = buildMapSessionPayload({
+            bundle,
+            existingSession: current,
+            useQueuedConnection: false,
+          });
+          return session;
+        });
+        setMapPrepCount(bundle.nodes.length);
+        setMapReadyMessageId(assistantMessageId);
+      } catch (nextError) {
+        if (nextError instanceof Error && nextError.name === "AbortError") {
+          return;
+        }
+      } finally {
+        const pendingRequest = fullMapRequestRef.current;
+        if (pendingRequest && pendingRequest.id === requestId) {
+          fullMapRequestRef.current = null;
+          setFullMapPending(false);
+          setMapPendingFullMessageId(null);
+        }
+      }
+    },
+    [controller.session?.access_token],
+  );
 
   useEffect(() => {
     const shouldPulse =
@@ -1884,7 +2314,12 @@ export function ChatScreen({
       setActiveTools([]);
       setCompletedTools([]);
       setErroredTools([]);
+      if (shouldReanchor) {
+        cancelFullMapRequest();
+      }
       setMapPrepActive(showMapPrepForRequest);
+      setMapPrepCount(showMapPrepForRequest ? 0 : null);
+      setMapReadyMessageId(null);
       setMessages((current) => [
         ...current.map((item) =>
           item.role === "assistant" && item.nextBranches
@@ -1902,6 +2337,12 @@ export function ChatScreen({
       setTimeout(() => {
         listRef.current?.scrollToEnd({ animated: true });
       }, 0);
+      if (shouldReanchor && traceModeForRequest) {
+        void startFullMapFetch({
+          assistantMessageId,
+          promptText,
+        });
+      }
 
       try {
         const result = await streamBibleStudy({
@@ -1950,12 +2391,17 @@ export function ChatScreen({
               if (current && current.rootId !== bundle.rootId) {
                 setMapSession(null);
               }
-              return bundle;
+              return preferRicherBundle(current, bundle);
             });
+            setMapPrepCount(bundle.nodes.length);
+            setMapReadyMessageId(assistantMessageId);
             setMessages((current) =>
               current.map((item) =>
                 item.id === assistantMessageId
-                  ? { ...item, mapBundle: bundle }
+                  ? {
+                      ...item,
+                      mapBundle: preferRicherBundle(item.mapBundle, bundle),
+                    }
                   : item,
               ),
             );
@@ -1971,8 +2417,10 @@ export function ChatScreen({
             if (current && current.rootId !== nextBundle.rootId) {
               setMapSession(null);
             }
-            return nextBundle;
+            return preferRicherBundle(current, nextBundle);
           });
+          setMapPrepCount(nextBundle.nodes.length);
+          setMapReadyMessageId(assistantMessageId);
         }
         const completedSet = new Set(result.completedTools ?? []);
         const erroredSet = new Set(result.erroredTools ?? []);
@@ -1997,7 +2445,9 @@ export function ChatScreen({
                   ...item,
                   content: finalStreamContent || item.content,
                   citations: result.citations,
-                  mapBundle: result.mapBundle ?? item.mapBundle,
+                  mapBundle: result.mapBundle
+                    ? preferRicherBundle(item.mapBundle, result.mapBundle)
+                    : item.mapBundle,
                   suggestTrace: result.suggestTrace,
                   connectionCount: result.connectionCount,
                   chainData: result.chainData ?? item.chainData,
@@ -2019,6 +2469,12 @@ export function ChatScreen({
         }, 0);
       } catch (nextError) {
         cancelStreamTextAnimation();
+        if (
+          fullMapRequestRef.current &&
+          fullMapRequestRef.current.assistantMessageId === assistantMessageId
+        ) {
+          cancelFullMapRequest();
+        }
         if (nextError instanceof Error && nextError.name === "AbortError") {
           setMessages((current) =>
             current.filter(
@@ -2051,12 +2507,14 @@ export function ChatScreen({
     [
       activeVisualBundle,
       busy,
+      cancelFullMapRequest,
       controller.session?.access_token,
       draft,
       ensureStreamTextAnimating,
       history,
       mapSession,
       resetStreamTextAnimation,
+      startFullMapFetch,
       traceModeEnabled,
       cancelStreamTextAnimation,
       waitForStreamTextDrain,
@@ -2067,6 +2525,16 @@ export function ChatScreen({
     if (nav.pendingPrompt) return;
     handledPromptRef.current = null;
   }, [nav.pendingPrompt]);
+
+  useEffect(() => {
+    if (!mapReadyMessageId) return;
+    const timer = setTimeout(() => {
+      setMapReadyMessageId(null);
+    }, 4200);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [mapReadyMessageId]);
 
   useEffect(() => {
     if (!nav.pendingPrompt) return;
@@ -2182,6 +2650,7 @@ export function ChatScreen({
           item.id === message.id ? { ...item, mapBundle: bundle } : item,
         ),
       );
+      setMapReadyMessageId(message.id);
       nav.openMapViewer(`Map (${bundle.nodes.length} verses)`, bundle);
     } catch (nextError) {
       setError(
@@ -2346,12 +2815,19 @@ export function ChatScreen({
     handleStopStreaming();
     setMessages([]);
     setError(null);
+    cancelFullMapRequest();
+    setFullMapPending(false);
+    setMapPendingFullMessageId(null);
     setMapSession(null);
     setActiveVisualBundle(null);
     setActiveTools([]);
     setCompletedTools([]);
     setSearchingVerses([]);
     setErroredTools([]);
+    setMapPrepActive(false);
+    setMapPrepCount(null);
+    setMapReadyMessageId(null);
+    setMapBusyMessageId(null);
     setDraft("");
     setChainBusyMessageId(null);
     setChainByMessageId({});
@@ -2665,6 +3141,18 @@ export function ChatScreen({
                 item.role === "assistant" &&
                 busy &&
                 item.id === streamTargetMessageIdRef.current;
+              const hasMapBundle = Boolean(item.mapBundle);
+              const isMapReady = mapReadyMessageId === item.id;
+              const isMapPendingFull = mapBusyMessageId === item.id;
+              const isMapPendingRicher =
+                mapPendingFullMessageId === item.id && fullMapPending;
+              const mapVerseCount = item.mapBundle?.nodes.length ?? 0;
+              const showMessageMapStatus =
+                item.role === "assistant" &&
+                (hasMapBundle ||
+                  isMapPendingFull ||
+                  isMapPendingRicher ||
+                  typeof item.connectionCount === "number");
               return (
                 <View
                   style={[
@@ -2724,6 +3212,39 @@ export function ChatScreen({
                       </View>
                     ) : null}
 
+                    {isStreamingAssistantMessage &&
+                    (mapPrepActive || searchingVerses.length > 0) ? (
+                      <Animated.View
+                        style={[
+                          localStyles.streamStatusRow,
+                          { opacity: statusPulse },
+                        ]}
+                      >
+                        <View style={localStyles.statusChipMapPrep}>
+                          <Text style={localStyles.statusChipMapPrepLabel}>
+                            Preparing map
+                          </Text>
+                        </View>
+                        {(mapPrepCount !== null && mapPrepCount > 0) ||
+                        searchingVerses.length > 0 ? (
+                          <View style={localStyles.statusChip}>
+                            <Text style={localStyles.statusChipLabel}>
+                              {mapPrepCount !== null && mapPrepCount > 0
+                                ? mapPrepCount
+                                : searchingVerses.length}{" "}
+                              verse
+                              {(mapPrepCount !== null && mapPrepCount > 0
+                                ? mapPrepCount
+                                : searchingVerses.length) === 1
+                                ? ""
+                                : "s"}{" "}
+                              found
+                            </Text>
+                          </View>
+                        ) : null}
+                      </Animated.View>
+                    ) : null}
+
                     {item.role === "assistant" &&
                     item.content.trim().length > 0 &&
                     !isStreamingAssistantMessage ? (
@@ -2735,9 +3256,11 @@ export function ChatScreen({
                             label={
                               mapBusyMessageId === item.id
                                 ? "Mapping..."
-                                : item.mapBundle
-                                  ? "View map"
-                                  : "Open map"
+                                : isMapPendingRicher
+                                  ? "Loading full map"
+                                  : item.mapBundle
+                                    ? "View map"
+                                    : "Open map"
                             }
                             onPress={() => {
                               if (item.mapBundle) {
@@ -2765,6 +3288,59 @@ export function ChatScreen({
                             labelStyle={localStyles.compactActionLabel}
                           />
                         </View>
+                        {showMessageMapStatus ? (
+                          <View style={localStyles.streamStatusRow}>
+                            {isMapPendingFull ? (
+                              <View style={localStyles.statusChipMapPrep}>
+                                <Text
+                                  style={localStyles.statusChipMapPrepLabel}
+                                >
+                                  Loading full map
+                                </Text>
+                              </View>
+                            ) : null}
+                            {isMapPendingRicher ? (
+                              <View style={localStyles.statusChipMapPrep}>
+                                <Text
+                                  style={localStyles.statusChipMapPrepLabel}
+                                >
+                                  Loading full map
+                                </Text>
+                              </View>
+                            ) : null}
+                            {hasMapBundle ? (
+                              <View
+                                style={
+                                  isMapReady
+                                    ? [
+                                        localStyles.statusChip,
+                                        localStyles.statusChipDone,
+                                      ]
+                                    : localStyles.statusChip
+                                }
+                              >
+                                <Text style={localStyles.statusChipLabel}>
+                                  Map ready
+                                </Text>
+                              </View>
+                            ) : null}
+                            {typeof item.connectionCount === "number" ? (
+                              <View style={localStyles.statusChip}>
+                                <Text style={localStyles.statusChipLabel}>
+                                  {item.connectionCount} connection
+                                  {item.connectionCount === 1 ? "" : "s"}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {hasMapBundle ? (
+                              <Text style={localStyles.mapReadyMeta}>
+                                {isMapPendingFull || isMapPendingRicher
+                                  ? "Richer connections loading"
+                                  : `Map ready - ${mapVerseCount} verse${mapVerseCount === 1 ? "" : "s"}`}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : null}
                         {item.nextBranches && item.nextBranches.length > 0 ? (
                           <View style={localStyles.nextBranchList}>
                             {item.nextBranches
@@ -2928,24 +3504,557 @@ export function ChatScreen({
   );
 }
 
-function MapEdge({ from, to }: { from: MapNodeLayout; to: MapNodeLayout }) {
+function getMapEdgeColor(edgeType: string): string {
+  switch (edgeType) {
+    case "ROOTS":
+      return "rgba(212, 175, 55, 0.82)";
+    case "ECHOES":
+      return "rgba(147, 197, 253, 0.72)";
+    case "PROPHECY":
+      return "rgba(103, 232, 249, 0.82)";
+    case "TYPOLOGY":
+      return "rgba(196, 181, 253, 0.78)";
+    case "FULFILLMENT":
+      return "rgba(74, 222, 128, 0.8)";
+    case "CONTRAST":
+      return "rgba(251, 146, 60, 0.75)";
+    case "PROGRESSION":
+      return "rgba(244, 114, 182, 0.75)";
+    case "PATTERN":
+      return "rgba(226, 232, 240, 0.68)";
+    case "GENEALOGY":
+      return "rgba(253, 224, 71, 0.72)";
+    case "NARRATIVE":
+      return "rgba(148, 163, 184, 0.66)";
+    case "ALLUSION":
+      return "rgba(125, 211, 252, 0.68)";
+    default:
+      return "rgba(212, 175, 55, 0.5)";
+  }
+}
+
+function resolveConnectionChip(
+  edgeType: VisualEdge["type"],
+  metadata?: Record<string, unknown>,
+) {
+  const source = metadata?.source;
+  const thread = metadata?.thread;
+
+  if (edgeType === "DEEPER") return "Parallel";
+  if (edgeType === "NARRATIVE") return "Context";
+  if (edgeType === "ROOTS") {
+    if (source === "semantic_thread") return "Phrase";
+    if (source === "canonical") return "Shared Root";
+    return "Key Term";
+  }
+  if (edgeType === "ECHOES") {
+    if (thread === "theological") return "Parallel Teaching";
+    return "Theme";
+  }
+  if (edgeType === "ALLUSION") return "Allusion";
+  if (edgeType === "PROPHECY") return "Prophetic";
+  if (edgeType === "FULFILLMENT") return "Fulfillment";
+  if (edgeType === "TYPOLOGY") return "Typology";
+  if (edgeType === "CONTRAST") return "Contrast";
+  if (edgeType === "PROGRESSION") return "Progression";
+  if (edgeType === "PATTERN") return "Motif";
+  if (edgeType === "GENEALOGY") return "Lineage";
+  return null;
+}
+
+function getMapNodeFrame(node: VisualNode) {
+  return getNarrativeMapNodeDimensions(
+    node as NarrativeMapGraphNode,
+    node.depth === 0,
+  );
+}
+
+function getMapNodeLabel(node: VisualNode) {
+  if (node.displayLabel?.trim()) return node.displayLabel.trim();
+  return `${node.book_abbrev || compactBookLabel(node.book_name)} ${node.chapter}:${node.verse}`;
+}
+
+function getConnectionFamilyColor(styleType: MapConnectionFamily) {
+  switch (styleType) {
+    case "LEXICON":
+      return "#FCD34D";
+    case "ECHO":
+      return "#A5B4FC";
+    case "FULFILLMENT":
+      return "#67E8F9";
+    case "PATTERN":
+      return "#C4B5FD";
+    case "CROSS_REFERENCE":
+      return "#86EFAC";
+    case "GREY":
+    default:
+      return "#94A3B8";
+  }
+}
+
+function getConnectionFamilyLabel(styleType: MapConnectionFamily) {
+  switch (styleType) {
+    case "LEXICON":
+      return "Lexicon";
+    case "ECHO":
+      return "Echo";
+    case "FULFILLMENT":
+      return "Fulfillment";
+    case "PATTERN":
+      return "Pattern";
+    case "CROSS_REFERENCE":
+      return "Cross-Reference";
+    case "GREY":
+    default:
+      return "Neutral";
+  }
+}
+
+function getMapNodeSubtitle(node: VisualNode) {
+  if (node.displaySubLabel?.trim()) return node.displaySubLabel.trim();
+  if (node.pericopeTitle?.trim()) return node.pericopeTitle.trim();
+  if (node.depth === 0) return "Anchor verse";
+  return `Ring ${node.depth}`;
+}
+
+function normalizeMapReferenceToken(value: string) {
+  return value.toLowerCase().replace(/\s+/g, "");
+}
+
+function makeMapVerseKey(book: string, chapter: number, verse: number) {
+  return `${normalizeMapReferenceToken(book)}:${chapter}:${verse}`;
+}
+
+function getDedupedParallelPassages(node: VisualNode): MapParallelPassage[] {
+  const primaryTokens = [node.book_name, node.book_abbrev]
+    .filter(Boolean)
+    .map((value) => normalizeMapReferenceToken(value));
+  const primaryKey = makeMapVerseKey(
+    node.book_name || node.book_abbrev || "",
+    node.chapter,
+    node.verse,
+  );
+  const seenKeys = new Set<string>();
+
+  return (node.parallelPassages || []).filter((parallel) => {
+    if (parallel.id === node.id) return false;
+    const key = makeMapVerseKey(
+      parallel.book_name || parallel.book_abbrev || "",
+      parallel.chapter,
+      parallel.verse,
+    );
+    if (key === primaryKey || seenKeys.has(key)) return false;
+
+    const normalizedReference = parallel.reference
+      .toLowerCase()
+      .replace(/\s+/g, "");
+    const sameVerseToken = `${node.chapter}:${node.verse}`;
+    const sameReference =
+      normalizedReference.includes(sameVerseToken) &&
+      primaryTokens.some((token) => normalizedReference.includes(token));
+    if (sameReference) return false;
+
+    seenKeys.add(key);
+    return true;
+  });
+}
+
+function getParallelSimilarityTone(similarity: number) {
+  if (similarity >= 0.95) {
+    return {
+      opacity: 1,
+      referenceWeight: "700" as const,
+    };
+  }
+  if (similarity >= 0.93) {
+    return {
+      opacity: 1,
+      referenceWeight: "600" as const,
+    };
+  }
+  return {
+    opacity: 0.72,
+    referenceWeight: "600" as const,
+  };
+}
+
+function isLlmDiscoveredEdge(edge: VisualEdge): boolean {
+  return edge.metadata?.source === "llm";
+}
+
+function getEdgeExplanation(edge: VisualEdge): string | null {
+  const explanation = edge.metadata?.explanation;
+  return typeof explanation === "string" && explanation.trim().length > 0
+    ? explanation.trim()
+    : null;
+}
+
+function getDiscoveryCandidateNodes(
+  bundle: VisualContextBundle,
+  analyzedVerseIds: Set<number>,
+): VisualNode[] {
+  const availableNodes = bundle.nodes.filter(
+    (node) => !analyzedVerseIds.has(node.id),
+  );
+  if (availableNodes.length <= 12) {
+    return availableNodes;
+  }
+
+  const selected = new Set<number>();
+  const anchor = availableNodes.find((node) => node.depth === 0);
+  if (anchor) selected.add(anchor.id);
+
+  availableNodes
+    .filter((node) => node.isSpine)
+    .forEach((node) => selected.add(node.id));
+
+  const centrality = new Map<number, number>();
+  availableNodes.forEach((node) => {
+    const connections = bundle.edges.filter(
+      (edge) => edge.from === node.id || edge.to === node.id,
+    ).length;
+    centrality.set(node.id, connections);
+  });
+
+  const remaining = availableNodes
+    .filter((node) => !selected.has(node.id))
+    .sort((a, b) => {
+      const aCentrality = centrality.get(a.id) || 0;
+      const bCentrality = centrality.get(b.id) || 0;
+      if (bCentrality !== aCentrality) {
+        return bCentrality - aCentrality;
+      }
+      return a.depth - b.depth;
+    })
+    .slice(0, Math.max(12 - selected.size, 0));
+
+  remaining.forEach((node) => selected.add(node.id));
+  return availableNodes.filter((node) => selected.has(node.id)).slice(0, 12);
+}
+
+function mergeDiscoveredConnections(
+  bundle: VisualContextBundle,
+  connections: Array<{
+    from: number;
+    to: number;
+    type: VisualEdge["type"];
+    explanation: string;
+    confidence: number;
+  }>,
+) {
+  const existingKeys = new Set(
+    bundle.edges.map((edge) => buildEdgeKey(edge.type, edge.from, edge.to)),
+  );
+  const discoveredEdges: VisualEdge[] = [];
+
+  connections.forEach((connection) => {
+    const key = buildEdgeKey(connection.type, connection.from, connection.to);
+    if (existingKeys.has(key)) return;
+    discoveredEdges.push({
+      from: connection.from,
+      to: connection.to,
+      type: connection.type,
+      weight: connection.confidence,
+      metadata: {
+        source: "llm",
+        explanation: connection.explanation,
+        confidence: connection.confidence,
+      },
+    });
+    existingKeys.add(key);
+  });
+
+  if (discoveredEdges.length === 0) {
+    return { bundle, addedCount: 0 };
+  }
+
+  return {
+    bundle: {
+      ...bundle,
+      edges: [...bundle.edges, ...discoveredEdges],
+    },
+    addedCount: discoveredEdges.length,
+  };
+}
+
+function getNodeBoundaryPoint(
+  from: MapNodeLayout,
+  to: MapNodeLayout,
+  frame: { width: number; height: number },
+) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const halfWidth = frame.width / 2;
+  const halfHeight = frame.height / 2;
+
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+    return { x: from.x, y: from.y };
+  }
+
+  const scale = Math.min(
+    halfWidth / Math.max(Math.abs(dx), 0.001),
+    halfHeight / Math.max(Math.abs(dy), 0.001),
+  );
+
+  return {
+    x: from.x + dx * scale,
+    y: from.y + dy * scale,
+  };
+}
+
+function buildMapEdgePath(from: MapNodeLayout, to: MapNodeLayout) {
+  const fromFrame = getMapNodeFrame(from);
+  const toFrame = getMapNodeFrame(to);
+  const start = getNodeBoundaryPoint(from, to, fromFrame);
+  const end = getNodeBoundaryPoint(to, from, toFrame);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const curveStrength = Math.min(140, Math.max(42, distance * 0.34));
+
+  let control1 = { x: start.x, y: start.y };
+  let control2 = { x: end.x, y: end.y };
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    control1 = { x: start.x + curveStrength, y: start.y };
+    control2 = { x: end.x - curveStrength, y: end.y };
+  } else {
+    const verticalDirection = dy >= 0 ? 1 : -1;
+    control1 = { x: start.x, y: start.y + curveStrength * verticalDirection };
+    control2 = { x: end.x, y: end.y - curveStrength * verticalDirection };
+  }
+
+  return {
+    d: `M ${start.x} ${start.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${end.x} ${end.y}`,
+    start,
+    end,
+    control1,
+    control2,
+  };
+}
+
+function getCubicBezierPoint(
+  t: number,
+  start: { x: number; y: number },
+  control1: { x: number; y: number },
+  control2: { x: number; y: number },
+  end: { x: number; y: number },
+) {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+  return {
+    x:
+      mt2 * mt * start.x +
+      3 * mt2 * t * control1.x +
+      3 * mt * t2 * control2.x +
+      t2 * t * end.x,
+    y:
+      mt2 * mt * start.y +
+      3 * mt2 * t * control1.y +
+      3 * mt * t2 * control2.y +
+      t2 * t * end.y,
+  };
+}
+
+function isSvgRuntimeAvailable() {
+  if (Platform.OS === "web") return true;
+  const getConfig = UIManager.getViewManagerConfig?.bind(UIManager);
+  if (!getConfig) return false;
+  return Boolean(
+    getConfig("RNSVGSvgView") ||
+      getConfig("RNSVGView") ||
+      getConfig("RNSVGGroup"),
+  );
+}
+
+function MapEdge({
+  edge,
+  from,
+  to,
+  dimmed,
+  selected,
+  onPress,
+}: {
+  edge: MapRenderableEdge;
+  from: MapNodeLayout;
+  to: MapNodeLayout;
+  dimmed: boolean;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const appearance = getMapEdgeAppearance(edge);
+  const path = buildMapEdgePath(from, to);
+  const strokeOpacity = dimmed ? 0.03 : selected ? 1 : appearance.opacity;
+  const glowOpacity = dimmed ? 0.06 : selected ? 0.5 : 0.2;
 
   return (
-    <View
+    <>
+      <SvgPath
+        d={path.d}
+        fill="none"
+        stroke={appearance.glow}
+        strokeLinecap="round"
+        strokeWidth={selected ? appearance.width + 5 : appearance.width + 2.4}
+        opacity={glowOpacity}
+        pointerEvents="none"
+      />
+      <SvgPath
+        accessibilityLabel={
+          edge.isSynthetic
+            ? undefined
+            : `${edgeTypeToConceptLabel(edge.type)} between ${formatNodeReference(from)} and ${formatNodeReference(to)}`
+        }
+        d={path.d}
+        fill="none"
+        onPress={edge.isSynthetic ? undefined : onPress}
+        stroke={appearance.stroke}
+        strokeLinecap="round"
+        strokeOpacity={strokeOpacity}
+        strokeWidth={selected ? appearance.width + 1.25 : appearance.width}
+      />
+      {!edge.isSynthetic ? (
+        <SvgPath
+          d={path.d}
+          fill="none"
+          onPress={onPress}
+          stroke="rgba(255,255,255,0.001)"
+          strokeLinecap="round"
+          strokeWidth={18}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function MapEdgeFallback({
+  edge,
+  from,
+  to,
+  dimmed,
+  selected,
+  onPress,
+}: {
+  edge: MapRenderableEdge;
+  from: MapNodeLayout;
+  to: MapNodeLayout;
+  dimmed: boolean;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const appearance = getMapEdgeAppearance(edge);
+  const path = buildMapEdgePath(from, to);
+  const isInteractive = !edge.isSynthetic;
+  const totalDistance = Math.sqrt(
+    (path.end.x - path.start.x) * (path.end.x - path.start.x) +
+      (path.end.y - path.start.y) * (path.end.y - path.start.y),
+  );
+  const segmentCount = Math.max(18, Math.ceil(totalDistance / 16));
+  const segmentHeight = 24;
+  const segmentOverlap = 4;
+  const minX = Math.min(path.start.x, path.end.x) - 18;
+  const minY = Math.min(path.start.y, path.end.y) - 28;
+  const hitboxWidth = Math.abs(path.end.x - path.start.x) + 36;
+  const hitboxHeight = Math.abs(path.end.y - path.start.y) + 56;
+  const segments = Array.from({ length: segmentCount }, (_value, index) => {
+    const startT = index / segmentCount;
+    const endT = (index + 1) / segmentCount;
+    const startPoint = getCubicBezierPoint(
+      startT,
+      path.start,
+      path.control1,
+      path.control2,
+      path.end,
+    );
+    const endPoint = getCubicBezierPoint(
+      endT,
+      path.start,
+      path.control1,
+      path.control2,
+      path.end,
+    );
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const centerPoint = {
+      x: (startPoint.x + endPoint.x) / 2,
+      y: (startPoint.y + endPoint.y) / 2,
+    };
+    const width = Math.max(length + segmentOverlap, 4);
+    return {
+      key: `${edge.id}-seg-${index}`,
+      left: centerPoint.x - width / 2,
+      top: centerPoint.y - segmentHeight / 2,
+      width,
+      height: segmentHeight,
+      angleDeg,
+    };
+  });
+
+  return (
+    <Pressable
+      accessibilityRole={isInteractive ? "button" : undefined}
+      accessibilityLabel={
+        isInteractive
+          ? `${edgeTypeToConceptLabel(edge.type)} between ${formatNodeReference(from)} and ${formatNodeReference(to)}`
+          : undefined
+      }
+      disabled={!isInteractive}
+      onPress={isInteractive ? onPress : undefined}
       style={[
-        localStyles.edge,
+        localStyles.edgeFallbackHitbox,
         {
-          left: from.x,
-          top: from.y,
-          width: length,
-          transform: [{ rotate: `${angleDeg}deg` }],
+          left: minX,
+          top: minY,
+          width: hitboxWidth,
+          height: hitboxHeight,
         },
       ]}
-    />
+    >
+      {segments.map((segment) => (
+        <View
+          key={segment.key}
+          pointerEvents="none"
+          style={[
+            localStyles.edgeFallbackSegment,
+            {
+              left: segment.left - minX,
+              top: segment.top - minY,
+              width: segment.width,
+              height: segment.height,
+              transform: [{ rotate: `${segment.angleDeg}deg` }],
+            },
+          ]}
+        >
+          <View
+            style={[
+              localStyles.edgeFallbackGlow,
+              {
+                backgroundColor: appearance.glow,
+                opacity: dimmed ? 0.05 : selected ? 0.34 : 0.16,
+              },
+            ]}
+          />
+          <View
+            style={[
+              localStyles.edgeFallbackLine,
+              {
+                backgroundColor:
+                  edge.isSynthetic || edge.styleType === "GREY"
+                    ? "rgba(148,163,184,0.26)"
+                    : typeof appearance.stroke === "string" &&
+                        !appearance.stroke.startsWith("url(")
+                      ? appearance.stroke
+                      : "rgba(248,250,252,0.78)",
+                opacity: dimmed ? 0.03 : selected ? 1 : appearance.opacity,
+                height: selected ? appearance.width + 1.2 : appearance.width,
+              },
+            ]}
+          />
+        </View>
+      ))}
+    </Pressable>
   );
 }
 
@@ -2958,55 +4067,1790 @@ export function MapViewerScreen({
 }) {
   const controller = useMobileApp();
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
-  const visualBundle = isVisualContextBundle(bundle) ? bundle : null;
+  const insets = useSafeAreaInsets();
+  const layoutMode = useLayoutMode();
+  const initialBundle = isVisualContextBundle(bundle) ? bundle : null;
+  const [workingBundle, setWorkingBundle] =
+    useState<VisualContextBundle | null>(initialBundle);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [focusedNodeId, setFocusedNodeId] = useState<number | null>(null);
+  const [parallelSourceNode, setParallelSourceNode] =
+    useState<MapNodeLayout | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<MapEdgeSelection | null>(
+    null,
+  );
+  const [helpVisible, setHelpVisible] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null);
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const panStartRef = useRef({ x: 0, y: 0 });
-
-  const mapNodes = useMemo(
-    () => (visualBundle ? toMapNodeLayouts(visualBundle) : []),
-    [visualBundle],
+  const [viewportSize, setViewportSize] = useState<MapViewportSize>({
+    width: 0,
+    height: 0,
+  });
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null);
+  const [, setDiscoveryError] = useState<string | null>(null);
+  const [analyzedVerseIds, setAnalyzedVerseIds] = useState<Set<number>>(
+    () => new Set(),
   );
+  const [edgeAnalysis, setEdgeAnalysis] = useState<MapEdgeAnalysis | null>(
+    null,
+  );
+  const [edgeAnalysisLoading, setEdgeAnalysisLoading] = useState(false);
+  const [edgeAnalysisError, setEdgeAnalysisError] = useState<string | null>(
+    null,
+  );
+  const [showAllConnectionVerses, setShowAllConnectionVerses] = useState(false);
+  const [edgeNoteDraft, setEdgeNoteDraft] = useState("");
+  const [edgeTagsDraft, setEdgeTagsDraft] = useState("");
+  const [edgeMetaSaved, setEdgeMetaSaved] = useState(false);
+  const autoDiscoveryRunRef = useRef(false);
+  const pendingViewportFitRef = useRef(true);
+  const topicTitlesRequestRef = useRef(0);
+  const edgeAnalysisCacheRef = useRef<Map<string, MapEdgeAnalysis>>(new Map());
+  const panRef = useRef(pan);
+  const scaleRef = useRef(scale);
+  const viewportSizeRef = useRef(viewportSize);
+  const gestureStateRef = useRef<{
+    mode: "idle" | "pan" | "pinch";
+    startPan: { x: number; y: number };
+    startScale: number;
+    startTouch: { x: number; y: number };
+    startDistance: number;
+    startMidpoint: { x: number; y: number };
+  }>({
+    mode: "idle",
+    startPan: { x: 0, y: 0 },
+    startScale: 1,
+    startTouch: { x: 0, y: 0 },
+    startDistance: 0,
+    startMidpoint: { x: 0, y: 0 },
+  });
+  const activeBundle = workingBundle;
+
+  const derivedGraph = useMemo(
+    () => (activeBundle ? deriveNarrativeMapGraph(activeBundle) : null),
+    [activeBundle],
+  );
+  const mapNodes = derivedGraph?.nodes ?? [];
+  const mapEdges = derivedGraph?.edges ?? [];
   const nodeLookup = useMemo(
     () => new Map(mapNodes.map((node) => [node.id, node])),
     [mapNodes],
   );
+  const edgeLookup = useMemo(
+    () => new Map(mapEdges.map((edge) => [edge.id, edge])),
+    [mapEdges],
+  );
   const selectedNode = selectedNodeId ? nodeLookup.get(selectedNodeId) : null;
+  const selectedNodeParallelPassages = useMemo(
+    () => (selectedNode ? getDedupedParallelPassages(selectedNode) : []),
+    [selectedNode],
+  );
+  const selectedParallelPassages = useMemo(
+    () =>
+      parallelSourceNode ? getDedupedParallelPassages(parallelSourceNode) : [],
+    [parallelSourceNode],
+  );
+  const buildConnectionTopics = useCallback(
+    (nodeId: number) => {
+      if (!activeBundle) return null;
+      const verse = nodeLookup.get(nodeId);
+      if (!verse) return null;
+
+      const incidentEdges = mapEdges.filter(
+        (edge) =>
+          (edge.from === nodeId || edge.to === nodeId) &&
+          !edge.isSynthetic &&
+          edge.styleType !== "GREY",
+      );
+
+      const groups = new Map<
+        MapConnectionFamily,
+        { edgeIds: Set<string>; verseIds: Set<number>; chips: Set<string> }
+      >();
+
+      incidentEdges.forEach((edge) => {
+        const otherId = edge.from === nodeId ? edge.to : edge.from;
+        if (!groups.has(edge.styleType)) {
+          groups.set(edge.styleType, {
+            edgeIds: new Set<string>(),
+            verseIds: new Set<number>(),
+            chips: new Set<string>(),
+          });
+        }
+        const entry = groups.get(edge.styleType);
+        entry?.edgeIds.add(edge.id);
+        entry?.verseIds.add(otherId);
+        const chip = resolveConnectionChip(
+          edge.type,
+          edge.metadata as Record<string, unknown> | undefined,
+        );
+        if (chip) entry?.chips.add(chip);
+      });
+
+      const topicGroups = Array.from(groups.entries())
+        .map(([styleType, entry]) => ({
+          styleType,
+          label: getConnectionFamilyLabel(styleType),
+          displayLabel: getConnectionFamilyLabel(styleType),
+          labelSource: "canonical" as const,
+          color: getConnectionFamilyColor(styleType),
+          count: entry.verseIds.size,
+          chips: Array.from(entry.chips),
+          verseIds: Array.from(entry.verseIds),
+          edgeIds: Array.from(entry.edgeIds),
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      return { verse, groups: topicGroups };
+    },
+    [activeBundle, mapEdges, nodeLookup],
+  );
+  const pickDefaultTopic = useCallback(
+    (
+      groups: MapConnectionTopicGroup[],
+      preferredStyle?: MapConnectionFamily,
+    ) => {
+      if (preferredStyle) {
+        const preferred = groups.find(
+          (group) => group.styleType === preferredStyle,
+        );
+        if (preferred) return preferred;
+      }
+      if (groups.length === 0) return null;
+
+      let bestGroup = groups[0];
+      let bestWeight = -1;
+      groups.forEach((group) => {
+        const weight = Math.max(
+          ...group.edgeIds.map((edgeId) => edgeLookup.get(edgeId)?.weight ?? 0),
+          0,
+        );
+        if (weight > bestWeight) {
+          bestWeight = weight;
+          bestGroup = group;
+        }
+      });
+      return bestGroup;
+    },
+    [edgeLookup],
+  );
+  const rootNode = useMemo(() => {
+    if (!activeBundle) return null;
+    return (
+      nodeLookup.get(activeBundle.rootId) ||
+      mapNodes.find((node) => node.depth === 0) ||
+      mapNodes[0] ||
+      null
+    );
+  }, [activeBundle, mapNodes, nodeLookup]);
+  const spotlightState = useMemo(() => {
+    if (selectedEdge) {
+      const connectedNodeIds = new Set<number>(
+        selectedEdge.connectedVerseIds &&
+        selectedEdge.connectedVerseIds.length > 0
+          ? selectedEdge.connectedVerseIds
+          : [selectedEdge.from.id, selectedEdge.to.id],
+      );
+      connectedNodeIds.add(selectedEdge.from.id);
+      connectedNodeIds.add(selectedEdge.to.id);
+      if (selectedEdge.baseNode) {
+        connectedNodeIds.add(selectedEdge.baseNode.id);
+      }
+
+      const connectedEdgeIds = new Set<string>(
+        selectedEdge.topicGroups && selectedEdge.styleType
+          ? (selectedEdge.topicGroups.find(
+              (group) => group.styleType === selectedEdge.styleType,
+            )?.edgeIds ?? [selectedEdge.edge.id])
+          : [selectedEdge.edge.id],
+      );
+      connectedEdgeIds.add(selectedEdge.edge.id);
+
+      return { nodeIds: connectedNodeIds, edgeIds: connectedEdgeIds };
+    }
+
+    if (focusedNodeId !== null) {
+      const connectedNodeIds = new Set<number>([focusedNodeId]);
+      const connectedEdgeIds = new Set<string>();
+      mapEdges.forEach((edge) => {
+        if (edge.from === focusedNodeId || edge.to === focusedNodeId) {
+          connectedEdgeIds.add(edge.id);
+          connectedNodeIds.add(edge.from);
+          connectedNodeIds.add(edge.to);
+        }
+      });
+      return { nodeIds: connectedNodeIds, edgeIds: connectedEdgeIds };
+    }
+
+    return null;
+  }, [focusedNodeId, mapEdges, selectedEdge]);
+  const selectedTopicGroup = useMemo(() => {
+    if (!selectedEdge?.topicGroups || !selectedEdge.styleType) return null;
+    return (
+      selectedEdge.topicGroups.find(
+        (group) => group.styleType === selectedEdge.styleType,
+      ) ?? null
+    );
+  }, [selectedEdge]);
+  const selectedConnectionLabel = useMemo(() => {
+    if (!selectedEdge) return "Connection";
+    return selectedEdge.styleType
+      ? getConnectionFamilyLabel(selectedEdge.styleType)
+      : edgeTypeToConceptLabel(selectedEdge.edge.type);
+  }, [selectedEdge]);
+  const selectedConnectionAccent = useMemo(() => {
+    if (!selectedEdge) return "#F9F4EC";
+    return selectedEdge.edge.isAnchorRay ? "#C5B358" : "#F9F4EC";
+  }, [selectedEdge]);
+  const selectedConnectionVerses = useMemo<MapVersePreview[]>(() => {
+    if (!selectedEdge) return [];
+
+    const seen = new Set<number>();
+    const verseIds =
+      selectedEdge.connectedVerseIds &&
+      selectedEdge.connectedVerseIds.length > 0
+        ? selectedEdge.connectedVerseIds
+        : [selectedEdge.from.id, selectedEdge.to.id];
+    const previews: MapVersePreview[] = [];
+
+    verseIds.forEach((id) => {
+      const node = nodeLookup.get(id);
+      if (!node || seen.has(node.id)) return;
+      seen.add(node.id);
+      previews.push({
+        id: node.id,
+        reference: formatNodeReference(node),
+        text: node.text,
+        isBase: selectedEdge.baseNode?.id === node.id,
+      });
+    });
+
+    [selectedEdge.baseNode, selectedEdge.from, selectedEdge.to].forEach(
+      (node) => {
+        if (!node || seen.has(node.id)) return;
+        seen.add(node.id);
+        previews.push({
+          id: node.id,
+          reference: formatNodeReference(node),
+          text: node.text,
+          isBase: selectedEdge.baseNode?.id === node.id,
+        });
+      },
+    );
+
+    return previews;
+  }, [nodeLookup, selectedEdge]);
+  const selectedConnectionTitle = useMemo(() => {
+    if (!selectedEdge) return "Connection";
+    const preferredTopicLabel =
+      selectedTopicGroup?.displayLabel?.trim() ||
+      selectedTopicGroup?.label?.trim();
+    const analysisTitle = edgeAnalysis?.title?.trim();
+    return analysisTitle || preferredTopicLabel || selectedConnectionLabel;
+  }, [
+    edgeAnalysis?.title,
+    selectedConnectionLabel,
+    selectedEdge,
+    selectedTopicGroup,
+  ]);
+  const visibleConnectionVerses = useMemo(
+    () =>
+      showAllConnectionVerses
+        ? selectedConnectionVerses
+        : selectedConnectionVerses.slice(0, 6),
+    [selectedConnectionVerses, showAllConnectionVerses],
+  );
+  const hiddenConnectionVerseCount = useMemo(
+    () =>
+      showAllConnectionVerses
+        ? 0
+        : Math.max(
+            0,
+            selectedConnectionVerses.length - visibleConnectionVerses.length,
+          ),
+    [
+      selectedConnectionVerses.length,
+      showAllConnectionVerses,
+      visibleConnectionVerses.length,
+    ],
+  );
+  const activeInspector = useMemo<ActiveInspector>(() => {
+    if (parallelSourceNode) {
+      return {
+        kind: "parallels",
+        sourceNode: parallelSourceNode,
+        title: "Parallel Accounts",
+        subtitle: formatNodeReference(parallelSourceNode),
+      };
+    }
+    if (selectedEdge) {
+      return {
+        kind: "edge",
+        edge: selectedEdge,
+        title: selectedConnectionTitle,
+        subtitle: selectedEdge.baseNode
+          ? `Centered on ${formatNodeReference(selectedEdge.baseNode)}`
+          : `${formatNodeReference(selectedEdge.from)} -> ${formatNodeReference(selectedEdge.to)}`,
+      };
+    }
+    if (selectedNode) {
+      return {
+        kind: "node",
+        node: selectedNode,
+        title: formatNodeReference(selectedNode),
+        subtitle: getMapNodeSubtitle(selectedNode),
+      };
+    }
+    return { kind: "none" };
+  }, [parallelSourceNode, selectedConnectionTitle, selectedEdge, selectedNode]);
+  const selectedLibraryConnection = useMemo(() => {
+    if (!selectedEdge) return null;
+    const targetConnectionType = (
+      selectedEdge.styleType ?? selectedEdge.edge.type
+    ).toLowerCase();
+    const targetVerseIds = Array.from(
+      new Set(
+        (selectedEdge.connectedVerseIds &&
+        selectedEdge.connectedVerseIds.length > 0
+          ? selectedEdge.connectedVerseIds
+          : [selectedEdge.from.id, selectedEdge.to.id]
+        ).map((id) => Number(id)),
+      ),
+    ).sort((a, b) => a - b);
+    const targetKey = targetVerseIds.join(",");
+
+    return (
+      controller.libraryConnections.find((item) => {
+        const itemType = item.connectionType.trim().toLowerCase();
+        if (itemType !== targetConnectionType) return false;
+        const itemVerseIds = Array.from(
+          new Set(
+            (item.connectedVerseIds && item.connectedVerseIds.length > 0
+              ? item.connectedVerseIds
+              : [item.fromVerse.id, item.toVerse.id]
+            ).map((id) => Number(id)),
+          ),
+        ).sort((a, b) => a - b);
+        return itemVerseIds.join(",") === targetKey;
+      }) ?? null
+    );
+  }, [controller.libraryConnections, selectedEdge]);
   const mapSaveTitle = useMemo(() => {
     if (title?.trim()) return title.trim();
-    if (visualBundle?.nodes[0]) {
-      const node = visualBundle.nodes[0];
-      return `${node.book_name} ${node.chapter}:${node.verse}`;
+    if (activeBundle?.pericopeContext?.title?.trim()) {
+      return activeBundle.pericopeContext.title.trim();
     }
+    if (rootNode) return formatNodeReference(rootNode);
     return "Saved map";
-  }, [title, visualBundle]);
+  }, [activeBundle, rootNode, title]);
+  const activeInspectorTargetNode = useMemo(() => {
+    switch (activeInspector.kind) {
+      case "node":
+        return activeInspector.node;
+      case "parallels":
+        return activeInspector.sourceNode;
+      case "edge":
+        return activeInspector.edge.baseNode ?? activeInspector.edge.from;
+      default:
+        return null;
+    }
+  }, [activeInspector]);
+  const remainingVerseCount = useMemo(() => {
+    if (!activeBundle) return 0;
+    return activeBundle.nodes.filter((node) => !analyzedVerseIds.has(node.id))
+      .length;
+  }, [activeBundle, analyzedVerseIds]);
+  const discoveryDisabled = useMemo(
+    () =>
+      !activeBundle ||
+      discovering ||
+      activeBundle.lens === "NARRATIVE" ||
+      remainingVerseCount < 2,
+    [activeBundle, discovering, remainingVerseCount],
+  );
+  const graphBounds = useMemo(() => getGraphBounds(mapNodes), [mapNodes]);
+  const maxRenderedDepth = useMemo(
+    () => derivedGraph?.maxDepth ?? 0,
+    [derivedGraph],
+  );
+  const svgRuntimeAvailable = useMemo(() => isSvgRuntimeAvailable(), []);
+  const closeActiveInspector = useCallback(() => {
+    if (parallelSourceNode) {
+      setParallelSourceNode(null);
+      return;
+    }
+    if (selectedEdge) {
+      setSelectedEdge(null);
+      setFocusedNodeId(null);
+      return;
+    }
+    if (selectedNode) {
+      setSelectedNodeId(null);
+      if (!selectedEdge) {
+        setFocusedNodeId(null);
+      }
+    }
+  }, [parallelSourceNode, selectedEdge, selectedNode]);
+
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(MAP_ONBOARDING_STORAGE_KEY)
+      .then((value) => {
+        if (!active || value === "true") return;
+        setOnboardingStep(0);
+      })
+      .catch(() => {
+        if (!active) return;
+        setOnboardingStep(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setWorkingBundle(initialBundle);
+    setSelectedNodeId(null);
+    setFocusedNodeId(null);
+    setParallelSourceNode(null);
+    setSelectedEdge(null);
+    setDiscoveryStatus(null);
+    setDiscoveryError(null);
+    setAnalyzedVerseIds(new Set());
+    setEdgeAnalysis(null);
+    setEdgeAnalysisLoading(false);
+    setEdgeAnalysisError(null);
+    autoDiscoveryRunRef.current = false;
+    pendingViewportFitRef.current = true;
+  }, [initialBundle]);
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
+
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+
+  useEffect(() => {
+    viewportSizeRef.current = viewportSize;
+  }, [viewportSize]);
+
+  const applyViewportState = useCallback(
+    (nextScale: number, nextPan: { x: number; y: number }) => {
+      const clampedScale = clampMapScale(nextScale);
+      const clampedPan = clampPanToGraphBounds({
+        pan: nextPan,
+        scale: clampedScale,
+        viewport: viewportSizeRef.current,
+        bounds: graphBounds,
+      });
+      setScale(clampedScale);
+      setPan(clampedPan);
+      scaleRef.current = clampedScale;
+      panRef.current = clampedPan;
+    },
+    [graphBounds],
+  );
+
+  const fitViewportToGraph = useCallback(() => {
+    const nextViewport = buildFittedViewport({
+      viewport: viewportSizeRef.current,
+      bounds: graphBounds,
+    });
+    applyViewportState(nextViewport.scale, nextViewport.pan);
+  }, [applyViewportState, graphBounds]);
+
+  useEffect(() => {
+    if (!pendingViewportFitRef.current) return;
+    if (!activeBundle || mapNodes.length === 0) return;
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) return;
+    fitViewportToGraph();
+    pendingViewportFitRef.current = false;
+  }, [
+    activeBundle,
+    fitViewportToGraph,
+    mapNodes.length,
+    viewportSize.height,
+    viewportSize.width,
+  ]);
+
+  useEffect(() => {
+    if (layoutMode !== "expanded") return;
+    if (!activeInspectorTargetNode) return;
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) return;
+    const nextPan = getPanForCenteredNode({
+      node: activeInspectorTargetNode,
+      scale: scaleRef.current,
+      viewport: viewportSize,
+      bounds: graphBounds,
+    });
+    applyViewportState(scaleRef.current, nextPan);
+  }, [
+    activeInspectorTargetNode,
+    applyViewportState,
+    graphBounds,
+    layoutMode,
+    viewportSize,
+  ]);
+
+  useEffect(() => {
+    if (pendingViewportFitRef.current) return;
+    if (viewportSize.width <= 0 || viewportSize.height <= 0) return;
+    if (layoutMode === "expanded" && activeInspectorTargetNode) return;
+    applyViewportState(scaleRef.current, panRef.current);
+  }, [
+    activeInspectorTargetNode,
+    applyViewportState,
+    layoutMode,
+    viewportSize.height,
+    viewportSize.width,
+  ]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (
-          _event: GestureResponderEvent,
-          _gestureState: PanResponderGestureState,
-        ) => {
-          panStartRef.current = pan;
+        onStartShouldSetPanResponder: (event) =>
+          event.nativeEvent.touches.length > 1,
+        onStartShouldSetPanResponderCapture: (event) =>
+          event.nativeEvent.touches.length > 1,
+        onMoveShouldSetPanResponder: (event, gestureState) =>
+          event.nativeEvent.touches.length > 1 ||
+          Math.abs(gestureState.dx) > 3 ||
+          Math.abs(gestureState.dy) > 3,
+        onMoveShouldSetPanResponderCapture: (event, gestureState) =>
+          event.nativeEvent.touches.length > 1 ||
+          Math.abs(gestureState.dx) > 3 ||
+          Math.abs(gestureState.dy) > 3,
+        onPanResponderGrant: (event: GestureResponderEvent) => {
+          const touches = event.nativeEvent.touches;
+          if (touches.length > 1) {
+            gestureStateRef.current = {
+              mode: "pinch",
+              startPan: panRef.current,
+              startScale: scaleRef.current,
+              startTouch: measureTouchMidpoint(touches),
+              startDistance: Math.max(measureTouchDistance(touches), 1),
+              startMidpoint: measureTouchMidpoint(touches),
+            };
+            return;
+          }
+          const touch = touches[0];
+          if (!touch) return;
+          gestureStateRef.current = {
+            mode: "pan",
+            startPan: panRef.current,
+            startScale: scaleRef.current,
+            startTouch: {
+              x: touch.locationX,
+              y: touch.locationY,
+            },
+            startDistance: 0,
+            startMidpoint: {
+              x: touch.locationX,
+              y: touch.locationY,
+            },
+          };
         },
-        onPanResponderMove: (
-          _event: GestureResponderEvent,
-          gestureState: PanResponderGestureState,
-        ) => {
-          setPan({
-            x: panStartRef.current.x + gestureState.dx,
-            y: panStartRef.current.y + gestureState.dy,
+        onPanResponderMove: (event: GestureResponderEvent) => {
+          const touches = event.nativeEvent.touches;
+          if (touches.length > 1) {
+            const midpoint = measureTouchMidpoint(touches);
+            if (gestureStateRef.current.mode !== "pinch") {
+              gestureStateRef.current = {
+                mode: "pinch",
+                startPan: panRef.current,
+                startScale: scaleRef.current,
+                startTouch: midpoint,
+                startDistance: Math.max(measureTouchDistance(touches), 1),
+                startMidpoint: midpoint,
+              };
+            }
+
+            const nextScale = clampMapScale(
+              gestureStateRef.current.startScale *
+                (Math.max(measureTouchDistance(touches), 1) /
+                  Math.max(gestureStateRef.current.startDistance, 1)),
+            );
+            const nextPan = getPanForScaledFocalPoint({
+              currentPan: gestureStateRef.current.startPan,
+              currentScale: gestureStateRef.current.startScale,
+              nextScale,
+              focalPoint: midpoint,
+            });
+            applyViewportState(nextScale, nextPan);
+            return;
+          }
+
+          const touch = touches[0];
+          if (!touch) return;
+          if (gestureStateRef.current.mode !== "pan") {
+            gestureStateRef.current = {
+              mode: "pan",
+              startPan: panRef.current,
+              startScale: scaleRef.current,
+              startTouch: {
+                x: touch.locationX,
+                y: touch.locationY,
+              },
+              startDistance: 0,
+              startMidpoint: {
+                x: touch.locationX,
+                y: touch.locationY,
+              },
+            };
+          }
+
+          applyViewportState(scaleRef.current, {
+            x:
+              gestureStateRef.current.startPan.x +
+              (touch.locationX - gestureStateRef.current.startTouch.x),
+            y:
+              gestureStateRef.current.startPan.y +
+              (touch.locationY - gestureStateRef.current.startTouch.y),
           });
         },
+        onPanResponderRelease: () => {
+          gestureStateRef.current.mode = "idle";
+        },
+        onPanResponderTerminate: () => {
+          gestureStateRef.current.mode = "idle";
+        },
       }),
-    [pan],
+    [applyViewportState],
   );
 
-  if (!visualBundle) {
+  useEffect(() => {
+    if (!selectedEdge || !activeBundle) {
+      setEdgeAnalysis(null);
+      setEdgeAnalysisLoading(false);
+      setEdgeAnalysisError(null);
+      return;
+    }
+
+    const verses = [
+      ...(selectedEdge.connectedVerseIds &&
+      selectedEdge.connectedVerseIds.length > 0
+        ? selectedEdge.connectedVerseIds
+            .map((id) => nodeLookup.get(id))
+            .filter((node): node is MapNodeLayout => Boolean(node))
+            .map((node) => ({
+              id: node.id,
+              reference: formatNodeReference(node),
+              text: node.text,
+            }))
+        : [
+            {
+              id: selectedEdge.from.id,
+              reference: formatNodeReference(selectedEdge.from),
+              text: selectedEdge.from.text,
+            },
+            {
+              id: selectedEdge.to.id,
+              reference: formatNodeReference(selectedEdge.to),
+              text: selectedEdge.to.text,
+            },
+          ]),
+    ];
+    const activeConnectionType =
+      selectedEdge.styleType ?? selectedEdge.edge.type;
+    const topicContext =
+      selectedEdge.topicGroups && selectedEdge.topicGroups.length > 0
+        ? selectedEdge.topicGroups
+            .filter((group) => group.styleType !== selectedEdge.styleType)
+            .map((group) => {
+              const selectedVerseIds = new Set(verses.map((verse) => verse.id));
+              const candidateVerseIds = new Set([
+                selectedEdge.baseNode?.id ?? selectedEdge.from.id,
+                ...group.verseIds,
+              ]);
+              let intersection = 0;
+              candidateVerseIds.forEach((id) => {
+                if (selectedVerseIds.has(id)) intersection += 1;
+              });
+              const union = new Set<number>([
+                ...Array.from(selectedVerseIds),
+                ...Array.from(candidateVerseIds),
+              ]).size;
+              return {
+                styleType: group.styleType,
+                label: group.displayLabel || group.label,
+                overlap: union > 0 ? intersection / union : 0,
+              };
+            })
+        : undefined;
+    const requestKey = JSON.stringify({
+      verseIds: verses.map((verse) => verse.id),
+      connectionType: activeConnectionType,
+      similarity: selectedEdge.edge.weight,
+      isLlmDiscovered: isLlmDiscoveredEdge(selectedEdge.edge),
+      topicContext,
+    });
+    const cached = edgeAnalysisCacheRef.current.get(requestKey);
+    if (cached) {
+      setEdgeAnalysis(cached);
+      setEdgeAnalysisLoading(false);
+      setEdgeAnalysisError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setEdgeAnalysis(null);
+    setEdgeAnalysisLoading(true);
+    setEdgeAnalysisError(null);
+
+    void fetchSemanticConnectionSynopsis({
+      apiBaseUrl: MOBILE_ENV.API_URL,
+      verseIds: verses.map((verse) => verse.id),
+      verses,
+      connectionType: activeConnectionType,
+      similarity: selectedEdge.edge.weight,
+      isLlmDiscovered: isLlmDiscoveredEdge(selectedEdge.edge),
+      topicContext,
+      accessToken: controller.session?.access_token,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        const nextAnalysis = {
+          title: result.title,
+          synopsis: result.synopsis,
+          verses: result.verses,
+        };
+        edgeAnalysisCacheRef.current.set(requestKey, nextAnalysis);
+        setEdgeAnalysis(nextAnalysis);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setEdgeAnalysisError(
+          error instanceof Error ? error.message : String(error),
+        );
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setEdgeAnalysisLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeBundle,
+    controller.session?.access_token,
+    nodeLookup,
+    selectedEdge,
+  ]);
+
+  useEffect(() => {
+    if (discovering || !discoveryStatus) return;
+    const timer = setTimeout(() => {
+      setDiscoveryStatus(null);
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, [discovering, discoveryStatus]);
+
+  const dismissOnboarding = useCallback(() => {
+    setOnboardingStep(null);
+    void AsyncStorage.setItem(MAP_ONBOARDING_STORAGE_KEY, "true");
+  }, []);
+
+  const advanceOnboarding = useCallback(() => {
+    setOnboardingStep((current) => {
+      if (current === null) return null;
+      if (current >= 2) {
+        void AsyncStorage.setItem(MAP_ONBOARDING_STORAGE_KEY, "true");
+        return null;
+      }
+      return current + 1;
+    });
+  }, []);
+
+  const resetViewport = useCallback(() => {
+    fitViewportToGraph();
+  }, [fitViewportToGraph]);
+
+  const handleViewportLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    const previousViewport = viewportSizeRef.current;
+    setViewportSize((current) => {
+      if (current.width === width && current.height === height) {
+        return current;
+      }
+      return { width, height };
+    });
+    if (
+      width !== previousViewport.width ||
+      height !== previousViewport.height
+    ) {
+      pendingViewportFitRef.current =
+        previousViewport.width <= 0 || previousViewport.height <= 0;
+    }
+  }, []);
+
+  const adjustViewportScale = useCallback(
+    (delta: number) => {
+      const targetScale = clampMapScale(scaleRef.current + delta);
+      const focalPoint = {
+        x: viewportSizeRef.current.width / 2,
+        y: viewportSizeRef.current.height / 2,
+      };
+      const nextPan = getPanForScaledFocalPoint({
+        currentPan: panRef.current,
+        currentScale: scaleRef.current,
+        nextScale: targetScale,
+        focalPoint,
+      });
+      applyViewportState(targetScale, nextPan);
+    },
+    [applyViewportState],
+  );
+
+  const buildTopicTitlePayload = useCallback(
+    (baseNode: MapNodeLayout, groups: MapConnectionTopicGroup[]) =>
+      groups.map((group) => {
+        const seen = new Set<number>();
+        const verses = [baseNode.id, ...group.verseIds]
+          .map((id) => nodeLookup.get(id))
+          .filter((node): node is MapNodeLayout => Boolean(node))
+          .filter((node) => {
+            if (seen.has(node.id)) return false;
+            seen.add(node.id);
+            return true;
+          })
+          .slice(0, 4)
+          .map((node) => ({
+            reference: formatNodeReference(node),
+            text: node.text,
+          }));
+        return {
+          type: group.styleType,
+          verses,
+        };
+      }),
+    [nodeLookup],
+  );
+
+  useEffect(() => {
+    setShowAllConnectionVerses(false);
+    setEdgeMetaSaved(false);
+    setEdgeNoteDraft(selectedLibraryConnection?.note || "");
+    setEdgeTagsDraft(selectedLibraryConnection?.tags?.join(", ") || "");
+  }, [
+    selectedLibraryConnection,
+    selectedEdge?.edge.id,
+    selectedEdge?.styleType,
+  ]);
+
+  useEffect(() => {
+    if (controller.libraryConnectionMutationError) {
+      setEdgeMetaSaved(false);
+    }
+  }, [controller.libraryConnectionMutationError]);
+
+  useEffect(() => {
+    if (
+      !selectedEdge?.baseNode ||
+      !selectedEdge.topicGroups ||
+      selectedEdge.topicGroups.length === 0
+    ) {
+      return;
+    }
+    const labelsReady = selectedEdge.topicGroups.every(
+      (group) => group.labelSource === "llm",
+    );
+    if (labelsReady) return;
+
+    let cancelled = false;
+    const requestId = ++topicTitlesRequestRef.current;
+    const topics = buildTopicTitlePayload(
+      selectedEdge.baseNode,
+      selectedEdge.topicGroups,
+    );
+
+    void fetchSemanticConnectionTopicTitles({
+      apiBaseUrl: MOBILE_ENV.API_URL,
+      topics,
+      accessToken: controller.session?.access_token,
+    })
+      .then((titles) => {
+        if (cancelled || requestId !== topicTitlesRequestRef.current) return;
+        setSelectedEdge((current) => {
+          if (
+            !current ||
+            current.baseNode?.id !== selectedEdge.baseNode?.id ||
+            current.edge.id !== selectedEdge.edge.id ||
+            !current.topicGroups
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+            topicGroups: current.topicGroups.map((group) => {
+              const resolved = titles[group.styleType]?.trim();
+              if (!resolved) return group;
+              return {
+                ...group,
+                label: resolved,
+                displayLabel: resolved,
+                labelSource: "llm",
+              };
+            }),
+          };
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildTopicTitlePayload, controller.session?.access_token, selectedEdge]);
+
+  const openReaderForNode = useCallback(
+    async (node: VisualNode) => {
+      setSelectedNodeId(null);
+      setParallelSourceNode(null);
+      setSelectedEdge(null);
+      controller.queueReaderFocusTarget(
+        node.book_name,
+        node.chapter,
+        node.verse,
+      );
+      await controller.navigateReaderTo(node.book_name, node.chapter);
+      navigation.navigate("Tabs", { mode: "Reader" } as never);
+    },
+    [controller, navigation],
+  );
+
+  const openReaderForParallelPassage = useCallback(
+    async (parallel: MapParallelPassage) => {
+      setParallelSourceNode(null);
+      setSelectedNodeId(null);
+      setSelectedEdge(null);
+      controller.queueReaderFocusTarget(
+        parallel.book_name,
+        parallel.chapter,
+        parallel.verse,
+      );
+      await controller.navigateReaderTo(parallel.book_name, parallel.chapter);
+      navigation.navigate("Tabs", { mode: "Reader" } as never);
+    },
+    [controller, navigation],
+  );
+
+  const openChatForNode = useCallback(
+    (node: VisualNode) => {
+      const reference = formatNodeReference(node);
+      const payload: MobilePendingPrompt = {
+        displayText: reference,
+        prompt: `${reference}\n\nHelp me understand this passage in the context of the current map.`,
+        mode: "go_deeper_short",
+        visualBundle: activeBundle ?? undefined,
+      };
+      setParallelSourceNode(null);
+      setSelectedNodeId(null);
+      navigation.navigate("Tabs", {
+        mode: "Chat",
+        prompt: payload,
+        autoSend: true,
+      } as never);
+    },
+    [activeBundle, navigation],
+  );
+
+  const openConnectionSelectionForTopic = useCallback(
+    (
+      baseNode: MapNodeLayout,
+      topicGroup: MapConnectionTopicGroup,
+      topicGroups: MapConnectionTopicGroup[],
+    ) => {
+      const primaryEdge =
+        topicGroup.edgeIds
+          .map((edgeId) => edgeLookup.get(edgeId))
+          .filter((edge): edge is MapRenderableEdge => Boolean(edge))
+          .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))[0] ?? null;
+      if (!primaryEdge) {
+        setFocusedNodeId((current) =>
+          current === baseNode.id ? null : baseNode.id,
+        );
+        setSelectedNodeId(baseNode.id);
+        return;
+      }
+
+      const parentId =
+        baseNode.parentId ??
+        (baseNode.depth === 1 ? activeBundle?.rootId : undefined);
+      const parentEdge =
+        typeof parentId === "number"
+          ? (mapEdges.find(
+              (edge) =>
+                !edge.isSynthetic &&
+                ((edge.from === baseNode.id && edge.to === parentId) ||
+                  (edge.from === parentId && edge.to === baseNode.id)),
+            ) ?? null)
+          : null;
+      const edgeOverride =
+        parentEdge && parentEdge.styleType === topicGroup.styleType
+          ? parentEdge
+          : primaryEdge;
+      const otherId =
+        edgeOverride.from === baseNode.id ? edgeOverride.to : edgeOverride.from;
+      const otherNode = nodeLookup.get(otherId) ?? baseNode;
+      const connectedVerseIds = Array.from(
+        new Set(
+          activeBundle?.rootId === baseNode.id
+            ? topicGroup.verseIds
+            : [baseNode.id, ...topicGroup.verseIds],
+        ),
+      );
+
+      setFocusedNodeId(baseNode.id);
+      setSelectedNodeId(null);
+      setParallelSourceNode(null);
+      setSelectedEdge({
+        edge: edgeOverride,
+        from: baseNode,
+        to: otherNode,
+        baseNode,
+        connectedVerseIds,
+        topicGroups,
+        styleType: topicGroup.styleType,
+      });
+    },
+    [activeBundle?.rootId, edgeLookup, mapEdges, nodeLookup],
+  );
+
+  const openChatForEdge = useCallback(
+    (selection: MapEdgeSelection) => {
+      if (!activeBundle) return;
+      const connectedVerseIds =
+        selection.connectedVerseIds && selection.connectedVerseIds.length > 0
+          ? selection.connectedVerseIds
+          : [selection.from.id, selection.to.id];
+      const fromReference = formatNodeReference(selection.from);
+      const toReference = formatNodeReference(selection.to);
+      const connectionLabel = selection.styleType
+        ? getConnectionFamilyLabel(selection.styleType)
+        : edgeTypeToConceptLabel(selection.edge.type);
+      const payload: MobilePendingPrompt = {
+        displayText: `${fromReference} -> ${toReference}`,
+        prompt:
+          connectedVerseIds.length > 2
+            ? `Trace the ${connectionLabel.toLowerCase()} thread centered on ${selection.baseNode ? formatNodeReference(selection.baseNode) : fromReference}. Explain how these passages connect and why the pattern matters.`
+            : `Trace the connection between ${fromReference} and ${toReference}. Explain the ${connectionLabel.toLowerCase()} relationship and why it matters.`,
+        mode: "go_deeper_short",
+        visualBundle: activeBundle,
+        mapSession: buildLibraryMapSession({
+          fromId: selection.from.id,
+          toId: selection.to.id,
+          connectionType: selection.styleType ?? selection.edge.type,
+          verseIds: connectedVerseIds,
+        }),
+      };
+      setParallelSourceNode(null);
+      setSelectedEdge(null);
+      navigation.navigate("Tabs", {
+        mode: "Chat",
+        prompt: payload,
+        autoSend: true,
+      } as never);
+    },
+    [activeBundle, navigation],
+  );
+
+  const runDiscovery = useCallback(
+    async (mode: "auto" | "manual") => {
+      if (!activeBundle || discovering || activeBundle.lens === "NARRATIVE") {
+        return;
+      }
+
+      const candidateNodes = getDiscoveryCandidateNodes(
+        activeBundle,
+        analyzedVerseIds,
+      );
+      if (candidateNodes.length < 2) {
+        if (mode === "manual") {
+          setDiscoveryError("No additional verses are available to analyze.");
+        }
+        return;
+      }
+
+      setDiscovering(true);
+      setDiscoveryError(null);
+      setDiscoveryStatus("Selecting key verses...");
+      try {
+        const verseIds = candidateNodes.map((node) => node.id);
+        setDiscoveryStatus("Analyzing verses...");
+        const result = await discoverConnections({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          verseIds,
+          accessToken: controller.session?.access_token,
+        });
+
+        setAnalyzedVerseIds((current) => {
+          const next = new Set(current);
+          verseIds.forEach((id) => next.add(id));
+          return next;
+        });
+
+        setDiscoveryStatus("Mapping new connections...");
+        const merged = mergeDiscoveredConnections(
+          activeBundle,
+          result.connections.map((connection) => ({
+            from: connection.from,
+            to: connection.to,
+            type: connection.type,
+            explanation: connection.explanation,
+            confidence: connection.confidence,
+          })),
+        );
+
+        if (merged.addedCount > 0) {
+          setWorkingBundle(merged.bundle);
+          setDiscoveryStatus(
+            `Added ${merged.addedCount} connection${merged.addedCount === 1 ? "" : "s"}`,
+          );
+        } else {
+          setDiscoveryStatus(
+            result.fromCache
+              ? "No new connections beyond cached discovery."
+              : "No additional connections found.",
+          );
+        }
+      } catch (error) {
+        setDiscoveryError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        setDiscovering(false);
+      }
+    },
+    [
+      activeBundle,
+      analyzedVerseIds,
+      controller.session?.access_token,
+      discovering,
+    ],
+  );
+
+  const saveSelectedConnection = useCallback(async () => {
+    if (!selectedEdge || !activeBundle) return;
+    const connectionLabel = selectedEdge.styleType
+      ? getConnectionFamilyLabel(selectedEdge.styleType)
+      : edgeTypeToConceptLabel(selectedEdge.edge.type);
+
+    const analysisVerses =
+      edgeAnalysis?.verses && edgeAnalysis.verses.length > 0
+        ? edgeAnalysis.verses
+        : [
+            {
+              id: selectedEdge.from.id,
+              reference: formatNodeReference(selectedEdge.from),
+              text: selectedEdge.from.text,
+            },
+            {
+              id: selectedEdge.to.id,
+              reference: formatNodeReference(selectedEdge.to),
+              text: selectedEdge.to.text,
+            },
+          ];
+
+    await controller.handleCreateLibraryConnectionFromMap({
+      bundle: activeBundle,
+      fromVerse: {
+        id: selectedEdge.from.id,
+        reference: formatNodeReference(selectedEdge.from),
+        text: selectedEdge.from.text,
+      },
+      toVerse: {
+        id: selectedEdge.to.id,
+        reference: formatNodeReference(selectedEdge.to),
+        text: selectedEdge.to.text,
+      },
+      connectionType: selectedEdge.styleType ?? selectedEdge.edge.type,
+      similarity: selectedEdge.edge.weight,
+      synopsis:
+        edgeAnalysis?.synopsis ||
+        getEdgeExplanation(selectedEdge.edge) ||
+        `Trace the connection between ${formatNodeReference(selectedEdge.from)} and ${formatNodeReference(selectedEdge.to)}.`,
+      explanation: getEdgeExplanation(selectedEdge.edge) || undefined,
+      connectedVerseIds:
+        selectedEdge.connectedVerseIds &&
+        selectedEdge.connectedVerseIds.length > 0
+          ? selectedEdge.connectedVerseIds
+          : analysisVerses.map((verse) => verse.id),
+      connectedVerses: analysisVerses,
+      goDeeperPrompt:
+        selectedEdge.connectedVerseIds &&
+        selectedEdge.connectedVerseIds.length > 2
+          ? `Trace the ${connectionLabel.toLowerCase()} thread centered on ${selectedEdge.baseNode ? formatNodeReference(selectedEdge.baseNode) : formatNodeReference(selectedEdge.from)}. Explain how these connected passages build the idea and why it matters.`
+          : `Trace the connection between ${formatNodeReference(selectedEdge.from)} and ${formatNodeReference(selectedEdge.to)}. Explain the ${connectionLabel.toLowerCase()} relationship and why it matters.`,
+    });
+  }, [activeBundle, controller, edgeAnalysis, selectedEdge]);
+
+  const saveSelectedConnectionMeta = useCallback(async () => {
+    if (!selectedLibraryConnection) return;
+    setEdgeMetaSaved(false);
+    await controller.handleSaveLibraryConnectionMeta(
+      selectedLibraryConnection.id,
+      {
+        note: edgeNoteDraft,
+        tags: edgeTagsDraft,
+      },
+    );
+    setEdgeMetaSaved(true);
+  }, [controller, edgeNoteDraft, edgeTagsDraft, selectedLibraryConnection]);
+
+  const handleMapNodePress = useCallback(
+    (node: MapNodeLayout) => {
+      setParallelSourceNode(null);
+
+      if (
+        selectedEdge &&
+        selectedEdge.baseNode?.id === node.id &&
+        selectedEdge.topicGroups &&
+        selectedEdge.topicGroups.length > 0
+      ) {
+        setSelectedEdge(null);
+        setSelectedNodeId(node.id);
+        setFocusedNodeId(node.id);
+        return;
+      }
+
+      const topicData = buildConnectionTopics(node.id);
+      if (topicData && topicData.groups.length > 0) {
+        const preferredStyle =
+          typeof node.semanticConnectionType === "string"
+            ? node.semanticConnectionType
+            : undefined;
+        const defaultTopic = pickDefaultTopic(topicData.groups, preferredStyle);
+        if (defaultTopic) {
+          openConnectionSelectionForTopic(
+            topicData.verse,
+            defaultTopic,
+            topicData.groups,
+          );
+          return;
+        }
+      }
+
+      setSelectedEdge(null);
+      setFocusedNodeId((current) => (current === node.id ? null : node.id));
+      setSelectedNodeId((current) => (current === node.id ? null : node.id));
+    },
+    [
+      buildConnectionTopics,
+      openConnectionSelectionForTopic,
+      pickDefaultTopic,
+      selectedEdge,
+    ],
+  );
+
+  useEffect(() => {
+    if (!activeBundle || discovering || autoDiscoveryRunRef.current) return;
+    if (activeBundle.lens === "NARRATIVE") return;
+    autoDiscoveryRunRef.current = true;
+    void runDiscovery("auto");
+  }, [activeBundle, discovering, runDiscovery]);
+
+  const isExpandedLayout = layoutMode === "expanded";
+  const resolvedInspector =
+    activeInspector.kind === "none" ? null : activeInspector;
+  const inspectorVisible = resolvedInspector !== null;
+  const activeInspectorVariant =
+    activeInspector.kind === "parallels"
+      ? "parallels"
+      : activeInspector.kind === "edge"
+        ? "edge"
+        : "node";
+  const nodeInspectorContent = selectedNode ? (
+    <View style={localStyles.mapSheetBody}>
+      <View style={localStyles.mapMetaChipRow}>
+        <Text style={localStyles.mapMetaChip}>Depth {selectedNode.depth}</Text>
+        {selectedNodeParallelPassages.length ? (
+          <Text style={localStyles.mapMetaChip}>
+            {selectedNodeParallelPassages.length} accounts
+          </Text>
+        ) : null}
+        {selectedNode.pericopeTitle ? (
+          <Text style={localStyles.mapMetaChip}>Pericope</Text>
+        ) : null}
+      </View>
+      {selectedNode.pericopeTitle ? (
+        <View style={localStyles.mapDetailCallout}>
+          <Text style={localStyles.mapDetailCalloutTitle}>
+            {selectedNode.pericopeTitle}
+          </Text>
+          {selectedNode.pericopeThemes?.length ? (
+            <Text style={localStyles.mapDetailCalloutText}>
+              Themes: {selectedNode.pericopeThemes.join(", ")}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      {selectedNodeParallelPassages.length > 0 ? (
+        <View style={localStyles.mapParallelCard}>
+          <View style={localStyles.mapParallelHeader}>
+            <Text style={localStyles.mapParallelTitle}>Parallel accounts</Text>
+            <Text style={localStyles.mapParallelCount}>
+              {selectedNodeParallelPassages.length}
+            </Text>
+          </View>
+          <View style={localStyles.mapParallelPreviewList}>
+            {selectedNodeParallelPassages.slice(0, 2).map((parallel) => (
+              <View
+                key={`parallel-preview-${parallel.id}`}
+                style={localStyles.mapParallelPreviewRow}
+              >
+                <Text style={localStyles.mapParallelPreviewReference}>
+                  {parallel.reference}
+                </Text>
+                <Text style={localStyles.mapParallelPreviewMeta}>
+                  {Math.round(parallel.similarity * 100)}% match
+                </Text>
+              </View>
+            ))}
+          </View>
+          <ActionButton
+            variant="ghost"
+            label="View all accounts"
+            onPress={() => {
+              setParallelSourceNode(selectedNode);
+              setSelectedNodeId(null);
+            }}
+            style={localStyles.mapParallelButton}
+          />
+        </View>
+      ) : null}
+      {isExpandedLayout ? (
+        <Text style={styles.connectionSynopsis}>{selectedNode.text}</Text>
+      ) : (
+        <ScrollView style={localStyles.nodeDetailScroll}>
+          <Text style={styles.connectionSynopsis}>{selectedNode.text}</Text>
+        </ScrollView>
+      )}
+      <View
+        style={[
+          localStyles.mapSheetActions,
+          isExpandedLayout ? localStyles.mapSheetActionsExpanded : null,
+        ]}
+      >
+        <ActionButton
+          variant="primary"
+          label="Open in reader"
+          onPress={() => void openReaderForNode(selectedNode)}
+        />
+        <ActionButton
+          variant="secondary"
+          label="Continue in chat"
+          onPress={() => openChatForNode(selectedNode)}
+        />
+      </View>
+    </View>
+  ) : null;
+  const parallelsInspectorContent = parallelSourceNode ? (
+    <View style={localStyles.mapSheetBody}>
+      <View style={localStyles.mapParallelSection}>
+        <Text style={localStyles.mapSectionEyebrow}>Primary</Text>
+        <Text style={localStyles.mapParallelPrimaryReference}>
+          {formatNodeReference(parallelSourceNode)}
+        </Text>
+        <Text style={localStyles.mapDetailCalloutText}>
+          {parallelSourceNode.text}
+        </Text>
+      </View>
+      <Text style={localStyles.mapSectionEyebrow}>Also Found In</Text>
+      {isExpandedLayout ? (
+        <View style={localStyles.mapParallelList}>
+          {selectedParallelPassages.map((parallel) => {
+            const tone = getParallelSimilarityTone(parallel.similarity);
+            return (
+              <Pressable
+                key={`parallel-${parallel.id}`}
+                onPress={() => void openReaderForParallelPassage(parallel)}
+                style={[localStyles.mapParallelRow, { opacity: tone.opacity }]}
+              >
+                <View style={localStyles.mapParallelRowHeader}>
+                  <Text
+                    style={[
+                      localStyles.mapParallelRowReference,
+                      { fontWeight: tone.referenceWeight },
+                    ]}
+                  >
+                    {parallel.reference}
+                  </Text>
+                  <Text style={localStyles.mapParallelRowSimilarity}>
+                    {Math.round(parallel.similarity * 100)}%
+                  </Text>
+                </View>
+                <Text numberOfLines={1} style={localStyles.mapParallelRowText}>
+                  {parallel.text}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <ScrollView style={localStyles.mapParallelScroll}>
+          <View style={localStyles.mapParallelList}>
+            {selectedParallelPassages.map((parallel) => {
+              const tone = getParallelSimilarityTone(parallel.similarity);
+              return (
+                <Pressable
+                  key={`parallel-${parallel.id}`}
+                  onPress={() => void openReaderForParallelPassage(parallel)}
+                  style={[
+                    localStyles.mapParallelRow,
+                    { opacity: tone.opacity },
+                  ]}
+                >
+                  <View style={localStyles.mapParallelRowHeader}>
+                    <Text
+                      style={[
+                        localStyles.mapParallelRowReference,
+                        { fontWeight: tone.referenceWeight },
+                      ]}
+                    >
+                      {parallel.reference}
+                    </Text>
+                    <Text style={localStyles.mapParallelRowSimilarity}>
+                      {Math.round(parallel.similarity * 100)}%
+                    </Text>
+                  </View>
+                  <Text
+                    numberOfLines={1}
+                    style={localStyles.mapParallelRowText}
+                  >
+                    {parallel.text}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      )}
+      <Text style={localStyles.mapParallelFooterHint}>
+        Tap a passage to open.
+      </Text>
+    </View>
+  ) : null;
+  const edgeInspectorBody = selectedEdge ? (
+    <View style={localStyles.mapSheetBody}>
+      <View style={localStyles.mapMetaChipRow}>
+        <Text
+          style={[localStyles.mapMetaChip, { color: selectedConnectionAccent }]}
+        >
+          {selectedConnectionLabel}
+        </Text>
+        <Text style={localStyles.mapMetaChip}>
+          {Math.round(selectedEdge.edge.weight * 100)}%
+        </Text>
+      </View>
+      <View style={localStyles.mapVerseChipRow}>
+        {visibleConnectionVerses.map((verse) => (
+          <PressableScale
+            key={`edge-verse-chip-${verse.id}`}
+            onPress={() => {
+              const node = nodeLookup.get(verse.id);
+              if (!node) return;
+              void openReaderForNode(node);
+            }}
+            style={[
+              localStyles.mapVerseChip,
+              verse.isBase ? localStyles.mapVerseChipActive : null,
+              {
+                borderColor: `${selectedConnectionAccent}33`,
+                backgroundColor: `${selectedConnectionAccent}14`,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                localStyles.mapVerseChipLabel,
+                { color: selectedConnectionAccent },
+              ]}
+            >
+              {verse.reference}
+            </Text>
+          </PressableScale>
+        ))}
+        {hiddenConnectionVerseCount > 0 ? (
+          <PressableScale
+            onPress={() => setShowAllConnectionVerses(true)}
+            style={localStyles.mapVerseChipShowAll}
+          >
+            <Text style={localStyles.mapVerseChipShowAllLabel}>
+              Show all {selectedConnectionVerses.length}
+            </Text>
+          </PressableScale>
+        ) : null}
+      </View>
+      {selectedConnectionVerses.length > 6 && showAllConnectionVerses ? (
+        <Pressable
+          onPress={() => setShowAllConnectionVerses(false)}
+          style={localStyles.mapShowFewerButton}
+        >
+          <Text style={localStyles.mapShowFewerLabel}>Show fewer verses</Text>
+        </Pressable>
+      ) : null}
+      {getEdgeExplanation(selectedEdge.edge) ? (
+        <Text style={localStyles.mapSourceNoteText}>
+          {getEdgeExplanation(selectedEdge.edge)}
+        </Text>
+      ) : null}
+      <View style={localStyles.mapAnalysisCard}>
+        {edgeAnalysisLoading ? (
+          <View style={localStyles.mapAnalysisLoadingBlock}>
+            <View style={localStyles.mapAnalysisDotRow}>
+              <View style={localStyles.mapAnalysisDot} />
+              <View style={localStyles.mapAnalysisDot} />
+              <View style={localStyles.mapAnalysisDot} />
+              <Text style={localStyles.mapAnalysisLoadingText}>
+                Analyzing connection
+              </Text>
+            </View>
+            <View style={localStyles.mapAnalysisSkeletonBlock}>
+              <View style={localStyles.mapAnalysisSkeletonLine} />
+              <View
+                style={[
+                  localStyles.mapAnalysisSkeletonLine,
+                  localStyles.mapAnalysisSkeletonLineWide,
+                ]}
+              />
+              <View
+                style={[
+                  localStyles.mapAnalysisSkeletonLine,
+                  localStyles.mapAnalysisSkeletonLineShort,
+                ]}
+              />
+            </View>
+          </View>
+        ) : edgeAnalysisError ? (
+          <Text style={localStyles.mapSummaryError}>{edgeAnalysisError}</Text>
+        ) : edgeAnalysis ? (
+          <>
+            <Text style={localStyles.mapAnalysisHeading}>
+              {edgeAnalysis.title}
+            </Text>
+            <Text style={localStyles.mapAnalysisText}>
+              {edgeAnalysis.synopsis}
+            </Text>
+          </>
+        ) : (
+          <Text style={localStyles.mapAnalysisText}>
+            Connection analysis is unavailable for this edge.
+          </Text>
+        )}
+      </View>
+      {selectedEdge.topicGroups && selectedEdge.topicGroups.length > 1 ? (
+        <View style={localStyles.mapTopicNavigatorRow}>
+          <Text style={localStyles.mapTopicNavigatorLabel}>
+            More connections
+          </Text>
+          <View style={localStyles.mapTopicDotRow}>
+            {selectedEdge.topicGroups.map((group) => (
+              <Pressable
+                key={`topic-dot-${group.styleType}`}
+                onPress={() => {
+                  if (!selectedEdge.baseNode) return;
+                  openConnectionSelectionForTopic(
+                    selectedEdge.baseNode,
+                    group,
+                    selectedEdge.topicGroups || [group],
+                  );
+                }}
+                style={[
+                  localStyles.mapTopicDot,
+                  {
+                    borderColor: `${selectedConnectionAccent}88`,
+                    backgroundColor:
+                      selectedEdge.styleType === group.styleType
+                        ? selectedConnectionAccent
+                        : "transparent",
+                    opacity:
+                      selectedEdge.styleType === group.styleType ? 1 : 0.4,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+          <Pressable
+            onPress={() => {
+              if (!selectedEdge.baseNode || !selectedEdge.topicGroups) return;
+              const currentIndex = selectedEdge.topicGroups.findIndex(
+                (group) => group.styleType === selectedEdge.styleType,
+              );
+              const nextIndex =
+                currentIndex >= 0
+                  ? (currentIndex + 1) % selectedEdge.topicGroups.length
+                  : 0;
+              const nextGroup = selectedEdge.topicGroups[nextIndex];
+              if (!nextGroup) return;
+              openConnectionSelectionForTopic(
+                selectedEdge.baseNode,
+                nextGroup,
+                selectedEdge.topicGroups,
+              );
+            }}
+            style={localStyles.mapTopicNextButton}
+          >
+            <Ionicons
+              color={selectedConnectionAccent}
+              name="chevron-forward"
+              size={14}
+            />
+          </Pressable>
+        </View>
+      ) : null}
+      {selectedTopicGroup ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={localStyles.mapTopicChipRow}
+        >
+          {(selectedEdge.topicGroups || [selectedTopicGroup]).map((group) => (
+            <PressableScale
+              key={`topic-compact-${group.styleType}`}
+              onPress={() => {
+                if (!selectedEdge.baseNode) return;
+                openConnectionSelectionForTopic(
+                  selectedEdge.baseNode,
+                  group,
+                  selectedEdge.topicGroups || [group],
+                );
+              }}
+              style={[
+                localStyles.mapTopicChip,
+                selectedEdge.styleType === group.styleType
+                  ? localStyles.mapTopicChipActive
+                  : null,
+              ]}
+            >
+              <Text
+                style={[
+                  localStyles.mapTopicChipLabel,
+                  {
+                    color:
+                      selectedEdge.styleType === group.styleType
+                        ? selectedConnectionAccent
+                        : T.colors.textMuted,
+                  },
+                ]}
+              >
+                {(group.displayLabel || group.label).trim()}
+              </Text>
+            </PressableScale>
+          ))}
+        </ScrollView>
+      ) : null}
+      {controller.libraryConnectionMutationError ? (
+        <Text style={localStyles.mapSummaryError}>
+          {controller.libraryConnectionMutationError}
+        </Text>
+      ) : null}
+      <View
+        style={[
+          localStyles.mapSheetActions,
+          isExpandedLayout ? localStyles.mapSheetActionsExpanded : null,
+        ]}
+      >
+        <ActionButton
+          variant="primary"
+          label="Go deeper"
+          onPress={() => openChatForEdge(selectedEdge)}
+        />
+        {selectedLibraryConnection ? null : (
+          <ActionButton
+            variant="secondary"
+            disabled={
+              edgeAnalysisLoading || controller.libraryConnectionMutationBusy
+            }
+            label={
+              controller.libraryConnectionMutationBusy ? "Saving..." : "Save"
+            }
+            onPress={() => void saveSelectedConnection()}
+          />
+        )}
+        <ActionButton
+          variant="ghost"
+          label={selectedEdge.baseNode ? "Passage details" : "Close"}
+          onPress={() => {
+            if (selectedEdge.baseNode) {
+              setSelectedNodeId(selectedEdge.baseNode.id);
+              setSelectedEdge(null);
+              return;
+            }
+            setSelectedEdge(null);
+            setFocusedNodeId(null);
+          }}
+        />
+      </View>
+      {selectedLibraryConnection ? (
+        <View style={localStyles.mapLibraryMetaSection}>
+          <Text style={localStyles.mapLibraryMetaTitle}>Notes and tags</Text>
+          <TextInput
+            multiline
+            numberOfLines={3}
+            placeholder="Add a note about why this matters..."
+            placeholderTextColor="rgba(161,161,170,0.7)"
+            style={localStyles.mapMetaInput}
+            value={edgeNoteDraft}
+            onChangeText={(value) => {
+              setEdgeMetaSaved(false);
+              setEdgeNoteDraft(value);
+            }}
+          />
+          <TextInput
+            placeholder="Tags (comma-separated)"
+            placeholderTextColor="rgba(161,161,170,0.7)"
+            style={localStyles.mapMetaInput}
+            value={edgeTagsDraft}
+            onChangeText={(value) => {
+              setEdgeMetaSaved(false);
+              setEdgeTagsDraft(value);
+            }}
+          />
+          <View style={localStyles.mapLibraryMetaActions}>
+            <ActionButton
+              variant="secondary"
+              disabled={controller.libraryConnectionMutationBusy}
+              label={
+                controller.libraryConnectionMutationBusy
+                  ? "Saving..."
+                  : edgeMetaSaved
+                    ? "Saved"
+                    : "Save notes"
+              }
+              onPress={() => void saveSelectedConnectionMeta()}
+            />
+          </View>
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+  const activeInspectorContent =
+    activeInspector.kind === "node" ? (
+      nodeInspectorContent
+    ) : activeInspector.kind === "parallels" ? (
+      parallelsInspectorContent
+    ) : activeInspector.kind === "edge" ? (
+      isExpandedLayout ? (
+        <ScrollView
+          style={localStyles.mapInspectorScrollView}
+          contentContainerStyle={localStyles.mapInspectorScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {edgeInspectorBody}
+        </ScrollView>
+      ) : (
+        edgeInspectorBody
+      )
+    ) : null;
+
+  if (!activeBundle) {
     return (
       <View style={styles.tabScreen}>
         <SurfaceCard>
@@ -3020,128 +5864,450 @@ export function MapViewerScreen({
   }
 
   return (
-    <View style={styles.tabScreen}>
-      <SurfaceCard>
-        <Text style={styles.panelTitle}>{title || "Map"}</Text>
-        <Text style={styles.panelSubtitle}>
-          {visualBundle.nodes.length} verses, {visualBundle.edges.length}{" "}
-          connections
-        </Text>
-        <View style={styles.row}>
-          <ActionButton
-            variant="ghost"
-            label="Zoom -"
-            onPress={() => setScale((current) => Math.max(0.5, current - 0.15))}
-          />
-          <ActionButton
-            variant="ghost"
-            label="Zoom +"
-            onPress={() => setScale((current) => Math.min(2.5, current + 0.15))}
-          />
-          <ActionButton
-            variant="secondary"
-            label="Reset"
-            onPress={() => {
-              setScale(1);
-              setPan({ x: 0, y: 0 });
-            }}
-          />
-          <ActionButton
-            variant="primary"
-            label={controller.libraryMapMutationBusy ? "Saving..." : "Save map"}
-            disabled={controller.libraryMapMutationBusy}
-            onPress={() =>
-              void controller.handleSaveLibraryMapFromBundle(
-                visualBundle,
-                mapSaveTitle,
-              )
-            }
-          />
-        </View>
-        {controller.libraryMapMutationError ? (
-          <Text style={styles.error}>{controller.libraryMapMutationError}</Text>
-        ) : null}
-      </SurfaceCard>
-
-      <View style={localStyles.mapViewport} {...panResponder.panHandlers}>
-        <View
-          style={[
-            localStyles.mapCanvas,
-            {
-              transform: [
-                { translateX: pan.x },
-                { translateY: pan.y },
-                { scale },
-              ],
-            },
-          ]}
-        >
-          {visualBundle.edges.map((edge, index) => {
-            const from = nodeLookup.get(edge.from);
-            const to = nodeLookup.get(edge.to);
-            if (!from || !to) return null;
-            return (
-              <MapEdge
-                key={`${edge.from}-${edge.to}-${index}`}
-                from={from}
-                to={to}
-              />
-            );
-          })}
-
-          {mapNodes.map((node) => {
-            const isSelected = node.id === selectedNodeId;
-            return (
-              <Pressable
-                key={node.id}
-                onPress={() => setSelectedNodeId(node.id)}
-                style={[
-                  localStyles.mapNode,
-                  isSelected ? localStyles.mapNodeSelected : null,
-                  {
-                    left: node.x - 24,
-                    top: node.y - 24,
-                  },
-                ]}
+    <View style={localStyles.mapScreenRoot}>
+      <View
+        style={[
+          localStyles.mapWorkspace,
+          isExpandedLayout && inspectorVisible
+            ? localStyles.mapWorkspaceExpanded
+            : null,
+        ]}
+      >
+        <View style={localStyles.mapViewportPane}>
+          <View
+            style={localStyles.mapViewportFull}
+            onLayout={handleViewportLayout}
+            {...panResponder.panHandlers}
+          >
+            <View
+              style={[
+                localStyles.mapCanvasTransform,
+                {
+                  transform: [{ translateX: pan.x }, { translateY: pan.y }],
+                },
+              ]}
+              pointerEvents="box-none"
+            >
+              <View
+                style={[localStyles.mapCanvas, { transform: [{ scale }] }]}
+                pointerEvents="box-none"
               >
-                <Text style={localStyles.mapNodeText}>
-                  {node.book_name.slice(0, 3)} {node.chapter}:{node.verse}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+                {svgRuntimeAvailable ? (
+                  <Svg
+                    height={MAP_CANVAS_SIZE}
+                    pointerEvents="box-none"
+                    style={localStyles.mapSvgLayer}
+                    width={MAP_CANVAS_SIZE}
+                  >
+                    <Defs>
+                      <LinearGradient
+                        id="mobileMapSyntheticEdge"
+                        x1="0%"
+                        x2="100%"
+                        y1="0%"
+                        y2="0%"
+                      >
+                        <Stop offset="0%" stopColor="rgba(71,85,105,0.12)" />
+                        <Stop offset="50%" stopColor="rgba(148,163,184,0.3)" />
+                        <Stop offset="100%" stopColor="rgba(71,85,105,0.12)" />
+                      </LinearGradient>
+                    </Defs>
+                    {Array.from({ length: Math.max(maxRenderedDepth, 0) }).map(
+                      (_value, index) => (
+                        <Circle
+                          key={`ring-${index + 1}`}
+                          cx={MAP_CENTER}
+                          cy={MAP_CENTER}
+                          fill="none"
+                          r={MAP_RING_BASE_RADIUS + index * MAP_RING_STEP}
+                          stroke="rgba(148,163,184,0.08)"
+                          strokeDasharray="4 12"
+                          strokeWidth={1}
+                        />
+                      ),
+                    )}
+                    {mapEdges.map((edge) => {
+                      const from = nodeLookup.get(edge.from);
+                      const to = nodeLookup.get(edge.to);
+                      if (!from || !to) return null;
+                      const isSelected = selectedEdge?.edge.id === edge.id;
+                      const isDimmed = spotlightState
+                        ? !spotlightState.edgeIds.has(edge.id)
+                        : false;
+                      return (
+                        <MapEdge
+                          key={edge.id}
+                          edge={edge}
+                          from={from}
+                          dimmed={isDimmed}
+                          onPress={() => {
+                            if (edge.isSynthetic) return;
+                            setParallelSourceNode(null);
+                            setSelectedNodeId(null);
+                            setFocusedNodeId(from.id);
+                            setSelectedEdge({
+                              edge,
+                              from,
+                              to,
+                              connectedVerseIds: [from.id, to.id],
+                              styleType: edge.styleType,
+                            });
+                          }}
+                          selected={isSelected}
+                          to={to}
+                        />
+                      );
+                    })}
+                  </Svg>
+                ) : (
+                  <>
+                    {Array.from({ length: Math.max(maxRenderedDepth, 0) }).map(
+                      (_value, index) => (
+                        <View
+                          key={`ring-${index + 1}`}
+                          pointerEvents="none"
+                          style={[
+                            localStyles.mapDepthRingFallback,
+                            {
+                              width:
+                                (MAP_RING_BASE_RADIUS + index * MAP_RING_STEP) *
+                                2,
+                              height:
+                                (MAP_RING_BASE_RADIUS + index * MAP_RING_STEP) *
+                                2,
+                              left:
+                                MAP_CENTER -
+                                (MAP_RING_BASE_RADIUS + index * MAP_RING_STEP),
+                              top:
+                                MAP_CENTER -
+                                (MAP_RING_BASE_RADIUS + index * MAP_RING_STEP),
+                            },
+                          ]}
+                        />
+                      ),
+                    )}
+                    {mapEdges.map((edge) => {
+                      const from = nodeLookup.get(edge.from);
+                      const to = nodeLookup.get(edge.to);
+                      if (!from || !to) return null;
+                      const isSelected = selectedEdge?.edge.id === edge.id;
+                      const isDimmed = spotlightState
+                        ? !spotlightState.edgeIds.has(edge.id)
+                        : false;
+                      return (
+                        <MapEdgeFallback
+                          key={edge.id}
+                          edge={edge}
+                          from={from}
+                          dimmed={isDimmed}
+                          onPress={() => {
+                            if (edge.isSynthetic) return;
+                            setParallelSourceNode(null);
+                            setSelectedNodeId(null);
+                            setFocusedNodeId(from.id);
+                            setSelectedEdge({
+                              edge,
+                              from,
+                              to,
+                              connectedVerseIds: [from.id, to.id],
+                              styleType: edge.styleType,
+                            });
+                          }}
+                          selected={isSelected}
+                          to={to}
+                        />
+                      );
+                    })}
+                  </>
+                )}
 
-      {selectedNode ? (
-        <SurfaceCard>
-          <Text style={styles.panelTitle}>
-            {selectedNode.book_name} {selectedNode.chapter}:{selectedNode.verse}
-          </Text>
-          <ScrollView style={localStyles.nodeDetailScroll}>
-            <Text style={styles.connectionSynopsis}>{selectedNode.text}</Text>
-          </ScrollView>
-          <View style={styles.row}>
-            <ActionButton
-              variant="primary"
-              label="Open in reader"
-              onPress={() => {
-                void controller.navigateReaderTo(
-                  selectedNode.book_name,
-                  selectedNode.chapter,
-                );
-                navigation.navigate("Tabs", { mode: "Reader" } as never);
-              }}
-            />
+                {mapNodes.map((node) => {
+                  const isSelected = node.id === selectedNodeId;
+                  const isFocused = node.id === focusedNodeId;
+                  const isDimmed = spotlightState
+                    ? !spotlightState.nodeIds.has(node.id)
+                    : false;
+                  const frame = getMapNodeFrame(node);
+                  const semanticAccent =
+                    !node.isAnchor && node.semanticConnectionType
+                      ? getConnectionFamilyColor(node.semanticConnectionType)
+                      : null;
+                  return (
+                    <Pressable
+                      key={node.id}
+                      onPress={() => handleMapNodePress(node)}
+                      style={[
+                        localStyles.mapNode,
+                        isSelected ? localStyles.mapNodeSelected : null,
+                        node.depth === 0 ? localStyles.mapNodeAnchor : null,
+                        isFocused ? localStyles.mapNodeFocused : null,
+                        isDimmed ? localStyles.mapNodeDimmed : null,
+                        semanticAccent && !node.isAnchor
+                          ? {
+                              borderColor: semanticAccent,
+                              shadowColor: semanticAccent,
+                            }
+                          : null,
+                        {
+                          width: frame.width,
+                          minHeight: frame.height,
+                          left: node.x - frame.width / 2,
+                          top: node.y - frame.height / 2,
+                        },
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          localStyles.mapNodeText,
+                          node.depth === 0
+                            ? localStyles.mapNodeTextAnchor
+                            : null,
+                        ]}
+                      >
+                        {getMapNodeLabel(node)}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={localStyles.mapNodeSubtext}
+                      >
+                        {getMapNodeSubtitle(node)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View
+              style={[
+                localStyles.mapActionClusterTopRight,
+                { top: Math.max(insets.top + 10, 16) },
+              ]}
+            >
+              <IconButton
+                accessibilityLabel="Save map"
+                tone="accent"
+                shape="rounded"
+                disabled={controller.libraryMapMutationBusy}
+                icon={
+                  <Ionicons
+                    color={T.colors.accent}
+                    name="bookmark-outline"
+                    size={18}
+                  />
+                }
+                onPress={() =>
+                  void controller.handleSaveLibraryMapFromBundle(
+                    activeBundle,
+                    mapSaveTitle,
+                  )
+                }
+              />
+              <IconButton
+                accessibilityLabel="Map help"
+                shape="rounded"
+                icon={
+                  <Ionicons
+                    color={T.colors.textMuted}
+                    name="help-circle-outline"
+                    size={18}
+                  />
+                }
+                onPress={() => setHelpVisible(true)}
+              />
+            </View>
+
+            <View style={localStyles.mapActionClusterBottomRight}>
+              <IconButton
+                accessibilityLabel="Zoom out"
+                shape="rounded"
+                icon={
+                  <Ionicons
+                    color={T.colors.textMuted}
+                    name="remove"
+                    size={18}
+                  />
+                }
+                onPress={() => adjustViewportScale(-0.18)}
+              />
+              <IconButton
+                accessibilityLabel="Zoom in"
+                shape="rounded"
+                icon={
+                  <Ionicons color={T.colors.textMuted} name="add" size={18} />
+                }
+                onPress={() => adjustViewportScale(0.18)}
+              />
+              <IconButton
+                accessibilityLabel="Reset map view"
+                shape="rounded"
+                icon={
+                  <Ionicons
+                    color={T.colors.textMuted}
+                    name="scan-outline"
+                    size={18}
+                  />
+                }
+                onPress={resetViewport}
+              />
+            </View>
+
+            <View style={localStyles.mapActionClusterBottomLeft}>
+              <ActionButton
+                accessibilityLabel="Discover more connections"
+                disabled={discoveryDisabled}
+                label={discovering ? "Discovering..." : "Discover More"}
+                variant="secondary"
+                onPress={() => void runDiscovery("manual")}
+                style={localStyles.mapDiscoverButton}
+                labelStyle={localStyles.mapDiscoverButtonLabel}
+              />
+            </View>
+
+            {discovering || discoveryStatus ? (
+              <View
+                pointerEvents="none"
+                style={localStyles.mapDiscoveryOverlay}
+              >
+                <View style={localStyles.mapDiscoveryCard}>
+                  <Text style={localStyles.mapDiscoveryEyebrow}>
+                    Discovery pipeline
+                  </Text>
+                  <Text style={localStyles.mapDiscoveryText}>
+                    {discoveryStatus || "Analyzing verses..."}
+                  </Text>
+                  {discovering ? (
+                    <LoadingDotsNative
+                      color={T.colors.accent}
+                      label="Working"
+                      labelStyle={localStyles.mapDiscoveryDotsLabel}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+
+            {onboardingStep !== null ? (
+              <View style={localStyles.mapOnboardingOverlay}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Skip map onboarding"
+                  onPress={dismissOnboarding}
+                  style={localStyles.mapOnboardingScrim}
+                />
+                <View style={localStyles.mapOnboardingCard}>
+                  <View style={localStyles.mapOnboardingDots}>
+                    {[0, 1, 2].map((step) => (
+                      <View
+                        key={step}
+                        style={[
+                          localStyles.mapOnboardingDot,
+                          step === onboardingStep
+                            ? localStyles.mapOnboardingDotActive
+                            : null,
+                        ]}
+                      />
+                    ))}
+                  </View>
+                  <Text style={localStyles.mapOnboardingTitle}>
+                    {onboardingStep === 0
+                      ? "Anchor verse"
+                      : onboardingStep === 1
+                        ? "Trace the branches"
+                        : "Inspect the links"}
+                  </Text>
+                  <Text style={localStyles.mapOnboardingText}>
+                    {onboardingStep === 0
+                      ? "The highlighted center node is the anchor verse. The rest of the map radiates from that passage."
+                      : onboardingStep === 1
+                        ? "Colored edges express different relationship families. Follow the branches to see how the idea unfolds."
+                        : "Tap any node or edge to inspect the passage, then continue the study in Reader or Chat."}
+                  </Text>
+                  <View style={localStyles.mapOnboardingActions}>
+                    <ActionButton
+                      label="Skip"
+                      variant="ghost"
+                      onPress={dismissOnboarding}
+                      style={localStyles.mapOnboardingButton}
+                    />
+                    <ActionButton
+                      label={onboardingStep >= 2 ? "Done" : "Next"}
+                      variant="primary"
+                      onPress={advanceOnboarding}
+                      style={localStyles.mapOnboardingButton}
+                    />
+                  </View>
+                </View>
+              </View>
+            ) : null}
           </View>
-        </SurfaceCard>
-      ) : (
-        <SurfaceCard>
-          <Text style={styles.caption}>
-            Tap a node to inspect verse details.
+        </View>
+        {isExpandedLayout && inspectorVisible ? (
+          <MapInspectorSurface
+            mode={layoutMode}
+            variant={activeInspectorVariant}
+            visible={inspectorVisible}
+            onClose={closeActiveInspector}
+            title={resolvedInspector?.title}
+            subtitle={resolvedInspector?.subtitle ?? null}
+          >
+            {activeInspectorContent}
+          </MapInspectorSurface>
+        ) : null}
+      </View>
+      {!isExpandedLayout && inspectorVisible ? (
+        <MapInspectorSurface
+          mode={layoutMode}
+          variant={activeInspectorVariant}
+          visible={inspectorVisible}
+          onClose={closeActiveInspector}
+          title={resolvedInspector?.title}
+          subtitle={resolvedInspector?.subtitle ?? null}
+        >
+          {activeInspectorContent}
+        </MapInspectorSurface>
+      ) : null}
+
+      <BottomSheetSurface
+        visible={helpVisible}
+        onClose={() => setHelpVisible(false)}
+        title="Map help"
+        subtitle="How to read the native map"
+        snapPoints={["48%"]}
+      >
+        <View style={localStyles.mapSheetBody}>
+          <Text style={localStyles.mapHelpHeading}>What the colors mean</Text>
+          <View style={localStyles.mapLegendList}>
+            {[
+              ["ROOTS", "Anchor and root links"],
+              ["ECHOES", "Echoed themes"],
+              ["PROPHECY", "Prophetic movement"],
+              ["FULFILLMENT", "Promise to fulfillment"],
+            ].map(([type, description]) => (
+              <View key={type} style={localStyles.mapLegendRow}>
+                <View
+                  style={[
+                    localStyles.mapLegendSwatch,
+                    { backgroundColor: getMapEdgeColor(type) },
+                  ]}
+                />
+                <View style={localStyles.mapLegendCopy}>
+                  <Text style={localStyles.mapLegendTitle}>{type}</Text>
+                  <Text style={localStyles.mapLegendText}>{description}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+          <Text style={localStyles.mapHelpHeading}>Interaction model</Text>
+          <Text style={localStyles.mapHelpParagraph}>
+            Drag with one finger to pan. Pinch to zoom. Use the floating
+            controls to refit the map if you lose your place. Tap nodes to
+            inspect passages. Tap edges to study the relationship itself. Use
+            Discover More to pull in deeper connections from the same map.
           </Text>
-        </SurfaceCard>
-      )}
+        </View>
+      </BottomSheetSurface>
     </View>
   );
 }
@@ -3558,6 +6724,11 @@ const localStyles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: "600",
   },
+  mapReadyMeta: {
+    color: T.colors.textMuted,
+    fontSize: 10.5,
+    fontWeight: "600",
+  },
   chatComposer: {
     flexDirection: "row",
     alignItems: "center",
@@ -3700,46 +6871,667 @@ const localStyles = StyleSheet.create({
     fontSize: T.typography.caption,
     fontWeight: "700",
   },
-  mapViewport: {
+  mapScreenRoot: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    borderRadius: T.radius.lg,
-    backgroundColor: "rgba(9, 9, 11, 0.75)",
+    backgroundColor: T.colors.canvas,
+  },
+  mapWorkspace: {
+    flex: 1,
+  },
+  mapWorkspaceExpanded: {
+    flexDirection: "row",
+  },
+  mapViewportPane: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mapViewportFull: {
+    flex: 1,
     overflow: "hidden",
+    backgroundColor: "#09090B",
+  },
+  mapCanvasTransform: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: MAP_CANVAS_SIZE,
+    height: MAP_CANVAS_SIZE,
   },
   mapCanvas: {
     width: MAP_CANVAS_SIZE,
     height: MAP_CANVAS_SIZE,
   },
+  mapSvgLayer: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
+  mapDepthRingFallback: {
+    position: "absolute",
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.08)",
+    borderStyle: "dashed",
+  },
   mapNode: {
     position: "absolute",
-    width: 48,
-    minHeight: 48,
-    borderRadius: 24,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.surface,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(24,24,27,0.92)",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    shadowColor: T.colors.shadow,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  edgeFallbackHitbox: {
+    position: "absolute",
+    overflow: "visible",
+  },
+  edgeFallbackSegment: {
+    position: "absolute",
+    justifyContent: "center",
+  },
+  edgeFallbackGlow: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 8,
+    height: 8,
+    borderRadius: 999,
+  },
+  edgeFallbackLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 11,
+    borderRadius: 999,
   },
   mapNodeSelected: {
     borderColor: T.colors.accent,
-    backgroundColor: T.colors.accentSoft,
+    backgroundColor: "rgba(212,175,55,0.2)",
+    shadowColor: T.colors.accent,
+    shadowOpacity: 0.22,
+  },
+  mapNodeFocused: {
+    borderColor: "rgba(249,244,236,0.52)",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    shadowOpacity: 0.2,
+    transform: [{ scale: 1.02 }],
+  },
+  mapNodeDimmed: {
+    opacity: 0.38,
+  },
+  mapNodeAnchor: {
+    borderColor: "rgba(212,175,55,0.42)",
+    backgroundColor: "rgba(212,175,55,0.16)",
   },
   mapNodeText: {
     color: T.colors.text,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     textAlign: "center",
+    width: "100%",
   },
-  edge: {
+  mapNodeTextAnchor: {
+    color: T.colors.accentStrong,
+  },
+  mapNodeSubtext: {
+    color: T.colors.textMuted,
+    fontSize: 10,
+    textAlign: "center",
+    width: "100%",
+  },
+  mapSummaryError: {
+    color: T.colors.danger,
+    fontSize: 11,
+    lineHeight: 15,
+    paddingTop: 2,
+  },
+  mapActionClusterTopRight: {
     position: "absolute",
-    height: 1,
-    backgroundColor: "rgba(212, 175, 55, 0.35)",
+    top: 16,
+    right: 16,
+    gap: 8,
+  },
+  mapActionClusterBottomRight: {
+    position: "absolute",
+    right: 16,
+    bottom: 22,
+    gap: 8,
+  },
+  mapActionClusterBottomLeft: {
+    position: "absolute",
+    left: 16,
+    bottom: 88,
+  },
+  mapDiscoverButton: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderColor: "rgba(212,175,55,0.22)",
+    backgroundColor: "rgba(24,24,27,0.88)",
+  },
+  mapDiscoverButtonLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  mapDiscoveryOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  mapDiscoveryCard: {
+    width: "100%",
+    maxWidth: 280,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.24)",
+    backgroundColor: "rgba(9,9,11,0.92)",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 8,
+    alignItems: "center",
+  },
+  mapDiscoveryEyebrow: {
+    color: T.colors.accent,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  mapDiscoveryText: {
+    color: T.colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+    fontWeight: "600",
+  },
+  mapDiscoveryDotsLabel: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  mapOnboardingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  mapOnboardingScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  mapOnboardingCard: {
+    width: "100%",
+    maxWidth: 320,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(24,24,27,0.96)",
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 10,
+  },
+  mapOnboardingDots: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  mapOnboardingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+  mapOnboardingDotActive: {
+    width: 18,
+    backgroundColor: T.colors.accent,
+  },
+  mapOnboardingTitle: {
+    color: T.colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  mapOnboardingText: {
+    color: T.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  mapOnboardingActions: {
+    flexDirection: "row",
+    gap: 10,
+    paddingTop: 4,
+  },
+  mapOnboardingButton: {
+    flex: 1,
+  },
+  mapSheetBody: {
+    gap: T.spacing.sm,
+    paddingHorizontal: T.spacing.lg,
+    paddingBottom: T.spacing.sm,
+  },
+  mapMetaChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  mapMetaChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    overflow: "hidden",
+  },
+  mapTopicChipRow: {
+    gap: 8,
+    paddingRight: 8,
+  },
+  mapTopicChip: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 3,
+    minWidth: 112,
+  },
+  mapTopicChipActive: {
+    backgroundColor: "rgba(255,255,255,0.09)",
+  },
+  mapTopicChipLabel: {
+    color: T.colors.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mapVerseChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  mapVerseChip: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  mapVerseChipActive: {
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  mapVerseChipLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  mapVerseChipShowAll: {
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  mapVerseChipShowAllLabel: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  mapShowFewerButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 2,
+  },
+  mapShowFewerLabel: {
+    color: T.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  mapDetailCallout: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.2)",
+    backgroundColor: "rgba(212,175,55,0.08)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  mapDetailCalloutTitle: {
+    color: T.colors.accentStrong,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mapDetailCalloutText: {
+    color: T.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  mapSectionEyebrow: {
+    color: "rgba(245,240,230,0.45)",
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+  },
+  mapParallelCard: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  mapParallelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  mapParallelTitle: {
+    color: T.colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mapParallelCount: {
+    color: T.colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mapParallelPreviewList: {
+    gap: 8,
+  },
+  mapParallelPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  mapParallelPreviewReference: {
+    flex: 1,
+    color: T.colors.text,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  mapParallelPreviewMeta: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  mapParallelButton: {
+    alignSelf: "flex-start",
+  },
+  mapParallelSection: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  mapParallelPrimaryReference: {
+    color: T.colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mapParallelScroll: {
+    maxHeight: 260,
+  },
+  mapParallelList: {
+    gap: 10,
+  },
+  mapParallelRow: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 5,
+  },
+  mapParallelRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  mapParallelRowReference: {
+    flex: 1,
+    color: T.colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mapParallelRowSimilarity: {
+    color: T.colors.accent,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  mapParallelRowText: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  mapParallelFooterHint: {
+    color: "rgba(245,240,230,0.42)",
+    fontSize: 10,
+    lineHeight: 14,
   },
   nodeDetailScroll: {
-    maxHeight: 140,
+    maxHeight: 180,
+  },
+  mapSheetActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  mapSheetActionsExpanded: {
+    flexWrap: "wrap",
+  },
+  mapInspectorScrollView: {
+    flex: 1,
+  },
+  mapInspectorScrollContent: {
+    paddingBottom: T.spacing.lg,
+  },
+  mapSourceNoteText: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+  mapAnalysisCard: {
+    borderRadius: T.radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  mapAnalysisTitle: {
+    color: T.colors.accent,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  mapAnalysisHeading: {
+    color: T.colors.text,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  mapAnalysisText: {
+    color: T.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  mapAnalysisLoadingBlock: {
+    gap: 10,
+  },
+  mapAnalysisDotRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  mapAnalysisDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: T.colors.accent,
+  },
+  mapAnalysisLoadingText: {
+    color: T.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "600",
+    marginLeft: 2,
+  },
+  mapAnalysisSkeletonBlock: {
+    gap: 6,
+  },
+  mapAnalysisSkeletonLine: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    width: "100%",
+  },
+  mapAnalysisSkeletonLineWide: {
+    width: "88%",
+  },
+  mapAnalysisSkeletonLineShort: {
+    width: "72%",
+  },
+  mapTopicNavigatorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  mapTopicNavigatorLabel: {
+    color: "rgba(255,255,255,0.35)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  mapTopicDotRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  mapTopicDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  mapTopicNextButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  mapLibraryMetaSection: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+    paddingTop: 10,
+    gap: 8,
+  },
+  mapLibraryMetaTitle: {
+    color: T.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  mapMetaInput: {
+    borderRadius: T.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    color: T.colors.text,
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    textAlignVertical: "top",
+  },
+  mapLibraryMetaActions: {
+    flexDirection: "row",
+  },
+  mapAnalysisLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  mapAnalysisScroll: {
+    maxHeight: 180,
+  },
+  mapAnalysisVerseList: {
+    gap: 10,
+    paddingTop: 10,
+  },
+  mapAnalysisVerseRow: {
+    gap: 4,
+  },
+  mapAnalysisVerseReference: {
+    color: T.colors.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mapAnalysisVerseText: {
+    color: T.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  mapHelpHeading: {
+    color: T.colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.45,
+  },
+  mapLegendList: {
+    gap: 10,
+  },
+  mapLegendRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  mapLegendSwatch: {
+    width: 18,
+    height: 3,
+    borderRadius: 999,
+    marginTop: 8,
+  },
+  mapLegendCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  mapLegendTitle: {
+    color: T.colors.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mapLegendText: {
+    color: T.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  mapHelpParagraph: {
+    color: T.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });
