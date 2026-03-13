@@ -9,9 +9,9 @@ import { BottomSheetSurface } from "./BottomSheetSurface";
 type MapInspectorVariant = "node" | "edge" | "parallels";
 
 const SNAP_POINTS: Record<MapInspectorVariant, string[]> = {
-  node: ["56%"],
-  parallels: ["62%"],
-  edge: ["54%"],
+  node: ["60%"],
+  parallels: ["65%"],
+  edge: ["58%"],
 };
 
 export function MapInspectorSurface({
