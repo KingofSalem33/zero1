@@ -51,6 +51,15 @@ export {
   tryParseBookmarkReference,
 } from "./contracts/contentContracts";
 export {
+  isVisualContextBundle,
+  type EdgeType,
+  type ParallelPassage,
+  type PericopeBundle,
+  type ThreadNode,
+  type VisualContextBundle,
+  type VisualEdge,
+} from "./contracts/visualizationContracts";
+export {
   BIBLE_BOOKS,
   CHAPTER_COUNTS,
   getBibleBookSuggestions,

@@ -5,6 +5,7 @@ import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   BIBLE_BOOKS,
+  buildLibraryMapSession,
   formatBookmarkReference,
   getBibleBookSuggestions,
   getBibleChapterCount,
@@ -13,6 +14,7 @@ import {
 import {
   fetchChapterFooter,
   createBookmark,
+  createLibraryConnection,
   createLibraryBundle,
   createHighlightViaSync,
   createLibraryMap,
@@ -83,6 +85,31 @@ export interface LibraryMapEditForm {
   title: string;
   note: string;
   tags: string;
+}
+
+export interface LibraryConnectionCreateForm {
+  bundle: unknown;
+  fromVerse: {
+    id: number;
+    reference: string;
+    text: string;
+  };
+  toVerse: {
+    id: number;
+    reference: string;
+    text: string;
+  };
+  connectionType: string;
+  similarity: number;
+  synopsis: string;
+  explanation?: string;
+  connectedVerseIds?: number[];
+  connectedVerses?: Array<{
+    id: number;
+    reference: string;
+    text: string;
+  }>;
+  goDeeperPrompt?: string;
 }
 
 export interface ReaderState {
@@ -302,6 +329,9 @@ export interface MobileAppController {
   handleSaveLibraryConnectionMeta: (
     id: string,
     updates: LibraryConnectionEditForm,
+  ) => Promise<void>;
+  handleCreateLibraryConnectionFromMap: (
+    input: LibraryConnectionCreateForm,
   ) => Promise<void>;
   handleDeleteLibraryConnection: (id: string) => Promise<void>;
   navigateReaderTo: (book: string, chapter: number) => Promise<void>;
@@ -1774,6 +1804,95 @@ export function useMobileAppController(
     }
   }
 
+  async function handleCreateLibraryConnectionFromMap(
+    input: LibraryConnectionCreateForm,
+  ) {
+    const synopsis = input.synopsis.trim();
+    const explanation = input.explanation?.trim();
+    const goDeeperPrompt =
+      input.goDeeperPrompt?.trim() ||
+      `Trace the connection between ${input.fromVerse.reference} and ${input.toVerse.reference}. Explain why this ${input.connectionType.toLowerCase()} relationship matters.`;
+    const connectedVerseIds = Array.from(
+      new Set(
+        (input.connectedVerseIds || [])
+          .map((entry) => Number(entry))
+          .filter((entry) => Number.isFinite(entry) && entry > 0),
+      ),
+    );
+    const fallbackConnectedVerses = [input.fromVerse, input.toVerse];
+    const connectedVerses =
+      input.connectedVerses && input.connectedVerses.length > 0
+        ? input.connectedVerses
+        : fallbackConnectedVerses;
+
+    if (!synopsis) {
+      setLibraryConnectionMutationError("Connection synopsis is required.");
+      return;
+    }
+
+    setLibraryConnectionMutationBusy(true);
+    setLibraryConnectionMutationError(null);
+    try {
+      const bundleResult = await withAccessToken((accessToken) =>
+        createLibraryBundle({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          bundle: input.bundle,
+        }),
+      );
+      const created = await withAccessToken((accessToken) =>
+        createLibraryConnection({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          accessToken,
+          payload: {
+            bundleId: bundleResult.bundleId,
+            fromVerse: input.fromVerse,
+            toVerse: input.toVerse,
+            connectionType: input.connectionType,
+            similarity: input.similarity,
+            synopsis,
+            ...(explanation ? { explanation } : {}),
+            ...(connectedVerseIds.length > 0 ? { connectedVerseIds } : {}),
+            ...(connectedVerses.length > 0 ? { connectedVerses } : {}),
+            goDeeperPrompt,
+            mapSession: buildLibraryMapSession({
+              fromId: input.fromVerse.id,
+              toId: input.toVerse.id,
+              connectionType: input.connectionType,
+              verseIds:
+                connectedVerseIds.length > 0
+                  ? connectedVerseIds
+                  : [input.fromVerse.id, input.toVerse.id],
+            }),
+          },
+        }),
+      );
+      setLibraryConnections((current) => {
+        const existingIndex = current.findIndex(
+          (item) => item.id === created.id,
+        );
+        if (existingIndex < 0) {
+          return [created, ...current];
+        }
+        const next = [...current];
+        next[existingIndex] = created;
+        return next;
+      });
+      setLibraryLoadedAt(new Date().toISOString());
+      notify("success", "Connection saved.");
+    } catch (error) {
+      setLibraryConnectionMutationError(
+        error instanceof Error ? error.message : String(error),
+      );
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Failed to save connection.",
+      );
+    } finally {
+      setLibraryConnectionMutationBusy(false);
+    }
+  }
+
   async function handleDeleteLibraryConnection(id: string) {
     setLibraryConnectionMutationBusy(true);
     setLibraryConnectionMutationError(null);
@@ -2140,6 +2259,7 @@ export function useMobileAppController(
     handleSaveLibraryMapMeta,
     handleDeleteLibraryMap,
     handleSaveLibraryConnectionMeta,
+    handleCreateLibraryConnectionFromMap,
     handleDeleteLibraryConnection,
     navigateReaderTo,
     goToPreviousReaderChapter,
