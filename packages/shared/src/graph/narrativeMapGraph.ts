@@ -111,9 +111,9 @@ export function getNarrativeMapNodeDimensions(
 ) {
   const depth = node.depth || 0;
   if (isAnchor) return { width: 180, height: 90 };
-  if (depth === 1) return { width: 120, height: 50 };
-  if (depth === 2) return { width: 105, height: 52 };
-  return { width: 100, height: 52 };
+  if (depth === 1) return { width: 140, height: 50 };
+  if (depth === 2) return { width: 130, height: 48 };
+  return { width: 125, height: 48 };
 }
 
 export function buildInitialExpandedNodeIds(bundle: VisualContextBundle) {
@@ -422,5 +422,113 @@ export function deriveNarrativeMapGraph(
       (maxDepth, node) => Math.max(maxDepth, node.depth || 0),
       0,
     ),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate-node collapsing (ported from web NarrativeMap.tsx)
+// ---------------------------------------------------------------------------
+
+function makeReferenceKey(node: ThreadNode): string {
+  const book = (node.book_name || node.book_abbrev || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+  return `${book} ${node.chapter}:${node.verse}`;
+}
+
+/**
+ * Collapse duplicate verse nodes sharing the same reference into a single
+ * canonical node (best by depth, degree, centrality). Remaps edges and
+ * removes self-loops / duplicates.
+ */
+export function collapseDuplicateBundle(
+  bundle: VisualContextBundle | null,
+): VisualContextBundle | null {
+  if (!bundle || !bundle.nodes || bundle.nodes.length < 2) return bundle;
+
+  const nodes = bundle.nodes;
+  const edges = bundle.edges || [];
+
+  const degreeMap = new Map<number, number>();
+  edges.forEach((edge) => {
+    degreeMap.set(edge.from, (degreeMap.get(edge.from) ?? 0) + 1);
+    degreeMap.set(edge.to, (degreeMap.get(edge.to) ?? 0) + 1);
+  });
+
+  const groups = new Map<string, number[]>();
+  nodes.forEach((node) => {
+    const key = node.referenceKey || makeReferenceKey(node);
+    const list = groups.get(key) || [];
+    list.push(node.id);
+    groups.set(key, list);
+  });
+
+  const collapseMap = new Map<number, number>();
+  groups.forEach((ids) => {
+    if (ids.length <= 1) return;
+
+    let canonicalId =
+      bundle.rootId && ids.includes(bundle.rootId) ? bundle.rootId : ids[0];
+    canonicalId = ids.reduce((best, current) => {
+      if (best === canonicalId && canonicalId === bundle.rootId) return best;
+      const bestNode = nodes.find((n) => n.id === best);
+      const currentNode = nodes.find((n) => n.id === current);
+      if (!bestNode || !currentNode) return best;
+
+      if (currentNode.depth < bestNode.depth) return current;
+      if (currentNode.depth > bestNode.depth) return best;
+
+      const bestDegree = degreeMap.get(best) ?? 0;
+      const currentDegree = degreeMap.get(current) ?? 0;
+      if (currentDegree > bestDegree) return current;
+      if (currentDegree < bestDegree) return best;
+
+      const bestCentrality = bestNode.centrality ?? 0;
+      const currentCentrality = currentNode.centrality ?? 0;
+      if (currentCentrality > bestCentrality) return current;
+
+      return best;
+    }, canonicalId);
+
+    ids.forEach((id) => {
+      if (id !== canonicalId) collapseMap.set(id, canonicalId);
+    });
+  });
+
+  if (collapseMap.size === 0) return bundle;
+
+  const filteredNodes = nodes
+    .filter((node) => !collapseMap.has(node.id))
+    .map((node) => ({
+      ...node,
+      referenceKey: node.referenceKey || makeReferenceKey(node),
+      parentId: collapseMap.has(node.parentId ?? -1)
+        ? collapseMap.get(node.parentId ?? -1)
+        : node.parentId,
+    }));
+
+  const edgeKeys = new Set<string>();
+  const remappedEdges = edges
+    .map((edge) => ({
+      ...edge,
+      from: collapseMap.get(edge.from) ?? edge.from,
+      to: collapseMap.get(edge.to) ?? edge.to,
+    }))
+    .filter((edge) => edge.from !== edge.to)
+    .filter((edge) => {
+      const key =
+        edge.from < edge.to
+          ? `${edge.from}|${edge.to}`
+          : `${edge.to}|${edge.from}`;
+      if (edgeKeys.has(key)) return false;
+      edgeKeys.add(key);
+      return true;
+    });
+
+  return {
+    ...bundle,
+    nodes: filteredNodes,
+    edges: remappedEdges,
   };
 }

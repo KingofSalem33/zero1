@@ -15,13 +15,22 @@ import {
   UIManager,
   View,
 } from "react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Svg, {
   Circle,
   Defs,
   LinearGradient,
   Path as SvgPath,
+  Pattern,
+  Rect,
   Stop,
 } from "react-native-svg";
 import {
@@ -36,6 +45,7 @@ import {
   type BibleBookName,
 } from "@zero1/shared";
 import {
+  collapseDuplicateBundle,
   deriveNarrativeMapGraph,
   getNarrativeMapNodeDimensions,
   type NarrativeMapConnectionFamily,
@@ -191,9 +201,10 @@ interface RandomPericopeTopic {
 
 const MIN_VERSE_PREVIEW_LOADING_MS = 300;
 
-const MAP_CANVAS_SIZE = 1200;
+const MAP_CANVAS_SIZE = 1680;
 const MAP_CENTER = MAP_CANVAS_SIZE / 2;
 const MAP_ONBOARDING_STORAGE_KEY = "mobile-map-onboarding-complete";
+const MAP_VIEWPORT_STORAGE_KEY = "mobile-map-viewport";
 const REFERENCE_PARTS_REGEX =
   /((?:\[)?(?:\d\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)*\s\d+:\d+(?:-\d+)?(?:\])?)/g;
 const REFERENCE_MATCH_REGEX =
@@ -234,12 +245,12 @@ const CHAT_QUICK_PROMPTS_FALLBACK = [
   },
 ] as const;
 const STREAM_CHARS_PER_FRAME = 4;
-const MAP_MIN_SCALE = 0.4;
+const MAP_MIN_SCALE = 0.2;
 const MAP_MAX_SCALE = 2.8;
-const MAP_VIEWPORT_PADDING = 32;
-const MAP_PAN_MARGIN = 28;
-const MAP_RING_BASE_RADIUS = 180;
-const MAP_RING_STEP = 140;
+const MAP_VIEWPORT_PADDING = 60;
+const MAP_PAN_MARGIN = 200;
+const MAP_RING_BASE_RADIUS = 360;
+const MAP_RING_STEP = 240;
 
 type QuickPromptEntry = {
   key: "random" | "ot" | "nt";
@@ -434,8 +445,8 @@ function measureTouchDistance(
 ) {
   if (touches.length < 2) return 0;
   const [first, second] = touches;
-  const dx = second.locationX - first.locationX;
-  const dy = second.locationY - first.locationY;
+  const dx = second.pageX - first.pageX;
+  const dy = second.pageY - first.pageY;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
@@ -447,14 +458,14 @@ function measureTouchMidpoint(
   }
   if (touches.length === 1) {
     return {
-      x: touches[0].locationX,
-      y: touches[0].locationY,
+      x: touches[0].pageX,
+      y: touches[0].pageY,
     };
   }
   const [first, second] = touches;
   return {
-    x: (first.locationX + second.locationX) / 2,
-    y: (first.locationY + second.locationY) / 2,
+    x: (first.pageX + second.pageX) / 2,
+    y: (first.pageY + second.pageY) / 2,
   };
 }
 
@@ -523,13 +534,9 @@ function getPanRangeForAxis({
 }) {
   const projectedStart = canvasCenter + scale * (boundsStart - canvasCenter);
   const projectedEnd = canvasCenter + scale * (boundsEnd - canvasCenter);
-  const projectedSize = projectedEnd - projectedStart;
 
-  if (projectedSize <= viewportSize - margin * 2) {
-    const centeredPan = viewportSize / 2 - (projectedStart + projectedEnd) / 2;
-    return { min: centeredPan, max: centeredPan };
-  }
-
+  // Always allow panning with generous breathing room beyond the graph.
+  // The user should feel like they're in an open, infinite-ish canvas.
   return {
     min: viewportSize - margin - projectedEnd,
     max: margin - projectedStart,
@@ -798,6 +805,7 @@ function compactReferenceLabel(reference: string): string {
 }
 
 function getMapEdgeAppearance(edge: MapRenderableEdge) {
+  // Synthetic / structural edges — subtle gradient
   if (edge.isSynthetic || edge.styleType === "GREY") {
     return {
       stroke: "url(#mobileMapSyntheticEdge)",
@@ -806,19 +814,28 @@ function getMapEdgeAppearance(edge: MapRenderableEdge) {
       width: 1.1,
     };
   }
+  // Anchor rays — gold accent (matches web ANCHOR_EDGE_COLOR)
   if (edge.isAnchorRay) {
     return {
       stroke: "#C5B358",
       glow: "rgba(224,197,122,0.32)",
-      opacity: 0.62,
-      width: 1.45,
+      opacity: 0.6,
+      width: 1.4,
     };
   }
+  // Semantic edges — white stroke, opacity varies by family (matches web)
+  const familyOpacity: Record<string, number> = {
+    CROSS_REFERENCE: 0.3,
+    LEXICON: 0.3,
+    ECHO: 0.3,
+    FULFILLMENT: 0.3,
+    PATTERN: 0.3,
+  };
   return {
-    stroke: "rgba(248,250,252,0.96)",
+    stroke: "rgba(248,250,252,0.95)",
     glow: "rgba(248,250,252,0.22)",
-    opacity: 0.32,
-    width: 1.15,
+    opacity: familyOpacity[edge.styleType] ?? 0.3,
+    width: 1.1,
   };
 }
 
@@ -3571,7 +3588,8 @@ function getMapNodeFrame(node: VisualNode) {
 
 function getMapNodeLabel(node: VisualNode) {
   if (node.displayLabel?.trim()) return node.displayLabel.trim();
-  return `${node.book_abbrev || compactBookLabel(node.book_name)} ${node.chapter}:${node.verse}`;
+  const bookName = node.book_name || node.book_abbrev || "";
+  return `${bookName} ${node.chapter}:${node.verse}`;
 }
 
 function getConnectionFamilyColor(styleType: MapConnectionFamily) {
@@ -3610,11 +3628,11 @@ function getConnectionFamilyLabel(styleType: MapConnectionFamily) {
   }
 }
 
-function getMapNodeSubtitle(node: VisualNode) {
+function getMapNodeSubtitle(node: VisualNode): string | null {
   if (node.displaySubLabel?.trim()) return node.displaySubLabel.trim();
   if (node.pericopeTitle?.trim()) return node.pericopeTitle.trim();
-  if (node.depth === 0) return "Anchor verse";
-  return `Ring ${node.depth}`;
+  // Web only shows subtitle when displaySubLabel exists — no fallback text
+  return null;
 }
 
 function normalizeMapReferenceToken(value: string) {
@@ -3875,6 +3893,8 @@ function MapEdge({
   dimmed,
   selected,
   onPress,
+  entranceReady,
+  staggerDelay,
 }: {
   edge: MapRenderableEdge;
   from: MapNodeLayout;
@@ -3882,11 +3902,26 @@ function MapEdge({
   dimmed: boolean;
   selected: boolean;
   onPress: () => void;
+  entranceReady: boolean;
+  staggerDelay: number;
 }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!entranceReady) {
+      setVisible(false);
+      return;
+    }
+    const timer = setTimeout(() => setVisible(true), staggerDelay);
+    return () => clearTimeout(timer);
+  }, [entranceReady, staggerDelay]);
+
   const appearance = getMapEdgeAppearance(edge);
   const path = buildMapEdgePath(from, to);
-  const strokeOpacity = dimmed ? 0.03 : selected ? 1 : appearance.opacity;
-  const glowOpacity = dimmed ? 0.06 : selected ? 0.5 : 0.2;
+  const entranceScale = visible ? 1 : 0;
+  const strokeOpacity =
+    (dimmed ? 0.03 : selected ? 1 : appearance.opacity) * entranceScale;
+  const glowOpacity = (dimmed ? 0.06 : selected ? 0.5 : 0.2) * entranceScale;
 
   return (
     <>
@@ -3934,6 +3969,8 @@ function MapEdgeFallback({
   dimmed,
   selected,
   onPress,
+  entranceReady,
+  staggerDelay,
 }: {
   edge: MapRenderableEdge;
   from: MapNodeLayout;
@@ -3941,7 +3978,20 @@ function MapEdgeFallback({
   dimmed: boolean;
   selected: boolean;
   onPress: () => void;
+  entranceReady: boolean;
+  staggerDelay: number;
 }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!entranceReady) {
+      setVisible(false);
+      return;
+    }
+    const timer = setTimeout(() => setVisible(true), staggerDelay);
+    return () => clearTimeout(timer);
+  }, [entranceReady, staggerDelay]);
+
   const appearance = getMapEdgeAppearance(edge);
   const path = buildMapEdgePath(from, to);
   const isInteractive = !edge.isSynthetic;
@@ -3949,9 +3999,9 @@ function MapEdgeFallback({
     (path.end.x - path.start.x) * (path.end.x - path.start.x) +
       (path.end.y - path.start.y) * (path.end.y - path.start.y),
   );
-  const segmentCount = Math.max(18, Math.ceil(totalDistance / 16));
+  const segmentCount = Math.max(24, Math.ceil(totalDistance / 10));
   const segmentHeight = 24;
-  const segmentOverlap = 4;
+  const segmentOverlap = 8;
   const minX = Math.min(path.start.x, path.end.x) - 18;
   const minY = Math.min(path.start.y, path.end.y) - 28;
   const hitboxWidth = Math.abs(path.end.x - path.start.x) + 36;
@@ -4032,7 +4082,8 @@ function MapEdgeFallback({
               localStyles.edgeFallbackGlow,
               {
                 backgroundColor: appearance.glow,
-                opacity: dimmed ? 0.05 : selected ? 0.34 : 0.16,
+                opacity:
+                  (dimmed ? 0.05 : selected ? 0.34 : 0.16) * (visible ? 1 : 0),
               },
             ]}
           />
@@ -4047,7 +4098,9 @@ function MapEdgeFallback({
                         !appearance.stroke.startsWith("url(")
                       ? appearance.stroke
                       : "rgba(248,250,252,0.78)",
-                opacity: dimmed ? 0.03 : selected ? 1 : appearance.opacity,
+                opacity:
+                  (dimmed ? 0.03 : selected ? 1 : appearance.opacity) *
+                  (visible ? 1 : 0),
                 height: selected ? appearance.width + 1.2 : appearance.width,
               },
             ]}
@@ -4055,6 +4108,51 @@ function MapEdgeFallback({
         </View>
       ))}
     </Pressable>
+  );
+}
+
+function AnimatedMapNode({
+  depth,
+  children,
+}: {
+  depth: number;
+  children: ReactNode;
+}) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const delay = Math.min(depth * 80, 800);
+    const timer = setTimeout(() => {
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [
+          {
+            translateY: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [-8, 0],
+            }),
+          },
+          {
+            scale: anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.97, 1],
+            }),
+          },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
@@ -4105,6 +4203,9 @@ export function MapViewerScreen({
   const [edgeTagsDraft, setEdgeTagsDraft] = useState("");
   const [edgeMetaSaved, setEdgeMetaSaved] = useState(false);
   const autoDiscoveryRunRef = useRef(false);
+  const [edgesAnimated, setEdgesAnimated] = useState(false);
+  const [awePulseActive, setAwePulseActive] = useState(false);
+  const awePulseAnim = useRef(new Animated.Value(0)).current;
   const pendingViewportFitRef = useRef(true);
   const topicTitlesRequestRef = useRef(0);
   const edgeAnalysisCacheRef = useRef<Map<string, MapEdgeAnalysis>>(new Map());
@@ -4126,7 +4227,10 @@ export function MapViewerScreen({
     startDistance: 0,
     startMidpoint: { x: 0, y: 0 },
   });
-  const activeBundle = workingBundle;
+  const activeBundle = useMemo(
+    () => collapseDuplicateBundle(workingBundle),
+    [workingBundle],
+  );
 
   const derivedGraph = useMemo(
     () => (activeBundle ? deriveNarrativeMapGraph(activeBundle) : null),
@@ -4142,6 +4246,15 @@ export function MapViewerScreen({
     () => new Map(mapEdges.map((edge) => [edge.id, edge])),
     [mapEdges],
   );
+  const connectionCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    mapEdges.forEach((edge) => {
+      if (edge.isSynthetic || edge.styleType === "GREY") return;
+      counts.set(edge.from, (counts.get(edge.from) ?? 0) + 1);
+      counts.set(edge.to, (counts.get(edge.to) ?? 0) + 1);
+    });
+    return counts;
+  }, [mapEdges]);
   const selectedNode = selectedNodeId ? nodeLookup.get(selectedNodeId) : null;
   const selectedNodeParallelPassages = useMemo(
     () => (selectedNode ? getDedupedParallelPassages(selectedNode) : []),
@@ -4476,6 +4589,44 @@ export function MapViewerScreen({
     [derivedGraph],
   );
   const svgRuntimeAvailable = useMemo(() => isSvgRuntimeAvailable(), []);
+
+  // Edge entrance animation: wait for nodes to settle, then fade edges in
+  useEffect(() => {
+    if (mapEdges.length === 0) {
+      setEdgesAnimated(false);
+      return;
+    }
+    setEdgesAnimated(false);
+    const nodeEntranceTime = Math.min(maxRenderedDepth * 80 + 400, 1200);
+    const timer = setTimeout(() => {
+      setEdgesAnimated(true);
+    }, nodeEntranceTime);
+    return () => clearTimeout(timer);
+  }, [mapEdges.length, maxRenderedDepth]);
+
+  // Awe-pulse: gold radial flash on graph completion
+  useEffect(() => {
+    if (!edgesAnimated) return;
+    setAwePulseActive(true);
+    awePulseAnim.setValue(0);
+    Animated.timing(awePulseAnim, {
+      toValue: 1,
+      duration: 1200,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(() => setAwePulseActive(false));
+  }, [edgesAnimated]);
+
+  // Compute per-edge stagger delays (logarithmic, capped at 800ms)
+  const edgeStaggerDelays = useMemo(() => {
+    const delays = new Map<string, number>();
+    mapEdges.forEach((edge, idx) => {
+      const stagger = Math.round(Math.log(idx + 1) * 160);
+      delays.set(edge.id, Math.min(stagger, 800));
+    });
+    return delays;
+  }, [mapEdges]);
+
   const closeActiveInspector = useCallback(() => {
     if (parallelSourceNode) {
       setParallelSourceNode(null);
@@ -4525,6 +4676,46 @@ export function MapViewerScreen({
     autoDiscoveryRunRef.current = false;
     pendingViewportFitRef.current = true;
   }, [initialBundle]);
+
+  // Persist viewport state to AsyncStorage on unmount
+  const viewportKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const rootId = activeBundle?.rootId;
+    viewportKeyRef.current = rootId != null ? `${rootId}` : null;
+  }, [activeBundle?.rootId]);
+
+  useEffect(() => {
+    return () => {
+      const key = viewportKeyRef.current;
+      if (!key) return;
+      void AsyncStorage.setItem(
+        MAP_VIEWPORT_STORAGE_KEY,
+        JSON.stringify({ key, pan: panRef.current, scale: scaleRef.current }),
+      );
+    };
+  }, []);
+
+  // Restore saved viewport if revisiting the same root verse
+  useEffect(() => {
+    if (!activeBundle?.rootId) return;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(MAP_VIEWPORT_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw) as {
+          key: string;
+          pan: { x: number; y: number };
+          scale: number;
+        };
+        if (saved.key !== `${activeBundle.rootId}`) return;
+        setPan(saved.pan);
+        setScale(saved.scale);
+        pendingViewportFitRef.current = false;
+      } catch {
+        // ignore parse errors
+      }
+    })();
+  }, [activeBundle?.rootId]);
 
   useEffect(() => {
     panRef.current = pan;
@@ -4618,12 +4809,12 @@ export function MapViewerScreen({
           event.nativeEvent.touches.length > 1,
         onMoveShouldSetPanResponder: (event, gestureState) =>
           event.nativeEvent.touches.length > 1 ||
-          Math.abs(gestureState.dx) > 3 ||
-          Math.abs(gestureState.dy) > 3,
+          Math.abs(gestureState.dx) > 6 ||
+          Math.abs(gestureState.dy) > 6,
         onMoveShouldSetPanResponderCapture: (event, gestureState) =>
           event.nativeEvent.touches.length > 1 ||
-          Math.abs(gestureState.dx) > 3 ||
-          Math.abs(gestureState.dy) > 3,
+          Math.abs(gestureState.dx) > 6 ||
+          Math.abs(gestureState.dy) > 6,
         onPanResponderGrant: (event: GestureResponderEvent) => {
           const touches = event.nativeEvent.touches;
           if (touches.length > 1) {
@@ -4637,6 +4828,8 @@ export function MapViewerScreen({
             };
             return;
           }
+          // Use pageX/pageY for stable screen-space coordinates that don't
+          // jump when the touch target changes mid-gesture.
           const touch = touches[0];
           if (!touch) return;
           gestureStateRef.current = {
@@ -4644,13 +4837,13 @@ export function MapViewerScreen({
             startPan: panRef.current,
             startScale: scaleRef.current,
             startTouch: {
-              x: touch.locationX,
-              y: touch.locationY,
+              x: touch.pageX,
+              y: touch.pageY,
             },
             startDistance: 0,
             startMidpoint: {
-              x: touch.locationX,
-              y: touch.locationY,
+              x: touch.pageX,
+              y: touch.pageY,
             },
           };
         },
@@ -4687,18 +4880,19 @@ export function MapViewerScreen({
           const touch = touches[0];
           if (!touch) return;
           if (gestureStateRef.current.mode !== "pan") {
+            // Transitioning from pinch to pan — re-anchor using pageX/pageY
             gestureStateRef.current = {
               mode: "pan",
               startPan: panRef.current,
               startScale: scaleRef.current,
               startTouch: {
-                x: touch.locationX,
-                y: touch.locationY,
+                x: touch.pageX,
+                y: touch.pageY,
               },
               startDistance: 0,
               startMidpoint: {
-                x: touch.locationX,
-                y: touch.locationY,
+                x: touch.pageX,
+                y: touch.pageY,
               },
             };
           }
@@ -4706,13 +4900,23 @@ export function MapViewerScreen({
           applyViewportState(scaleRef.current, {
             x:
               gestureStateRef.current.startPan.x +
-              (touch.locationX - gestureStateRef.current.startTouch.x),
+              (touch.pageX - gestureStateRef.current.startTouch.x),
             y:
               gestureStateRef.current.startPan.y +
-              (touch.locationY - gestureStateRef.current.startTouch.y),
+              (touch.pageY - gestureStateRef.current.startTouch.y),
           });
         },
-        onPanResponderRelease: () => {
+        onPanResponderRelease: (_event, gestureState) => {
+          // If the user barely moved, treat as a background tap — clear spotlight
+          if (
+            gestureStateRef.current.mode === "pan" &&
+            Math.abs(gestureState.dx) < 6 &&
+            Math.abs(gestureState.dy) < 6
+          ) {
+            setFocusedNodeId(null);
+            setSelectedNodeId(null);
+            setSelectedEdge(null);
+          }
           gestureStateRef.current.mode = "idle";
         },
         onPanResponderTerminate: () => {
@@ -5236,6 +5440,13 @@ export function MapViewerScreen({
     ],
   );
 
+  // Auto-discover connections on first bundle load (mirrors web behavior)
+  useEffect(() => {
+    if (!activeBundle || discovering || autoDiscoveryRunRef.current) return;
+    autoDiscoveryRunRef.current = true;
+    void runDiscovery("auto");
+  }, [activeBundle, discovering, runDiscovery]);
+
   const saveSelectedConnection = useCallback(async () => {
     if (!selectedEdge || !activeBundle) return;
     const connectionLabel = selectedEdge.styleType
@@ -5308,41 +5519,57 @@ export function MapViewerScreen({
     (node: MapNodeLayout) => {
       setParallelSourceNode(null);
 
-      if (
-        selectedEdge &&
-        selectedEdge.baseNode?.id === node.id &&
-        selectedEdge.topicGroups &&
-        selectedEdge.topicGroups.length > 0
-      ) {
+      // If this node is already focused (spotlight active), second tap opens
+      // the inspector — matching web's click-to-inspect after hover-to-spotlight.
+      if (focusedNodeId === node.id) {
+        // Already spotlighted — open the inspector
+        if (
+          selectedEdge &&
+          selectedEdge.baseNode?.id === node.id &&
+          selectedEdge.topicGroups &&
+          selectedEdge.topicGroups.length > 0
+        ) {
+          // Edge inspector already open for this node — toggle to node inspector
+          setSelectedEdge(null);
+          setSelectedNodeId(node.id);
+          return;
+        }
+
+        const topicData = buildConnectionTopics(node.id);
+        if (topicData && topicData.groups.length > 0) {
+          const preferredStyle =
+            typeof node.semanticConnectionType === "string"
+              ? node.semanticConnectionType
+              : undefined;
+          const defaultTopic = pickDefaultTopic(
+            topicData.groups,
+            preferredStyle,
+          );
+          if (defaultTopic) {
+            openConnectionSelectionForTopic(
+              topicData.verse,
+              defaultTopic,
+              topicData.groups,
+            );
+            return;
+          }
+        }
+
+        // No connection data — open node inspector
         setSelectedEdge(null);
         setSelectedNodeId(node.id);
-        setFocusedNodeId(node.id);
         return;
       }
 
-      const topicData = buildConnectionTopics(node.id);
-      if (topicData && topicData.groups.length > 0) {
-        const preferredStyle =
-          typeof node.semanticConnectionType === "string"
-            ? node.semanticConnectionType
-            : undefined;
-        const defaultTopic = pickDefaultTopic(topicData.groups, preferredStyle);
-        if (defaultTopic) {
-          openConnectionSelectionForTopic(
-            topicData.verse,
-            defaultTopic,
-            topicData.groups,
-          );
-          return;
-        }
-      }
-
+      // First tap — spotlight the node (highlight its connections, dim others).
+      // Clear any open inspector so the user sees the spotlight cleanly.
       setSelectedEdge(null);
-      setFocusedNodeId((current) => (current === node.id ? null : node.id));
-      setSelectedNodeId((current) => (current === node.id ? null : node.id));
+      setSelectedNodeId(null);
+      setFocusedNodeId(node.id);
     },
     [
       buildConnectionTopics,
+      focusedNodeId,
       openConnectionSelectionForTopic,
       pickDefaultTopic,
       selectedEdge,
@@ -5545,9 +5772,26 @@ export function MapViewerScreen({
         >
           {selectedConnectionLabel}
         </Text>
+        {isLlmDiscoveredEdge(selectedEdge.edge) ? (
+          <View style={localStyles.mapLlmBadge}>
+            <Ionicons color="rgba(212,175,55,0.9)" name="sparkles" size={10} />
+            <Text style={localStyles.mapLlmBadgeText}>AI</Text>
+          </View>
+        ) : null}
         <Text style={localStyles.mapMetaChip}>
           {Math.round(selectedEdge.edge.weight * 100)}%
         </Text>
+        {isLlmDiscoveredEdge(selectedEdge.edge) &&
+        typeof selectedEdge.edge.metadata?.confidence === "number" &&
+        selectedEdge.edge.metadata.confidence !== selectedEdge.edge.weight ? (
+          <Text style={[localStyles.mapMetaChip, { opacity: 0.5 }]}>
+            conf{" "}
+            {Math.round(
+              (selectedEdge.edge.metadata.confidence as number) * 100,
+            )}
+            %
+          </Text>
+        ) : null}
       </View>
       <View style={localStyles.mapVerseChipRow}>
         {visibleConnectionVerses.map((verse) => (
@@ -5729,19 +5973,34 @@ export function MapViewerScreen({
                   : null,
               ]}
             >
-              <Text
-                style={[
-                  localStyles.mapTopicChipLabel,
-                  {
-                    color:
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+              >
+                {group.labelSource === "llm" ? (
+                  <Ionicons
+                    color={
                       selectedEdge.styleType === group.styleType
                         ? selectedConnectionAccent
-                        : T.colors.textMuted,
-                  },
-                ]}
-              >
-                {(group.displayLabel || group.label).trim()}
-              </Text>
+                        : T.colors.textMuted
+                    }
+                    name="sparkles"
+                    size={9}
+                  />
+                ) : null}
+                <Text
+                  style={[
+                    localStyles.mapTopicChipLabel,
+                    {
+                      color:
+                        selectedEdge.styleType === group.styleType
+                          ? selectedConnectionAccent
+                          : T.colors.textMuted,
+                    },
+                  ]}
+                >
+                  {(group.displayLabel || group.label).trim()}
+                </Text>
+              </View>
             </PressableScale>
           ))}
         </ScrollView>
@@ -5911,7 +6170,27 @@ export function MapViewerScreen({
                         <Stop offset="50%" stopColor="rgba(148,163,184,0.3)" />
                         <Stop offset="100%" stopColor="rgba(71,85,105,0.12)" />
                       </LinearGradient>
+                      <Pattern
+                        id="mobileMapDotPattern"
+                        width={20}
+                        height={20}
+                        patternUnits="userSpaceOnUse"
+                      >
+                        <Circle
+                          cx={10}
+                          cy={10}
+                          r={0.8}
+                          fill="rgba(255,255,255,0.03)"
+                        />
+                      </Pattern>
                     </Defs>
+                    <Rect
+                      x={0}
+                      y={0}
+                      width={MAP_CANVAS_SIZE}
+                      height={MAP_CANVAS_SIZE}
+                      fill="url(#mobileMapDotPattern)"
+                    />
                     {Array.from({ length: Math.max(maxRenderedDepth, 0) }).map(
                       (_value, index) => (
                         <Circle
@@ -5920,8 +6199,8 @@ export function MapViewerScreen({
                           cy={MAP_CENTER}
                           fill="none"
                           r={MAP_RING_BASE_RADIUS + index * MAP_RING_STEP}
-                          stroke="rgba(148,163,184,0.08)"
-                          strokeDasharray="4 12"
+                          stroke="rgba(255,255,255,0.035)"
+                          strokeDasharray="6 10"
                           strokeWidth={1}
                         />
                       ),
@@ -5940,6 +6219,8 @@ export function MapViewerScreen({
                           edge={edge}
                           from={from}
                           dimmed={isDimmed}
+                          entranceReady={edgesAnimated}
+                          staggerDelay={edgeStaggerDelays.get(edge.id) ?? 0}
                           onPress={() => {
                             if (edge.isSynthetic) return;
                             setParallelSourceNode(null);
@@ -6000,6 +6281,8 @@ export function MapViewerScreen({
                           edge={edge}
                           from={from}
                           dimmed={isDimmed}
+                          entranceReady={edgesAnimated}
+                          staggerDelay={edgeStaggerDelays.get(edge.id) ?? 0}
                           onPress={() => {
                             if (edge.isSynthetic) return;
                             setParallelSourceNode(null);
@@ -6032,52 +6315,168 @@ export function MapViewerScreen({
                     !node.isAnchor && node.semanticConnectionType
                       ? getConnectionFamilyColor(node.semanticConnectionType)
                       : null;
+                  const nodeConnCount = connectionCounts.get(node.id) ?? 0;
+                  const showHubBadge =
+                    !isDimmed && !node.isAnchor && nodeConnCount >= 3;
+                  const hubBoost = !node.isAnchor
+                    ? Math.min(Math.max(nodeConnCount - 2, 0), 10)
+                    : 0;
+                  const hubScale = 1 + hubBoost * 0.045;
+                  const parallelCount = getDedupedParallelPassages(node).length;
                   return (
-                    <Pressable
-                      key={node.id}
-                      onPress={() => handleMapNodePress(node)}
-                      style={[
-                        localStyles.mapNode,
-                        isSelected ? localStyles.mapNodeSelected : null,
-                        node.depth === 0 ? localStyles.mapNodeAnchor : null,
-                        isFocused ? localStyles.mapNodeFocused : null,
-                        isDimmed ? localStyles.mapNodeDimmed : null,
-                        semanticAccent && !node.isAnchor
-                          ? {
-                              borderColor: semanticAccent,
-                              shadowColor: semanticAccent,
-                            }
-                          : null,
-                        {
-                          width: frame.width,
-                          minHeight: frame.height,
-                          left: node.x - frame.width / 2,
-                          top: node.y - frame.height / 2,
-                        },
-                      ]}
-                    >
-                      <Text
-                        numberOfLines={1}
+                    <AnimatedMapNode key={node.id} depth={node.depth ?? 1}>
+                      <Pressable
+                        onPress={() => handleMapNodePress(node)}
                         style={[
-                          localStyles.mapNodeText,
-                          node.depth === 0
-                            ? localStyles.mapNodeTextAnchor
-                            : null,
+                          localStyles.mapNode,
+                          isSelected ? localStyles.mapNodeSelected : null,
+                          node.depth === 0 ? localStyles.mapNodeAnchor : null,
+                          isFocused ? localStyles.mapNodeFocused : null,
+                          isDimmed ? localStyles.mapNodeDimmed : null,
+                          // Semantic accent is applied subtly via the glow ring overlay
+                          // (below), NOT as a direct border color — matches web behavior
+                          null,
+                          {
+                            width: frame.width * hubScale,
+                            minHeight: frame.height * hubScale,
+                            left: node.x - (frame.width * hubScale) / 2,
+                            top: node.y - (frame.height * hubScale) / 2,
+                          },
                         ]}
                       >
-                        {getMapNodeLabel(node)}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={localStyles.mapNodeSubtext}
-                      >
-                        {getMapNodeSubtitle(node)}
-                      </Text>
-                    </Pressable>
+                        {/* Glass highlight shimmer — top edge */}
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            position: "absolute",
+                            top: 2,
+                            left: 12,
+                            right: 12,
+                            height: 1,
+                            borderRadius: 1,
+                            backgroundColor: node.isAnchor
+                              ? "rgba(197,179,88,0.6)"
+                              : "rgba(255,255,255,0.12)",
+                            opacity: isDimmed ? 0.2 : 0.9,
+                          }}
+                        />
+                        {/* Outer glow ring overlay */}
+                        {!isDimmed && (
+                          <View
+                            pointerEvents="none"
+                            style={{
+                              position: "absolute",
+                              top: -2,
+                              left: -2,
+                              right: -2,
+                              bottom: -2,
+                              borderRadius: 14,
+                              borderWidth: 1,
+                              borderColor: semanticAccent
+                                ? `${semanticAccent}2E`
+                                : node.isAnchor
+                                  ? "rgba(197,179,88,0.18)"
+                                  : "rgba(203,213,225,0.18)",
+                              shadowColor:
+                                semanticAccent ||
+                                (node.isAnchor ? "#C5B358" : "#CBD5E1"),
+                              shadowOpacity: node.isAnchor ? 0.22 : 0.19,
+                              shadowRadius: 8,
+                              shadowOffset: { width: 0, height: 0 },
+                            }}
+                          />
+                        )}
+                        {/* Inner top-edge inset highlight */}
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 1,
+                            backgroundColor: "rgba(255,255,255,0.10)",
+                            borderTopLeftRadius: 12,
+                            borderTopRightRadius: 12,
+                            opacity: isDimmed ? 0.2 : 1,
+                          }}
+                        />
+                        {/* Hub badge — connection count */}
+                        {showHubBadge ? (
+                          <View style={localStyles.mapNodeHubBadge}>
+                            <Text style={localStyles.mapNodeHubBadgeText}>
+                              {nodeConnCount}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {/* Parallel passages badge */}
+                        {parallelCount > 0 && !isDimmed ? (
+                          <Pressable
+                            hitSlop={8}
+                            onPress={() => {
+                              setSelectedNodeId(null);
+                              setSelectedEdge(null);
+                              setFocusedNodeId(node.id);
+                              setParallelSourceNode(node);
+                            }}
+                            style={localStyles.mapNodeParallelBadge}
+                          >
+                            <Text style={localStyles.mapNodeParallelBadgeText}>
+                              +{parallelCount}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        <Text
+                          numberOfLines={node.depth === 0 ? 2 : 1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.8}
+                          style={[
+                            localStyles.mapNodeText,
+                            node.depth === 0
+                              ? localStyles.mapNodeTextAnchor
+                              : null,
+                          ]}
+                        >
+                          {getMapNodeLabel(node)}
+                        </Text>
+                        {getMapNodeSubtitle(node) ? (
+                          <Text
+                            numberOfLines={1}
+                            style={localStyles.mapNodeSubtext}
+                          >
+                            {getMapNodeSubtitle(node)}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    </AnimatedMapNode>
                   );
                 })}
               </View>
             </View>
+
+            {/* Awe-pulse: gold radial flash on graph completion */}
+            {awePulseActive && (
+              <Animated.View
+                pointerEvents="none"
+                style={{
+                  ...StyleSheet.absoluteFillObject,
+                  backgroundColor: "rgba(212,175,55,0.10)",
+                  borderRadius: 24,
+                  opacity: awePulseAnim.interpolate({
+                    inputRange: [0, 0.3, 1],
+                    outputRange: [0, 1, 0],
+                  }),
+                  transform: [
+                    {
+                      scale: awePulseAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.6, 1.8],
+                      }),
+                    },
+                  ],
+                }}
+              />
+            )}
 
             <View
               style={[
@@ -6910,24 +7309,66 @@ const localStyles = StyleSheet.create({
     position: "absolute",
     borderRadius: 9999,
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.08)",
+    borderColor: "rgba(255,255,255,0.035)",
     borderStyle: "dashed",
   },
   mapNode: {
     position: "absolute",
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(24,24,27,0.92)",
+    borderColor: "rgba(255,255,255,0.14)",
+    // Glass-like background: semi-transparent with slight warmth to match web's
+    // radial-gradient glassmorphism (RN can't do backdrop-filter, so we darken slightly)
+    backgroundColor: "rgba(22,22,28,0.72)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 6,
-    shadowColor: T.colors.shadow,
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.42,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 5,
+  },
+  mapNodeHubBadge: {
+    position: "absolute",
+    top: -8,
+    left: -8,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(10,10,12,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    zIndex: 2,
+  },
+  mapNodeHubBadgeText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  mapNodeParallelBadge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(10,10,12,0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    zIndex: 2,
+  },
+  mapNodeParallelBadgeText: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 9,
+    fontWeight: "700",
   },
   edgeFallbackHitbox: {
     position: "absolute",
@@ -6954,22 +7395,29 @@ const localStyles = StyleSheet.create({
   },
   mapNodeSelected: {
     borderColor: T.colors.accent,
-    backgroundColor: "rgba(212,175,55,0.2)",
+    backgroundColor: "rgba(212,175,55,0.16)",
     shadowColor: T.colors.accent,
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
   },
   mapNodeFocused: {
-    borderColor: "rgba(249,244,236,0.52)",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    shadowOpacity: 0.2,
+    borderColor: "rgba(249,244,236,0.42)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#F9F4EC",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
     transform: [{ scale: 1.02 }],
   },
   mapNodeDimmed: {
-    opacity: 0.38,
+    opacity: 0.15,
   },
   mapNodeAnchor: {
-    borderColor: "rgba(212,175,55,0.42)",
-    backgroundColor: "rgba(212,175,55,0.16)",
+    borderColor: "rgba(197,179,88,0.35)",
+    backgroundColor: "rgba(212,175,55,0.10)",
+    shadowColor: "#C5B358",
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 9 },
   },
   mapNodeText: {
     color: T.colors.text,
@@ -7133,6 +7581,22 @@ const localStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     overflow: "hidden",
+  },
+  mapLlmBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderRadius: T.radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.2)",
+    backgroundColor: "rgba(212,175,55,0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  mapLlmBadgeText: {
+    color: "rgba(212,175,55,0.9)",
+    fontSize: 10,
+    fontWeight: "700",
   },
   mapTopicChipRow: {
     gap: 8,
