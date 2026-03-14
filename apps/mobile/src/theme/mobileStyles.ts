@@ -462,44 +462,6 @@ export const styles = StyleSheet.create({
     gap: T.spacing.md,
     paddingBottom: T.spacing.xl,
   },
-  librarySheetBackdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  librarySheetScrim: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  librarySheetPanel: {
-    maxHeight: "86%",
-    borderTopLeftRadius: T.radius.lg,
-    borderTopRightRadius: T.radius.lg,
-    borderWidth: 1,
-    borderColor: T.colors.border,
-    backgroundColor: T.colors.ink,
-    paddingHorizontal: T.spacing.lg,
-    paddingTop: T.spacing.sm,
-    paddingBottom: T.spacing.lg,
-    gap: T.spacing.sm,
-  },
-  noteEditorPanel: {
-    maxHeight: undefined,
-    borderTopLeftRadius: T.radius.lg,
-    borderTopRightRadius: T.radius.lg,
-  },
-  librarySheetHandle: {
-    alignSelf: "center",
-    width: 48,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: T.colors.border,
-    marginBottom: T.spacing.xs,
-  },
-  librarySheetHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: T.spacing.sm,
-  },
   librarySheetScrollContent: {
     gap: T.spacing.sm,
     paddingBottom: T.spacing.md,
@@ -511,13 +473,6 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.colors.border,
     padding: T.spacing.md,
-  },
-  noteEditorBody: {
-    flex: 1,
-  },
-  noteEditorInput: {
-    flex: 1,
-    textAlignVertical: "top",
   },
   libraryLargeTextArea: {
     minHeight: 140,

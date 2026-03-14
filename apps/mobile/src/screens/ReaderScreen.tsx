@@ -2189,7 +2189,7 @@ export function ReaderScreen({
         onClose={closeReferenceModal}
         title="Verse References"
         subtitle={activeReference ?? ""}
-        snapPoints={referenceView === "root" ? ["64%"] : ["72%"]}
+        snapPoints={referenceView === "root" ? ["78%"] : ["72%"]}
         enableDynamicSizing={false}
         headerRight={
           canGoBackReference ? (
@@ -2202,29 +2202,29 @@ export function ReaderScreen({
           ) : undefined
         }
       >
-        <View style={localStyles.referenceModalCard}>
-          {referenceActionError ? (
-            <Text style={styles.error}>{referenceActionError}</Text>
-          ) : null}
+        {referenceView === "root" ? (
+          <RootTranslationPanel
+            isLoading={referenceRootLoading}
+            language={referenceRootLanguage}
+            words={referenceRootWords}
+            lostContext={referenceRootLostContext}
+            fallbackText={referenceRootFallbackText}
+            selectedWordIndex={referenceRootWordIndex}
+            onSelectWord={setReferenceRootWordIndex}
+            onBack={handleBackToReferenceExplore}
+          />
+        ) : (
+          <View style={localStyles.referenceModalCard}>
+            {referenceActionError ? (
+              <Text style={styles.error}>{referenceActionError}</Text>
+            ) : null}
 
-          <BottomSheetScrollView
-            style={localStyles.modalContent}
-            contentContainerStyle={localStyles.modalContentContainer}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {referenceView === "root" ? (
-              <RootTranslationPanel
-                isLoading={referenceRootLoading}
-                language={referenceRootLanguage}
-                words={referenceRootWords}
-                lostContext={referenceRootLostContext}
-                fallbackText={referenceRootFallbackText}
-                selectedWordIndex={referenceRootWordIndex}
-                onSelectWord={setReferenceRootWordIndex}
-                onBack={handleBackToReferenceExplore}
-              />
-            ) : (
+            <BottomSheetScrollView
+              style={localStyles.modalContent}
+              contentContainerStyle={localStyles.modalContentContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <>
                 <View
                   style={[
@@ -2457,9 +2457,9 @@ export function ReaderScreen({
                     ))}
                 </View>
               </>
-            )}
-          </BottomSheetScrollView>
-        </View>
+            </BottomSheetScrollView>
+          </View>
+        )}
       </BottomSheetSurface>
 
       <BottomSheetSurface
@@ -2468,8 +2468,9 @@ export function ReaderScreen({
         title="Bookmarks"
         subtitle="Tap to reopen a saved place in Reader."
         snapPoints={["60%"]}
+        enableDynamicSizing={false}
       >
-        <ScrollView
+        <BottomSheetScrollView
           style={localStyles.selectorScroll}
           showsVerticalScrollIndicator={false}
         >
@@ -2513,7 +2514,7 @@ export function ReaderScreen({
           {!controller.bookmarksLoading && controller.bookmarksError ? (
             <Text style={styles.error}>{controller.bookmarksError}</Text>
           ) : null}
-        </ScrollView>
+        </BottomSheetScrollView>
       </BottomSheetSurface>
 
       <BottomSheetSurface
@@ -2521,6 +2522,7 @@ export function ReaderScreen({
         onClose={() => setBookSelectorVisible(false)}
         title="Select Book"
         snapPoints={["74%"]}
+        enableDynamicSizing={false}
       >
         <TextInput
           autoCapitalize="words"
@@ -2531,7 +2533,7 @@ export function ReaderScreen({
           value={bookFilter}
           onChangeText={setBookFilter}
         />
-        <ScrollView
+        <BottomSheetScrollView
           style={localStyles.selectorScroll}
           showsVerticalScrollIndicator={false}
         >
@@ -2592,7 +2594,7 @@ export function ReaderScreen({
           {filteredBooks.length === 0 ? (
             <Text style={styles.caption}>No books match "{bookFilter}".</Text>
           ) : null}
-        </ScrollView>
+        </BottomSheetScrollView>
       </BottomSheetSurface>
 
       <BottomSheetSurface
@@ -2601,8 +2603,9 @@ export function ReaderScreen({
         title="Select Chapter"
         subtitle={chapterSelectionBookName}
         snapPoints={["56%"]}
+        enableDynamicSizing={false}
       >
-        <ScrollView
+        <BottomSheetScrollView
           style={localStyles.selectorScroll}
           showsVerticalScrollIndicator={false}
         >
@@ -2626,7 +2629,7 @@ export function ReaderScreen({
               />
             ))}
           </View>
-        </ScrollView>
+        </BottomSheetScrollView>
       </BottomSheetSurface>
 
       <BottomSheetSurface
@@ -2634,23 +2637,34 @@ export function ReaderScreen({
         onClose={clearSelection}
         title="Selection tools"
         subtitle={selectedVerseLabel}
-        snapPoints={["64%"]}
+        snapPoints={selectionView === "root" ? ["78%"] : ["64%"]}
         enableDynamicSizing={false}
       >
-        <View style={[localStyles.modalCard, localStyles.selectionModalCard]}>
-          <BottomSheetScrollView
-            style={localStyles.modalContent}
-            contentContainerStyle={localStyles.modalContentContainer}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {selectionView === "synopsis" && modalFeedbackLabel ? (
-              <Text style={localStyles.modalFeedbackText}>
-                {modalFeedbackLabel}
-              </Text>
-            ) : null}
+        {selectionView === "root" ? (
+          <RootTranslationPanel
+            isLoading={rootLoading}
+            language={rootLanguage}
+            words={rootWords}
+            lostContext={rootLostContext}
+            fallbackText={rootFallbackText}
+            selectedWordIndex={rootSelectedWordIndex}
+            onSelectWord={setRootSelectedWordIndex}
+            onBack={handleBackToSynopsis}
+          />
+        ) : (
+          <View style={[localStyles.modalCard, localStyles.selectionModalCard]}>
+            <BottomSheetScrollView
+              style={localStyles.modalContent}
+              contentContainerStyle={localStyles.modalContentContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {modalFeedbackLabel ? (
+                <Text style={localStyles.modalFeedbackText}>
+                  {modalFeedbackLabel}
+                </Text>
+              ) : null}
 
-            {selectionView === "synopsis" ? (
               <>
                 <View
                   style={[
@@ -2732,20 +2746,9 @@ export function ReaderScreen({
                   />
                 </View>
               </>
-            ) : (
-              <RootTranslationPanel
-                isLoading={rootLoading}
-                language={rootLanguage}
-                words={rootWords}
-                lostContext={rootLostContext}
-                fallbackText={rootFallbackText}
-                selectedWordIndex={rootSelectedWordIndex}
-                onSelectWord={setRootSelectedWordIndex}
-                onBack={handleBackToSynopsis}
-              />
-            )}
-          </BottomSheetScrollView>
-        </View>
+            </BottomSheetScrollView>
+          </View>
+        )}
       </BottomSheetSurface>
 
       <NoteEditorModal
@@ -2777,15 +2780,16 @@ const localStyles = StyleSheet.create({
     zIndex: 12,
   },
   headerBar: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     gap: 5,
   },
   headerControlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     minHeight: 38,
+    width: "100%",
   },
   headerMenuButton: {
     width: 38,
@@ -2817,17 +2821,20 @@ const localStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.14)",
     backgroundColor: "rgba(24, 24, 27, 0.84)",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 6,
   },
   headerBookPickerButton: {
     flex: 1,
-    minWidth: 120,
+    minWidth: 0,
+    flexShrink: 1,
   },
   headerPickerLabel: {
+    flexShrink: 1,
+    minWidth: 0,
     color: T.colors.text,
     fontSize: 12.5,
     fontWeight: "700",

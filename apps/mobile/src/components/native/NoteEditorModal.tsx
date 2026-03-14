@@ -73,7 +73,7 @@ export function NoteEditorModal({
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
-        opacity={0.5}
+        opacity={0.55}
         pressBehavior="close"
       />
     ),
@@ -158,7 +158,7 @@ const local = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    opacity: 0.6,
+    opacity: 0.7,
   },
   header: {
     flexDirection: "row",
@@ -178,7 +178,7 @@ const local = StyleSheet.create({
   title: {
     color: T.colors.text,
     fontSize: T.typography.subheading,
-    fontWeight: "600",
+    fontWeight: "700",
     fontFamily: T.fonts.sans,
   },
   subtitle: {

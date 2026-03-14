@@ -16,6 +16,7 @@ import {
   State,
 } from "react-native-gesture-handler";
 import { ActionButton } from "../components/native/ActionButton";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { BottomSheetSurface } from "../components/native/BottomSheetSurface";
 import { ChipButton } from "../components/native/ChipButton";
 import { EmptyState } from "../components/native/EmptyState";
@@ -281,13 +282,14 @@ function LibrarySheet({
       title={title}
       subtitle={subtitle}
       snapPoints={["68%"]}
+      enableDynamicSizing={false}
     >
-      <ScrollView
+      <BottomSheetScrollView
         contentContainerStyle={styles.librarySheetScrollContent}
         keyboardShouldPersistTaps="handled"
       >
         {children}
-      </ScrollView>
+      </BottomSheetScrollView>
     </BottomSheetSurface>
   );
 }
