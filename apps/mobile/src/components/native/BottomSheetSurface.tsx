@@ -74,31 +74,59 @@ export function BottomSheetSurface({
       backgroundStyle={local.sheetBg}
       style={local.sheet}
     >
-      <BottomSheetView style={local.root}>
-        {title || subtitle || headerRight ? (
-          <View style={local.header}>
-            <View style={local.titleBlock}>
-              {title ? (
-                <Text
-                  style={local.title}
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
-                >
-                  {title}
-                </Text>
-              ) : null}
-              {subtitle ? (
-                <Text style={local.subtitle} numberOfLines={1}>
-                  {subtitle}
-                </Text>
-              ) : null}
+      {enableDynamicSizing ? (
+        <BottomSheetView style={local.root}>
+          {title || subtitle || headerRight ? (
+            <View style={local.header}>
+              <View style={local.titleBlock}>
+                {title ? (
+                  <Text
+                    style={local.title}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
+                    {title}
+                  </Text>
+                ) : null}
+                {subtitle ? (
+                  <Text style={local.subtitle} numberOfLines={1}>
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
+              {headerRight}
             </View>
-            {headerRight}
-          </View>
-        ) : null}
-        {children}
-      </BottomSheetView>
+          ) : null}
+          {children}
+        </BottomSheetView>
+      ) : (
+        <View style={local.root}>
+          {title || subtitle || headerRight ? (
+            <View style={local.header}>
+              <View style={local.titleBlock}>
+                {title ? (
+                  <Text
+                    style={local.title}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                  >
+                    {title}
+                  </Text>
+                ) : null}
+                {subtitle ? (
+                  <Text style={local.subtitle} numberOfLines={1}>
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </View>
+              {headerRight}
+            </View>
+          ) : null}
+          {children}
+        </View>
+      )}
     </BottomSheetModal>
   );
 }
