@@ -57,7 +57,11 @@ function NativeAppRuntime({ onInteractive }: { onInteractive: () => void }) {
             renderLibrary={(nav) => <LibraryScreen nav={nav} />}
             renderAccount={() => <AccountScreen />}
             renderMapViewer={(payload) => (
-              <MapViewerScreen title={payload.title} bundle={payload.bundle} />
+              <MapViewerScreen
+                title={payload.title}
+                bundle={payload.bundle}
+                traceQuery={payload.traceQuery}
+              />
             )}
             renderHighlightCreate={() => <HighlightCreateScreen />}
             renderHighlightDetail={(highlightId) => (

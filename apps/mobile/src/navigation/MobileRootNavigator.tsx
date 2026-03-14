@@ -34,7 +34,9 @@ type AppStackParamList = {
   Tabs:
     | { mode?: AppMode; prompt?: MobileGoDeeperPayload; autoSend?: boolean }
     | undefined;
-  MapViewer: { title?: string; bundle?: unknown } | undefined;
+  MapViewer:
+    | { title?: string; bundle?: unknown; traceQuery?: string }
+    | undefined;
   HighlightCreate: undefined;
   HighlightDetail: { highlightId: string };
 };
@@ -44,11 +46,19 @@ export interface MobileRootNavigatorProps {
   renderAuth: () => ReactNode;
   renderReader: (nav: {
     openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
-    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openMapViewer: (
+      title?: string,
+      bundle?: unknown,
+      traceQuery?: string,
+    ) => void;
     openModeMenu: () => void;
   }) => ReactNode;
   renderChat: (nav: {
-    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openMapViewer: (
+      title?: string,
+      bundle?: unknown,
+      traceQuery?: string,
+    ) => void;
     openReader: (book: string, chapter: number) => void;
     isActive: boolean;
     pendingPrompt?: MobileGoDeeperPayload;
@@ -58,11 +68,19 @@ export interface MobileRootNavigatorProps {
   renderLibrary: (nav: {
     openHighlightCreate: () => void;
     openHighlightDetail: (highlightId: string) => void;
-    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openMapViewer: (
+      title?: string,
+      bundle?: unknown,
+      traceQuery?: string,
+    ) => void;
     openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
   }) => ReactNode;
   renderAccount: () => ReactNode;
-  renderMapViewer: (payload: { title?: string; bundle?: unknown }) => ReactNode;
+  renderMapViewer: (payload: {
+    title?: string;
+    bundle?: unknown;
+    traceQuery?: string;
+  }) => ReactNode;
   renderHighlightCreate: () => ReactNode;
   renderHighlightDetail: (highlightId: string) => ReactNode;
 }
@@ -168,8 +186,12 @@ function ModeShellScreen({
     setActiveMode("Chat");
   }
 
-  function openMapViewer(title?: string, bundle?: unknown) {
-    navigation.navigate("MapViewer", { title, bundle });
+  function openMapViewer(
+    title?: string,
+    bundle?: unknown,
+    traceQuery?: string,
+  ) {
+    navigation.navigate("MapViewer", { title, bundle, traceQuery });
   }
 
   return (
@@ -407,6 +429,7 @@ function AppStackNavigator(
           props.renderMapViewer({
             title: route.params?.title,
             bundle: route.params?.bundle,
+            traceQuery: route.params?.traceQuery,
           })
         }
       </AppStack.Screen>

@@ -14,6 +14,17 @@ const SNAP_POINTS: Record<MapInspectorVariant, string[]> = {
   edge: ["58%"],
 };
 
+function SkeletonLine({ width }: { width: number | string }) {
+  return (
+    <View
+      style={[
+        local.skeletonLine,
+        typeof width === "number" ? { width } : { width: width as never },
+      ]}
+    />
+  );
+}
+
 export function MapInspectorSurface({
   mode,
   variant,
@@ -24,27 +35,43 @@ export function MapInspectorSurface({
   headerRight,
   children,
   scrollable = false,
+  titleLoading = false,
 }: {
   mode: LayoutMode;
   variant: MapInspectorVariant;
   visible: boolean;
   onClose: () => void;
-  title?: string;
+  title?: string | null;
   subtitle?: string | null;
   headerRight?: ReactNode;
   children: ReactNode;
   scrollable?: boolean;
+  titleLoading?: boolean;
 }) {
   const insets = useSafeAreaInsets();
 
   if (mode === "compact") {
+    const showTitleSkeleton = titleLoading && !title;
     return (
       <BottomSheetSurface
         visible={visible}
         onClose={onClose}
-        title={title}
-        subtitle={subtitle}
-        headerRight={headerRight}
+        title={showTitleSkeleton ? undefined : (title ?? undefined)}
+        subtitle={showTitleSkeleton ? undefined : subtitle}
+        headerRight={
+          showTitleSkeleton ? (
+            <View style={local.skeletonHeaderCompact}>
+              <SkeletonLine width={200} />
+              {subtitle ? (
+                <View style={{ opacity: 0.6 }}>
+                  <SkeletonLine width={120} />
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            headerRight
+          )
+        }
         snapPoints={SNAP_POINTS[variant]}
       >
         {children}
@@ -76,13 +103,20 @@ export function MapInspectorSurface({
         },
       ]}
     >
-      {title || subtitle || headerRight ? (
+      {title || subtitle || headerRight || titleLoading ? (
         <View style={local.header}>
           <View style={local.titleBlock}>
             {title ? (
-              <Text numberOfLines={1} style={local.title}>
+              <Text
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={local.title}
+              >
                 {title}
               </Text>
+            ) : titleLoading ? (
+              <SkeletonLine width={180} />
             ) : null}
             {subtitle ? (
               <Text numberOfLines={1} style={local.subtitle}>
@@ -157,5 +191,19 @@ const local = StyleSheet.create({
   },
   contentStatic: {
     flex: 1,
+  },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  skeletonTitleRow: {
+    flex: 1,
+    gap: 6,
+  },
+  skeletonHeaderCompact: {
+    flex: 1,
+    gap: 6,
+    paddingTop: 2,
   },
 });

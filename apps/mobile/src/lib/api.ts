@@ -485,6 +485,9 @@ export async function fetchSynopsis({
   chapter,
   verse,
   verses,
+  pericopeTitle,
+  pericopeType,
+  pericopeThemes,
   accessToken,
 }: {
   apiBaseUrl: string;
@@ -494,6 +497,9 @@ export async function fetchSynopsis({
   chapter?: number;
   verse?: number;
   verses?: number[];
+  pericopeTitle?: string;
+  pericopeType?: string;
+  pericopeThemes?: string[];
   accessToken?: string;
 }): Promise<SynopsisResponse> {
   const headers = new Headers({ "Content-Type": "application/json" });
@@ -511,6 +517,9 @@ export async function fetchSynopsis({
       ...(chapter ? { chapter } : {}),
       ...(verse ? { verse } : {}),
       ...(verses && verses.length > 0 ? { verses } : {}),
+      ...(pericopeTitle ? { pericopeTitle } : {}),
+      ...(pericopeType ? { pericopeType } : {}),
+      ...(pericopeThemes?.length ? { pericopeThemes } : {}),
     }),
   });
 
@@ -580,7 +589,14 @@ export async function fetchSemanticConnectionSynopsis({
 }: {
   apiBaseUrl: string;
   verseIds: number[];
-  verses: Array<{ id: number; reference: string; text: string }>;
+  verses: Array<{
+    id: number;
+    reference: string;
+    text: string;
+    pericopeTitle?: string;
+    pericopeType?: string;
+    pericopeThemes?: string[];
+  }>;
   connectionType: string;
   similarity: number;
   isLlmDiscovered?: boolean;

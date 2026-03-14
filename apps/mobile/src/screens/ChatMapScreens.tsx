@@ -281,7 +281,7 @@ type ActiveInspector =
   | {
       kind: "edge";
       edge: MapEdgeSelection;
-      title: string;
+      title: string | null;
       subtitle: string | null;
     }
   | {
@@ -1819,7 +1819,11 @@ export function ChatScreen({
   nav,
 }: {
   nav: {
-    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openMapViewer: (
+      title?: string,
+      bundle?: unknown,
+      traceQuery?: string,
+    ) => void;
     openReader: (book: string, chapter: number) => void;
     isActive: boolean;
     pendingPrompt?: MobileGoDeeperPayload;
@@ -3630,8 +3634,8 @@ function getConnectionFamilyLabel(styleType: MapConnectionFamily) {
 
 function getMapNodeSubtitle(node: VisualNode): string | null {
   if (node.displaySubLabel?.trim()) return node.displaySubLabel.trim();
-  if (node.pericopeTitle?.trim()) return node.pericopeTitle.trim();
-  // Web only shows subtitle when displaySubLabel exists — no fallback text
+  // pericopeTitle is rendered as an eyebrow inside the inspector body,
+  // not as the sheet subtitle — avoids duplication
   return null;
 }
 
@@ -4159,9 +4163,11 @@ function AnimatedMapNode({
 export function MapViewerScreen({
   title,
   bundle,
+  traceQuery,
 }: {
   title?: string;
   bundle?: unknown;
+  traceQuery?: string;
 }) {
   const controller = useMobileApp();
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
@@ -4177,7 +4183,14 @@ export function MapViewerScreen({
   const [selectedEdge, setSelectedEdge] = useState<MapEdgeSelection | null>(
     null,
   );
+  // Which topic's analysis is loaded (drives synopsis fetch)
+  const [activeTopicStyle, setActiveTopicStyle] =
+    useState<MapConnectionFamily | null>(null);
+  // Which topic is visually highlighted (arrow/dot navigation — no fetch)
+  const [highlightedTopicStyle, setHighlightedTopicStyle] =
+    useState<MapConnectionFamily | null>(null);
   const [helpVisible, setHelpVisible] = useState(false);
+  const [mapMenuVisible, setMapMenuVisible] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null);
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -4202,8 +4215,17 @@ export function MapViewerScreen({
   const [edgeNoteDraft, setEdgeNoteDraft] = useState("");
   const [edgeTagsDraft, setEdgeTagsDraft] = useState("");
   const [edgeMetaSaved, setEdgeMetaSaved] = useState(false);
+  const [mapVersePreviewRef, setMapVersePreviewRef] = useState<string | null>(
+    null,
+  );
+  const [mapVersePreviewText, setMapVersePreviewText] = useState("");
+  const [mapVersePreviewLoading, setMapVersePreviewLoading] = useState(false);
   const autoDiscoveryRunRef = useRef(false);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapLoaderDismissed, setMapLoaderDismissed] = useState(false);
+  const mapMountTimeRef = useRef(Date.now());
+  const mapLoaderFadeAnim = useRef(new Animated.Value(1)).current;
   const [awePulseActive, setAwePulseActive] = useState(false);
   const awePulseAnim = useRef(new Animated.Value(0)).current;
   const pendingViewportFitRef = useRef(true);
@@ -4227,6 +4249,27 @@ export function MapViewerScreen({
     startDistance: 0,
     startMidpoint: { x: 0, y: 0 },
   });
+  // Self-fetch: when navigated with traceQuery but no bundle, fetch it here
+  const traceFetchedRef = useRef(false);
+  useEffect(() => {
+    if (traceFetchedRef.current || !traceQuery || initialBundle) return;
+    traceFetchedRef.current = true;
+    (async () => {
+      try {
+        const result = await fetchTraceBundle({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          text: traceQuery,
+          accessToken: controller.session?.access_token,
+        });
+        if (isVisualContextBundle(result)) {
+          setWorkingBundle(result);
+        }
+      } catch {
+        // Fetch failed — map will show "unavailable" state
+      }
+    })();
+  }, [traceQuery, initialBundle]);
+
   const activeBundle = useMemo(
     () => collapseDuplicateBundle(workingBundle),
     [workingBundle],
@@ -4399,20 +4442,25 @@ export function MapViewerScreen({
 
     return null;
   }, [focusedNodeId, mapEdges, selectedEdge]);
+  // activeTopicStyle = which topic's analysis is loaded (drives fetch)
+  // highlightedTopicStyle = which topic is visually highlighted (arrow/dot nav, no fetch)
+  const currentActiveStyle =
+    activeTopicStyle ?? selectedEdge?.styleType ?? null;
+  const currentHighlight = highlightedTopicStyle ?? currentActiveStyle;
   const selectedTopicGroup = useMemo(() => {
-    if (!selectedEdge?.topicGroups || !selectedEdge.styleType) return null;
+    if (!selectedEdge?.topicGroups || !currentActiveStyle) return null;
     return (
       selectedEdge.topicGroups.find(
-        (group) => group.styleType === selectedEdge.styleType,
+        (group) => group.styleType === currentActiveStyle,
       ) ?? null
     );
-  }, [selectedEdge]);
+  }, [selectedEdge, currentActiveStyle]);
   const selectedConnectionLabel = useMemo(() => {
     if (!selectedEdge) return "Connection";
-    return selectedEdge.styleType
-      ? getConnectionFamilyLabel(selectedEdge.styleType)
+    return currentActiveStyle
+      ? getConnectionFamilyLabel(currentActiveStyle)
       : edgeTypeToConceptLabel(selectedEdge.edge.type);
-  }, [selectedEdge]);
+  }, [selectedEdge, currentActiveStyle]);
   const selectedConnectionAccent = useMemo(() => {
     if (!selectedEdge) return "#F9F4EC";
     return selectedEdge.edge.isAnchorRay ? "#C5B358" : "#F9F4EC";
@@ -4456,14 +4504,18 @@ export function MapViewerScreen({
     return previews;
   }, [nodeLookup, selectedEdge]);
   const selectedConnectionTitle = useMemo(() => {
-    if (!selectedEdge) return "Connection";
+    if (!selectedEdge) return null;
+    if (edgeAnalysis?.title?.trim()) return edgeAnalysis.title.trim();
+    // Still loading — return null so the sheet shows a skeleton
+    if (edgeAnalysisLoading) return null;
+    // Analysis finished without a title — fall back
     const preferredTopicLabel =
       selectedTopicGroup?.displayLabel?.trim() ||
       selectedTopicGroup?.label?.trim();
-    const analysisTitle = edgeAnalysis?.title?.trim();
-    return analysisTitle || preferredTopicLabel || selectedConnectionLabel;
+    return preferredTopicLabel || selectedConnectionLabel;
   }, [
     edgeAnalysis?.title,
+    edgeAnalysisLoading,
     selectedConnectionLabel,
     selectedEdge,
     selectedTopicGroup,
@@ -4504,8 +4556,8 @@ export function MapViewerScreen({
         edge: selectedEdge,
         title: selectedConnectionTitle,
         subtitle: selectedEdge.baseNode
-          ? `Centered on ${formatNodeReference(selectedEdge.baseNode)}`
-          : `${formatNodeReference(selectedEdge.from)} -> ${formatNodeReference(selectedEdge.to)}`,
+          ? formatNodeReference(selectedEdge.baseNode)
+          : `${formatNodeReference(selectedEdge.from)} → ${formatNodeReference(selectedEdge.to)}`,
       };
     }
     if (selectedNode) {
@@ -4604,6 +4656,42 @@ export function MapViewerScreen({
     return () => clearTimeout(timer);
   }, [mapEdges.length, maxRenderedDepth]);
 
+  // Hide navigation header while loader is active for full-screen takeover
+  useEffect(() => {
+    navigation.setOptions({ headerShown: mapLoaderDismissed });
+  }, [mapLoaderDismissed, navigation]);
+
+  // Map-ready gate: hold the loader until the full pipeline completes —
+  // bundle fetch → graph derive → auto-discovery → verse analysis.
+  // Only then crossfade out so the user sees one seamless loading experience.
+  // Discovery is skipped for NARRATIVE lens bundles
+  const discoveryApplicable = activeBundle
+    ? activeBundle.lens !== "NARRATIVE"
+    : true;
+  const discoveryDone = discoveryApplicable
+    ? autoDiscoveryRunRef.current && !discovering
+    : true;
+  const pipelineComplete =
+    !!derivedGraph && viewportSize.width > 0 && discoveryDone;
+
+  useEffect(() => {
+    if (mapReady || mapLoaderDismissed) return;
+    if (!pipelineComplete) return;
+    const minMs = 1400;
+    const elapsed = Date.now() - mapMountTimeRef.current;
+    const remaining = Math.max(0, minMs - elapsed);
+    const timer = setTimeout(() => {
+      setMapReady(true);
+      Animated.timing(mapLoaderFadeAnim, {
+        toValue: 0,
+        duration: 500,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => setMapLoaderDismissed(true));
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [pipelineComplete, mapReady, mapLoaderDismissed]);
+
   // Awe-pulse: gold radial flash on graph completion
   useEffect(() => {
     if (!edgesAnimated) return;
@@ -4635,6 +4723,8 @@ export function MapViewerScreen({
     if (selectedEdge) {
       setSelectedEdge(null);
       setFocusedNodeId(null);
+      setActiveTopicStyle(null);
+      setHighlightedTopicStyle(null);
       return;
     }
     if (selectedNode) {
@@ -4926,48 +5016,58 @@ export function MapViewerScreen({
     [applyViewportState],
   );
 
+  // Stable identity for the selected edge — prevents re-firing when topic
+  // titles resolve and update the selectedEdge object reference.
+  // Uses currentActiveStyle so carousel topic changes trigger a new fetch.
+  const selectedEdgeKey = selectedEdge
+    ? `${selectedEdge.edge.id}:${currentActiveStyle}`
+    : null;
+  const selectedEdgeRef = useRef(selectedEdge);
+  selectedEdgeRef.current = selectedEdge;
+  const activeTopicStyleRef = useRef(currentActiveStyle);
+  activeTopicStyleRef.current = currentActiveStyle;
+
   useEffect(() => {
-    if (!selectedEdge || !activeBundle) {
+    const edge = selectedEdgeRef.current;
+    if (!edge || !activeBundle) {
       setEdgeAnalysis(null);
       setEdgeAnalysisLoading(false);
       setEdgeAnalysisError(null);
       return;
     }
 
+    const buildVersePayload = (node: MapNodeLayout) => ({
+      id: node.id,
+      reference: formatNodeReference(node),
+      text: node.text,
+      ...(node.pericopeTitle
+        ? {
+            pericopeTitle: node.pericopeTitle,
+            ...(node.pericopeType ? { pericopeType: node.pericopeType } : {}),
+            ...(node.pericopeThemes?.length
+              ? { pericopeThemes: node.pericopeThemes }
+              : {}),
+          }
+        : {}),
+    });
     const verses = [
-      ...(selectedEdge.connectedVerseIds &&
-      selectedEdge.connectedVerseIds.length > 0
-        ? selectedEdge.connectedVerseIds
+      ...(edge.connectedVerseIds && edge.connectedVerseIds.length > 0
+        ? edge.connectedVerseIds
             .map((id) => nodeLookup.get(id))
             .filter((node): node is MapNodeLayout => Boolean(node))
-            .map((node) => ({
-              id: node.id,
-              reference: formatNodeReference(node),
-              text: node.text,
-            }))
-        : [
-            {
-              id: selectedEdge.from.id,
-              reference: formatNodeReference(selectedEdge.from),
-              text: selectedEdge.from.text,
-            },
-            {
-              id: selectedEdge.to.id,
-              reference: formatNodeReference(selectedEdge.to),
-              text: selectedEdge.to.text,
-            },
-          ]),
+            .map(buildVersePayload)
+        : [buildVersePayload(edge.from), buildVersePayload(edge.to)]),
     ];
     const activeConnectionType =
-      selectedEdge.styleType ?? selectedEdge.edge.type;
+      activeTopicStyleRef.current ?? edge.styleType ?? edge.edge.type;
     const topicContext =
-      selectedEdge.topicGroups && selectedEdge.topicGroups.length > 0
-        ? selectedEdge.topicGroups
-            .filter((group) => group.styleType !== selectedEdge.styleType)
+      edge.topicGroups && edge.topicGroups.length > 0
+        ? edge.topicGroups
+            .filter((group) => group.styleType !== edge.styleType)
             .map((group) => {
               const selectedVerseIds = new Set(verses.map((verse) => verse.id));
               const candidateVerseIds = new Set([
-                selectedEdge.baseNode?.id ?? selectedEdge.from.id,
+                edge.baseNode?.id ?? edge.from.id,
                 ...group.verseIds,
               ]);
               let intersection = 0;
@@ -4988,8 +5088,8 @@ export function MapViewerScreen({
     const requestKey = JSON.stringify({
       verseIds: verses.map((verse) => verse.id),
       connectionType: activeConnectionType,
-      similarity: selectedEdge.edge.weight,
-      isLlmDiscovered: isLlmDiscoveredEdge(selectedEdge.edge),
+      similarity: edge.edge.weight,
+      isLlmDiscovered: isLlmDiscoveredEdge(edge.edge),
       topicContext,
     });
     const cached = edgeAnalysisCacheRef.current.get(requestKey);
@@ -5010,8 +5110,8 @@ export function MapViewerScreen({
       verseIds: verses.map((verse) => verse.id),
       verses,
       connectionType: activeConnectionType,
-      similarity: selectedEdge.edge.weight,
-      isLlmDiscovered: isLlmDiscoveredEdge(selectedEdge.edge),
+      similarity: edge.edge.weight,
+      isLlmDiscovered: isLlmDiscoveredEdge(edge.edge),
       topicContext,
       accessToken: controller.session?.access_token,
     })
@@ -5039,12 +5139,7 @@ export function MapViewerScreen({
     return () => {
       cancelled = true;
     };
-  }, [
-    activeBundle,
-    controller.session?.access_token,
-    nodeLookup,
-    selectedEdge,
-  ]);
+  }, [activeBundle, controller.session?.access_token, selectedEdgeKey]);
 
   useEffect(() => {
     if (discovering || !discoveryStatus) return;
@@ -5227,6 +5322,33 @@ export function MapViewerScreen({
       navigation.navigate("Tabs", { mode: "Reader" } as never);
     },
     [controller, navigation],
+  );
+
+  // Verse preview: open a quick-read sheet instead of navigating to reader
+  const openMapVersePreview = useCallback(
+    (node: VisualNode) => {
+      const ref = `${node.book_name} ${node.chapter}:${node.verse}`;
+      setMapVersePreviewRef(ref);
+      setMapVersePreviewText(node.text || "");
+      setMapVersePreviewLoading(!node.text);
+      if (!node.text) {
+        fetchVerseText({
+          apiBaseUrl: MOBILE_ENV.API_URL,
+          reference: ref,
+        })
+          .then((result) => {
+            setMapVersePreviewText(
+              result?.text || "Could not load verse text.",
+            );
+            setMapVersePreviewLoading(false);
+          })
+          .catch(() => {
+            setMapVersePreviewText("Could not load verse text.");
+            setMapVersePreviewLoading(false);
+          });
+      }
+    },
+    [controller.session?.access_token],
   );
 
   const openReaderForParallelPassage = useCallback(
@@ -5595,6 +5717,19 @@ export function MapViewerScreen({
         : "node";
   const nodeInspectorContent = selectedNode ? (
     <View style={localStyles.mapSheetBody}>
+      {/* Pericope eyebrow — lightweight narrative context above synopsis */}
+      {selectedNode.pericopeTitle ? (
+        <View style={localStyles.mapPericopeEyebrow}>
+          <Text style={localStyles.mapPericopeEyebrowText} numberOfLines={1}>
+            {selectedNode.pericopeTitle}
+          </Text>
+          {selectedNode.pericopeThemes?.length ? (
+            <Text style={localStyles.mapPericopeThemes} numberOfLines={1}>
+              {selectedNode.pericopeThemes.slice(0, 3).join(" · ")}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <View style={localStyles.mapMetaChipRow}>
         <Text style={localStyles.mapMetaChip}>Depth {selectedNode.depth}</Text>
         {selectedNodeParallelPassages.length ? (
@@ -5602,22 +5737,7 @@ export function MapViewerScreen({
             {selectedNodeParallelPassages.length} accounts
           </Text>
         ) : null}
-        {selectedNode.pericopeTitle ? (
-          <Text style={localStyles.mapMetaChip}>Pericope</Text>
-        ) : null}
       </View>
-      {selectedNode.pericopeTitle ? (
-        <View style={localStyles.mapDetailCallout}>
-          <Text style={localStyles.mapDetailCalloutTitle}>
-            {selectedNode.pericopeTitle}
-          </Text>
-          {selectedNode.pericopeThemes?.length ? (
-            <Text style={localStyles.mapDetailCalloutText}>
-              Themes: {selectedNode.pericopeThemes.join(", ")}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
       {selectedNodeParallelPassages.length > 0 ? (
         <View style={localStyles.mapParallelCard}>
           <View style={localStyles.mapParallelHeader}>
@@ -5659,21 +5779,18 @@ export function MapViewerScreen({
           <Text style={styles.connectionSynopsis}>{selectedNode.text}</Text>
         </ScrollView>
       )}
-      <View
-        style={[
-          localStyles.mapSheetActions,
-          isExpandedLayout ? localStyles.mapSheetActionsExpanded : null,
-        ]}
-      >
+      <View style={localStyles.mapSheetActionsRow}>
         <ActionButton
           variant="primary"
-          label="Open in reader"
+          label="Reader"
           onPress={() => void openReaderForNode(selectedNode)}
+          style={localStyles.mapSheetActionBtn}
         />
         <ActionButton
           variant="secondary"
-          label="Continue in chat"
+          label="Chat"
           onPress={() => openChatForNode(selectedNode)}
+          style={localStyles.mapSheetActionBtn}
         />
       </View>
     </View>
@@ -5766,33 +5883,19 @@ export function MapViewerScreen({
   ) : null;
   const edgeInspectorBody = selectedEdge ? (
     <View style={localStyles.mapSheetBody}>
-      <View style={localStyles.mapMetaChipRow}>
-        <Text
-          style={[localStyles.mapMetaChip, { color: selectedConnectionAccent }]}
-        >
-          {selectedConnectionLabel}
-        </Text>
-        {isLlmDiscoveredEdge(selectedEdge.edge) ? (
-          <View style={localStyles.mapLlmBadge}>
-            <Ionicons color="rgba(212,175,55,0.9)" name="sparkles" size={10} />
-            <Text style={localStyles.mapLlmBadgeText}>AI</Text>
-          </View>
-        ) : null}
-        <Text style={localStyles.mapMetaChip}>
-          {Math.round(selectedEdge.edge.weight * 100)}%
-        </Text>
-        {isLlmDiscoveredEdge(selectedEdge.edge) &&
-        typeof selectedEdge.edge.metadata?.confidence === "number" &&
-        selectedEdge.edge.metadata.confidence !== selectedEdge.edge.weight ? (
-          <Text style={[localStyles.mapMetaChip, { opacity: 0.5 }]}>
-            conf{" "}
-            {Math.round(
-              (selectedEdge.edge.metadata.confidence as number) * 100,
-            )}
-            %
+      {/* Pericope eyebrow — narrative context from the base node */}
+      {selectedEdge.baseNode?.pericopeTitle ? (
+        <View style={localStyles.mapPericopeEyebrow}>
+          <Text style={localStyles.mapPericopeEyebrowText} numberOfLines={1}>
+            {selectedEdge.baseNode.pericopeTitle}
           </Text>
-        ) : null}
-      </View>
+          {selectedEdge.baseNode.pericopeThemes?.length ? (
+            <Text style={localStyles.mapPericopeThemes} numberOfLines={1}>
+              {selectedEdge.baseNode.pericopeThemes.slice(0, 3).join(" · ")}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <View style={localStyles.mapVerseChipRow}>
         {visibleConnectionVerses.map((verse) => (
           <PressableScale
@@ -5800,7 +5903,7 @@ export function MapViewerScreen({
             onPress={() => {
               const node = nodeLookup.get(verse.id);
               if (!node) return;
-              void openReaderForNode(node);
+              openMapVersePreview(node);
             }}
             style={[
               localStyles.mapVerseChip,
@@ -5875,14 +5978,9 @@ export function MapViewerScreen({
         ) : edgeAnalysisError ? (
           <Text style={localStyles.mapSummaryError}>{edgeAnalysisError}</Text>
         ) : edgeAnalysis ? (
-          <>
-            <Text style={localStyles.mapAnalysisHeading}>
-              {edgeAnalysis.title}
-            </Text>
-            <Text style={localStyles.mapAnalysisText}>
-              {edgeAnalysis.synopsis}
-            </Text>
-          </>
+          <Text style={localStyles.mapAnalysisText}>
+            {edgeAnalysis.synopsis}
+          </Text>
         ) : (
           <Text style={localStyles.mapAnalysisText}>
             Connection analysis is unavailable for this edge.
@@ -5895,114 +5993,95 @@ export function MapViewerScreen({
             More connections
           </Text>
           <View style={localStyles.mapTopicDotRow}>
-            {selectedEdge.topicGroups.map((group) => (
-              <Pressable
-                key={`topic-dot-${group.styleType}`}
-                onPress={() => {
-                  if (!selectedEdge.baseNode) return;
-                  openConnectionSelectionForTopic(
-                    selectedEdge.baseNode,
-                    group,
-                    selectedEdge.topicGroups || [group],
-                  );
-                }}
-                style={[
-                  localStyles.mapTopicDot,
-                  {
-                    borderColor: `${selectedConnectionAccent}88`,
-                    backgroundColor:
-                      selectedEdge.styleType === group.styleType
+            {selectedEdge.topicGroups.map((group) => {
+              const isHighlighted = group.styleType === currentHighlight;
+              return (
+                <Pressable
+                  key={`topic-dot-${group.styleType}`}
+                  onPress={() => setHighlightedTopicStyle(group.styleType)}
+                  style={[
+                    localStyles.mapTopicDot,
+                    {
+                      borderColor: `${selectedConnectionAccent}88`,
+                      backgroundColor: isHighlighted
                         ? selectedConnectionAccent
                         : "transparent",
-                    opacity:
-                      selectedEdge.styleType === group.styleType ? 1 : 0.4,
-                  },
-                ]}
-              />
-            ))}
+                      opacity: isHighlighted ? 1 : 0.4,
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
-          <Pressable
-            onPress={() => {
-              if (!selectedEdge.baseNode || !selectedEdge.topicGroups) return;
-              const currentIndex = selectedEdge.topicGroups.findIndex(
-                (group) => group.styleType === selectedEdge.styleType,
-              );
-              const nextIndex =
-                currentIndex >= 0
-                  ? (currentIndex + 1) % selectedEdge.topicGroups.length
-                  : 0;
-              const nextGroup = selectedEdge.topicGroups[nextIndex];
-              if (!nextGroup) return;
-              openConnectionSelectionForTopic(
-                selectedEdge.baseNode,
-                nextGroup,
-                selectedEdge.topicGroups,
-              );
-            }}
-            style={localStyles.mapTopicNextButton}
-          >
-            <Ionicons
-              color={selectedConnectionAccent}
-              name="chevron-forward"
-              size={14}
-            />
-          </Pressable>
         </View>
       ) : null}
-      {selectedTopicGroup ? (
+      {selectedTopicGroup &&
+      selectedEdge.topicGroups &&
+      selectedEdge.topicGroups.length > 1 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={localStyles.mapTopicChipRow}
+          onScroll={(e) => {
+            const groups = selectedEdge.topicGroups;
+            if (!groups || groups.length <= 1) return;
+            const offsetX = e.nativeEvent.contentOffset.x;
+            const viewWidth = e.nativeEvent.layoutMeasurement.width;
+            const contentWidth = e.nativeEvent.contentSize.width;
+            // Map scroll position to chip index proportionally
+            const maxScroll = Math.max(1, contentWidth - viewWidth);
+            const progress = Math.min(1, Math.max(0, offsetX / maxScroll));
+            const idx = Math.round(progress * (groups.length - 1));
+            const group = groups[idx];
+            if (group && group.styleType !== currentHighlight) {
+              setHighlightedTopicStyle(group.styleType);
+            }
+          }}
+          scrollEventThrottle={64}
         >
-          {(selectedEdge.topicGroups || [selectedTopicGroup]).map((group) => (
-            <PressableScale
-              key={`topic-compact-${group.styleType}`}
-              onPress={() => {
-                if (!selectedEdge.baseNode) return;
-                openConnectionSelectionForTopic(
-                  selectedEdge.baseNode,
-                  group,
-                  selectedEdge.topicGroups || [group],
-                );
-              }}
-              style={[
-                localStyles.mapTopicChip,
-                selectedEdge.styleType === group.styleType
-                  ? localStyles.mapTopicChipActive
-                  : null,
-              ]}
-            >
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+          {(selectedEdge.topicGroups || [selectedTopicGroup]).map((group) => {
+            const isHighlighted = group.styleType === currentHighlight;
+            const labelReady = group.labelSource === "llm";
+            return (
+              <PressableScale
+                key={`topic-compact-${group.styleType}`}
+                onPress={() => {
+                  if (!labelReady) return;
+                  // Tap loads the analysis for this topic
+                  setActiveTopicStyle(group.styleType);
+                  setHighlightedTopicStyle(group.styleType);
+                }}
+                style={[
+                  localStyles.mapTopicChip,
+                  isHighlighted ? localStyles.mapTopicChipActive : null,
+                ]}
               >
-                {group.labelSource === "llm" ? (
-                  <Ionicons
-                    color={
-                      selectedEdge.styleType === group.styleType
-                        ? selectedConnectionAccent
-                        : T.colors.textMuted
-                    }
-                    name="sparkles"
-                    size={9}
-                  />
-                ) : null}
-                <Text
-                  style={[
-                    localStyles.mapTopicChipLabel,
-                    {
-                      color:
-                        selectedEdge.styleType === group.styleType
+                {labelReady ? (
+                  <Text
+                    style={[
+                      localStyles.mapTopicChipLabel,
+                      {
+                        color: isHighlighted
                           ? selectedConnectionAccent
                           : T.colors.textMuted,
-                    },
-                  ]}
-                >
-                  {(group.displayLabel || group.label).trim()}
-                </Text>
-              </View>
-            </PressableScale>
-          ))}
+                      },
+                    ]}
+                  >
+                    {(group.displayLabel || group.label).trim()}
+                  </Text>
+                ) : (
+                  <View
+                    style={{
+                      width: 72,
+                      height: 12,
+                      borderRadius: 4,
+                      backgroundColor: "rgba(255,255,255,0.07)",
+                    }}
+                  />
+                )}
+              </PressableScale>
+            );
+          })}
         </ScrollView>
       ) : null}
       {controller.libraryConnectionMutationError ? (
@@ -6010,16 +6089,12 @@ export function MapViewerScreen({
           {controller.libraryConnectionMutationError}
         </Text>
       ) : null}
-      <View
-        style={[
-          localStyles.mapSheetActions,
-          isExpandedLayout ? localStyles.mapSheetActionsExpanded : null,
-        ]}
-      >
+      <View style={localStyles.mapSheetActionsRow}>
         <ActionButton
           variant="primary"
           label="Go deeper"
           onPress={() => openChatForEdge(selectedEdge)}
+          style={localStyles.mapSheetActionBtn}
         />
         {selectedLibraryConnection ? null : (
           <ActionButton
@@ -6031,21 +6106,9 @@ export function MapViewerScreen({
               controller.libraryConnectionMutationBusy ? "Saving..." : "Save"
             }
             onPress={() => void saveSelectedConnection()}
+            style={localStyles.mapSheetActionBtn}
           />
         )}
-        <ActionButton
-          variant="ghost"
-          label={selectedEdge.baseNode ? "Passage details" : "Close"}
-          onPress={() => {
-            if (selectedEdge.baseNode) {
-              setSelectedNodeId(selectedEdge.baseNode.id);
-              setSelectedEdge(null);
-              return;
-            }
-            setSelectedEdge(null);
-            setFocusedNodeId(null);
-          }}
-        />
       </View>
       {selectedLibraryConnection ? (
         <View style={localStyles.mapLibraryMetaSection}>
@@ -6110,6 +6173,26 @@ export function MapViewerScreen({
     ) : null;
 
   if (!activeBundle) {
+    // If a trace query is in-flight, show the full-screen loader
+    if (traceQuery && !mapLoaderDismissed) {
+      return (
+        <View
+          style={[
+            localStyles.mapScreenRoot,
+            {
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+              justifyContent: "center",
+              alignItems: "center",
+            },
+          ]}
+        >
+          <View style={localStyles.mapLoaderContent}>
+            <ChatThinkingState verses={[]} tracedText={title} />
+          </View>
+        </View>
+      );
+    }
     return (
       <View style={styles.tabScreen}>
         <SurfaceCard>
@@ -6478,44 +6561,7 @@ export function MapViewerScreen({
               />
             )}
 
-            <View
-              style={[
-                localStyles.mapActionClusterTopRight,
-                { top: Math.max(insets.top + 10, 16) },
-              ]}
-            >
-              <IconButton
-                accessibilityLabel="Save map"
-                tone="accent"
-                shape="rounded"
-                disabled={controller.libraryMapMutationBusy}
-                icon={
-                  <Ionicons
-                    color={T.colors.accent}
-                    name="bookmark-outline"
-                    size={18}
-                  />
-                }
-                onPress={() =>
-                  void controller.handleSaveLibraryMapFromBundle(
-                    activeBundle,
-                    mapSaveTitle,
-                  )
-                }
-              />
-              <IconButton
-                accessibilityLabel="Map help"
-                shape="rounded"
-                icon={
-                  <Ionicons
-                    color={T.colors.textMuted}
-                    name="help-circle-outline"
-                    size={18}
-                  />
-                }
-                onPress={() => setHelpVisible(true)}
-              />
-            </View>
+            {/* Top-right: intentionally empty — save/help moved to menu */}
 
             <View style={localStyles.mapActionClusterBottomRight}>
               <IconButton
@@ -6553,14 +6599,17 @@ export function MapViewerScreen({
             </View>
 
             <View style={localStyles.mapActionClusterBottomLeft}>
-              <ActionButton
-                accessibilityLabel="Discover more connections"
-                disabled={discoveryDisabled}
-                label={discovering ? "Discovering..." : "Discover More"}
-                variant="secondary"
-                onPress={() => void runDiscovery("manual")}
-                style={localStyles.mapDiscoverButton}
-                labelStyle={localStyles.mapDiscoverButtonLabel}
+              <IconButton
+                accessibilityLabel="Map actions"
+                shape="rounded"
+                icon={
+                  <Ionicons
+                    color={T.colors.textMuted}
+                    name="ellipsis-horizontal"
+                    size={20}
+                  />
+                }
+                onPress={() => setMapMenuVisible(true)}
               />
             </View>
 
@@ -6650,6 +6699,9 @@ export function MapViewerScreen({
             onClose={closeActiveInspector}
             title={resolvedInspector?.title}
             subtitle={resolvedInspector?.subtitle ?? null}
+            titleLoading={
+              activeInspector.kind === "edge" && edgeAnalysisLoading
+            }
           >
             {activeInspectorContent}
           </MapInspectorSurface>
@@ -6667,6 +6719,111 @@ export function MapViewerScreen({
           {activeInspectorContent}
         </MapInspectorSurface>
       ) : null}
+
+      <BottomSheetSurface
+        visible={mapMenuVisible}
+        onClose={() => setMapMenuVisible(false)}
+        snapPoints={["28%"]}
+      >
+        <View style={localStyles.mapMenuBody}>
+          <Pressable
+            style={localStyles.mapMenuItem}
+            onPress={() => {
+              setMapMenuVisible(false);
+              void runDiscovery("manual");
+            }}
+            disabled={discoveryDisabled}
+          >
+            <Ionicons
+              color={discoveryDisabled ? T.colors.textMuted : T.colors.accent}
+              name="sparkles-outline"
+              size={20}
+            />
+            <Text
+              style={[
+                localStyles.mapMenuItemLabel,
+                discoveryDisabled ? localStyles.mapMenuItemDisabled : null,
+              ]}
+            >
+              {discovering ? "Discovering..." : "Discover More"}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={localStyles.mapMenuItem}
+            disabled={controller.libraryMapMutationBusy}
+            onPress={() => {
+              setMapMenuVisible(false);
+              void controller.handleSaveLibraryMapFromBundle(
+                activeBundle,
+                mapSaveTitle,
+              );
+            }}
+          >
+            <Ionicons
+              color={T.colors.accent}
+              name="bookmark-outline"
+              size={20}
+            />
+            <Text style={localStyles.mapMenuItemLabel}>Save Map</Text>
+          </Pressable>
+          <Pressable
+            style={localStyles.mapMenuItem}
+            onPress={() => {
+              setMapMenuVisible(false);
+              setHelpVisible(true);
+            }}
+          >
+            <Ionicons
+              color={T.colors.textMuted}
+              name="help-circle-outline"
+              size={20}
+            />
+            <Text style={localStyles.mapMenuItemLabel}>Help</Text>
+          </Pressable>
+        </View>
+      </BottomSheetSurface>
+
+      <BottomSheetSurface
+        visible={Boolean(mapVersePreviewRef)}
+        onClose={() => {
+          setMapVersePreviewRef(null);
+          setMapVersePreviewText("");
+          setMapVersePreviewLoading(false);
+        }}
+        title={mapVersePreviewRef || "Verse"}
+        snapPoints={["32%"]}
+      >
+        <View style={localStyles.mapSheetBody}>
+          {mapVersePreviewLoading ? (
+            <LoadingDotsNative label="Loading verse..." />
+          ) : (
+            <Text style={localStyles.mapVersePreviewText}>
+              {mapVersePreviewText || "Could not load verse text."}
+            </Text>
+          )}
+          <View style={localStyles.mapSheetActionsRow}>
+            <ActionButton
+              label="Open in Reader"
+              variant="secondary"
+              onPress={() => {
+                const ref = mapVersePreviewRef;
+                setMapVersePreviewRef(null);
+                if (!ref) return;
+                const parsed = parseScriptureReference(ref);
+                if (!parsed) return;
+                controller.queueReaderFocusTarget(
+                  parsed.book,
+                  parsed.chapter,
+                  parsed.verse ?? 1,
+                );
+                void controller.navigateReaderTo(parsed.book, parsed.chapter);
+                navigation.navigate("Tabs", { mode: "Reader" } as never);
+              }}
+              style={localStyles.mapSheetActionBtn}
+            />
+          </View>
+        </View>
+      </BottomSheetSurface>
 
       <BottomSheetSurface
         visible={helpVisible}
@@ -6707,6 +6864,38 @@ export function MapViewerScreen({
           </Text>
         </View>
       </BottomSheetSurface>
+
+      {/* Full-screen loader overlay — shown until map is fully ready */}
+      {!mapLoaderDismissed ? (
+        <Animated.View
+          pointerEvents={mapReady ? "none" : "auto"}
+          style={[
+            localStyles.mapLoaderOverlay,
+            {
+              opacity: mapLoaderFadeAnim,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            },
+          ]}
+        >
+          <View style={localStyles.mapLoaderContent}>
+            <ChatThinkingState
+              verses={mapNodes
+                .filter((n) => n.depth !== 0)
+                .map((n) => getMapNodeLabel(n))}
+              tracedText={title}
+              activeTools={discovering ? ["discover_connections"] : []}
+              completedTools={
+                autoDiscoveryRunRef.current && !discovering
+                  ? ["discover_connections"]
+                  : derivedGraph
+                    ? ["trace_bundle"]
+                    : []
+              }
+            />
+          </View>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -7274,6 +7463,17 @@ const localStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.colors.canvas,
   },
+  mapLoaderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: T.colors.canvas,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 50,
+  },
+  mapLoaderContent: {
+    width: "85%",
+    maxWidth: 360,
+  },
   mapWorkspace: {
     flex: 1,
   },
@@ -7317,9 +7517,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
-    // Glass-like background: semi-transparent with slight warmth to match web's
-    // radial-gradient glassmorphism (RN can't do backdrop-filter, so we darken slightly)
-    backgroundColor: "rgba(22,22,28,0.72)",
+    backgroundColor: "rgba(22,22,28,0.92)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 8,
@@ -7395,7 +7593,7 @@ const localStyles = StyleSheet.create({
   },
   mapNodeSelected: {
     borderColor: T.colors.accent,
-    backgroundColor: "rgba(212,175,55,0.16)",
+    backgroundColor: "rgba(35,30,15,0.95)",
     shadowColor: T.colors.accent,
     shadowOpacity: 0.28,
     shadowRadius: 12,
@@ -7413,7 +7611,7 @@ const localStyles = StyleSheet.create({
   },
   mapNodeAnchor: {
     borderColor: "rgba(197,179,88,0.35)",
-    backgroundColor: "rgba(212,175,55,0.10)",
+    backgroundColor: "rgba(30,28,18,0.94)",
     shadowColor: "#C5B358",
     shadowOpacity: 0.35,
     shadowRadius: 20,
@@ -7441,12 +7639,6 @@ const localStyles = StyleSheet.create({
     lineHeight: 15,
     paddingTop: 2,
   },
-  mapActionClusterTopRight: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    gap: 8,
-  },
   mapActionClusterBottomRight: {
     position: "absolute",
     right: 16,
@@ -7456,19 +7648,7 @@ const localStyles = StyleSheet.create({
   mapActionClusterBottomLeft: {
     position: "absolute",
     left: 16,
-    bottom: 88,
-  },
-  mapDiscoverButton: {
-    minHeight: 40,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderColor: "rgba(212,175,55,0.22)",
-    backgroundColor: "rgba(24,24,27,0.88)",
-  },
-  mapDiscoverButtonLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    bottom: 22,
   },
   mapDiscoveryOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -7564,6 +7744,34 @@ const localStyles = StyleSheet.create({
     gap: T.spacing.sm,
     paddingHorizontal: T.spacing.lg,
     paddingBottom: T.spacing.sm,
+  },
+  mapMenuBody: {
+    paddingHorizontal: T.spacing.lg,
+    gap: 4,
+  },
+  mapMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  mapMenuItemLabel: {
+    color: T.colors.text,
+    fontSize: 15,
+    fontWeight: "600",
+    fontFamily: T.fonts.sans,
+  },
+  mapMenuItemDisabled: {
+    opacity: 0.4,
+  },
+  mapVersePreviewText: {
+    color: T.colors.text,
+    fontSize: T.typography.body,
+    lineHeight: 27,
+    fontFamily: T.fonts.serif,
   },
   mapMetaChipRow: {
     flexDirection: "row",
@@ -7794,12 +8002,31 @@ const localStyles = StyleSheet.create({
   nodeDetailScroll: {
     maxHeight: 180,
   },
-  mapSheetActions: {
+  mapSheetActionsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
-  mapSheetActionsExpanded: {
-    flexWrap: "wrap",
+  mapSheetActionBtn: {
+    flex: 1,
+    minHeight: 40,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  mapPericopeEyebrow: {
+    gap: 2,
+  },
+  mapPericopeEyebrowText: {
+    color: "rgba(245,240,230,0.55)",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+    fontFamily: T.fonts.sans,
+  },
+  mapPericopeThemes: {
+    color: "rgba(245,240,230,0.32)",
+    fontSize: 10,
+    fontFamily: T.fonts.sans,
+    letterSpacing: 0.2,
   },
   mapInspectorScrollView: {
     flex: 1,
@@ -7896,14 +8123,6 @@ const localStyles = StyleSheet.create({
     height: 8,
     borderRadius: 999,
     borderWidth: 1.5,
-  },
-  mapTopicNextButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
   },
   mapLibraryMetaSection: {
     borderTopWidth: 1,
