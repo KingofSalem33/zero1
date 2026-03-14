@@ -641,6 +641,27 @@ export function ReaderScreen({
     return BIBLE_BOOKS.filter((book) => book.toLowerCase().includes(query));
   }, [bookFilter]);
 
+  const bookSelectorInitialOffset = useMemo(() => {
+    const index = (BIBLE_BOOKS as readonly string[]).indexOf(
+      controller.reader.book,
+    );
+    if (index <= 0) return { x: 0, y: 0 };
+    // Section label ~24px, each row ~44px, gap 6px between rows, section paddingBottom 10px
+    const sectionLabelHeight = 24;
+    const rowHeight = 44;
+    const sectionGap = 6;
+    const isNT = index >= 39;
+    const rowIndex = isNT ? index - 39 : index;
+    const otSectionHeight =
+      sectionLabelHeight + 39 * rowHeight + 38 * sectionGap + 10;
+    const yOffset = isNT
+      ? otSectionHeight +
+        sectionLabelHeight +
+        rowIndex * (rowHeight + sectionGap)
+      : sectionLabelHeight + rowIndex * (rowHeight + sectionGap);
+    return { x: 0, y: Math.max(0, yOffset - 120) };
+  }, [controller.reader.book]);
+
   const filteredOldTestamentBooks = useMemo(
     () => filteredBooks.filter((book) => BIBLE_BOOKS.indexOf(book) < 39),
     [filteredBooks],
@@ -1778,11 +1799,6 @@ export function ReaderScreen({
               >
                 {controller.reader.book} {controller.reader.chapter}
               </Text>
-              <Ionicons
-                color={T.colors.textMuted}
-                name="chevron-down"
-                size={14}
-              />
             </PressableScale>
 
             <IconButton
@@ -2536,6 +2552,7 @@ export function ReaderScreen({
         <BottomSheetScrollView
           style={localStyles.selectorScroll}
           showsVerticalScrollIndicator={false}
+          contentOffset={bookFilter ? undefined : bookSelectorInitialOffset}
         >
           {filteredOldTestamentBooks.length > 0 ? (
             <View style={localStyles.selectorSection}>
@@ -3358,7 +3375,7 @@ const localStyles = StyleSheet.create({
     fontSize: T.typography.caption,
   },
   selectorScroll: {
-    maxHeight: 520,
+    flex: 1,
   },
   selectorSection: {
     gap: 6,
