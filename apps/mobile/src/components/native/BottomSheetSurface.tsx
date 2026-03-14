@@ -16,6 +16,7 @@ export function BottomSheetSurface({
   subtitle,
   headerRight,
   snapPoints,
+  enableDynamicSizing = true,
   children,
 }: {
   visible: boolean;
@@ -24,6 +25,7 @@ export function BottomSheetSurface({
   subtitle?: string | null;
   headerRight?: ReactNode;
   snapPoints: string[];
+  enableDynamicSizing?: boolean;
   children: ReactNode;
 }) {
   const sheetRef = useRef<BottomSheetModal>(null);
@@ -64,7 +66,7 @@ export function BottomSheetSurface({
       ref={sheetRef}
       snapPoints={snapPoints}
       enablePanDownToClose
-      enableDynamicSizing
+      enableDynamicSizing={enableDynamicSizing}
       maxDynamicContentSize={maxDynamicContentSize}
       backdropComponent={renderBackdrop}
       onDismiss={handleDismiss}
@@ -120,6 +122,8 @@ const local = StyleSheet.create({
     opacity: 0.7,
   },
   root: {
+    flex: 1,
+    minHeight: 0,
     gap: T.spacing.sm,
     paddingBottom: T.spacing.sm,
   },

@@ -177,6 +177,10 @@ export function WebAppShellScreen({
       } catch {
         // best-effort external handoff
       }
+    } finally {
+      if (lastExternalUrlRef.current === url) {
+        lastExternalUrlRef.current = null;
+      }
     }
   }, []);
 

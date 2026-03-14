@@ -2868,6 +2868,13 @@ export function ChatScreen({
     if (!versePreviewReference) return;
     const parsed = parseScriptureReference(versePreviewReference);
     if (!parsed) return;
+    if (parsed.verse !== undefined) {
+      controller.queueReaderFocusTarget(
+        parsed.book,
+        parsed.chapter,
+        parsed.verse,
+      );
+    }
     void controller.navigateReaderTo(parsed.book, parsed.chapter);
     nav.openReader(parsed.book, parsed.chapter);
     closeVersePreview();
@@ -3438,7 +3445,7 @@ export function ChatScreen({
               labelStyle={localStyles.compactActionLabel}
             />
             <ActionButton
-              label="View"
+              label="Open in Bible"
               variant="secondary"
               onPress={openVersePreviewInReader}
               style={localStyles.compactAction}
@@ -4220,6 +4227,7 @@ export function MapViewerScreen({
   );
   const [mapVersePreviewText, setMapVersePreviewText] = useState("");
   const [mapVersePreviewLoading, setMapVersePreviewLoading] = useState(false);
+  const mapVersePreviewRequestIdRef = useRef(0);
   const autoDiscoveryRunRef = useRef(false);
   const [edgesAnimated, setEdgesAnimated] = useState(false);
   const [mapReady, setMapReady] = useState(false);
@@ -5328,6 +5336,8 @@ export function MapViewerScreen({
   const openMapVersePreview = useCallback(
     (node: VisualNode) => {
       const ref = `${node.book_name} ${node.chapter}:${node.verse}`;
+      const requestId = mapVersePreviewRequestIdRef.current + 1;
+      mapVersePreviewRequestIdRef.current = requestId;
       setMapVersePreviewRef(ref);
       setMapVersePreviewText(node.text || "");
       setMapVersePreviewLoading(!node.text);
@@ -5337,12 +5347,14 @@ export function MapViewerScreen({
           reference: ref,
         })
           .then((result) => {
+            if (requestId !== mapVersePreviewRequestIdRef.current) return;
             setMapVersePreviewText(
               result?.text || "Could not load verse text.",
             );
             setMapVersePreviewLoading(false);
           })
           .catch(() => {
+            if (requestId !== mapVersePreviewRequestIdRef.current) return;
             setMapVersePreviewText("Could not load verse text.");
             setMapVersePreviewLoading(false);
           });
@@ -6786,6 +6798,7 @@ export function MapViewerScreen({
       <BottomSheetSurface
         visible={Boolean(mapVersePreviewRef)}
         onClose={() => {
+          mapVersePreviewRequestIdRef.current += 1;
           setMapVersePreviewRef(null);
           setMapVersePreviewText("");
           setMapVersePreviewLoading(false);
@@ -6803,10 +6816,11 @@ export function MapViewerScreen({
           )}
           <View style={localStyles.mapSheetActionsRow}>
             <ActionButton
-              label="Open in Reader"
+              label="Open in Bible"
               variant="secondary"
               onPress={() => {
                 const ref = mapVersePreviewRef;
+                mapVersePreviewRequestIdRef.current += 1;
                 setMapVersePreviewRef(null);
                 if (!ref) return;
                 const parsed = parseScriptureReference(ref);

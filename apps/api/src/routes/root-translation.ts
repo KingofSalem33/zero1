@@ -12,6 +12,7 @@ import {
   profileSpan,
   profileTime,
 } from "../profiling/requestProfiler";
+import { buildRootTranslationFallbackText } from "./rootTranslationFallback";
 
 const router = Router();
 
@@ -208,6 +209,8 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     const profiler = getProfiler();
     profiler?.setPipeline("root_translation");
     profiler?.markHandlerStart();
+    const rootTranslationModel =
+      ENV.OPENAI_SMART_MODEL || ENV.OPENAI_MODEL_NAME;
 
     const { selectedText, book, chapter, verse, verses } = await profileTime(
       "root_translation.zod_parse",
@@ -225,17 +228,6 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       verse,
       verses,
     });
-
-    // Check if OpenAI client is available
-    if (!ENV.AI_API_KEY) {
-      return res.status(503).json({
-        error: {
-          message: "Root translation service not configured",
-          type: "service_unavailable",
-          code: "root_translation_not_configured",
-        },
-      });
-    }
 
     // For now, we'll need to match the selected text to a Bible verse
     // This is a simplified version - in production you'd want more robust verse detection
@@ -429,64 +421,93 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       };
     });
 
-    // Generate lost-context analysis using GPT-5-mini with Strong's Concordance grounding
-    const result = (await profileTime(
-      "root_translation.runModel",
-      () =>
-        Promise.race([
-          runModel(
-            [
-              {
-                role: "system",
-                content: ROOT_TRANSLATION_V2.buildSystem(),
-              },
-              {
-                role: "user",
-                content: ROOT_TRANSLATION_V2.buildUser({
-                  selectedText,
-                  verseWithStrongs,
-                  groundingData,
-                }),
-              },
-            ],
-            {
-              model: ENV.OPENAI_FAST_MODEL,
-              verbosity: "medium",
-              promptCacheKey: "root-translation-v2",
-            },
-          ),
-          new Promise((_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error("Root translation request timed out after 20s"),
+    let lostContext = "Unable to generate root translation.";
+    const lexicalFallbackText = buildRootTranslationFallbackText({
+      selectedText,
+      language,
+      words: wordMappings.map((word) => ({
+        english: word.english,
+        strongs: word.strongs,
+      })),
+      definitions: definitions.map(({ number, entry }) => ({
+        number,
+        transliteration: entry.transliteration || "",
+        definition: entry.strongs_def || "",
+      })),
+    });
+
+    if (!ENV.AI_API_KEY) {
+      console.warn(
+        "[ROOT] AI API key unavailable; returning lexical fallback summary.",
+      );
+      lostContext = lexicalFallbackText;
+    } else {
+      try {
+        const result = (await profileTime(
+          "root_translation.runModel",
+          () =>
+            Promise.race([
+              runModel(
+                [
+                  {
+                    role: "system",
+                    content: ROOT_TRANSLATION_V2.buildSystem(),
+                  },
+                  {
+                    role: "user",
+                    content: ROOT_TRANSLATION_V2.buildUser({
+                      selectedText,
+                      verseWithStrongs,
+                      groundingData,
+                    }),
+                  },
+                ],
+                {
+                  model: rootTranslationModel,
+                  verbosity: "medium",
+                  promptCacheKey: "root-translation-v2",
+                },
+              ),
+              new Promise((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error("Root translation request timed out after 30s"),
+                    ),
+                  30000,
                 ),
-              20000,
-            ),
-          ),
-        ]),
-      {
-        file: "ai/runModel.ts",
-        fn: "runModel",
-        await: "client.responses.create",
-        model: ENV.OPENAI_FAST_MODEL,
-      },
-    )) as RunModelResult;
+              ),
+            ]),
+          {
+            file: "ai/runModel.ts",
+            fn: "runModel",
+            await: "client.responses.create",
+            model: rootTranslationModel,
+          },
+        )) as RunModelResult;
 
-    // Log token usage for telemetry
-    const tokenUsage = extractTokenUsage(
-      result,
-      "/api/root-translation",
-      ENV.OPENAI_FAST_MODEL,
-      "root-translation-v2",
-    );
-    if (tokenUsage) {
-      logTokenUsage(tokenUsage);
+        // Log token usage for telemetry
+        const tokenUsage = extractTokenUsage(
+          result,
+          "/api/root-translation",
+          rootTranslationModel,
+          "root-translation-v2",
+        );
+        if (tokenUsage) {
+          logTokenUsage(tokenUsage);
+        }
+
+        lostContext =
+          result.text?.replace(/Strong\u2019s/g, "Strong's").trim() ||
+          lexicalFallbackText;
+      } catch (error) {
+        console.warn(
+          "[ROOT] Falling back to lexical summary after model failure:",
+          error,
+        );
+        lostContext = lexicalFallbackText;
+      }
     }
-
-    const lostContext =
-      result.text?.replace(/Strong\u2019s/g, "Strong's").trim() ||
-      "Unable to generate root translation.";
 
     console.log("[ROOT] Lost in translation analysis:", lostContext);
 

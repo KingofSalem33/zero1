@@ -306,7 +306,7 @@ function ConnectionDetailSheet({
   mutationBusy: boolean;
   mutationError: string | null;
   onClose: () => void;
-  onSave: (note: string) => void | Promise<void>;
+  onSave: (note: string) => boolean | Promise<boolean>;
   onDelete: (id: string) => void;
 }) {
   const [noteDraft, setNoteDraft] = useState("");
@@ -402,7 +402,8 @@ function ConnectionDetailSheet({
           onClose();
         }}
         onSave={async () => {
-          await onSave(noteDraft);
+          const saved = await onSave(noteDraft);
+          if (!saved) return;
           setNoteEditorVisible(false);
           onClose();
         }}
@@ -429,7 +430,11 @@ function MapDetailSheet({
   mutationBusy: boolean;
   mutationError: string | null;
   onClose: () => void;
-  onSave: (title: string, note: string, tags: string) => void | Promise<void>;
+  onSave: (
+    title: string,
+    note: string,
+    tags: string,
+  ) => boolean | Promise<boolean>;
   onOpen: (item: LibraryMapItem) => void;
   onDelete: (id: string) => void;
 }) {
@@ -521,7 +526,8 @@ function MapDetailSheet({
           onClose();
         }}
         onSave={async () => {
-          await onSave(titleDraft, noteDraft, tagsDraft);
+          const saved = await onSave(titleDraft, noteDraft, tagsDraft);
+          if (!saved) return;
           setNoteEditorVisible(false);
           onClose();
         }}
@@ -569,7 +575,7 @@ function HighlightDetailSheet({
   noteDraft: string;
   onClose: () => void;
   onNoteChange: (value: string) => void;
-  onSave: () => void | Promise<void>;
+  onSave: () => boolean | Promise<boolean>;
   onDelete: (id: string) => void;
   onShare: (item: MobileHighlightItem) => void | Promise<void>;
 }) {
@@ -631,7 +637,8 @@ function HighlightDetailSheet({
           onClose();
         }}
         onSave={async () => {
-          await onSave();
+          const saved = await onSave();
+          if (!saved) return;
           setNoteEditorVisible(false);
           onClose();
         }}
@@ -1075,14 +1082,14 @@ export function LibraryScreen({
         onClose={() => setSelectedConnectionId(null)}
         onSave={(note) =>
           selectedConnection
-            ? void controller.handleSaveLibraryConnectionMeta(
+            ? controller.handleSaveLibraryConnectionMeta(
                 selectedConnection.id,
                 {
                   note,
                   tags: selectedConnection.tags.join(", "),
                 },
               )
-            : undefined
+            : false
         }
         onDelete={handleDeleteConnection}
       />
@@ -1095,12 +1102,12 @@ export function LibraryScreen({
         onClose={() => setSelectedMapId(null)}
         onSave={(title, note, tags) =>
           selectedMap
-            ? void controller.handleSaveLibraryMapMeta(selectedMap.id, {
+            ? controller.handleSaveLibraryMapMeta(selectedMap.id, {
                 title,
                 note,
                 tags,
               })
-            : undefined
+            : false
         }
         onOpen={(item) => {
           if (!item.bundle) return;
@@ -1121,7 +1128,7 @@ export function LibraryScreen({
           controller.setSelectedHighlightId(null);
         }}
         onNoteChange={controller.setHighlightEditNote}
-        onSave={() => void controller.handleSaveHighlightEdits()}
+        onSave={() => controller.handleSaveHighlightEdits()}
         onDelete={handleDeleteHighlight}
         onShare={handleShareHighlight}
       />

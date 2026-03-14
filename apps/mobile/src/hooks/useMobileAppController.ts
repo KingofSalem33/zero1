@@ -324,12 +324,12 @@ export interface MobileAppController {
   handleSaveLibraryMapMeta: (
     id: string,
     updates: LibraryMapEditForm,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   handleDeleteLibraryMap: (id: string) => Promise<void>;
   handleSaveLibraryConnectionMeta: (
     id: string,
     updates: LibraryConnectionEditForm,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   handleCreateLibraryConnectionFromMap: (
     input: LibraryConnectionCreateForm,
   ) => Promise<void>;
@@ -355,10 +355,10 @@ export interface MobileAppController {
   ) => Promise<void>;
   handleReaderRemoveHighlightSelection: (verses: number[]) => Promise<void>;
   handleCreateBookmark: () => Promise<void>;
-  handleDeleteBookmark: (id: string) => Promise<void>;
+  handleDeleteBookmark: (id: string) => Promise<boolean>;
   handleCreateHighlight: () => Promise<void>;
-  handleSaveHighlightEdits: () => Promise<void>;
-  handleDeleteHighlight: (id: string) => Promise<void>;
+  handleSaveHighlightEdits: () => Promise<boolean>;
+  handleDeleteHighlight: (id: string) => Promise<boolean>;
 }
 
 interface UseMobileAppControllerOptions {
@@ -915,7 +915,12 @@ export function useMobileAppController(
     setAuthError(null);
     setAuthInfo(null);
     try {
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
@@ -1603,24 +1608,16 @@ export function useMobileAppController(
         item.verses.length === normalizedVerses.length &&
         item.verses.every((verse) => selectedVerseSet.has(verse)),
     );
-    const overlappingMatch =
-      exactMatch ??
-      highlights.find(
-        (item) =>
-          item.book.toLowerCase() === canonicalBook.toLowerCase() &&
-          item.chapter === reader.chapter &&
-          item.verses.some((verse) => selectedVerseSet.has(verse)),
-      );
 
     setHighlightMutationBusy(true);
     setHighlightMutationError(null);
     try {
-      if (overlappingMatch) {
+      if (exactMatch) {
         const updated = await withAccessToken((accessToken) =>
           updateHighlight({
             apiBaseUrl: MOBILE_ENV.API_URL,
             accessToken,
-            id: overlappingMatch.id,
+            id: exactMatch.id,
             updates: {
               note: trimmedNote,
             },
@@ -1694,7 +1691,7 @@ export function useMobileAppController(
   async function handleSaveLibraryMapMeta(
     id: string,
     updates: LibraryMapEditForm,
-  ) {
+  ): Promise<boolean> {
     const title = updates.title.trim();
     const note = updates.note.trim();
     const tags = updates.tags
@@ -1722,6 +1719,7 @@ export function useMobileAppController(
       );
       setLibraryMapsLoadedAt(new Date().toISOString());
       notify("success", "Map updated.");
+      return true;
     } catch (error) {
       setLibraryMapMutationError(
         error instanceof Error ? error.message : String(error),
@@ -1730,6 +1728,7 @@ export function useMobileAppController(
         "error",
         error instanceof Error ? error.message : "Failed to update map.",
       );
+      return false;
     } finally {
       setLibraryMapMutationBusy(false);
     }
@@ -1765,7 +1764,7 @@ export function useMobileAppController(
   async function handleSaveLibraryConnectionMeta(
     id: string,
     updates: LibraryConnectionEditForm,
-  ) {
+  ): Promise<boolean> {
     const note = updates.note.trim();
     const tags = updates.tags
       .split(",")
@@ -1791,6 +1790,7 @@ export function useMobileAppController(
       );
       setLibraryLoadedAt(new Date().toISOString());
       notify("success", "Connection updated.");
+      return true;
     } catch (error) {
       setLibraryConnectionMutationError(
         error instanceof Error ? error.message : String(error),
@@ -1799,6 +1799,7 @@ export function useMobileAppController(
         "error",
         error instanceof Error ? error.message : "Failed to update connection.",
       );
+      return false;
     } finally {
       setLibraryConnectionMutationBusy(false);
     }
@@ -2004,7 +2005,7 @@ export function useMobileAppController(
     }
   }
 
-  async function handleDeleteBookmark(id: string) {
+  async function handleDeleteBookmark(id: string): Promise<boolean> {
     setBookmarkMutationBusy(true);
     setBookmarkMutationError(null);
     try {
@@ -2019,6 +2020,7 @@ export function useMobileAppController(
       setSelectedBookmarkId((current) => (current === id ? null : current));
       setBookmarksLoadedAt(new Date().toISOString());
       notify("success", "Bookmark deleted.");
+      return true;
     } catch (error) {
       setBookmarkMutationError(
         error instanceof Error ? error.message : String(error),
@@ -2027,6 +2029,7 @@ export function useMobileAppController(
         "error",
         error instanceof Error ? error.message : "Failed to delete bookmark.",
       );
+      return false;
     } finally {
       setBookmarkMutationBusy(false);
     }
@@ -2037,15 +2040,23 @@ export function useMobileAppController(
     const chapter = Number(highlightCreateDraft.chapter.trim());
     const text = highlightCreateDraft.text.trim();
     const book = highlightCreateDraft.book.trim();
+    const canonicalBook = resolveBibleBookName(book);
 
-    if (!book || !Number.isInteger(chapter) || chapter <= 0 || !text) {
+    if (!canonicalBook || !Number.isInteger(chapter) || chapter <= 0 || !text) {
       setHighlightMutationError(
-        "Book, positive chapter, and highlight text are required.",
+        "Valid book, positive chapter, and highlight text are required.",
       );
       return;
     }
     if (verses.length === 0) {
       setHighlightMutationError("Enter at least one verse number.");
+      return;
+    }
+    const maxChapter = getBibleChapterCount(canonicalBook);
+    if (maxChapter && chapter > maxChapter) {
+      setHighlightMutationError(
+        `${canonicalBook} has ${maxChapter} chapters. Enter 1-${maxChapter}.`,
+      );
       return;
     }
 
@@ -2054,7 +2065,7 @@ export function useMobileAppController(
       verses.length === 1 ? String(verses[0]) : `${verses[0]}-${verses.at(-1)}`;
     const newItem: MobileHighlightItem = {
       id: makeUuidLike(),
-      book,
+      book: canonicalBook,
       chapter,
       verses,
       text,
@@ -2062,7 +2073,7 @@ export function useMobileAppController(
       note: highlightCreateDraft.note.trim() || undefined,
       createdAt: nowIso,
       updatedAt: nowIso,
-      referenceLabel: `${book} ${chapter}:${verseLabel}`,
+      referenceLabel: `${canonicalBook} ${chapter}:${verseLabel}`,
     };
 
     setHighlightMutationBusy(true);
@@ -2071,7 +2082,7 @@ export function useMobileAppController(
       const selectedVerseSet = new Set(verses);
       const adjustedHighlights = trimHighlightOverlaps({
         highlights,
-        book,
+        book: canonicalBook,
         chapter,
         selectedVerses: selectedVerseSet,
       });
@@ -2088,6 +2099,7 @@ export function useMobileAppController(
       setSelectedHighlightId(newItem.id);
       setHighlightCreateDraft((current) => ({
         ...current,
+        book: canonicalBook,
         text: "",
         note: "",
       }));
@@ -2105,10 +2117,10 @@ export function useMobileAppController(
     }
   }
 
-  async function handleSaveHighlightEdits() {
+  async function handleSaveHighlightEdits(): Promise<boolean> {
     if (!selectedHighlight) {
       setHighlightMutationError("Select a highlight to edit.");
-      return;
+      return false;
     }
 
     setHighlightMutationBusy(true);
@@ -2131,6 +2143,7 @@ export function useMobileAppController(
       );
       setHighlightsLoadedAt(new Date().toISOString());
       notify("success", "Highlight updated.");
+      return true;
     } catch (error) {
       setHighlightMutationError(
         error instanceof Error ? error.message : String(error),
@@ -2139,12 +2152,13 @@ export function useMobileAppController(
         "error",
         error instanceof Error ? error.message : "Failed to update highlight.",
       );
+      return false;
     } finally {
       setHighlightMutationBusy(false);
     }
   }
 
-  async function handleDeleteHighlight(id: string) {
+  async function handleDeleteHighlight(id: string): Promise<boolean> {
     setHighlightMutationBusy(true);
     setHighlightMutationError(null);
     try {
@@ -2159,6 +2173,7 @@ export function useMobileAppController(
       setSelectedHighlightId((current) => (current === id ? null : current));
       setHighlightsLoadedAt(new Date().toISOString());
       notify("success", "Highlight deleted.");
+      return true;
     } catch (error) {
       setHighlightMutationError(
         error instanceof Error ? error.message : String(error),
@@ -2167,6 +2182,7 @@ export function useMobileAppController(
         "error",
         error instanceof Error ? error.message : "Failed to delete highlight.",
       );
+      return false;
     } finally {
       setHighlightMutationBusy(false);
     }

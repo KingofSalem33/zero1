@@ -1,5 +1,9 @@
 # Todo
 
+- [x] Inventory every mobile button-driven flow that produces a user-visible or network-backed output
+- [x] Trace each flow from click to final result, including dependencies, state transitions, and completion conditions
+- [x] Record per-flow findings with exact click paths, outputs, and improvement opportunities
+
 - [x] Add a shared map visualization contract that matches the web bundle shape
 - [x] Migrate mobile map types and consumers to the richer visualization contract
 - [x] Refactor the native map viewer into a map-first layout with floating controls
@@ -22,6 +26,70 @@
 - [x] Add adaptive large-screen map composition with a persistent inspector rail
 - [x] Remove the remaining disabled legacy map inspector sheets after the rail migration
 - [x] Run mobile typecheck and targeted tests, then update the review notes
+
+## Current Review
+
+- Scope: mobile app button-click flows that produce an output, reviewed for logical consistency, dependency order, state changes, and completion behavior.
+- Validation: `npm test` in `apps/mobile` on 2026-03-14. Result: 5 suites passed, 51 tests passed.
+
+## Fix Queue 2026-03-14
+
+- [x] Fix invalid highlight creation and reader-handoff consistency
+- [x] Fix library note editor close-on-failure behavior
+- [x] Fix bookmark and highlight detail delete dead ends
+- [x] Fix reader selection note save attaching to overlapping instead of exact highlights
+- [x] Fix chat verse preview reader handoff to preserve verse focus
+- [x] Fix silent sign-out failure handling
+- [x] Fix map verse preview stale-response overwrite race
+- [x] Fix repeated web-shell external open no-op behavior
+- [x] Fix Reader roots sheet sizing, scroll reachability, and root-unavailable fallback behavior
+- [x] Run mobile tests and update review notes
+- [x] Fix API ROOT translation 500s by degrading model failures to lexical fallback responses
+
+## Flow Audit 2026-03-14
+
+- `Navigation > top-bar menu > Reader / Chat / Library / Settings`: no material issues found. Each click only mutates local `activeMode`, dismisses the keyboard, and closes the drawer in one step (`apps/mobile/src/navigation/MobileRootNavigator.tsx`).
+- `Auth > Continue with Google / Apple`, `Sign in with email`, `Send magic link`, `Run protected check`: no major ordering issues found. These flows set busy/error state up front and only surface success state after the async auth/probe branch completes (`apps/mobile/src/hooks/useMobileAppController.ts`).
+- `Account > Sign out`: issue. Click path `Settings > Sign out` calls `supabase.auth.signOut()` but ignores the returned `error`, so a failed sign-out can leave the session active with no user-facing failure output. Exact path: `apps/mobile/src/screens/AuthHomeAccountScreens.tsx:223-227` -> `apps/mobile/src/hooks/useMobileAppController.ts:913-921`.
+- `Bookmarks > New bookmark > suggestion chip > Save bookmark`: no material issues found. This flow resolves canonical book names, bounds-checks chapter input, and keeps the selected suggestion aligned with the eventual saved reference (`apps/mobile/src/screens/DetailScreens.tsx:121-170`, `apps/mobile/src/hooks/useMobileAppController.ts:628-644`, `apps/mobile/src/hooks/useMobileAppController.ts:1925-2004`).
+- `Bookmarks > list Refresh / New bookmark / card tap / quick delete`: no material issues found. Refresh, create, open-detail, and delete all point to the expected controller mutations and list refresh state (`apps/mobile/src/screens/DataListScreens.tsx:1186-1261`).
+- `Bookmarks > detail > Delete`: issue. After confirm, the bookmark is deleted but the route never pops back to the list, so the completion state is a dead-end `Bookmark not found` screen instead of returning to a valid post-delete destination. Exact path: `Bookmarks list > Bookmark detail > Delete > Confirm`. Code: `apps/mobile/src/screens/DetailScreens.tsx:179-193`, `apps/mobile/src/screens/DetailScreens.tsx:234-252`.
+- `Highlights > New highlight > Create highlight`: issue. The create flow only checks for non-empty book/chapter/text and never canonicalizes the book or bounds-checks the chapter, unlike bookmarks. That lets invalid highlights be saved and later breaks downstream outputs like `Open in reader`. Exact path: `Library > Highlights > New highlight > Create highlight`. Code: `apps/mobile/src/screens/DetailScreens.tsx:419-427` -> `apps/mobile/src/hooks/useMobileAppController.ts:2035-2105`.
+- `Highlights > detail > Delete`: issue. This mirrors bookmark detail deletion: the mutation succeeds, but the screen is left in the `Highlight not found` fallback instead of navigating back to the list. Exact path: `Highlights list > Highlight detail > Delete > Confirm`. Code: `apps/mobile/src/screens/DetailScreens.tsx:447-467`, `apps/mobile/src/screens/DetailScreens.tsx:538-565`.
+- `Library > Connection detail > Note > Save`: issue. The editor always closes after `await onSave(noteDraft)`, but the controller save path catches errors instead of throwing. On failure, the modal and sheet still dismiss, so the user loses context and retry state even though the save did not complete. Exact path: `Library > Connections > Connection card > Note > Save`. Code: `apps/mobile/src/screens/DataListScreens.tsx:393-412`, `apps/mobile/src/screens/DataListScreens.tsx:1076-1087`, `apps/mobile/src/hooks/useMobileAppController.ts:1765-1804`.
+- `Library > Map detail > Note > Save`: issue. Same broken handoff as connections: the modal closes unconditionally after the awaited save call even when the controller records a mutation error. Exact path: `Library > Maps > Map card > Note > Save`. Code: `apps/mobile/src/screens/DataListScreens.tsx:510-548`, `apps/mobile/src/screens/DataListScreens.tsx:1090-1110`, `apps/mobile/src/hooks/useMobileAppController.ts:1694-1735`.
+- `Library > Highlight sheet > Note > Save`: issue. Same failure pattern again: save errors are swallowed by the controller, but the note editor still closes and clears the only in-context recovery surface. Exact path: `Library > Highlights > Highlight card > Note > Save`. Code: `apps/mobile/src/screens/DataListScreens.tsx:622-641`, `apps/mobile/src/screens/DataListScreens.tsx:1113-1126`, `apps/mobile/src/hooks/useMobileAppController.ts:2108-2144`.
+- `Reader > verse selection modal > Note > Save`: issue. If the selected verses overlap any existing highlight, the flow updates the first overlapping highlight's note without reconciling the selected verse range. The click input and saved output can diverge, for example selecting verse 2 but updating a saved highlight for verses 1-3. Exact path: `Reader > long-press verse / select range > Note > Save`. Code: `apps/mobile/src/screens/ReaderScreen.tsx:1341-1356`, `apps/mobile/src/hooks/useMobileAppController.ts:1568-1692`.
+- `Reader > chapter nav`, `book selector`, `chapter selector`, `bookmark selector`, `Trace`, `Go Deeper`, `ROOT`, and reference drill-in buttons: no material flow issues found in the code path. State resets and handoffs are ordered coherently across these flows (`apps/mobile/src/screens/ReaderScreen.tsx`).
+- `Chat > quick prompts`, `send / stop`, `New Session`, `View map`, `Chain`, `next-branch chips`, `Trace` from verse preview: no major logic breaks found. The send path clears transient tool state before the request, ties streaming output to a message id, and resets map continuity state coherently when a request truly reanchors (`apps/mobile/src/screens/ChatMapScreens.tsx:2256-2527`, `apps/mobile/src/screens/ChatMapScreens.tsx:2821-2857`).
+- `Chat > inline reference / citation / chain resource > verse preview > View`: issue. This flow opens Reader without queueing a verse focus target, so the output is only chapter navigation, not verse-level handoff like the bookmark and map flows provide. Exact path: `Chat message > citation/reference > verse preview sheet > View`. Code: `apps/mobile/src/screens/ChatMapScreens.tsx:2867-2873`.
+- `Map > node > Reader`, `Map > node > Chat`, `Map > edge > Go deeper`, `Map menu > Discover More / Save Map / Help`, `Map onboarding > Next / Done / Skip`: no major ordering issues found. These flows clear conflicting inspector state before handoff and generally keep bundle/session dependencies aligned (`apps/mobile/src/screens/ChatMapScreens.tsx`).
+- `Map > connection verse chip > verse preview`: issue. The preview fetch path is not keyed or cancelled, so tapping verse chips quickly can let an older response overwrite the text for the newer reference. Exact path: `Map edge inspector > verse chip > verse preview sheet`. Code: `apps/mobile/src/screens/ChatMapScreens.tsx:5328-5349`.
+- `Map > saved connection metadata > Save notes`: risk. `saveSelectedConnectionMeta()` assumes the awaited controller call succeeded and sets a local success flag immediately afterward. An error effect later tries to correct this, but success state is still derived indirectly from error state rather than from an explicit mutation result. Exact path: `Map edge inspector for saved connection > Save notes`. Code: `apps/mobile/src/screens/ChatMapScreens.tsx:5627-5638`, `apps/mobile/src/hooks/useMobileAppController.ts:1765-1804`.
+- `Web shell load error > Retry / Open in Browser / Use Native Shell`: mostly coherent, but one low-severity issue exists. `Open in Browser` suppresses repeated taps for the same URL because `lastExternalUrlRef` is never reset, so a second click can produce no output. Exact path: `Web shell error state > Open in Browser`. Code: `apps/mobile/src/screens/WebAppShellScreen.tsx:167-181`, `apps/mobile/src/screens/WebAppShellScreen.tsx:253-256`.
+- Coverage gap: the current mobile tests cover bookmark creation, controller mutations, and route registration, but they do not exercise sign-out failure handling, invalid highlight creation, the library note-editor failure path, chat verse-preview handoff, or the map verse-preview race. The reviewed failures are all in currently uncovered flows.
+
+## Fix Results 2026-03-14
+
+- Resolved invalid highlight creation by canonicalizing the saved book name and rejecting out-of-range chapters before highlight creation.
+- Resolved library note-editor close-on-failure behavior by returning explicit success flags from note-save mutations and only dismissing the editor after a successful save.
+- Resolved bookmark and highlight detail delete dead ends by navigating back to the previous route only after a successful delete result.
+- Resolved reader selection note mismatches by updating notes only for exact verse-range matches and using the split-and-create path for overlap-only selections.
+- Resolved chat verse preview reader handoff drift by queueing verse focus before switching to Reader.
+- Resolved silent sign-out failures by surfacing Supabase sign-out errors through `authError`.
+- Resolved the map verse-preview race by invalidating stale fetch responses when the user taps a newer verse or dismisses the sheet.
+- Resolved repeated web-shell external-open no-op behavior by releasing the in-flight URL guard after each handoff attempt.
+- Resolved Reader ROOT sheet clunkiness by switching the Reader reference and selection sheets onto bottom-sheet-native scrolling, locking the ROOT view to stable heights, and adding bottom spacing so the lower controls remain reachable.
+- Resolved intermittent ROOT request failures by retrying one transient root-translation error before surfacing the unavailable state.
+- Resolved API ROOT 500s for recoverable model failures by returning Strong's-backed lexical fallback summaries instead of failing the entire request; the same fallback now covers missing AI configuration.
+- Resolved model drift between ROOT and synopsis by moving ROOT onto the same smart-model selection path the synopsis route uses.
+- Added regression coverage in `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx` and `apps/mobile/src/screens/__tests__/DetailScreens.test.tsx`.
+- Added regression coverage in `apps/mobile/src/hooks/__tests__/useRootTranslationMobile.test.tsx` for transient retry and final failure behavior.
+- Validation:
+  - `npm test` in `apps/mobile`: 7 suites passed, 60 tests passed.
+  - `npm run typecheck` in `apps/mobile`: passed.
+  - `npm run build` in `apps/api`: passed.
+  - direct fallback helper execution via `npx ts-node --transpile-only`: passed.
 
 ## Review
 
