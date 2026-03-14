@@ -77,7 +77,12 @@ export function BottomSheetSurface({
           <View style={local.header}>
             <View style={local.titleBlock}>
               {title ? (
-                <Text style={local.title} numberOfLines={1}>
+                <Text
+                  style={local.title}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                >
                   {title}
                 </Text>
               ) : null}

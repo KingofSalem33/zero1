@@ -649,7 +649,11 @@ export function LibraryScreen({
   nav: {
     openHighlightCreate: () => void;
     openHighlightDetail: (highlightId: string) => void;
-    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openMapViewer: (
+      title?: string,
+      bundle?: unknown,
+      traceQuery?: string,
+    ) => void;
     openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
   };
 }) {

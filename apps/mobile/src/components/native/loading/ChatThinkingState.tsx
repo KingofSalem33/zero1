@@ -111,6 +111,7 @@ export function ChatThinkingState({
   const [idleNodeCount, setIdleNodeCount] = useState(1);
   const [graphSize, setGraphSize] = useState({ width: 300, height: 150 });
   const [trackWidth, setTrackWidth] = useState(0);
+  const [cycleIndex, setCycleIndex] = useState(0);
   const shimmerX = useRef(new Animated.Value(-80)).current;
   const latestNodePulse = useRef(new Animated.Value(0)).current;
 
@@ -172,6 +173,16 @@ export function ChatThinkingState({
     }, 320);
     return () => clearInterval(timer);
   }, [reduceMotion, verses.length]);
+
+  // Cycle through verses in the bottom row
+  useEffect(() => {
+    if (verses.length <= 1) return;
+    setCycleIndex(0);
+    const timer = setInterval(() => {
+      setCycleIndex((i) => (i + 1) % verses.length);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [verses.length]);
 
   useEffect(() => {
     if (reduceMotion || trackWidth <= 0) return;
@@ -318,7 +329,7 @@ export function ChatThinkingState({
         </Text>
         {verses.length > 0 ? (
           <Text style={localStyles.latestVerse} numberOfLines={1}>
-            {verses[verses.length - 1]}
+            {verses[cycleIndex % verses.length]}
           </Text>
         ) : null}
       </View>

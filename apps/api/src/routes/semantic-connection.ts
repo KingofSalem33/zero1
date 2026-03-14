@@ -12,6 +12,9 @@ type VerseType = {
   chapter: number;
   verse: number;
   text: string;
+  pericopeTitle?: string;
+  pericopeType?: string;
+  pericopeThemes?: string[];
 };
 
 const router = Router();
@@ -52,6 +55,9 @@ router.post("/synopsis", async (req, res) => {
               book_name?: string;
               chapter?: number;
               verse?: number;
+              pericopeTitle?: string;
+              pericopeType?: string;
+              pericopeThemes?: string[];
             }) => {
               const reference =
                 typeof verse.reference === "string" ? verse.reference : "";
@@ -69,6 +75,21 @@ router.post("/synopsis", async (req, res) => {
                   ? Number(verse.verse)
                   : (parsed?.verse ?? 0),
                 text: typeof verse.text === "string" ? verse.text : "",
+                ...(typeof verse.pericopeTitle === "string" &&
+                verse.pericopeTitle
+                  ? { pericopeTitle: verse.pericopeTitle }
+                  : {}),
+                ...(typeof verse.pericopeType === "string" && verse.pericopeType
+                  ? { pericopeType: verse.pericopeType }
+                  : {}),
+                ...(Array.isArray(verse.pericopeThemes) &&
+                verse.pericopeThemes.length > 0
+                  ? {
+                      pericopeThemes: verse.pericopeThemes.filter(
+                        (t): t is string => typeof t === "string",
+                      ),
+                    }
+                  : {}),
               };
             },
           )
@@ -245,17 +266,32 @@ router.post("/synopsis", async (req, res) => {
             )}\n\nWhen writing the synopsis, make it distinct from these other lenses: focus on what THIS topic uniquely clarifies or reframes. If overlap is high (>=60%), explicitly contrast the angle rather than restating shared points.\n`
         : "";
 
-    // Build verse list for prompt
+    // Build verse list for prompt, with optional pericope narrative context
     const verseList = sortedVerses
-      .map(
-        (v: {
-          book_name: string;
-          chapter: number;
-          verse: number;
-          text: string;
-        }) => `**${v.book_name} ${v.chapter}:${v.verse}**\n"${v.text}"`,
-      )
+      .map((v: VerseType) => {
+        let entry = `**${v.book_name} ${v.chapter}:${v.verse}**\n"${v.text}"`;
+        if (v.pericopeTitle) {
+          const pericopeMeta = [
+            `Narrative section: "${v.pericopeTitle}"`,
+            v.pericopeType ? `(${v.pericopeType})` : "",
+            v.pericopeThemes?.length
+              ? `— themes: ${v.pericopeThemes.join(", ")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          entry += `\n${pericopeMeta}`;
+        }
+        return entry;
+      })
       .join("\n\n");
+
+    const hasPericopeContext = sortedVerses.some(
+      (v: VerseType) => v.pericopeTitle,
+    );
+    const pericopeInstruction = hasPericopeContext
+      ? `\nNarrative section context is provided for each verse as background. Your primary job is still to explain the CONNECTION between these verses — what links them theologically and spiritually. The narrative context is supplementary; only mention it if it genuinely sharpens the connection.\n`
+      : "";
 
     // Generate synopsis using AI
     const prompt =
@@ -265,8 +301,7 @@ router.post("/synopsis", async (req, res) => {
 ${verseList}
 
 These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionTone} connection.
-${topicContextText}
-
+${topicContextText}${pericopeInstruction}
 Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. What shared themes or concepts connect these verses
 2. The theological or spiritual significance of this connection
@@ -290,8 +325,7 @@ Synopsis: <34 words or less>`
 ${verseList}
 
 These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionTone} thread.
-${topicContextText}
-
+${topicContextText}${pericopeInstruction}
 Provide a CONCISE analysis in EXACTLY 34 words or less:
 1. The overarching theme or pattern connecting ALL these verses
 2. The theological or spiritual significance of this connection as a whole

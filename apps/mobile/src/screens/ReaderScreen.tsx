@@ -43,7 +43,6 @@ import {
   fetchVerseCrossReferences,
   fetchVerseText,
   fetchSynopsis,
-  fetchTraceBundle,
   type SynopsisResponse,
   type VerseCrossReferenceItem,
 } from "../lib/api";
@@ -51,7 +50,6 @@ import { getBibleBook } from "../lib/bibleBookCache";
 import { MOBILE_ENV } from "../lib/env";
 import { styles, T } from "../theme/mobileStyles";
 import type { MobileGoDeeperPayload } from "../types/chat";
-import { isVisualContextBundle } from "../types/visualization";
 import { ensureMinLoaderDuration } from "../utils/ensureMinLoaderDuration";
 import { formatRelativeDate } from "./common/EntityCards";
 
@@ -378,7 +376,11 @@ export function ReaderScreen({
 }: {
   nav: {
     openChat: (prompt: MobileGoDeeperPayload, autoSend?: boolean) => void;
-    openMapViewer: (title?: string, bundle?: unknown) => void;
+    openMapViewer: (
+      title?: string,
+      bundle?: unknown,
+      traceQuery?: string,
+    ) => void;
     openModeMenu: () => void;
   };
 }) {
@@ -437,7 +439,6 @@ export function ReaderScreen({
     apiBaseUrl: MOBILE_ENV.API_URL,
     accessToken: controller.session?.access_token,
   });
-  const [selectionMapLoading, setSelectionMapLoading] = useState(false);
   const [activeFooterCardIndex, setActiveFooterCardIndex] = useState(0);
   const [referenceModalVisible, setReferenceModalVisible] = useState(false);
   const [referenceStack, setReferenceStack] = useState<string[]>([]);
@@ -457,7 +458,6 @@ export function ReaderScreen({
   const [referenceActionError, setReferenceActionError] = useState<
     string | null
   >(null);
-  const [referenceTraceLoading, setReferenceTraceLoading] = useState(false);
   const [referenceView, setReferenceView] = useState<"explore" | "root">(
     "explore",
   );
@@ -1320,25 +1320,11 @@ export function ReaderScreen({
     setSelectionView("synopsis");
   }
 
-  async function handleTraceSelection() {
+  function handleTraceSelection() {
     if (!selectedText || !selectedVerseLabel) return;
-    setSelectionMapLoading(true);
-    try {
-      const bundle = await fetchTraceBundle({
-        apiBaseUrl: MOBILE_ENV.API_URL,
-        text: `${selectedVerseLabel} ${selectedText}`,
-        accessToken: controller.session?.access_token,
-      });
-      if (!isVisualContextBundle(bundle)) {
-        throw new Error("Map response was malformed.");
-      }
-      nav.openMapViewer(selectedVerseLabel, bundle);
-      clearSelection();
-    } catch {
-      setSelectionSynopsisError("Could not trace this selection.");
-    } finally {
-      setSelectionMapLoading(false);
-    }
+    const query = `${selectedVerseLabel} ${selectedText}`;
+    nav.openMapViewer(selectedVerseLabel, undefined, query);
+    clearSelection();
   }
 
   function handleGoDeeperSelection() {
@@ -1382,7 +1368,6 @@ export function ReaderScreen({
     setReferenceNoteEditorVisible(false);
     setReferenceNoteDraft("");
     setReferenceShowAllCrossReferences(false);
-    setReferenceTraceLoading(false);
     resetReferenceRootTranslation();
   }
 
@@ -1457,26 +1442,10 @@ export function ReaderScreen({
     setReferenceNoteEditorVisible(false);
   }
 
-  async function handleTraceReference() {
+  function handleTraceReference() {
     if (!activeReference) return;
-    setReferenceTraceLoading(true);
-    setReferenceActionError(null);
-    try {
-      const bundle = await fetchTraceBundle({
-        apiBaseUrl: MOBILE_ENV.API_URL,
-        text: activeReference,
-        accessToken: controller.session?.access_token,
-      });
-      if (!isVisualContextBundle(bundle)) {
-        throw new Error("Map response was malformed.");
-      }
-      nav.openMapViewer(activeReference, bundle);
-      closeReferenceModal();
-    } catch {
-      setReferenceActionError("Could not trace this passage.");
-    } finally {
-      setReferenceTraceLoading(false);
-    }
+    nav.openMapViewer(activeReference, undefined, activeReference);
+    closeReferenceModal();
   }
 
   function handleGoDeeperReference() {
@@ -1614,7 +1583,7 @@ export function ReaderScreen({
     resetReferenceRootTranslation,
   ]);
 
-  const modalFeedbackLabel = selectionMapLoading ? "Tracing..." : null;
+  const modalFeedbackLabel: string | null = null;
 
   const headerContainerAnimatedStyle = {
     opacity: headerVisibilityAnim.interpolate({
@@ -2277,10 +2246,9 @@ export function ReaderScreen({
 
                 <View style={localStyles.referencePrimaryActionRow}>
                   <CompactButton
-                    label={referenceTraceLoading ? "Tracing..." : "Trace"}
+                    label="Trace"
                     variant="primary"
-                    disabled={referenceTraceLoading}
-                    onPress={() => void handleTraceReference()}
+                    onPress={() => handleTraceReference()}
                     style={localStyles.referenceActionButton}
                     labelStyle={localStyles.referenceActionButtonLabel}
                   />
@@ -2698,10 +2666,9 @@ export function ReaderScreen({
 
                 <View style={localStyles.modalActionRow}>
                   <CompactButton
-                    label={selectionMapLoading ? "Tracing..." : "Trace"}
+                    label="Trace"
                     variant="primary"
-                    disabled={selectionMapLoading}
-                    onPress={() => void handleTraceSelection()}
+                    onPress={() => handleTraceSelection()}
                     style={localStyles.selectionActionButton}
                     labelStyle={localStyles.selectionActionButtonLabel}
                   />

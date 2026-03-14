@@ -8,6 +8,7 @@ import { SYNOPSIS_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
 import { getCache } from "../infrastructure/cache/cacheInstance";
+import { supabase } from "../db";
 
 const router = Router();
 const SYNOPSIS_INPUT_CHAR_LIMIT = 2200;
@@ -186,6 +187,9 @@ const synopsisRequestSchema = z.object({
   chapter: z.number().optional(),
   verse: z.number().optional(),
   verses: z.array(z.number().min(1)).optional(),
+  pericopeTitle: z.string().optional(),
+  pericopeType: z.string().optional(),
+  pericopeThemes: z.array(z.string()).optional(),
 });
 
 // POST /api/synopsis - Generate a concise synopsis of highlighted text
@@ -195,7 +199,17 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     profiler?.setPipeline("synopsis");
     profiler?.markHandlerStart();
 
-    const { text, maxWords, book, chapter, verse, verses } = await profileTime(
+    const {
+      text,
+      maxWords,
+      book,
+      chapter,
+      verse,
+      verses,
+      pericopeTitle: clientPericopeTitle,
+      pericopeType: clientPericopeType,
+      pericopeThemes: clientPericopeThemes,
+    } = await profileTime(
       "synopsis.zod_parse",
       () => synopsisRequestSchema.parse(req.body),
       { file: "routes/synopsis.ts", fn: "synopsisRequestSchema.parse" },
@@ -261,6 +275,68 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       return res.json(sharedPayload);
     }
 
+    // Resolve pericope context: use client-supplied data, or look up server-side
+    let pericopeContext = "";
+    if (clientPericopeTitle) {
+      const parts = [
+        `Narrative section: "${clientPericopeTitle}"`,
+        clientPericopeType ? `(${clientPericopeType})` : "",
+        clientPericopeThemes?.length
+          ? `— themes: ${clientPericopeThemes.join(", ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      pericopeContext = parts;
+    } else if (resolvedVerse && cleanBook && resolvedChapter) {
+      // Server-side lookup: find the pericope for this verse
+      try {
+        const { data: verseRow } = await supabase
+          .from("verses")
+          .select("id")
+          .eq("book_name", cleanBook)
+          .eq("chapter", resolvedChapter)
+          .eq("verse", resolvedVerse)
+          .limit(1)
+          .single();
+        if (verseRow?.id) {
+          const { data: mapRow } = await supabase
+            .from("verse_pericope_map")
+            .select("pericope_id")
+            .eq("verse_id", verseRow.id)
+            .eq("source", "SIL_AI")
+            .limit(1)
+            .single();
+          if (mapRow?.pericope_id) {
+            const { data: pericope } = await supabase
+              .from("pericopes")
+              .select("title, title_generated, pericope_type, themes")
+              .eq("id", mapRow.pericope_id)
+              .single();
+            if (pericope) {
+              const title = pericope.title_generated || pericope.title;
+              const parts = [
+                title ? `Narrative section: "${title}"` : "",
+                pericope.pericope_type ? `(${pericope.pericope_type})` : "",
+                Array.isArray(pericope.themes) && pericope.themes.length > 0
+                  ? `— themes: ${pericope.themes.join(", ")}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              pericopeContext = parts;
+            }
+          }
+        }
+      } catch {
+        // Pericope lookup is best-effort — don't fail the synopsis
+      }
+    }
+
+    const pericopeEnrichedInput = pericopeContext
+      ? `${synopsisInput}\n\n[Context: ${pericopeContext}. Use this narrative context to ground your insight in the broader story if it deepens understanding — do not reference it unless it adds genuine value.]`
+      : synopsisInput;
+
     const generationPromise = (async (): Promise<SynopsisResponsePayload> => {
       const result = (await profileTime(
         "synopsis.runModel",
@@ -274,7 +350,10 @@ router.post("/", readOnlyLimiter, async (req, res) => {
                 },
                 {
                   role: "user",
-                  content: SYNOPSIS_V1.buildUser(synopsisInput, maxWords),
+                  content: SYNOPSIS_V1.buildUser(
+                    pericopeEnrichedInput,
+                    maxWords,
+                  ),
                 },
               ],
               {
