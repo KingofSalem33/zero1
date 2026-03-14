@@ -23,6 +23,7 @@ import {
   useMobileAppController,
   type MobileAppController,
 } from "../useMobileAppController";
+import { supabase } from "../../lib/supabase";
 
 jest.mock("@react-native-async-storage/async-storage", () => mockAsyncStorage);
 
@@ -416,6 +417,77 @@ describe("useMobileAppController", () => {
     expect(latest?.highlights.some((item) => item.id === "hl-2")).toBe(true);
   });
 
+  it("canonicalizes highlight book names before saving", async () => {
+    (createHighlightViaSync as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-john",
+        book: "John",
+        chapter: 3,
+        verses: [16],
+        text: "For God so loved the world",
+        color: "#facc15",
+        referenceLabel: "John 3:16",
+      } satisfies MobileHighlightItem,
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest).not.toBeNull();
+    });
+
+    await act(async () => {
+      latest?.setHighlightCreateDraft((current) => ({
+        ...current,
+        book: "john",
+        chapter: "3",
+        verses: "16",
+        text: "For God so loved the world",
+      }));
+    });
+
+    await act(async () => {
+      await latest?.handleCreateHighlight();
+    });
+
+    expect(createHighlightViaSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        newHighlight: expect.objectContaining({
+          book: "John",
+          referenceLabel: "John 3:16",
+        }),
+      }),
+    );
+    expect(latest?.highlightCreateDraft.book).toBe("John");
+  });
+
+  it("blocks highlight creation when chapter exceeds book bounds", async () => {
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest).not.toBeNull();
+    });
+
+    await act(async () => {
+      latest?.setHighlightCreateDraft((current) => ({
+        ...current,
+        book: "Jude",
+        chapter: "2",
+        verses: "1",
+        text: "Invalid chapter",
+      }));
+    });
+
+    await act(async () => {
+      await latest?.handleCreateHighlight();
+    });
+
+    expect(createHighlightViaSync).not.toHaveBeenCalled();
+    expect(latest?.highlightMutationError).toBe(
+      "Jude has 1 chapters. Enter 1-1.",
+    );
+  });
+
   it("preserves non-overlapping verses when reader highlight overlaps existing highlight", async () => {
     (fetchHighlights as jest.Mock).mockResolvedValue([
       {
@@ -477,6 +549,74 @@ describe("useMobileAppController", () => {
     );
   });
 
+  it("creates a new noted highlight when the selection only overlaps an existing range", async () => {
+    (fetchHighlights as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-overlap",
+        book: "Matthew",
+        chapter: 1,
+        verses: [1, 2, 3],
+        text: "Blessed are they...",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:1-3",
+      } as MobileHighlightItem,
+    ]);
+    (createHighlightViaSync as jest.Mock).mockResolvedValue([
+      {
+        id: "hl-overlap",
+        book: "Matthew",
+        chapter: 1,
+        verses: [1, 3],
+        text: "1. Blessed are they... 3. Blessed are they...",
+        color: "#facc15",
+        referenceLabel: "Matthew 1:1,3",
+      },
+      {
+        id: "hl-note",
+        book: "Matthew",
+        chapter: 1,
+        verses: [2],
+        text: "2. Blessed are they...",
+        color: "#facc15",
+        note: "selected note",
+        referenceLabel: "Matthew 1:2",
+      },
+    ]);
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.highlights.length).toBe(1);
+    });
+
+    await act(async () => {
+      await latest?.handleReaderHighlightNoteSelection(
+        [2],
+        "2. Blessed are they...",
+        "selected note",
+        "#facc15",
+      );
+    });
+
+    expect(updateHighlight).not.toHaveBeenCalled();
+    expect(createHighlightViaSync).toHaveBeenCalledTimes(1);
+
+    const syncCall = (createHighlightViaSync as jest.Mock).mock.calls[0]?.[0];
+    expect(syncCall.newHighlight).toEqual(
+      expect.objectContaining({
+        verses: [2],
+        note: "selected note",
+        referenceLabel: "Matthew 1:2",
+      }),
+    );
+    expect(syncCall.currentHighlights[0]).toEqual(
+      expect.objectContaining({
+        id: "hl-overlap",
+        verses: [1, 3],
+      }),
+    );
+  });
+
   it("updates selected highlight via controller action", async () => {
     (updateHighlight as jest.Mock).mockResolvedValue({
       id: "hl-1",
@@ -531,5 +671,23 @@ describe("useMobileAppController", () => {
       expect(deleteHighlight).toHaveBeenCalledTimes(1);
     });
     expect(latest?.highlights).toEqual([]);
+  });
+
+  it("surfaces sign-out failures in auth state", async () => {
+    (supabase.auth.signOut as jest.Mock).mockResolvedValueOnce({
+      error: new Error("Sign out failed."),
+    });
+
+    render(<HookHarness onUpdate={(controller) => (latest = controller)} />);
+
+    await waitFor(() => {
+      expect(latest?.user).not.toBeNull();
+    });
+
+    await act(async () => {
+      await latest?.signOut();
+    });
+
+    expect(latest?.authError).toBe("Sign out failed.");
   });
 });

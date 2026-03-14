@@ -209,7 +209,7 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
         <View style={styles.row}>
           <ActionButton
             disabled={controller.bookmarkMutationBusy || controller.busy}
-            label="Open in reader"
+            label="Open in Bible"
             onPress={() => {
               try {
                 const reference = parseBookmarkReference(bookmark.text);
@@ -243,8 +243,16 @@ export function BookmarkDetailScreen({ bookmarkId }: { bookmarkId: string }) {
                   {
                     text: "Delete",
                     style: "destructive",
-                    onPress: () => {
-                      void controller.handleDeleteBookmark(bookmark.id);
+                    onPress: async () => {
+                      const deleted = await controller.handleDeleteBookmark(
+                        bookmark.id,
+                      );
+                      if (!deleted) return;
+                      if (navigation.canGoBack()) {
+                        navigation.goBack();
+                        return;
+                      }
+                      navigation.navigate("Tabs", { mode: "Library" } as never);
                     },
                   },
                 ],
@@ -499,7 +507,7 @@ export function HighlightDetailScreen({
         <View style={styles.row}>
           <ActionButton
             disabled={controller.highlightMutationBusy || controller.busy}
-            label="Open in reader"
+            label="Open in Bible"
             onPress={() => {
               const firstVerse = highlight.verses.at(0);
               if (firstVerse !== undefined) {
@@ -555,8 +563,16 @@ export function HighlightDetailScreen({
                   {
                     text: "Delete",
                     style: "destructive",
-                    onPress: () => {
-                      void controller.handleDeleteHighlight(highlight.id);
+                    onPress: async () => {
+                      const deleted = await controller.handleDeleteHighlight(
+                        highlight.id,
+                      );
+                      if (!deleted) return;
+                      if (navigation.canGoBack()) {
+                        navigation.goBack();
+                        return;
+                      }
+                      navigation.navigate("Tabs", { mode: "Library" } as never);
                     },
                   },
                 ],

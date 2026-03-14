@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   Animated,
   Easing,
@@ -2188,7 +2189,8 @@ export function ReaderScreen({
         onClose={closeReferenceModal}
         title="Verse References"
         subtitle={activeReference ?? ""}
-        snapPoints={["72%"]}
+        snapPoints={referenceView === "root" ? ["64%"] : ["72%"]}
+        enableDynamicSizing={false}
         headerRight={
           canGoBackReference ? (
             <ActionButton
@@ -2205,7 +2207,12 @@ export function ReaderScreen({
             <Text style={styles.error}>{referenceActionError}</Text>
           ) : null}
 
-          <ScrollView style={localStyles.modalContent}>
+          <BottomSheetScrollView
+            style={localStyles.modalContent}
+            contentContainerStyle={localStyles.modalContentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {referenceView === "root" ? (
               <RootTranslationPanel
                 isLoading={referenceRootLoading}
@@ -2266,7 +2273,7 @@ export function ReaderScreen({
                     ]}
                   />
                   <CompactButton
-                    label="View"
+                    label="Open in Bible"
                     variant="ghost"
                     disabled={Boolean(pendingVerseNavigation)}
                     onPress={() => void handleViewReference()}
@@ -2451,7 +2458,7 @@ export function ReaderScreen({
                 </View>
               </>
             )}
-          </ScrollView>
+          </BottomSheetScrollView>
         </View>
       </BottomSheetSurface>
 
@@ -2628,9 +2635,15 @@ export function ReaderScreen({
         title="Selection tools"
         subtitle={selectedVerseLabel}
         snapPoints={["64%"]}
+        enableDynamicSizing={false}
       >
         <View style={[localStyles.modalCard, localStyles.selectionModalCard]}>
-          <ScrollView style={localStyles.modalContent}>
+          <BottomSheetScrollView
+            style={localStyles.modalContent}
+            contentContainerStyle={localStyles.modalContentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {selectionView === "synopsis" && modalFeedbackLabel ? (
               <Text style={localStyles.modalFeedbackText}>
                 {modalFeedbackLabel}
@@ -2731,7 +2744,7 @@ export function ReaderScreen({
                 onBack={handleBackToSynopsis}
               />
             )}
-          </ScrollView>
+          </BottomSheetScrollView>
         </View>
       </BottomSheetSurface>
 
@@ -3121,6 +3134,8 @@ const localStyles = StyleSheet.create({
     marginTop: 4,
   },
   referenceModalCard: {
+    flex: 1,
+    minHeight: 0,
     width: "100%",
     paddingHorizontal: T.spacing.lg,
     paddingBottom: T.spacing.xs,
@@ -3303,6 +3318,8 @@ const localStyles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.62)",
   },
   modalCard: {
+    flex: 1,
+    minHeight: 0,
     paddingHorizontal: T.spacing.lg,
     paddingBottom: T.spacing.xs,
     gap: T.spacing.sm,
@@ -3396,7 +3413,11 @@ const localStyles = StyleSheet.create({
     gap: T.spacing.sm,
   },
   modalContent: {
-    maxHeight: 540,
+    flex: 1,
+    minHeight: 0,
+  },
+  modalContentContainer: {
+    paddingBottom: T.spacing.xl,
   },
   selectionPreviewCard: {
     borderWidth: 1,

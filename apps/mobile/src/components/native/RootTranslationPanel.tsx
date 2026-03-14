@@ -227,6 +227,7 @@ export function RootTranslationPanel({
 const localStyles = StyleSheet.create({
   rootWrap: {
     gap: T.spacing.sm,
+    paddingBottom: T.spacing.lg,
   },
   backButton: {
     alignSelf: "flex-start",
