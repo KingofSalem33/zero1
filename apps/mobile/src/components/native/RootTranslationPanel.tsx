@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { RootTranslationWord } from "../../lib/api";
 import { chunkLostContext } from "../../utils/lostContextChunker";
 import { styles, T } from "../../theme/mobileStyles";
 import { ChipButton } from "./ChipButton";
 import { IconButton } from "./IconButton";
 import { PressableScale } from "./PressableScale";
-import { LoadingDotsNative } from "./loading/LoadingDotsNative";
+import { SkeletonBlock, SkeletonTextLines } from "./loading/SkeletonNative";
 
 interface RootTranslationPanelProps {
   isLoading: boolean;
@@ -23,7 +25,7 @@ interface RootTranslationPanelProps {
 
 export function RootTranslationPanel({
   isLoading,
-  language,
+  language: _language,
   words,
   lostContext,
   fallbackText,
@@ -32,8 +34,8 @@ export function RootTranslationPanel({
   onBack,
   backLabel = "Back to synopsis",
 }: RootTranslationPanelProps) {
+  const insets = useSafeAreaInsets();
   const [lostContextPage, setLostContextPage] = useState(0);
-  const touchStartXRef = useRef<number | null>(null);
 
   const lostContextChunks = useMemo(
     () => chunkLostContext(lostContext),
@@ -52,7 +54,14 @@ export function RootTranslationPanel({
     selectedWordIndex !== null ? (words[selectedWordIndex] ?? null) : null;
 
   return (
-    <View style={localStyles.rootWrap}>
+    <BottomSheetScrollView
+      style={localStyles.scrollView}
+      contentContainerStyle={[
+        localStyles.rootWrap,
+        { paddingBottom: Math.max(T.spacing.xl, insets.bottom + T.spacing.md) },
+      ]}
+      showsVerticalScrollIndicator
+    >
       <ChipButton
         accessibilityLabel={backLabel}
         motionPreset="quiet"
@@ -63,9 +72,13 @@ export function RootTranslationPanel({
       />
 
       {isLoading ? (
-        <LoadingDotsNative
-          label={`Translating from original ${language || "Hebrew/Greek"}...`}
-        />
+        <View style={localStyles.loadingPanel}>
+          <SkeletonBlock width={144} height={12} radius={6} />
+          <SkeletonTextLines
+            lines={["100%", "100%", "96%", "88%", "92%", "74%"]}
+            gap={10}
+          />
+        </View>
       ) : words.length > 0 || lostContext.length > 0 ? (
         <View style={localStyles.contentWrap}>
           {words.length > 0 ? (
@@ -130,30 +143,9 @@ export function RootTranslationPanel({
           ) : null}
 
           {lostContext.length > 0 ? (
-            <View
-              style={localStyles.lostSection}
-              onTouchStart={(event) => {
-                touchStartXRef.current = event.nativeEvent.locationX;
-              }}
-              onTouchEnd={(event) => {
-                const startX = touchStartXRef.current;
-                if (startX === null) return;
-                const endX = event.nativeEvent.locationX;
-                const delta = startX - endX;
-                if (Math.abs(delta) < 40) return;
-                if (delta > 0 && canNextLostContext) {
-                  setLostContextPage((current) =>
-                    Math.min(current + 1, lostContextTotal - 1),
-                  );
-                } else if (delta < 0 && canPrevLostContext) {
-                  setLostContextPage((current) => Math.max(current - 1, 0));
-                }
-              }}
-            >
+            <View style={localStyles.lostSection}>
               <Text style={localStyles.lostTitle}>Lost in translation</Text>
-              <Text style={styles.connectionSynopsis}>
-                {lostContextCurrent}
-              </Text>
+              <Text style={localStyles.lostBody}>{lostContextCurrent}</Text>
 
               {lostContextTotal > 1 ? (
                 <View style={localStyles.lostPagerRow}>
@@ -220,14 +212,17 @@ export function RootTranslationPanel({
           {fallbackText || "Root translation unavailable."}
         </Text>
       )}
-    </View>
+    </BottomSheetScrollView>
   );
 }
 
 const localStyles = StyleSheet.create({
+  scrollView: {
+    flex: 1,
+  },
   rootWrap: {
     gap: T.spacing.sm,
-    paddingBottom: T.spacing.lg,
+    paddingHorizontal: T.spacing.lg,
   },
   backButton: {
     alignSelf: "flex-start",
@@ -241,6 +236,9 @@ const localStyles = StyleSheet.create({
   },
   contentWrap: {
     gap: T.spacing.sm,
+  },
+  loadingPanel: {
+    gap: 14,
   },
   wordsSection: {
     gap: T.spacing.sm,
@@ -313,6 +311,11 @@ const localStyles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.4,
+  },
+  lostBody: {
+    color: T.colors.text,
+    fontSize: T.typography.caption,
+    lineHeight: 22,
   },
   lostPagerRow: {
     flexDirection: "row",

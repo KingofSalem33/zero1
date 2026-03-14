@@ -54,6 +54,7 @@ import {
 } from "@zero1/shared/graph/narrativeMapGraph";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton } from "../components/native/ActionButton";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { BottomSheetSurface } from "../components/native/BottomSheetSurface";
 import { ChipButton } from "../components/native/ChipButton";
 import { IconButton } from "../components/native/IconButton";
@@ -3461,6 +3462,7 @@ export function ChatScreen({
         title="Verses Used"
         subtitle="Verses used in this response."
         snapPoints={["62%"]}
+        enableDynamicSizing={false}
       >
         <View style={localStyles.chainModalCard}>
           <View style={localStyles.chainModalBody}>
@@ -3472,7 +3474,7 @@ export function ChatScreen({
             ) : null}
             {chainResourceItems.length > 0 &&
             chainBusyMessageId !== chainModalMessageId ? (
-              <ScrollView style={localStyles.chainModalScroll}>
+              <BottomSheetScrollView style={localStyles.chainModalScroll}>
                 <View style={localStyles.chainResourceList}>
                   {chainResourceItems.map((item, index) => (
                     <View key={`chain-resource-${index}-${item.reference}`}>
@@ -3504,7 +3506,7 @@ export function ChatScreen({
                     </View>
                   ))}
                 </View>
-              </ScrollView>
+              </BottomSheetScrollView>
             ) : null}
           </View>
 
