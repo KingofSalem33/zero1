@@ -224,6 +224,53 @@ async function fetchPublicJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+function parseSsePayload<T>(
+  raw: string,
+  onEvent?: (event: string, payload: Record<string, unknown>) => void,
+): {
+  donePayload?: T;
+  streamError?: string;
+} {
+  const lines = raw.split(/\r?\n/);
+  let currentEvent = "";
+  let donePayload: T | undefined;
+  let streamError: string | undefined;
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      currentEvent = "";
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      currentEvent = line.slice(6).trim();
+      continue;
+    }
+    if (!line.startsWith("data:")) {
+      continue;
+    }
+
+    const json = line.slice(5).trim();
+    if (!json) continue;
+
+    try {
+      const parsed = JSON.parse(json) as Record<string, unknown>;
+      onEvent?.(currentEvent, parsed);
+      if (currentEvent === "done") {
+        donePayload = parsed as T;
+      } else if (currentEvent === "error") {
+        streamError =
+          typeof parsed.message === "string"
+            ? parsed.message
+            : "Request failed";
+      }
+    } catch {
+      // Ignore malformed SSE payloads and continue.
+    }
+  }
+
+  return { donePayload, streamError };
+}
+
 async function readSseDonePayload<T>(
   response: globalThis.Response,
   onEvent?: (event: string, payload: Record<string, unknown>) => void,
@@ -235,7 +282,15 @@ async function readSseDonePayload<T>(
 
   const reader = response.body?.getReader();
   if (!reader) {
-    throw new Error("Streaming response body unavailable");
+    const raw = await response.text();
+    const { donePayload, streamError } = parseSsePayload<T>(raw, onEvent);
+    if (donePayload) {
+      return donePayload;
+    }
+    if (streamError) {
+      throw new Error(streamError);
+    }
+    throw new Error("Streaming response ended before completion");
   }
 
   const decoder = new globalThis.TextDecoder();
@@ -283,6 +338,12 @@ async function readSseDonePayload<T>(
         // Ignore malformed SSE payloads and continue.
       }
     }
+  }
+
+  if (buffer.trim()) {
+    const parsedTail = parseSsePayload<T>(buffer, onEvent);
+    donePayload = parsedTail.donePayload ?? donePayload;
+    streamError = parsedTail.streamError ?? streamError;
   }
 
   if (donePayload) {

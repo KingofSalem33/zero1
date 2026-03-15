@@ -401,3 +401,15 @@
 - [ ] Commit the graph speed, witness-packet, and streamed synopsis changes with the current task log updates
 - [ ] Push the branch, open a PR targeting `biblelot`, and merge it
 - [ ] Verify local `biblelot` and `origin/biblelot` match the merged commit
+
+## Mobile Synopsis SSE Fallback 2026-03-14
+
+- [x] Reproduce the mobile synopsis failure mode from the deployed logs
+- [x] Add a raw-SSE fallback when native fetch exposes `text/event-stream` but no readable body
+- [x] Re-run targeted mobile verification and record the result
+
+## Mobile Synopsis SSE Fallback Review 2026-03-14
+
+- The deployed API was streaming correctly; the failure was on the native client path. iOS `CFNetwork` returned `text/event-stream` for `/api/synopsis`, but the React Native fetch response did not expose `response.body.getReader()`, so the mobile client threw `Streaming response body unavailable` before it could parse the final payload.
+- `apps/mobile/src/lib/api.ts` now falls back to `response.text()` plus SSE-line parsing when a readable stream body is unavailable. That preserves compatibility with transports that buffer the event stream instead of exposing incremental reads.
+- The streamed path still uses incremental parsing when `response.body.getReader()` exists, so platforms with proper readable-stream support keep the lower time-to-first-visible-text behavior.

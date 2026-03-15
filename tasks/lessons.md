@@ -4,6 +4,7 @@
 
 - For streamed chat UI, do not speed up text release or auto-scroll on completion without preserving reader control; keep the slower cadence the user prefers and never snap them to the bottom after the answer finishes.
 - Do not infer the deployed model from a stale local `.env` when live logs or deployment config disagree; treat runtime telemetry as the source of truth for the active model family before applying model-specific settings.
+- On native mobile fetch clients, do not assume `text/event-stream` responses expose `response.body.getReader()`; add a raw-text SSE fallback so buffered transports can still parse the final `done` payload.
 
 - When Render deployment is driven by merges into `biblelot`, do not commit directly on `biblelot`; create a PR branch, push it, and merge back into `biblelot` for deployment.
 - When the user clarifies commit scope, include the explicitly named files and remove any explicitly retired legacy files before preparing the commit.
