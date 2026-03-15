@@ -439,3 +439,16 @@
 - This keeps the streamed synopsis and semantic synopsis routes from collapsing to the route-level fallback string even when the Responses API returns a completed assistant message without incremental text deltas.
 - Validation:
   - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Streamed Synopsis Done-Event Recovery 2026-03-14
+
+- [x] Confirm from deployed logs that the failing route is `/api/synopsis` and that the stream completes without visible delta output
+- [x] Teach `runModelStream()` to recover assistant text from finalized stream events and completed responses, not just deltas
+- [x] Re-run targeted API build verification and record the review note
+
+## Streamed Synopsis Done-Event Recovery Review 2026-03-14
+
+- `apps/api/src/ai/runModelStream.ts` now tracks finalized output items by `output_index`, updates them on `response.output_item.done`, captures text from `response.output_text.done`, and falls back to the final `response.completed` payload when a stream finishes without deltas.
+- The stream loop also now warns if a request completes without deltas and without any recoverable assistant text, which should make any remaining synopsis failures much easier to pinpoint from Render logs.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
