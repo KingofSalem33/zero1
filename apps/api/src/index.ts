@@ -51,7 +51,11 @@ import {
   resolveMultipleAnchors,
   deduplicateVerses,
 } from "./bible/expandingRingExegesis";
-import { buildPericopeScopeForVerse } from "./bible/pericopeGraphWalker";
+import {
+  buildPericopeBundle,
+  buildPericopeScopeForVerse,
+  resolvePericopeScopeForVerse,
+} from "./bible/pericopeGraphWalker";
 import { buildVisualBundle } from "./bible/graphWalker";
 import { getBook } from "./bible/bibleService";
 import { checkBibleDataIntegrity } from "./bible/dataIntegrity";
@@ -995,14 +999,31 @@ app.post(
       } else {
         console.log(`[Trace] Using single anchor: ${anchorIds[0]}`);
         const pericopeScope = await profileTime(
-          "trace.buildPericopeScope",
-          () => buildPericopeScopeForVerse(anchorIds[0]),
+          "trace.resolvePericopeScope",
+          () => resolvePericopeScopeForVerse(anchorIds[0]),
           {
             file: "bible/pericopeGraphWalker.ts",
-            fn: "buildPericopeScopeForVerse",
-            await: "buildPericopeScopeForVerse",
+            fn: "resolvePericopeScopeForVerse",
+            await: "resolvePericopeScopeForVerse",
           },
         );
+        const pericopeBundlePromise = pericopeScope?.pericopeContext
+          ? profileTime(
+              "trace.buildPericopeBundle",
+              () => buildPericopeBundle(pericopeScope.pericopeContext!.id),
+              {
+                file: "bible/pericopeGraphWalker.ts",
+                fn: "buildPericopeBundle",
+                await: "buildPericopeBundle",
+              },
+            ).catch((error) => {
+              console.warn(
+                "[Trace] Pericope bundle build failed:",
+                error instanceof Error ? error.message : error,
+              );
+              return null;
+            })
+          : Promise.resolve(null);
         visualBundle = (await profileTime(
           "trace.buildVisualBundle",
           () =>
@@ -1061,9 +1082,6 @@ app.post(
           },
         )) as ReferenceVisualBundle;
 
-        if (pericopeScope?.pericopeBundle) {
-          visualBundle.pericopeBundle = pericopeScope.pericopeBundle;
-        }
         if (pericopeScope?.pericopeContext) {
           visualBundle.pericopeContext = {
             id: pericopeScope.pericopeContext.id,
@@ -1076,6 +1094,11 @@ app.post(
             shadows: pericopeScope.pericopeContext.shadows || [],
             rangeRef: pericopeScope.pericopeContext.rangeRef,
           };
+        }
+
+        const pericopeBundle = await pericopeBundlePromise;
+        if (pericopeBundle) {
+          visualBundle.pericopeBundle = pericopeBundle;
         }
       }
 

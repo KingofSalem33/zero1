@@ -61,9 +61,17 @@ export interface StreamingMessage {
   chainData?: ChainData;
 }
 
-// Smooth text release rate - chars per frame at 60fps
-// ~4 chars/frame = 240 chars/sec = comfortable reading pace
-const CHARS_PER_FRAME = 4;
+const MIN_CHARS_PER_FRAME = 12;
+const MAX_CHARS_PER_FRAME = 48;
+
+const resolveCharsPerFrame = (remainingChars: number) =>
+  Math.min(
+    remainingChars,
+    Math.min(
+      MAX_CHARS_PER_FRAME,
+      Math.max(MIN_CHARS_PER_FRAME, Math.ceil(remainingChars / 6)),
+    ),
+  );
 
 export function useChatStream(
   onMapData?: (bundle: VisualContextBundle) => void,
@@ -87,10 +95,7 @@ export function useChatStream(
 
     if (buffer.length > displayed.length) {
       // Release next chunk of characters
-      const charsToAdd = Math.min(
-        CHARS_PER_FRAME,
-        buffer.length - displayed.length,
-      );
+      const charsToAdd = resolveCharsPerFrame(buffer.length - displayed.length);
       const newContent = buffer.slice(0, displayed.length + charsToAdd);
       displayedContentRef.current = newContent;
 

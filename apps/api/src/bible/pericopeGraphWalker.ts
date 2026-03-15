@@ -9,6 +9,7 @@ import { ENV } from "../env";
 import type { ThreadNode, VisualContextBundle, VisualEdge } from "./types";
 import {
   getPericopeById,
+  getPericopesByIds,
   getPericopeForVerse,
   type PericopeDetail,
 } from "./pericopeSearch";
@@ -92,43 +93,20 @@ const getPericopeConnections = async (
   return data as PericopeConnection[];
 };
 
-export async function buildPericopeScopeForVerse(
-  verseId: number,
-  existingContext?: PericopeDetail | null,
-): Promise<{
-  pericopeContext: PericopeDetail | null;
-  pericopeBundle: VisualContextBundle | null;
-  pericopeIds: number[] | null;
-}> {
-  const pericopeContext =
-    existingContext ||
-    (await getPericopeForVerse(verseId, ENV.PERICOPE_SOURCE || "SIL_AI"));
+type PericopeTarget = {
+  id: number;
+  source: number;
+  connection: PericopeConnection;
+};
 
-  if (!pericopeContext) {
-    return { pericopeContext: null, pericopeBundle: null, pericopeIds: null };
-  }
-
-  let pericopeBundle: VisualContextBundle | null = null;
-  try {
-    pericopeBundle = await buildPericopeBundle(pericopeContext.id);
-  } catch (error) {
-    console.warn(
-      "[Pericope Scope] Failed to build pericope bundle:",
-      error instanceof Error ? error.message : error,
-    );
-  }
-
-  const pericopeIds = pericopeBundle?.nodes.map((node) => node.id) ?? [
-    pericopeContext.id,
-  ];
-
-  return { pericopeContext, pericopeBundle, pericopeIds };
-}
-
-export async function buildPericopeBundle(
+const resolvePericopeExpansion = async (
   pericopeId: number,
   ringConfig: PericopeRingConfig = {},
-): Promise<VisualContextBundle | null> {
+): Promise<{
+  ring1Targets: PericopeTarget[];
+  ring2Targets: PericopeTarget[];
+  scopeIds: number[];
+}> => {
   const cfg: PericopeRingConfig = {
     ...DEFAULT_RING_CONFIG,
     ...ringConfig,
@@ -149,35 +127,12 @@ export async function buildPericopeBundle(
     ring1Limit = clampLimit(adaptiveStart, adaptiveMin, ring1Limit);
   }
 
-  const anchor = await getPericopeById(pericopeId);
-  if (!anchor) return null;
-
-  const nodes: ThreadNode[] = [buildPericopeNode(anchor, 0)];
-  const edges: VisualEdge[] = [];
-  const visited = new Set<number>([anchor.id]);
-
-  const ring1Connections = await getPericopeConnections(anchor.id, ring1Limit);
-  const ring1Targets: Array<{
-    id: number;
-    source: number;
-    connection: PericopeConnection;
-  }> = [];
+  const visited = new Set<number>([pericopeId]);
+  const ring1Connections = await getPericopeConnections(pericopeId, ring1Limit);
+  const ring1Targets: PericopeTarget[] = [];
 
   for (const connection of ring1Connections) {
     if (visited.has(connection.target_pericope_id)) continue;
-    const pericope = await getPericopeById(connection.target_pericope_id);
-    if (!pericope) continue;
-    nodes.push(buildPericopeNode(pericope, 1, anchor.id));
-    edges.push({
-      from: connection.source_pericope_id,
-      to: connection.target_pericope_id,
-      weight: connection.similarity_score,
-      type: EDGE_TYPE_MAP[connection.connection_type] || "DEEPER",
-      metadata: {
-        connection_type: connection.connection_type,
-        shared_themes: connection.shared_themes || [],
-      },
-    });
     visited.add(connection.target_pericope_id);
     ring1Targets.push({
       id: connection.target_pericope_id,
@@ -217,33 +172,150 @@ export async function buildPericopeBundle(
     }
   }
 
-  if (ring2Limit > 0) {
-    const ring2Connections: PericopeConnection[] = [];
-    for (const ring1 of ring1Targets) {
-      const nextConnections = await getPericopeConnections(
-        ring1.id,
-        Math.ceil(ring2Limit / Math.max(ring1Targets.length, 1)),
-      );
-      ring2Connections.push(...nextConnections);
-    }
+  const ring2Targets: PericopeTarget[] = [];
+  if (ring2Limit > 0 && ring1Targets.length > 0) {
+    const perSourceLimit = Math.ceil(
+      ring2Limit / Math.max(ring1Targets.length, 1),
+    );
+    const ring2ConnectionGroups = await Promise.all(
+      ring1Targets.map((ring1Target) =>
+        getPericopeConnections(ring1Target.id, perSourceLimit),
+      ),
+    );
 
-    for (const connection of ring2Connections.slice(0, ring2Limit)) {
+    for (const connection of ring2ConnectionGroups
+      .flat()
+      .slice(0, ring2Limit)) {
       if (visited.has(connection.target_pericope_id)) continue;
-      const pericope = await getPericopeById(connection.target_pericope_id);
-      if (!pericope) continue;
-      nodes.push(buildPericopeNode(pericope, 2, connection.source_pericope_id));
-      edges.push({
-        from: connection.source_pericope_id,
-        to: connection.target_pericope_id,
-        weight: connection.similarity_score,
-        type: EDGE_TYPE_MAP[connection.connection_type] || "DEEPER",
-        metadata: {
-          connection_type: connection.connection_type,
-          shared_themes: connection.shared_themes || [],
-        },
-      });
       visited.add(connection.target_pericope_id);
+      ring2Targets.push({
+        id: connection.target_pericope_id,
+        source: connection.source_pericope_id,
+        connection,
+      });
     }
+  }
+
+  return {
+    ring1Targets,
+    ring2Targets,
+    scopeIds: [
+      pericopeId,
+      ...ring1Targets.map((target) => target.id),
+      ...ring2Targets.map((target) => target.id),
+    ],
+  };
+};
+
+export async function resolvePericopeScopeForVerse(
+  verseId: number,
+  existingContext?: PericopeDetail | null,
+): Promise<{
+  pericopeContext: PericopeDetail | null;
+  pericopeIds: number[] | null;
+}> {
+  const pericopeContext =
+    existingContext ||
+    (await getPericopeForVerse(verseId, ENV.PERICOPE_SOURCE || "SIL_AI"));
+
+  if (!pericopeContext) {
+    return { pericopeContext: null, pericopeIds: null };
+  }
+
+  const expansion = await resolvePericopeExpansion(pericopeContext.id);
+  return {
+    pericopeContext,
+    pericopeIds: expansion.scopeIds,
+  };
+}
+
+export async function buildPericopeScopeForVerse(
+  verseId: number,
+  existingContext?: PericopeDetail | null,
+): Promise<{
+  pericopeContext: PericopeDetail | null;
+  pericopeBundle: VisualContextBundle | null;
+  pericopeIds: number[] | null;
+}> {
+  const scope = await resolvePericopeScopeForVerse(verseId, existingContext);
+
+  if (!scope.pericopeContext) {
+    return { pericopeContext: null, pericopeBundle: null, pericopeIds: null };
+  }
+
+  let pericopeBundle: VisualContextBundle | null = null;
+  try {
+    pericopeBundle = await buildPericopeBundle(scope.pericopeContext.id);
+  } catch (error) {
+    console.warn(
+      "[Pericope Scope] Failed to build pericope bundle:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  return {
+    pericopeContext: scope.pericopeContext,
+    pericopeBundle,
+    pericopeIds: scope.pericopeIds,
+  };
+}
+
+export async function buildPericopeBundle(
+  pericopeId: number,
+  ringConfig: PericopeRingConfig = {},
+): Promise<VisualContextBundle | null> {
+  const [anchor, expansion] = await Promise.all([
+    getPericopeById(pericopeId),
+    resolvePericopeExpansion(pericopeId, ringConfig),
+  ]);
+  if (!anchor) return null;
+
+  const [ring1Pericopes, ring2Pericopes] = await Promise.all([
+    getPericopesByIds(expansion.ring1Targets.map((target) => target.id)),
+    getPericopesByIds(expansion.ring2Targets.map((target) => target.id)),
+  ]);
+  const ring1PericopeById = new Map(
+    ring1Pericopes.map((pericope) => [pericope.id, pericope]),
+  );
+  const ring2PericopeById = new Map(
+    ring2Pericopes.map((pericope) => [pericope.id, pericope]),
+  );
+
+  const nodes: ThreadNode[] = [buildPericopeNode(anchor, 0)];
+  const edges: VisualEdge[] = [];
+
+  for (const ring1Target of expansion.ring1Targets) {
+    const pericope = ring1PericopeById.get(ring1Target.id);
+    if (!pericope) continue;
+    nodes.push(buildPericopeNode(pericope, 1, anchor.id));
+    edges.push({
+      from: ring1Target.connection.source_pericope_id,
+      to: ring1Target.connection.target_pericope_id,
+      weight: ring1Target.connection.similarity_score,
+      type: EDGE_TYPE_MAP[ring1Target.connection.connection_type] || "DEEPER",
+      metadata: {
+        connection_type: ring1Target.connection.connection_type,
+        shared_themes: ring1Target.connection.shared_themes || [],
+      },
+    });
+  }
+
+  for (const ring2Target of expansion.ring2Targets) {
+    const pericope = ring2PericopeById.get(ring2Target.id);
+    if (!pericope) continue;
+    nodes.push(
+      buildPericopeNode(pericope, 2, ring2Target.connection.source_pericope_id),
+    );
+    edges.push({
+      from: ring2Target.connection.source_pericope_id,
+      to: ring2Target.connection.target_pericope_id,
+      weight: ring2Target.connection.similarity_score,
+      type: EDGE_TYPE_MAP[ring2Target.connection.connection_type] || "DEEPER",
+      metadata: {
+        connection_type: ring2Target.connection.connection_type,
+        shared_themes: ring2Target.connection.shared_themes || [],
+      },
+    });
   }
 
   return {

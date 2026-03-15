@@ -41,7 +41,11 @@ import {
   getPericopeById,
   type PericopeDetail,
 } from "./pericopeSearch";
-import { buildPericopeScopeForVerse } from "./pericopeGraphWalker";
+import {
+  buildPericopeBundle,
+  buildPericopeScopeForVerse,
+  resolvePericopeScopeForVerse,
+} from "./pericopeGraphWalker";
 import {
   discoverConnections,
   selectCoreVerses,
@@ -327,6 +331,11 @@ interface TreeStats {
   depthDistribution: Record<number, number>;
 }
 
+const rankingEmbeddingMaps = new WeakMap<
+  ReferenceVisualBundle,
+  Map<number, number[]>
+>();
+
 type MapSession = {
   cluster?: {
     baseId: number;
@@ -482,13 +491,16 @@ export async function rankVersesBySimilarity(
   );
 
   try {
-    const { scoredCount } = await rankByQueryRelevance(
+    const { scoredCount, embeddingMap } = await rankByQueryRelevance(
       visualBundle.nodes,
       userQuery,
       {
         profileLabel: "rank_similarity",
       },
     );
+    if (embeddingMap.size > 0) {
+      rankingEmbeddingMaps.set(visualBundle, embeddingMap);
+    }
 
     // Step 4: Sort nodes within each depth level by similarity (highest first)
     // This preserves the tree structure while prioritizing relevant verses
@@ -554,35 +566,38 @@ export async function deduplicateVerses(
   const DUPLICATE_THRESHOLD = 0.92; // 92% similarity = likely parallel passage
   const stackedNodeIds = new Set<number>(); // Track which nodes are stacked under others
 
-  // Fetch embeddings for all verses
-  const verseIds = visualBundle.nodes.map((n) => n.id);
-  const { data: verses, error } = await profileTime(
-    "dedupe.fetch_embeddings",
-    () => supabase.from("verses").select("id, embedding").in("id", verseIds),
-    {
-      file: "bible/expandingRingExegesis.ts",
-      fn: "deduplicateVerses",
-      await: "supabase.verses.select",
-    },
-  );
+  let embeddingMap = rankingEmbeddingMaps.get(visualBundle);
+  rankingEmbeddingMaps.delete(visualBundle);
 
-  if (error || !verses) {
-    console.error("[Parallel Stacking] Failed to fetch embeddings:", error);
-    return visualBundle; // Return unchanged on error
-  }
+  if (!embeddingMap) {
+    const verseIds = visualBundle.nodes.map((n) => n.id);
+    const { data: verses, error } = await profileTime(
+      "dedupe.fetch_embeddings",
+      () => supabase.from("verses").select("id, embedding").in("id", verseIds),
+      {
+        file: "bible/expandingRingExegesis.ts",
+        fn: "deduplicateVerses",
+        await: "supabase.verses.select",
+      },
+    );
 
-  // Build embedding map
-  const embeddingMap = new Map<number, number[]>();
-  for (const verse of verses) {
-    if (verse.embedding) {
-      try {
-        const embedding =
-          typeof verse.embedding === "string"
-            ? JSON.parse(verse.embedding)
-            : verse.embedding;
-        embeddingMap.set(verse.id, embedding);
-      } catch {
-        // Skip if embedding parse fails
+    if (error || !verses) {
+      console.error("[Parallel Stacking] Failed to fetch embeddings:", error);
+      return visualBundle; // Return unchanged on error
+    }
+
+    embeddingMap = new Map<number, number[]>();
+    for (const verse of verses) {
+      if (verse.embedding) {
+        try {
+          const embedding =
+            typeof verse.embedding === "string"
+              ? JSON.parse(verse.embedding)
+              : verse.embedding;
+          embeddingMap.set(verse.id, embedding);
+        } catch {
+          // Skip if embedding parse fails
+        }
       }
     }
   }
@@ -726,32 +741,34 @@ export async function resolveMultipleAnchors(
     const targetRef = parseExplicitReference(targetConnectionMatch[1]);
 
     const anchorIds: number[] = [];
-
-    if (sourceRef) {
-      const sourceId = await profileTime(
-        "anchor.resolve.getVerseId",
-        () => getVerseId(sourceRef.book, sourceRef.chapter, sourceRef.verse),
-        {
-          file: "bible/graphWalker.ts",
-          fn: "getVerseId",
-          await: "getVerseId",
-        },
-      );
-      if (sourceId) anchorIds.push(sourceId);
-    }
-
-    if (targetRef) {
-      const targetId = await profileTime(
-        "anchor.resolve.getVerseId",
-        () => getVerseId(targetRef.book, targetRef.chapter, targetRef.verse),
-        {
-          file: "bible/graphWalker.ts",
-          fn: "getVerseId",
-          await: "getVerseId",
-        },
-      );
-      if (targetId) anchorIds.push(targetId);
-    }
+    const [sourceId, targetId] = await Promise.all([
+      sourceRef
+        ? profileTime(
+            "anchor.resolve.getVerseId",
+            () =>
+              getVerseId(sourceRef.book, sourceRef.chapter, sourceRef.verse),
+            {
+              file: "bible/graphWalker.ts",
+              fn: "getVerseId",
+              await: "getVerseId",
+            },
+          )
+        : Promise.resolve(null),
+      targetRef
+        ? profileTime(
+            "anchor.resolve.getVerseId",
+            () =>
+              getVerseId(targetRef.book, targetRef.chapter, targetRef.verse),
+            {
+              file: "bible/graphWalker.ts",
+              fn: "getVerseId",
+              await: "getVerseId",
+            },
+          )
+        : Promise.resolve(null),
+    ]);
+    if (sourceId) anchorIds.push(sourceId);
+    if (targetId) anchorIds.push(targetId);
 
     if (anchorIds.length > 0) {
       console.log(
@@ -1046,6 +1063,12 @@ const resolveAnchorFromReferences = async (
     ref: ParsedReference;
     order: number;
   }> = [];
+  const candidateLookups: Array<{
+    lookup: Promise<number | null>;
+    ref: ParsedReference;
+    order: number;
+    verseNum: number;
+  }> = [];
 
   for (const [index, ref] of parsedReferences.entries()) {
     const startVerse = ref.verse;
@@ -1056,25 +1079,36 @@ const resolveAnchorFromReferences = async (
     const cappedEnd = Math.min(endVerse, startVerse + ANCHOR_RANGE_CAP - 1);
 
     for (let verseNum = startVerse; verseNum <= cappedEnd; verseNum += 1) {
-      const anchorId = await profileTime(
-        "anchor.resolve.llm.getVerseId",
-        () => getVerseId(ref.book, ref.chapter, verseNum),
-        {
-          file: "bible/graphWalker.ts",
-          fn: "getVerseId",
-          await: "getVerseId",
-        },
-      );
-      if (anchorId) {
-        const offset = verseNum - startVerse;
-        candidates.push({
-          id: anchorId,
-          ref: { ...ref, verse: verseNum },
-          order: index * ANCHOR_RANGE_CAP + offset,
-        });
-      }
+      const offset = verseNum - startVerse;
+      candidateLookups.push({
+        lookup: profileTime(
+          "anchor.resolve.llm.getVerseId",
+          () => getVerseId(ref.book, ref.chapter, verseNum),
+          {
+            file: "bible/graphWalker.ts",
+            fn: "getVerseId",
+            await: "getVerseId",
+          },
+        ),
+        ref,
+        order: index * ANCHOR_RANGE_CAP + offset,
+        verseNum,
+      });
     }
   }
+
+  const resolvedCandidateIds = await Promise.all(
+    candidateLookups.map((candidate) => candidate.lookup),
+  );
+  resolvedCandidateIds.forEach((anchorId, index) => {
+    if (!anchorId) return;
+    const candidate = candidateLookups[index];
+    candidates.push({
+      id: anchorId,
+      ref: { ...candidate.ref, verse: candidate.verseNum },
+      order: candidate.order,
+    });
+  });
 
   if (candidates.length === 0) return null;
 
@@ -1085,11 +1119,10 @@ const resolveAnchorFromReferences = async (
       "id",
       candidates.map((candidate) => candidate.id),
     );
+  const candidateIdSet = new Set(candidates.map((candidate) => candidate.id));
 
   const verses = await ensureVersesHaveText(
-    ((data || []) as Verse[]).filter((row) =>
-      candidates.find((candidate) => candidate.id === row.id),
-    ),
+    ((data || []) as Verse[]).filter((row) => candidateIdSet.has(row.id)),
     "anchor.resolve.llm",
   );
 
@@ -1341,6 +1374,7 @@ export async function resolvePericopeFirst(userPrompt: string): Promise<{
   pericopeId: number;
   anchorVerseId: number;
   allVerseIds: number[];
+  pericope: PericopeDetail;
   resolutionSource: "pericope_semantic";
 } | null> {
   // Skip pericope search for structured "go deeper" prompts - we already have explicit verses
@@ -1393,6 +1427,7 @@ export async function resolvePericopeFirst(userPrompt: string): Promise<{
     pericopeId: pericope.id,
     anchorVerseId: pericope.verseIds[0], // First verse as anchor
     allVerseIds: pericope.verseIds,
+    pericope,
     resolutionSource: "pericope_semantic",
   };
 }
@@ -1824,6 +1859,20 @@ export async function buildMultiAnchorTree(
     `[Multi-Anchor] Building trees with adaptive expansion across ${dedupedAnchorIds.length} anchors`,
   );
 
+  const pericopeScopes = await Promise.all(
+    dedupedAnchorIds.map((anchorId) =>
+      profileTime(
+        "multi_anchor.resolvePericopeScope",
+        () => resolvePericopeScopeForVerse(anchorId),
+        {
+          file: "bible/pericopeGraphWalker.ts",
+          fn: "resolvePericopeScopeForVerse",
+          await: "resolvePericopeScopeForVerse",
+        },
+      ),
+    ),
+  );
+
   // Build a tree from each anchor
   const trees: ReferenceVisualBundle[] = [];
 
@@ -1831,6 +1880,7 @@ export async function buildMultiAnchorTree(
 
   for (let i = 0; i < dedupedAnchorIds.length; i++) {
     const anchorId = dedupedAnchorIds[i];
+    const pericopeScope = pericopeScopes[i] ?? null;
     const anchorsRemaining = dedupedAnchorIds.length - i;
     const perAnchorBudget =
       anchorsRemaining > 0
@@ -1838,16 +1888,6 @@ export async function buildMultiAnchorTree(
         : remainingBudget;
     console.log(
       `[Multi-Anchor] Building tree ${i + 1}/${dedupedAnchorIds.length} from verse ${anchorId}...`,
-    );
-
-    const pericopeScope = await profileTime(
-      "multi_anchor.buildPericopeScope",
-      () => buildPericopeScopeForVerse(anchorId),
-      {
-        file: "bible/pericopeGraphWalker.ts",
-        fn: "buildPericopeScopeForVerse",
-        await: "buildPericopeScopeForVerse",
-      },
     );
 
     const tree = (await profileTime(
@@ -1911,6 +1951,7 @@ export async function buildMultiAnchorTree(
   const allNodes: ReferenceTreeNode[] = [];
   const allEdges: ReferenceTreeEdge[] = [];
   const seenNodeIds = new Set<number>();
+  const seenEdgeKeys = new Set<string>();
 
   for (const tree of trees) {
     console.log(
@@ -1939,9 +1980,9 @@ export async function buildMultiAnchorTree(
     // Add edges (skip duplicates)
     for (const edge of tree.edges) {
       const edgeKey = `${edge.from}-${edge.to}`;
-      if (!allEdges.some((e) => `${e.from}-${e.to}` === edgeKey)) {
-        allEdges.push(edge);
-      }
+      if (seenEdgeKeys.has(edgeKey)) continue;
+      seenEdgeKeys.add(edgeKey);
+      allEdges.push(edge);
     }
   }
 
@@ -2146,6 +2187,8 @@ export async function explainScriptureWithKernelStream(
   let pericopeContext: Awaited<ReturnType<typeof getPericopeById>> | null =
     null;
   let pericopeBundle: PericopeBundle | null = null;
+  let pericopeBundlePromise: Promise<PericopeBundle | null> =
+    Promise.resolve(null);
   let pericopeScopeIds: number[] | null = null;
   let resolutionType: "pericope_first" | "verse_first" = "verse_first";
 
@@ -2166,16 +2209,7 @@ export async function explainScriptureWithKernelStream(
       allowMultiAnchor ? 3 : 1,
     );
 
-    // Get pericope context
-    pericopeContext = await profileTime(
-      "exegesis.getPericopeById",
-      () => getPericopeById(pericopeResolution.pericopeId),
-      {
-        file: "bible/pericopeSearch.ts",
-        fn: "getPericopeById",
-        await: "getPericopeById",
-      },
-    );
+    pericopeContext = pericopeResolution.pericope;
     resolutionType = "pericope_first";
 
     console.log(
@@ -2236,20 +2270,32 @@ export async function explainScriptureWithKernelStream(
 
   if (!allowMultiAnchor || anchorIds.length === 1) {
     const pericopeScope = await profileTime(
-      "exegesis.buildPericopeScope",
-      () => buildPericopeScopeForVerse(anchorId, pericopeContext),
+      "exegesis.resolvePericopeScope",
+      () => resolvePericopeScopeForVerse(anchorId, pericopeContext),
       {
         file: "bible/pericopeGraphWalker.ts",
-        fn: "buildPericopeScopeForVerse",
-        await: "buildPericopeScopeForVerse",
+        fn: "resolvePericopeScopeForVerse",
+        await: "resolvePericopeScopeForVerse",
       },
     );
 
     if (pericopeScope?.pericopeContext) {
       pericopeContext = pericopeScope.pericopeContext;
-    }
-    if (pericopeScope?.pericopeBundle) {
-      pericopeBundle = pericopeScope.pericopeBundle as PericopeBundle;
+      pericopeBundlePromise = profileTime(
+        "exegesis.buildPericopeBundle",
+        () => buildPericopeBundle(pericopeScope.pericopeContext!.id),
+        {
+          file: "bible/pericopeGraphWalker.ts",
+          fn: "buildPericopeBundle",
+          await: "buildPericopeBundle",
+        },
+      ).catch((error) => {
+        console.warn(
+          "[Expanding Ring] Pericope bundle build failed:",
+          error instanceof Error ? error.message : error,
+        );
+        return null;
+      });
     }
     if (pericopeScope?.pericopeIds) {
       pericopeScopeIds = pericopeScope.pericopeIds;
@@ -2378,25 +2424,30 @@ export async function explainScriptureWithKernelStream(
   if (pericopeBundle) {
     visualBundle.pericopeBundle = pericopeBundle;
   } else if (pericopeContext) {
-    try {
-      const fallbackBundle = await profileTime(
-        "exegesis.buildPericopeBundle",
-        () => buildPericopeScopeForVerse(anchorId, pericopeContext),
-        {
-          file: "bible/pericopeGraphWalker.ts",
-          fn: "buildPericopeScopeForVerse",
-          await: "buildPericopeScopeForVerse",
-        },
-      );
-      if (fallbackBundle?.pericopeBundle) {
-        visualBundle.pericopeBundle =
-          fallbackBundle.pericopeBundle as PericopeBundle;
+    pericopeBundle = await pericopeBundlePromise;
+    if (pericopeBundle) {
+      visualBundle.pericopeBundle = pericopeBundle;
+    } else {
+      try {
+        const fallbackBundle = await profileTime(
+          "exegesis.buildPericopeBundleFallback",
+          () => buildPericopeScopeForVerse(anchorId, pericopeContext),
+          {
+            file: "bible/pericopeGraphWalker.ts",
+            fn: "buildPericopeScopeForVerse",
+            await: "buildPericopeScopeForVerse",
+          },
+        );
+        if (fallbackBundle?.pericopeBundle) {
+          visualBundle.pericopeBundle =
+            fallbackBundle.pericopeBundle as PericopeBundle;
+        }
+      } catch (error) {
+        console.warn(
+          "[Expanding Ring] Pericope bundle build failed:",
+          error instanceof Error ? error.message : error,
+        );
       }
-    } catch (error) {
-      console.warn(
-        "[Expanding Ring] Pericope bundle build failed:",
-        error instanceof Error ? error.message : error,
-      );
     }
   }
 

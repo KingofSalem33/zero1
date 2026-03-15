@@ -78,6 +78,7 @@ const EDGE_SOURCE_WEIGHTS: Record<string, number> = {
 };
 
 const MIN_ADDITIONAL_EDGE_WEIGHT = 0.25;
+const VERSE_SELECT_FIELDS = "id, book_abbrev, book_name, chapter, verse, text";
 
 // Verse type re-exported from mathUtils above
 
@@ -113,6 +114,8 @@ export interface RingConfig {
     crossThreshold?: number;
   };
 }
+
+type GraphLayerResult = Awaited<ReturnType<typeof fetchRing1Connections>>;
 
 const DEFAULT_CONFIG: RingConfig = {
   ring0Radius: 3,
@@ -336,12 +339,22 @@ export async function buildContextBundle(
   // ========================================
   console.log(`[Graph Walker] Fetching Ring 0 (±${cfg.ring0Radius} verses)...`);
 
+  const isHybridRequested =
+    selection?.mode === "hybrid" && typeof selection.query === "string";
+  const anchorResult = isHybridRequested
+    ? await supabase
+        .from("verses")
+        .select("id, book_abbrev, book_name, chapter, verse, text, embedding")
+        .eq("id", anchorId)
+        .single()
+    : await supabase
+        .from("verses")
+        .select(VERSE_SELECT_FIELDS)
+        .eq("id", anchorId)
+        .single();
+
   // First fetch the anchor to get its book/chapter context
-  const { data: anchorData, error: anchorError } = await supabase
-    .from("verses")
-    .select("*")
-    .eq("id", anchorId)
-    .single();
+  const { data: anchorData, error: anchorError } = anchorResult;
 
   if (anchorError || !anchorData) {
     throw new Error(`Anchor verse ID ${anchorId} not found`);
@@ -349,15 +362,12 @@ export async function buildContextBundle(
 
   const anchorVerse = anchorData as Verse;
 
-  const isHybridRequested =
-    selection?.mode === "hybrid" && typeof selection.query === "string";
-
   // Parallelize: Ring 0 fetch, chiasm structure, and query embedding are independent
   const [ring0Result, structure, queryEmbeddingResult] = await Promise.all([
     // Ring 0 by book + chapter + verse range
     supabase
       .from("verses")
-      .select("*")
+      .select(VERSE_SELECT_FIELDS)
       .eq("book_abbrev", anchorVerse.book_abbrev)
       .eq("chapter", anchorVerse.chapter)
       .gte("verse", anchorVerse.verse - cfg.ring0Radius)
@@ -419,7 +429,12 @@ export async function buildContextBundle(
 
   const useHybrid = isHybridRequested && !!queryEmbedding;
   if (useHybrid) {
-    anchorEmbedding = await fetchVerseEmbedding(anchorId);
+    anchorEmbedding = parseEmbedding(
+      (anchorData as { embedding?: unknown }).embedding,
+    );
+    if (!anchorEmbedding) {
+      anchorEmbedding = await fetchVerseEmbedding(anchorId);
+    }
   }
   const selectionWithAnchor = selection
     ? {
@@ -454,6 +469,7 @@ export async function buildContextBundle(
   let ring2Limit = cfg.ring2Limit;
   let ring3Limit = cfg.ring3Limit;
   let totalNodes = 1;
+  const emptyLayerResult: GraphLayerResult = { ids: [], edges: [] };
 
   if (adaptiveEnabled) {
     ring1Limit = clampLimit(adaptiveStart, adaptiveMin, cfg.ring1Limit);
@@ -495,10 +511,8 @@ export async function buildContextBundle(
         scope,
       );
   const ring1Ids = ring1Layer.ids;
-  let ring1 = await hydrateVerses(ring1Ids);
+  const ring1Promise = hydrateVerses(ring1Ids);
   let ring1Edges = ring1Layer.edges;
-
-  console.log(`[Graph Walker] Ring 1: ${ring1.length} verses`);
   totalNodes += ring1Ids.length;
 
   // ========================================
@@ -540,10 +554,10 @@ export async function buildContextBundle(
   console.log(`[Graph Walker] Fetching Ring 2 (max ${ring2Limit})...`);
 
   const excludeSet = new Set([...ring0Ids, ...ring1Ids]);
-  const ring2Layer =
+  const ring2LayerPromise =
     ring2Limit > 0
       ? useHybrid
-        ? await fetchHybridLayer(
+        ? fetchHybridLayer(
             ring1Ids,
             ring2Limit,
             excludeSet,
@@ -551,7 +565,7 @@ export async function buildContextBundle(
             selectionWithAnchor!,
             scope,
           )
-        : await fetchRing1Connections(
+        : fetchRing1Connections(
             ring1Ids,
             ring2Limit,
             excludeSet,
@@ -560,10 +574,19 @@ export async function buildContextBundle(
             adaptiveEnabled ? adaptiveThreshold : undefined,
             scope,
           )
-      : { ids: [], edges: [] };
+      : Promise.resolve({
+          ...emptyLayerResult,
+        });
+  let ring1: Verse[] = [];
+  const [hydratedRing1, ring2Layer] = await Promise.all([
+    ring1Promise,
+    ring2LayerPromise,
+  ]);
+  ring1 = hydratedRing1;
   const ring2Ids = ring2Layer.ids;
   const ring2Edges = ring2Layer.edges;
 
+  console.log(`[Graph Walker] Ring 1: ${ring1.length} verses`);
   console.log(`[Graph Walker] Ring 2: ${ring2Ids.length} verses`);
   totalNodes += ring2Ids.length;
 
@@ -626,8 +649,7 @@ export async function buildContextBundle(
             scope,
           )
       : Promise.resolve({
-          ids: [] as number[],
-          edges: [] as import("./types").VisualEdge[],
+          ...emptyLayerResult,
         });
 
   const [ring2, ring3Layer] = await Promise.all([
@@ -636,21 +658,25 @@ export async function buildContextBundle(
   ]);
 
   const ring3Ids = ring3Layer.ids;
-  const ring3 = await hydrateVerses(ring3Ids);
+  const ring3Promise = hydrateVerses(ring3Ids);
   const ring3Edges = ring3Layer.edges;
-
-  console.log(`[Graph Walker] Ring 3: ${ring3.length} verses`);
-
-  // ========================================
-  // Bridge Verses: Cross-testament continuity
-  // ========================================
   const existingIds = new Set([
     ...ring0Ids,
     ...ring1Ids,
     ...ring2Ids,
     ...ring3Ids,
   ]);
-  const bridgeVerses = await findBridgeVerses(anchor, existingIds);
+  const bridgeVersesPromise = findBridgeVerses(anchor, existingIds);
+  const [ring3, bridgeVerses] = await Promise.all([
+    ring3Promise,
+    bridgeVersesPromise,
+  ]);
+
+  console.log(`[Graph Walker] Ring 3: ${ring3.length} verses`);
+
+  // ========================================
+  // Bridge Verses: Cross-testament continuity
+  // ========================================
   const scopedBridges =
     scope?.allowedVerseIds && scope.allowedVerseIds.size > 0
       ? bridgeVerses.filter((verse) => scope.allowedVerseIds!.has(verse.id))
@@ -704,7 +730,7 @@ async function hydrateVerses(ids: number[]): Promise<Verse[]> {
 
   const { data, error } = await supabase
     .from("verses")
-    .select("*")
+    .select(VERSE_SELECT_FIELDS)
     .in("id", ids);
 
   if (error) {
@@ -1071,10 +1097,43 @@ const tuneAdditionalEdges = (
   return tuned;
 };
 
+const fetchPericopeIdsByVerse = async (
+  verseIds: number[],
+): Promise<Map<number, number>> => {
+  if (verseIds.length === 0) {
+    return new Map();
+  }
+
+  const source = ENV.PERICOPE_SOURCE || "SIL_AI";
+  const { data: verseMap, error: verseMapError } = await supabase
+    .from("verse_pericope_map")
+    .select("verse_id, pericope_id")
+    .in("verse_id", verseIds)
+    .eq("source", source);
+
+  if (verseMapError || !verseMap) {
+    console.warn(
+      "[Pericope Validation] Failed to load pericope map:",
+      verseMapError?.message,
+    );
+    return new Map();
+  }
+
+  const pericopeIdByVerse = new Map<number, number>();
+  verseMap.forEach((row) => {
+    if (!pericopeIdByVerse.has(row.verse_id)) {
+      pericopeIdByVerse.set(row.verse_id, row.pericope_id);
+    }
+  });
+
+  return pericopeIdByVerse;
+};
+
 const applyPericopeValidation = async (
   edges: import("./types").VisualEdge[],
   nodes: import("./types").ThreadNode[],
   anchorId: number,
+  existingPericopeIdByVerse?: Map<number, number>,
 ): Promise<{
   edges: import("./types").VisualEdge[];
   nodes: import("./types").ThreadNode[];
@@ -1098,26 +1157,14 @@ const applyPericopeValidation = async (
   }
 
   const source = ENV.PERICOPE_SOURCE || "SIL_AI";
-  const { data: verseMap, error: verseMapError } = await supabase
-    .from("verse_pericope_map")
-    .select("verse_id, pericope_id")
-    .in("verse_id", Array.from(verseIds))
-    .eq("source", source);
+  const pericopeIdByVerse =
+    existingPericopeIdByVerse && existingPericopeIdByVerse.size > 0
+      ? existingPericopeIdByVerse
+      : await fetchPericopeIdsByVerse(Array.from(verseIds));
 
-  if (verseMapError || !verseMap) {
-    console.warn(
-      "[Pericope Validation] Failed to load pericope map:",
-      verseMapError?.message,
-    );
+  if (pericopeIdByVerse.size === 0) {
     return { edges, nodes };
   }
-
-  const pericopeIdByVerse = new Map<number, number>();
-  verseMap.forEach((row) => {
-    if (!pericopeIdByVerse.has(row.verse_id)) {
-      pericopeIdByVerse.set(row.verse_id, row.pericope_id);
-    }
-  });
 
   const updatedNodes = nodes.map((node) => {
     const pericopeId = pericopeIdByVerse.get(node.id);
@@ -1555,14 +1602,17 @@ export async function buildVisualBundle(
   // Get all verse IDs from the bundle
   const allVerseIds = nodes.map((n) => n.id);
 
-  // Fetch additional edge types
-  const additionalEdges = await fetchAllEdges(allVerseIds, {
-    includeDEEPER: false, // Already have these from cross_references
-    includeROOTS: edgeOptions.includeROOTS,
-    includeECHOES: edgeOptions.includeECHOES,
-    includePROPHECY: edgeOptions.includePROPHECY,
-    includeGENEALOGY: edgeOptions.includeGENEALOGY,
-  });
+  // Fetch additional edge types and pericope mappings in parallel once the node set is fixed.
+  const [additionalEdges, pericopeIdByVerse] = await Promise.all([
+    fetchAllEdges(allVerseIds, {
+      includeDEEPER: false, // Already have these from cross_references
+      includeROOTS: edgeOptions.includeROOTS,
+      includeECHOES: edgeOptions.includeECHOES,
+      includePROPHECY: edgeOptions.includePROPHECY,
+      includeGENEALOGY: edgeOptions.includeGENEALOGY,
+    }),
+    fetchPericopeIdsByVerse(allVerseIds),
+  ]);
   const tunedAdditionalEdges = tuneAdditionalEdges(additionalEdges, nodeMap);
 
   // Merge all edges
@@ -1577,6 +1627,7 @@ export async function buildVisualBundle(
     allEdges,
     nodes,
     bundle.anchor.id,
+    pericopeIdByVerse,
   );
   let finalEdges = pericopeValidated.edges;
   let finalNodes = pericopeValidated.nodes;
