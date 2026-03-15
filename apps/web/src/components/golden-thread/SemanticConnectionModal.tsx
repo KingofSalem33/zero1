@@ -122,6 +122,19 @@ const LEGACY_CONNECTION_MAP: Record<LegacyConnectionType, ConnectionFamily> = {
   PROGRESSION: "PATTERN",
 };
 
+function parseSemanticSynopsisDraft(rawText: string): {
+  title: string;
+  synopsis: string;
+} {
+  const normalized = rawText.replace(/\r\n/g, "\n");
+  const titleMatch = normalized.match(/^\s*Title:\s*([^\n\r]*)/im);
+  const synopsisMatch = normalized.match(/^\s*Synopsis:\s*([\s\S]*)$/im);
+  return {
+    title: titleMatch?.[1]?.trim() || "",
+    synopsis: synopsisMatch?.[1]?.trim() || "",
+  };
+}
+
 const normalizeConnectionType = (
   connectionType: ConnectionType,
 ): ConnectionFamily => {
@@ -408,7 +421,10 @@ export function SemanticConnectionModal({
           `${API_URL}/api/semantic-connection/synopsis`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+            },
             signal: controller.signal,
             body: JSON.stringify({
               verseIds: normalizedVerseIds, // Pass all connected verse IDs
@@ -425,7 +441,94 @@ export function SemanticConnectionModal({
           throw new Error("Failed to fetch synopsis");
         }
 
-        const data = await response.json();
+        const responseContentType = response.headers.get("content-type") || "";
+        let data: Record<string, unknown>;
+        if (
+          responseContentType.includes("text/event-stream") &&
+          response.body
+        ) {
+          const reader = response.body.getReader();
+          const decoder = new window.TextDecoder();
+          let buffer = "";
+          let currentEvent = "";
+          let streamedText = "";
+          let streamError: string | null = null;
+          let donePayload: Record<string, unknown> | null = null;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim()) {
+                currentEvent = "";
+                continue;
+              }
+              if (line.startsWith("event:")) {
+                currentEvent = line.slice(6).trim();
+                continue;
+              }
+              if (!line.startsWith("data:")) {
+                continue;
+              }
+
+              const json = line.slice(5).trim();
+              if (!json) continue;
+
+              try {
+                const parsed = JSON.parse(json) as Record<string, unknown>;
+                if (currentEvent === "content") {
+                  const delta =
+                    typeof parsed.delta === "string" ? parsed.delta : "";
+                  if (delta) {
+                    streamedText += delta;
+                    const draft = parseSemanticSynopsisDraft(streamedText);
+                    if (
+                      isActive &&
+                      !controller.signal.aborted &&
+                      requestId === requestIdRef.current
+                    ) {
+                      if (draft.title) {
+                        setTitle(draft.title);
+                      }
+                      if (draft.synopsis) {
+                        setSynopsis(draft.synopsis);
+                      }
+                    }
+                  }
+                } else if (currentEvent === "done") {
+                  donePayload = parsed;
+                } else if (currentEvent === "error") {
+                  streamError =
+                    typeof parsed.message === "string"
+                      ? parsed.message
+                      : "Could not load connection analysis";
+                }
+              } catch {
+                // Ignore malformed SSE payloads and continue.
+              }
+            }
+          }
+
+          if (streamError && !donePayload) {
+            throw new Error(streamError);
+          }
+
+          data = donePayload ?? {
+            ...parseSemanticSynopsisDraft(streamedText),
+            verses: previewVerses,
+            connectionType: normalizedConnectionType,
+            similarity,
+            verseCount: normalizedVerseIds.length,
+          };
+        } else {
+          data = (await response.json()) as Record<string, unknown>;
+        }
+
         if (__DEV__)
           console.log("[SemanticConnectionModal] Loaded synopsis:", data);
         const resolvedTitle = typeof data?.title === "string" ? data.title : "";
@@ -942,7 +1045,7 @@ export function SemanticConnectionModal({
 
             {/* Synopsis */}
             <div className="mb-3">
-              {loading && (
+              {loading && !synopsis && (
                 <div className="space-y-2.5">
                   <div className="flex items-center gap-2 py-1.5">
                     <div className="w-1 h-1 rounded-full bg-[#D4AF37] animate-pulse" />
@@ -960,11 +1063,16 @@ export function SemanticConnectionModal({
                 </div>
               )}
               {error && <div className="text-red-400 text-xs">{error}</div>}
-              {!loading && !error && (
+              {!!synopsis && !error && (
                 <>
                   <div className="text-[13px] text-white/80 leading-relaxed">
                     {synopsis}
                   </div>
+                  {loading && (
+                    <div className="mt-2 text-[10px] uppercase tracking-wide text-neutral-500">
+                      Finishing analysis
+                    </div>
+                  )}
                 </>
               )}
             </div>

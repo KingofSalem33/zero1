@@ -1,9 +1,10 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { createHash } from "crypto";
 import { readOnlyLimiter } from "../middleware/rateLimit";
 import { z } from "zod";
 import { ENV } from "../env";
 import { runModel, type RunModelResult } from "../ai/runModel";
+import { runModelStream } from "../ai/runModelStream";
 import { SYNOPSIS_V1 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
@@ -179,6 +180,53 @@ const buildSynopsisPayload = ({
   };
 };
 
+const acceptsEventStream = (acceptHeader?: string): boolean =>
+  typeof acceptHeader === "string" &&
+  acceptHeader.includes("text/event-stream");
+
+const initializeSseResponse = (res: Response): void => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+};
+
+const sendSseEvent = (res: Response, event: string, data: unknown): void => {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+  if (typeof (res as Response & { flush?: () => void }).flush === "function") {
+    (res as Response & { flush?: () => void }).flush?.();
+  }
+};
+
+const finalizeSynopsisText = (rawText: string, maxWords: number): string => {
+  let synopsis =
+    typeof rawText === "string" && rawText.trim().length > 0
+      ? rawText.trim()
+      : "Unable to generate synopsis.";
+  const words = synopsis.split(/\s+/);
+  if (words.length <= maxWords) {
+    return synopsis;
+  }
+
+  const truncated = words.slice(0, maxWords).join(" ");
+  const lastSentenceEnd = Math.max(
+    truncated.lastIndexOf(". "),
+    truncated.lastIndexOf("."),
+    truncated.lastIndexOf("? "),
+    truncated.lastIndexOf("! "),
+  );
+  if (lastSentenceEnd > truncated.length * 0.4) {
+    return truncated.substring(0, lastSentenceEnd + 1).trim();
+  }
+
+  synopsis = truncated.trim();
+  if (!synopsis.endsWith(".")) synopsis += ".";
+  return synopsis;
+};
+
 // Validation schema for synopsis request
 const synopsisRequestSchema = z.object({
   text: z.string().min(1).max(10000), // Max 10k characters for the input text
@@ -194,6 +242,7 @@ const synopsisRequestSchema = z.object({
 
 // POST /api/synopsis - Generate a concise synopsis of highlighted text
 router.post("/", readOnlyLimiter, async (req, res) => {
+  const wantsStream = acceptsEventStream(req.headers.accept);
   try {
     const profiler = getProfiler();
     profiler?.setPipeline("synopsis");
@@ -266,12 +315,26 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       },
     );
     if (cached) {
+      if (wantsStream) {
+        initializeSseResponse(res);
+        sendSseEvent(res, "content", { delta: cached.synopsis });
+        sendSseEvent(res, "done", cached);
+        res.end();
+        return;
+      }
       return res.json(cached);
     }
 
     const sharedInFlight = synopsisInFlight.get(cacheKey);
     if (sharedInFlight) {
       const sharedPayload = await sharedInFlight;
+      if (wantsStream) {
+        initializeSseResponse(res);
+        sendSseEvent(res, "content", { delta: sharedPayload.synopsis });
+        sendSseEvent(res, "done", sharedPayload);
+        res.end();
+        return;
+      }
       return res.json(sharedPayload);
     }
 
@@ -338,11 +401,14 @@ router.post("/", readOnlyLimiter, async (req, res) => {
       : synopsisInput;
 
     const generationPromise = (async (): Promise<SynopsisResponsePayload> => {
-      const result = (await profileTime(
-        "synopsis.runModel",
-        () =>
-          Promise.race([
-            runModel(
+      let synopsis = "Unable to generate synopsis.";
+      if (wantsStream) {
+        initializeSseResponse(res);
+        const streamedText = await profileTime(
+          "synopsis.runModelStream",
+          () =>
+            runModelStream(
+              res,
               [
                 {
                   role: "system",
@@ -358,65 +424,80 @@ router.post("/", readOnlyLimiter, async (req, res) => {
               ],
               {
                 model: synopsisModel,
+                maxOutputTokens: Math.min(256, Math.max(80, maxWords * 4)),
                 taskType: "synopsis",
                 verbosity: "low",
                 promptCacheKey: `synopsis-v${SYNOPSIS_V1.version}`,
+                keepAlive: true,
+                enableValidation: false,
+                enableGuardrails: false,
               },
             ),
-            new Promise((_, reject) =>
-              setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `Synopsis request timed out after ${Math.round(synopsisTimeoutMs / 1000)}s`,
-                    ),
-                  ),
-                synopsisTimeoutMs,
-              ),
-            ),
-          ]),
-        {
-          file: "ai/runModel.ts",
-          fn: "runModel",
-          await: "client.responses.create",
-          model: synopsisModel,
-        },
-      )) as RunModelResult;
-
-      // Extract the synopsis and enforce word count at sentence boundary
-      let synopsis =
-        typeof result.text === "string" && result.text.trim().length > 0
-          ? result.text.trim()
-          : "Unable to generate synopsis.";
-      const words = synopsis.split(/\s+/);
-      if (words.length > maxWords) {
-        // Truncate at the last sentence-ending punctuation within the limit
-        const truncated = words.slice(0, maxWords).join(" ");
-        const lastSentenceEnd = Math.max(
-          truncated.lastIndexOf(". "),
-          truncated.lastIndexOf("."),
-          truncated.lastIndexOf("? "),
-          truncated.lastIndexOf("! "),
+          {
+            file: "ai/runModelStream.ts",
+            fn: "runModelStream",
+            await: "client.responses.create",
+            model: synopsisModel,
+          },
         );
-        if (lastSentenceEnd > truncated.length * 0.4) {
-          // Cut at sentence boundary if it preserves at least 40% of content
-          synopsis = truncated.substring(0, lastSentenceEnd + 1).trim();
-        } else {
-          // Otherwise hard-truncate at word limit
-          synopsis = truncated.trim();
-          if (!synopsis.endsWith(".")) synopsis += ".";
-        }
-      }
+        synopsis = finalizeSynopsisText(streamedText, maxWords);
+      } else {
+        const result = (await profileTime(
+          "synopsis.runModel",
+          () =>
+            Promise.race([
+              runModel(
+                [
+                  {
+                    role: "system",
+                    content: SYNOPSIS_V1.buildSystem({ maxWords }),
+                  },
+                  {
+                    role: "user",
+                    content: SYNOPSIS_V1.buildUser(
+                      pericopeEnrichedInput,
+                      maxWords,
+                    ),
+                  },
+                ],
+                {
+                  model: synopsisModel,
+                  taskType: "synopsis",
+                  verbosity: "low",
+                  promptCacheKey: `synopsis-v${SYNOPSIS_V1.version}`,
+                },
+              ),
+              new Promise((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `Synopsis request timed out after ${Math.round(synopsisTimeoutMs / 1000)}s`,
+                      ),
+                    ),
+                  synopsisTimeoutMs,
+                ),
+              ),
+            ]),
+          {
+            file: "ai/runModel.ts",
+            fn: "runModel",
+            await: "client.responses.create",
+            model: synopsisModel,
+          },
+        )) as RunModelResult;
 
-      // Log token usage for telemetry
-      const tokenUsage = extractTokenUsage(
-        result,
-        "/api/synopsis",
-        synopsisModel,
-        "synopsis-v1",
-      );
-      if (tokenUsage) {
-        logTokenUsage(tokenUsage);
+        synopsis = finalizeSynopsisText(result.text, maxWords);
+
+        const tokenUsage = extractTokenUsage(
+          result,
+          "/api/synopsis",
+          synopsisModel,
+          "synopsis-v1",
+        );
+        if (tokenUsage) {
+          logTokenUsage(tokenUsage);
+        }
       }
 
       const payload = buildSynopsisPayload({
@@ -443,6 +524,11 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     synopsisInFlight.set(cacheKey, generationPromise);
     try {
       const payload = await generationPromise;
+      if (wantsStream) {
+        sendSseEvent(res, "done", payload);
+        res.end();
+        return;
+      }
       return res.json(payload);
     } finally {
       synopsisInFlight.delete(cacheKey);
@@ -450,6 +536,13 @@ router.post("/", readOnlyLimiter, async (req, res) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Synopsis validation error:", error.errors);
+      if (wantsStream && (res.headersSent || res.writableEnded)) {
+        if (!res.writableEnded) {
+          sendSseEvent(res, "error", { message: "Invalid request parameters" });
+          res.end();
+        }
+        return;
+      }
       return res.status(400).json({
         error: {
           message: "Invalid request parameters",
@@ -461,6 +554,17 @@ router.post("/", readOnlyLimiter, async (req, res) => {
     }
 
     console.error("Synopsis generation error:", error);
+    if (wantsStream && (res.headersSent || res.writableEnded)) {
+      if (!res.writableEnded) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to generate synopsis";
+        sendSseEvent(res, "error", { message });
+        res.end();
+      }
+      return;
+    }
     return res.status(500).json({
       error: {
         message: "Failed to generate synopsis",

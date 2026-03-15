@@ -224,6 +224,89 @@ async function fetchPublicJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function readSseDonePayload<T>(
+  response: globalThis.Response,
+  onEvent?: (event: string, payload: Record<string, unknown>) => void,
+): Promise<T | undefined> {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    return undefined;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Streaming response body unavailable");
+  }
+
+  const decoder = new globalThis.TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+  let donePayload: T | null = null;
+  let streamError: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) {
+        currentEvent = "";
+        continue;
+      }
+      if (line.startsWith("event:")) {
+        currentEvent = line.slice(6).trim();
+        continue;
+      }
+      if (!line.startsWith("data:")) {
+        continue;
+      }
+
+      const json = line.slice(5).trim();
+      if (!json) continue;
+
+      try {
+        const parsed = JSON.parse(json) as Record<string, unknown>;
+        onEvent?.(currentEvent, parsed);
+        if (currentEvent === "done") {
+          donePayload = parsed as T;
+        } else if (currentEvent === "error") {
+          streamError =
+            typeof parsed.message === "string"
+              ? parsed.message
+              : "Request failed";
+        }
+      } catch {
+        // Ignore malformed SSE payloads and continue.
+      }
+    }
+  }
+
+  if (donePayload) {
+    return donePayload;
+  }
+  if (streamError) {
+    throw new Error(streamError);
+  }
+  throw new Error("Streaming response ended before completion");
+}
+
+function parseSemanticSynopsisDraft(rawText: string): {
+  title: string;
+  synopsis: string;
+} {
+  const normalized = rawText.replace(/\r\n/g, "\n");
+  const titleMatch = normalized.match(/^\s*Title:\s*([^\n\r]*)/im);
+  const synopsisMatch = normalized.match(/^\s*Synopsis:\s*([\s\S]*)$/im);
+  return {
+    title: titleMatch?.[1]?.trim() || "",
+    synopsis: synopsisMatch?.[1]?.trim() || "",
+  };
+}
+
 export async function fetchTraceBundle({
   apiBaseUrl,
   text,
@@ -489,6 +572,8 @@ export async function fetchSynopsis({
   pericopeType,
   pericopeThemes,
   accessToken,
+  signal,
+  onSynopsis,
 }: {
   apiBaseUrl: string;
   text: string;
@@ -501,8 +586,11 @@ export async function fetchSynopsis({
   pericopeType?: string;
   pericopeThemes?: string[];
   accessToken?: string;
+  signal?: globalThis.AbortSignal;
+  onSynopsis?: (synopsis: string) => void;
 }): Promise<SynopsisResponse> {
   const headers = new Headers({ "Content-Type": "application/json" });
+  headers.set("Accept", "text/event-stream");
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
@@ -521,10 +609,26 @@ export async function fetchSynopsis({
       ...(pericopeType ? { pericopeType } : {}),
       ...(pericopeThemes?.length ? { pericopeThemes } : {}),
     }),
+    signal,
   });
 
   if (!response.ok) {
     throw new Error(`Synopsis request failed (${response.status})`);
+  }
+
+  let streamedSynopsis = "";
+  const streamedPayload = await readSseDonePayload<SynopsisResponse>(
+    response,
+    (event, payload) => {
+      if (event !== "content") return;
+      const delta = typeof payload.delta === "string" ? payload.delta : "";
+      if (!delta) return;
+      streamedSynopsis += delta;
+      onSynopsis?.(streamedSynopsis);
+    },
+  );
+  if (streamedPayload) {
+    return streamedPayload;
   }
 
   return (await response.json()) as SynopsisResponse;
@@ -586,6 +690,8 @@ export async function fetchSemanticConnectionSynopsis({
   isLlmDiscovered,
   topicContext,
   accessToken,
+  signal,
+  onProgress,
 }: {
   apiBaseUrl: string;
   verseIds: number[];
@@ -606,8 +712,11 @@ export async function fetchSemanticConnectionSynopsis({
     overlap: number;
   }>;
   accessToken?: string;
+  signal?: globalThis.AbortSignal;
+  onProgress?: (draft: { title: string; synopsis: string }) => void;
 }): Promise<SemanticConnectionSynopsisResult> {
   const headers = new Headers({ "Content-Type": "application/json" });
+  headers.set("Accept", "text/event-stream");
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
@@ -625,11 +734,28 @@ export async function fetchSemanticConnectionSynopsis({
         ...(isLlmDiscovered ? { isLLMDiscovered: true } : {}),
         ...(topicContext && topicContext.length > 0 ? { topicContext } : {}),
       }),
+      signal,
     },
   );
 
   if (!response.ok) {
     throw new Error(`Semantic connection request failed (${response.status})`);
+  }
+
+  let streamedText = "";
+  const streamedPayload =
+    await readSseDonePayload<SemanticConnectionSynopsisResult>(
+      response,
+      (event, payload) => {
+        if (event !== "content") return;
+        const delta = typeof payload.delta === "string" ? payload.delta : "";
+        if (!delta) return;
+        streamedText += delta;
+        onProgress?.(parseSemanticSynopsisDraft(streamedText));
+      },
+    );
+  if (streamedPayload) {
+    return streamedPayload;
   }
 
   return (await response.json()) as SemanticConnectionSynopsisResult;

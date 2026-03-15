@@ -62,7 +62,6 @@ const READER_LAST_CHAPTERS_BY_BOOK_STORAGE_KEY =
   "biblelot:mobile:reader:last-chapters-by-book";
 const DEFAULT_MARKER_COLOR = "#D4AF37";
 const PARAGRAPH_INDENT = "\u2003";
-const MIN_SELECTION_SYNOPSIS_LOADING_MS = 220;
 const MIN_REFERENCE_MODAL_LOADING_MS = 300;
 const INITIAL_REFERENCE_ROWS_PER_GROUP = 3;
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -500,14 +499,21 @@ export function ReaderScreen({
   const navigationFocusKeyRef = useRef<string | null>(null);
   const navigationFocusHandledKeyRef = useRef<string | null>(null);
   const referenceRequestIdRef = useRef(0);
+  const selectionSynopsisRequestIdRef = useRef(0);
+  const selectionSynopsisAbortRef = useRef<globalThis.AbortController | null>(
+    null,
+  );
   const verseLayoutByNumberRef = useRef<Record<number, number>>({});
   const chapterSwipeLockRef = useRef(false);
   const chapterSwipeLastAtRef = useRef(0);
   const suppressBookmarkTogglePressRef = useRef(false);
   useEffect(() => {
+    selectionSynopsisAbortRef.current?.abort();
+    selectionSynopsisAbortRef.current = null;
     setSelectionDraft(null);
     setSelectionModalVisible(false);
     setSelectionSynopsis(null);
+    setSelectionSynopsisLoading(false);
     setSelectionSynopsisError(null);
     setSelectionNoteEditorVisible(false);
     setSelectionNoteDraft("");
@@ -1136,9 +1142,12 @@ export function ReaderScreen({
   }
 
   function clearSelection() {
+    selectionSynopsisAbortRef.current?.abort();
+    selectionSynopsisAbortRef.current = null;
     setSelectionDraft(null);
     setSelectionModalVisible(false);
     setSelectionSynopsis(null);
+    setSelectionSynopsisLoading(false);
     setSelectionSynopsisError(null);
     setSelectionView("synopsis");
     setSelectionNoteEditorVisible(false);
@@ -1290,9 +1299,13 @@ export function ReaderScreen({
       verses: selectedVerses,
     };
     if (!activePayload.text || activePayload.verses.length === 0) return;
-    const loadStartedAt = Date.now();
+    selectionSynopsisAbortRef.current?.abort();
+    const controllerAbort = new globalThis.AbortController();
+    selectionSynopsisAbortRef.current = controllerAbort;
+    const requestId = (selectionSynopsisRequestIdRef.current += 1);
     setSelectionSynopsisLoading(true);
     setSelectionSynopsisError(null);
+    setSelectionSynopsis(null);
     try {
       const result = await fetchSynopsis({
         apiBaseUrl: MOBILE_ENV.API_URL,
@@ -1301,17 +1314,42 @@ export function ReaderScreen({
         book: controller.reader.book,
         chapter: controller.reader.chapter,
         verses: activePayload.verses,
+        signal: controllerAbort.signal,
+        onSynopsis: (synopsis) => {
+          if (
+            controllerAbort.signal.aborted ||
+            requestId !== selectionSynopsisRequestIdRef.current
+          ) {
+            return;
+          }
+          const trimmed = synopsis.trim();
+          if (!trimmed) return;
+          setSelectionSynopsis((current) => ({
+            synopsis: trimmed,
+            wordCount: trimmed.split(/\s+/).filter(Boolean).length,
+            verse: current?.verse,
+            verses: current?.verses,
+          }));
+        },
       });
+      if (
+        controllerAbort.signal.aborted ||
+        requestId !== selectionSynopsisRequestIdRef.current
+      ) {
+        return;
+      }
       setSelectionSynopsis(result);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
       setSelectionSynopsisError("Could not load synopsis.");
       setSelectionSynopsis(null);
     } finally {
-      await ensureMinLoaderDuration(
-        loadStartedAt,
-        MIN_SELECTION_SYNOPSIS_LOADING_MS,
-      );
-      setSelectionSynopsisLoading(false);
+      if (requestId === selectionSynopsisRequestIdRef.current) {
+        selectionSynopsisAbortRef.current = null;
+        setSelectionSynopsisLoading(false);
+      }
     }
   }
 
@@ -2689,7 +2727,7 @@ export function ReaderScreen({
                     localStyles.selectionSynopsisPanel,
                   ]}
                 >
-                  {selectionSynopsisLoading ? (
+                  {selectionSynopsisLoading && !selectionSynopsis?.synopsis ? (
                     <View style={localStyles.selectionSynopsisSkeleton}>
                       <SkeletonBlock width={120} height={12} radius={6} />
                       <SkeletonTextLines
@@ -2701,10 +2739,19 @@ export function ReaderScreen({
                   {selectionSynopsisError ? (
                     <Text style={styles.error}>{selectionSynopsisError}</Text>
                   ) : null}
-                  {selectionSynopsis && !selectionSynopsisLoading ? (
-                    <Text style={styles.connectionSynopsis}>
-                      {selectionSynopsis.synopsis}
-                    </Text>
+                  {selectionSynopsis?.synopsis ? (
+                    <View>
+                      <Text style={styles.connectionSynopsis}>
+                        {selectionSynopsis.synopsis}
+                      </Text>
+                      {selectionSynopsisLoading ? (
+                        <Text
+                          style={localStyles.selectionSynopsisStreamingLabel}
+                        >
+                          Finishing synopsis
+                        </Text>
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
 
@@ -3477,6 +3524,13 @@ const localStyles = StyleSheet.create({
   },
   selectionSynopsisSkeleton: {
     gap: 14,
+  },
+  selectionSynopsisStreamingLabel: {
+    marginTop: T.spacing.xs,
+    color: T.colors.textMuted,
+    fontSize: T.typography.caption,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   modalActionRow: {
     flexDirection: "row",

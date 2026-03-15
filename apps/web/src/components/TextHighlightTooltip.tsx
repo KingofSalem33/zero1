@@ -339,6 +339,13 @@ export function TextHighlightTooltip({
       await synopsisRequest.execute({
         endpoint: "/api/synopsis",
         body: requestBody,
+        stream: {
+          onContent: (_delta, fullText) => {
+            if (fullText.trim().length > 0) {
+              setDescription(fullText);
+            }
+          },
+        },
         onSuccess: (data) => {
           const reference =
             (data?.verse as { reference?: string })?.reference ||
@@ -680,7 +687,7 @@ export function TextHighlightTooltip({
                       }
                     `}</style>
                   </div>
-                ) : isLoadingDescription ? (
+                ) : isLoadingDescription && !description ? (
                   <LoadingDots label="Analyzing" />
                 ) : (
                   <div className="space-y-2">

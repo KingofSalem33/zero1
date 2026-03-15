@@ -13,6 +13,7 @@ import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
 import type { VisualContextBundle, ThreadNode } from "./types";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
+import { buildWitnessPacket, type WitnessPacketVerse } from "./witnessPackets";
 
 export interface DiscoveredConnection {
   from: number; // verse ID
@@ -41,6 +42,36 @@ interface Verse {
   reference: string;
   text: string;
   book: string;
+  depth?: number;
+  centrality?: number;
+  isAnchor?: boolean;
+  pericopeTitle?: string;
+  pericopeType?: string;
+  pericopeThemes?: string[];
+}
+
+function buildDiscoveryWitnessRole(verse: Verse): WitnessPacketVerse["role"] {
+  if (verse.isAnchor || verse.depth === 0) return "anchor";
+  if (typeof verse.centrality === "number" && verse.centrality >= 0.7) {
+    return "hub";
+  }
+  if (typeof verse.depth === "number" && verse.depth <= 1) {
+    return "principal";
+  }
+  return "supporting";
+}
+
+function buildDiscoveryWitnessRationale(verse: Verse): string {
+  if (verse.isAnchor || verse.depth === 0) {
+    return "Anchor witness for the graph";
+  }
+  if (typeof verse.centrality === "number" && verse.centrality >= 0.7) {
+    return "High-centrality witness connected to multiple paths";
+  }
+  if (typeof verse.depth === "number" && verse.depth <= 1) {
+    return "Near-anchor witness used for close reading";
+  }
+  return "Supporting witness retained for graph-wide accountability";
 }
 
 /**
@@ -125,7 +156,7 @@ export async function discoverConnections(
     .map((v, i) => `${i + 1}. [${v.reference}] "${v.text}"`)
     .join("\n");
 
-  const prompt = `Analyze these ${verses.length} biblical verses for theological connections beyond lexical similarity.
+  let prompt = `Analyze these ${verses.length} biblical verses for theological connections beyond lexical similarity.
 
 VERSES:
 ${verseList}
@@ -154,6 +185,61 @@ Return as:
   "connections": [ ...array of connections... ]
 }`;
 
+  const witnessPacket = buildWitnessPacket(
+    verses.map((verse, index) => ({
+      id: verse.id,
+      reference: verse.reference,
+      text: verse.text,
+      role: buildDiscoveryWitnessRole(verse),
+      depth: verse.depth,
+      centrality: verse.centrality,
+      importance: verses.length - index,
+      rationale: buildDiscoveryWitnessRationale(verse),
+      pericopeTitle: verse.pericopeTitle,
+      pericopeType: verse.pericopeType,
+      pericopeThemes: verse.pericopeThemes,
+    })),
+    {
+      principalCount:
+        verses.length <= 4
+          ? verses.length
+          : Math.min(4, Math.ceil(verses.length * 0.25)),
+      rosterExcerptChars: 64,
+      principalTextChars: 170,
+    },
+  );
+
+  prompt = `Review the witness packet and find high-confidence theological connections that go beyond lexical overlap.
+
+Allowed connection types: TYPOLOGY, FULFILLMENT, ALLUSION, CONTRAST, PROGRESSION, PATTERN.
+${witnessPacket.summary}
+
+[ALL WITNESSES]
+${witnessPacket.roster}
+
+[PRINCIPAL WITNESSES]
+${witnessPacket.principalWitnesses}
+
+Instructions:
+- Every witness above remains in scope.
+- Use the principal witnesses for close reading.
+- Use the full roster to confirm broader canonical pattern and guard against overclaiming.
+- Return only connections you judge at or above 0.85 confidence.
+- Use the roster numbers as the "from" and "to" verse indexes.
+
+Return as:
+{
+  "connections": [
+    {
+      "from": 1,
+      "to": 2,
+      "type": "FULFILLMENT",
+      "explanation": "Brief explanation (max 2 sentences)",
+      "confidence": 0.95
+    }
+  ]
+}`;
+
   try {
     const result = await runModel(
       [
@@ -177,8 +263,9 @@ Only return connections you are confident a careful, text-centered interpreter w
         },
       ],
       {
-        model: ENV.OPENAI_FAST_MODEL,
-        verbosity: "medium",
+        model: ENV.OPENAI_SMART_MODEL,
+        verbosity: "low",
+        maxOutputTokens: Math.min(1400, Math.max(600, verses.length * 80)),
         responseFormat: {
           type: "json_schema",
           json_schema: {
@@ -226,7 +313,7 @@ Only return connections you are confident a careful, text-centered interpreter w
     const tokenUsage = extractTokenUsage(
       result,
       "connectionDiscovery",
-      ENV.OPENAI_FAST_MODEL,
+      ENV.OPENAI_SMART_MODEL,
       "connection-discovery-v1",
     );
     if (tokenUsage) {

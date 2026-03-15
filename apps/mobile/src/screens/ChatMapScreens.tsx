@@ -245,16 +245,7 @@ const CHAT_QUICK_PROMPTS_FALLBACK = [
       "Give me a New Testament passage to study with context and key themes.",
   },
 ] as const;
-const STREAM_MIN_CHARS_PER_FRAME = 12;
-const STREAM_MAX_CHARS_PER_FRAME = 48;
-const resolveStreamCharsPerFrame = (remainingChars: number) =>
-  Math.min(
-    remainingChars,
-    Math.min(
-      STREAM_MAX_CHARS_PER_FRAME,
-      Math.max(STREAM_MIN_CHARS_PER_FRAME, Math.ceil(remainingChars / 6)),
-    ),
-  );
+const STREAM_CHARS_PER_FRAME = 4;
 const MAP_MIN_SCALE = 0.2;
 const MAP_MAX_SCALE = 2.8;
 const MAP_VIEWPORT_PADDING = 60;
@@ -2013,7 +2004,8 @@ export function ChatScreen({
         return;
       }
 
-      const charsToAdd = resolveStreamCharsPerFrame(
+      const charsToAdd = Math.min(
+        STREAM_CHARS_PER_FRAME,
         buffered.length - displayed.length,
       );
       const nextContent = buffered.slice(0, displayed.length + charsToAdd);
@@ -2042,8 +2034,7 @@ export function ChatScreen({
       );
       const expectedMs =
         Math.ceil(
-          (bufferedAtStart / Math.max(1, STREAM_MIN_CHARS_PER_FRAME * 60)) *
-            1000,
+          (bufferedAtStart / Math.max(1, STREAM_CHARS_PER_FRAME * 60)) * 1000,
         ) + 220;
       const maxWaitMs = Math.min(10000, Math.max(1800, expectedMs));
 
@@ -2495,9 +2486,6 @@ export function ChatScreen({
           answer: finalStreamContent || "",
           citations: result.citations || [],
         });
-        setTimeout(() => {
-          listRef.current?.scrollToEnd({ animated: true });
-        }, 0);
       } catch (nextError) {
         cancelStreamTextAnimation();
         if (
@@ -5120,6 +5108,7 @@ export function MapViewerScreen({
     }
 
     let cancelled = false;
+    const controllerAbort = new globalThis.AbortController();
     setEdgeAnalysis(null);
     setEdgeAnalysisLoading(true);
     setEdgeAnalysisError(null);
@@ -5133,6 +5122,16 @@ export function MapViewerScreen({
       isLlmDiscovered: isLlmDiscoveredEdge(edge.edge),
       topicContext,
       accessToken: controller.session?.access_token,
+      signal: controllerAbort.signal,
+      onProgress: (draft) => {
+        if (cancelled || controllerAbort.signal.aborted) return;
+        if (!draft.title && !draft.synopsis) return;
+        setEdgeAnalysis((current) => ({
+          title: draft.title || current?.title || "",
+          synopsis: draft.synopsis || current?.synopsis || "",
+          verses: current?.verses ?? verses,
+        }));
+      },
     })
       .then((result) => {
         if (cancelled) return;
@@ -5157,6 +5156,7 @@ export function MapViewerScreen({
 
     return () => {
       cancelled = true;
+      controllerAbort.abort();
     };
   }, [activeBundle, controller.session?.access_token, selectedEdgeKey]);
 
@@ -5972,7 +5972,7 @@ export function MapViewerScreen({
         </Text>
       ) : null}
       <View style={localStyles.mapAnalysisCard}>
-        {edgeAnalysisLoading ? (
+        {edgeAnalysisLoading && !edgeAnalysis?.synopsis ? (
           <View style={localStyles.mapAnalysisLoadingBlock}>
             <View style={localStyles.mapAnalysisDotRow}>
               <View style={localStyles.mapAnalysisDot} />
@@ -6001,9 +6001,16 @@ export function MapViewerScreen({
         ) : edgeAnalysisError ? (
           <Text style={localStyles.mapSummaryError}>{edgeAnalysisError}</Text>
         ) : edgeAnalysis ? (
-          <Text style={localStyles.mapAnalysisText}>
-            {edgeAnalysis.synopsis}
-          </Text>
+          <View>
+            <Text style={localStyles.mapAnalysisText}>
+              {edgeAnalysis.synopsis}
+            </Text>
+            {edgeAnalysisLoading ? (
+              <Text style={localStyles.mapAnalysisStreamingLabel}>
+                Finishing analysis
+              </Text>
+            ) : null}
+          </View>
         ) : (
           <Text style={localStyles.mapAnalysisText}>
             Connection analysis is unavailable for this edge.
@@ -8090,6 +8097,14 @@ const localStyles = StyleSheet.create({
     color: T.colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
+  },
+  mapAnalysisStreamingLabel: {
+    marginTop: 8,
+    color: T.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   mapAnalysisLoadingBlock: {
     gap: 10,

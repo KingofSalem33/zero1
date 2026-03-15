@@ -230,6 +230,7 @@ export interface RunModelStreamOptions {
   toolMap?: Partial<ToolMap>;
   maxIterations?: number;
   model?: string;
+  maxOutputTokens?: number;
   reasoningEffort?: "low" | "medium" | "high";
   verbosity?: "low" | "medium" | "high";
   // Prompt caching optimization (OpenAI API)
@@ -268,6 +269,7 @@ export async function runModelStream(
     toolMap: providedToolMap = toolMap,
     maxIterations = 10,
     model = ENV.OPENAI_MODEL_NAME,
+    maxOutputTokens = 16000,
     reasoningEffort, // Only set for models that support it (not nano)
     verbosity = "medium",
     promptCacheRetention, // Optional: "24h" for extended cache retention
@@ -288,13 +290,10 @@ export async function runModelStream(
   if (taskType) metadataBuilder.setTaskType(taskType);
   if (userId) metadataBuilder.setUserId(userId);
 
-  // Set reasoning effort based on model capabilities
-  // Nano doesn't support reasoning mode - only mini/pro/opus do
-  // IMPORTANT: Only use reasoning if explicitly requested, otherwise undefined for true streaming
+  // GPT-5 streaming requests can accept explicit reasoning effort.
+  // IMPORTANT: Only use reasoning if explicitly requested, otherwise undefined for true streaming.
   const effectiveReasoningEffort =
-    model.startsWith("gpt-5") &&
-    !model.includes("nano") &&
-    reasoningEffort !== undefined
+    model.startsWith("gpt-5") && reasoningEffort !== undefined
       ? reasoningEffort
       : undefined;
 
@@ -474,7 +473,7 @@ export async function runModelStream(
             input: conversationMessages,
             tools: toolSpecs.length > 0 ? (toolSpecs as any) : undefined,
             tool_choice: toolSpecs.length > 0 ? "auto" : undefined,
-            max_output_tokens: 16000,
+            max_output_tokens: maxOutputTokens,
             parallel_tool_calls: true,
             stream: true,
             text: {

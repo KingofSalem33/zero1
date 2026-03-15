@@ -227,13 +227,49 @@ export interface RunModelResult {
   citations?: string[];
   tools_used?: ToolActivity[];
   usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    input_tokens_details?: {
+      cached_tokens?: number;
+    };
+    prompt_tokens?: number;
+    completion_tokens?: number;
     prompt_tokens_details?: {
       cached_tokens?: number;
     };
   };
+}
+
+function getUsagePromptTokens(usage: RunModelResult["usage"]): number {
+  if (!usage) return 0;
+  return typeof usage.input_tokens === "number"
+    ? usage.input_tokens
+    : (usage.prompt_tokens ?? 0);
+}
+
+function getUsageCompletionTokens(usage: RunModelResult["usage"]): number {
+  if (!usage) return 0;
+  return typeof usage.output_tokens === "number"
+    ? usage.output_tokens
+    : (usage.completion_tokens ?? 0);
+}
+
+function getUsageTotalTokens(usage: RunModelResult["usage"]): number {
+  if (!usage) return 0;
+  return typeof usage.total_tokens === "number"
+    ? usage.total_tokens
+    : getUsagePromptTokens(usage) + getUsageCompletionTokens(usage);
+}
+
+function getUsageCachedTokens(
+  usage: RunModelResult["usage"],
+): number | undefined {
+  if (!usage) return undefined;
+  return (
+    usage.input_tokens_details?.cached_tokens ??
+    usage.prompt_tokens_details?.cached_tokens
+  );
 }
 
 export async function runModel(
@@ -269,10 +305,10 @@ export async function runModel(
         task: taskType,
         model,
         tokenUsage: {
-          prompt: result.usage.prompt_tokens || 0,
-          completion: result.usage.completion_tokens || 0,
-          total: result.usage.total_tokens || 0,
-          cached: result.usage.prompt_tokens_details?.cached_tokens,
+          prompt: getUsagePromptTokens(result.usage),
+          completion: getUsageCompletionTokens(result.usage),
+          total: getUsageTotalTokens(result.usage),
+          cached: getUsageCachedTokens(result.usage),
         },
         latencyMs: Date.now() - startTime,
         timestamp: startTime,
@@ -281,13 +317,10 @@ export async function runModel(
     return result;
   };
 
-  // Set reasoning effort based on model capabilities
-  // Nano doesn't support reasoning mode - only mini/pro/opus do
-  // IMPORTANT: Only use reasoning if explicitly requested (no default)
+  // Set reasoning effort only when explicitly requested.
+  // GPT-5 family models support reasoning controls, including nano.
   const effectiveReasoningEffort =
-    model.startsWith("gpt-5") &&
-    !model.includes("nano") &&
-    reasoningEffort !== undefined
+    model.startsWith("gpt-5") && reasoningEffort !== undefined
       ? reasoningEffort
       : undefined;
 
@@ -372,10 +405,10 @@ export async function runModel(
       );
 
       // Log prompt cache performance if available
-      if ((response as any).usage?.prompt_tokens_details?.cached_tokens) {
-        const cached = (response as any).usage.prompt_tokens_details
-          .cached_tokens;
-        const total = (response as any).usage?.prompt_tokens || 0;
+      const responseUsage = (response as any).usage as RunModelResult["usage"];
+      const cached = getUsageCachedTokens(responseUsage);
+      if (cached) {
+        const total = getUsagePromptTokens(responseUsage);
         const cacheHitRate =
           total > 0 ? ((cached / total) * 100).toFixed(1) : "0";
         logger.info(
@@ -390,7 +423,7 @@ export async function runModel(
       }
 
       // Store usage data for telemetry
-      lastUsageData = (response as any).usage;
+      lastUsageData = responseUsage;
 
       const outputItems = Array.isArray(response.output) ? response.output : [];
 
