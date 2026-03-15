@@ -61,17 +61,7 @@ export interface StreamingMessage {
   chainData?: ChainData;
 }
 
-const MIN_CHARS_PER_FRAME = 12;
-const MAX_CHARS_PER_FRAME = 48;
-
-const resolveCharsPerFrame = (remainingChars: number) =>
-  Math.min(
-    remainingChars,
-    Math.min(
-      MAX_CHARS_PER_FRAME,
-      Math.max(MIN_CHARS_PER_FRAME, Math.ceil(remainingChars / 6)),
-    ),
-  );
+const CHARS_PER_FRAME = 4;
 
 export function useChatStream(
   onMapData?: (bundle: VisualContextBundle) => void,
@@ -95,7 +85,10 @@ export function useChatStream(
 
     if (buffer.length > displayed.length) {
       // Release next chunk of characters
-      const charsToAdd = resolveCharsPerFrame(buffer.length - displayed.length);
+      const charsToAdd = Math.min(
+        CHARS_PER_FRAME,
+        buffer.length - displayed.length,
+      );
       const newContent = buffer.slice(0, displayed.length + charsToAdd);
       displayedContentRef.current = newContent;
 

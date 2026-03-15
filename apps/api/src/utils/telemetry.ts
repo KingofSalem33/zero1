@@ -21,6 +21,18 @@ interface TokenUsage {
  * Updated: 2026-01-01
  */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  "gpt-5-nano": {
+    input: 0.00005, // $0.050 per 1M tokens
+    output: 0.0004, // $0.400 per 1M tokens
+  },
+  "gpt-5-mini": {
+    input: 0.00025, // $0.250 per 1M tokens
+    output: 0.002, // $2.000 per 1M tokens
+  },
+  "gpt-5": {
+    input: 0.00125, // $1.250 per 1M tokens
+    output: 0.01, // $10.000 per 1M tokens
+  },
   "gpt-4o-mini": {
     input: 0.00015, // $0.150 per 1M tokens
     output: 0.0006, // $0.600 per 1M tokens
@@ -114,8 +126,6 @@ export function extractTokenUsage(
   model: string,
   promptVersion?: string,
 ): TokenUsage | null {
-  // Check for usage data in the result
-  // The exact structure depends on how runModel returns usage stats
   const usage = result.usage;
 
   if (!usage) {
@@ -123,11 +133,27 @@ export function extractTokenUsage(
     return null;
   }
 
+  const promptTokens =
+    typeof usage.input_tokens === "number"
+      ? usage.input_tokens
+      : (usage.prompt_tokens ?? 0);
+  const completionTokens =
+    typeof usage.output_tokens === "number"
+      ? usage.output_tokens
+      : (usage.completion_tokens ?? 0);
+  const totalTokens =
+    typeof usage.total_tokens === "number"
+      ? usage.total_tokens
+      : promptTokens + completionTokens;
+  const cachedTokens =
+    usage.input_tokens_details?.cached_tokens ??
+    usage.prompt_tokens_details?.cached_tokens;
+
   return {
-    promptTokens: usage.prompt_tokens || 0,
-    completionTokens: usage.completion_tokens || 0,
-    totalTokens: usage.total_tokens || 0,
-    cachedTokens: usage.prompt_tokens_details?.cached_tokens,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cachedTokens,
     model,
     endpoint,
     promptVersion,

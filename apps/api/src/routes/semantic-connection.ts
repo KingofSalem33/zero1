@@ -1,7 +1,12 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { supabase } from "../db";
 import { ENV } from "../env";
 import { runModel } from "../ai/runModel";
+import { runModelStream } from "../ai/runModelStream";
+import {
+  buildWitnessPacket,
+  type WitnessPacketVerse,
+} from "../bible/witnessPackets";
 import { SEMANTIC_CONNECTION_V2 } from "../prompts";
 import { extractTokenUsage, logTokenUsage } from "../utils/telemetry";
 import { getProfiler, profileTime } from "../profiling/requestProfiler";
@@ -19,12 +24,76 @@ type VerseType = {
 
 const router = Router();
 
+function buildSemanticWitnessRole(
+  index: number,
+  total: number,
+): WitnessPacketVerse["role"] {
+  if (total === 2) {
+    return index === 0 ? "lead" : "paired";
+  }
+  if (index === 0) return "lead";
+  if (index < Math.min(total, 4)) return "principal";
+  return "supporting";
+}
+
+function buildSemanticWitnessRationale(index: number, total: number): string {
+  if (total === 2) {
+    return index === 0
+      ? "Frames the connection"
+      : "Confirms or answers the lead witness";
+  }
+  if (index === 0) {
+    return "Lead witness for the active topic";
+  }
+  if (index < Math.min(total, 4)) {
+    return "Core supporting witness for the active topic";
+  }
+  return "Supporting witness kept in scope for accountability";
+}
+
+const acceptsEventStream = (acceptHeader?: string): boolean =>
+  typeof acceptHeader === "string" &&
+  acceptHeader.includes("text/event-stream");
+
+const initializeSseResponse = (res: Response): void => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  if (typeof res.flushHeaders === "function") {
+    res.flushHeaders();
+  }
+};
+
+const sendSseEvent = (res: Response, event: string, data: unknown): void => {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+  if (typeof (res as Response & { flush?: () => void }).flush === "function") {
+    (res as Response & { flush?: () => void }).flush?.();
+  }
+};
+
+function parseSemanticSynopsis(rawText: string): {
+  title: string;
+  synopsis: string;
+} {
+  const titleMatch = rawText.match(/^\s*Title:\s*(.+)$/im);
+  const synopsisMatch = rawText.match(/^\s*Synopsis:\s*([\s\S]+)$/im);
+  return {
+    title: titleMatch?.[1]?.trim() || "",
+    synopsis:
+      synopsisMatch?.[1]?.trim() ||
+      rawText.trim() ||
+      "Unable to generate synopsis.",
+  };
+}
+
 /**
  * POST /api/semantic-connection/synopsis
  * Generate AI synopsis explaining semantic connections between verses
  * Supports both pairwise (2 verses) and cluster (multiple verses) analysis
  */
 router.post("/synopsis", async (req, res) => {
+  const wantsStream = acceptsEventStream(req.headers.accept);
   try {
     const profiler = getProfiler();
     profiler?.setPipeline("semantic_connection_synopsis");
@@ -254,147 +323,148 @@ router.post("/synopsis", async (req, res) => {
       )
       .slice(0, 6);
 
-    const topicContextText =
+    const witnessPacket = buildWitnessPacket(
+      sortedVerses.map((verse, index) => ({
+        id: verse.id,
+        reference: `${verse.book_name} ${verse.chapter}:${verse.verse}`,
+        text: verse.text,
+        role: buildSemanticWitnessRole(index, sortedVerses.length),
+        importance: sortedVerses.length - index,
+        rationale: buildSemanticWitnessRationale(index, sortedVerses.length),
+        pericopeTitle: verse.pericopeTitle,
+        pericopeType: verse.pericopeType,
+        pericopeThemes: verse.pericopeThemes,
+      })),
+      {
+        principalCount:
+          sortedVerses.length <= 3
+            ? sortedVerses.length
+            : Math.min(3, sortedVerses.length),
+        rosterExcerptChars: 72,
+        principalTextChars: 220,
+      },
+    );
+
+    const compactTopicContext =
       topicContext.length > 0
-        ? `\nOther available topic lenses for this same connection (overlap with the current selection):\n${topicContext
+        ? `Other available lenses for this same connection: ${topicContext
+            .slice(0, 3)
             .map(
               (topic: TopicContextEntry) =>
-                `- ${topic.label}${topic.overlap !== null ? ` (${Math.round(topic.overlap * 100)}% overlap)` : ""}`,
+                `${topic.label}${topic.overlap !== null ? ` (${Math.round(topic.overlap * 100)}% overlap)` : ""}`,
             )
-            .join(
-              "\n",
-            )}\n\nWhen writing the synopsis, make it distinct from these other lenses: focus on what THIS topic uniquely clarifies or reframes. If overlap is high (>=60%), explicitly contrast the angle rather than restating shared points.\n`
+            .join(", ")}. Keep this synopsis distinct from those lenses.\n`
         : "";
 
-    // Build verse list for prompt, with optional pericope narrative context
-    const verseList = sortedVerses
-      .map((v: VerseType) => {
-        let entry = `**${v.book_name} ${v.chapter}:${v.verse}**\n"${v.text}"`;
-        if (v.pericopeTitle) {
-          const pericopeMeta = [
-            `Narrative section: "${v.pericopeTitle}"`,
-            v.pericopeType ? `(${v.pericopeType})` : "",
-            v.pericopeThemes?.length
-              ? `— themes: ${v.pericopeThemes.join(", ")}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          entry += `\n${pericopeMeta}`;
-        }
-        return entry;
-      })
-      .join("\n\n");
+    const prompt = `Study this ${connectionDesc} using the witness packet below.
 
-    const hasPericopeContext = sortedVerses.some(
-      (v: VerseType) => v.pericopeTitle,
-    );
-    const pericopeInstruction = hasPericopeContext
-      ? `\nNarrative section context is provided for each verse as background. Your primary job is still to explain the CONNECTION between these verses — what links them theologically and spiritually. The narrative context is supplementary; only mention it if it genuinely sharpens the connection.\n`
-      : "";
+CONNECTION:
+- Type: ${connectionType}
+- Tone: ${connectionTone}
+${similarity ? `- Similarity: ${Math.round(similarity * 100)}%\n` : ""}${compactTopicContext}${witnessPacket.summary}
 
-    // Generate synopsis using AI
-    const prompt =
-      sortedVerses.length === 2
-        ? `Analyze this ${connectionDesc} between two Bible verses:
+[ALL WITNESSES]
+${witnessPacket.roster}
 
-${verseList}
+[PRINCIPAL WITNESSES]
+${witnessPacket.principalWitnesses}
 
-These verses have a semantic similarity of ${Math.round(similarity * 100)}%, indicating a ${connectionTone} connection.
-${topicContextText}${pericopeInstruction}
-Provide a CONCISE analysis in EXACTLY 34 words or less:
-1. What shared themes or concepts connect these verses
-2. The theological or spiritual significance of this connection
-
-Be direct and insightful. Focus on the "why" of the connection. Maximum 34 words.
-
-Then write a TITLE that distills the significance in 6 words or less.
-- Natural, reverent tone (not academic).
+Instructions:
+- Every witness above remains in scope.
+- Let the principal witnesses carry the explanation.
+- Use the full roster to confirm the connection's breadth and guard against overclaiming.
+- Mention narrative section context only if it sharpens the connection.
+- Maximum 34 words for the synopsis and 6 words for the title.
 - Do not mention verse numbers.
-- Prefer concrete spiritual meaning over labels.
-- Examples: "Testing in the wilderness", "Hearts turn away again",
-  "Judgment after refusal", "A familiar rebuke", "Prophecy now fulfilled",
-  "Promise comes to pass", "Same key word appears", "Two witnesses, one story",
-  "Parallel account here", "Light versus darkness", "Obedience vs rebellion".
-
-Return exactly two lines:
-Title: <6 words or less>
-Synopsis: <34 words or less>`
-        : `Analyze this ${connectionDesc} connecting ${sortedVerses.length} Bible verses:
-
-${verseList}
-
-These verses form a connected cluster${similarity ? ` with ${Math.round(similarity * 100)}% similarity` : ""}, indicating a ${connectionTone} thread.
-${topicContextText}${pericopeInstruction}
-Provide a CONCISE analysis in EXACTLY 34 words or less:
-1. The overarching theme or pattern connecting ALL these verses
-2. The theological or spiritual significance of this connection as a whole
-
-Be direct and synthesizing. Maximum 34 words.
-
-Then write a TITLE that distills the significance in 6 words or less.
-- Natural, reverent tone (not academic).
-- Do not mention verse numbers.
-- Prefer concrete spiritual meaning over labels.
-- Examples: "Testing in the wilderness", "Hearts turn away again",
-  "Judgment after refusal", "A familiar rebuke", "Prophecy now fulfilled",
-  "Promise comes to pass", "Same key word appears", "Two witnesses, one story",
-  "Parallel account here", "Light versus darkness", "Obedience vs rebellion".
 
 Return exactly two lines:
 Title: <6 words or less>
 Synopsis: <34 words or less>`;
 
-    const result = await profileTime(
-      "semantic_connection.runModel",
-      () =>
-        runModel(
-          [
+    let rawText = "";
+    if (wantsStream) {
+      initializeSseResponse(res);
+      rawText = await profileTime(
+        "semantic_connection.runModelStream",
+        () =>
+          runModelStream(
+            res,
+            [
+              {
+                role: "system",
+                content: SEMANTIC_CONNECTION_V2.buildSystem(),
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
             {
-              role: "system",
-              content: SEMANTIC_CONNECTION_V2.buildSystem(),
+              model: ENV.OPENAI_SMART_MODEL,
+              verbosity: "low",
+              maxOutputTokens: 64,
+              keepAlive: true,
+              enableValidation: false,
+              enableGuardrails: false,
+              taskType: "semantic_connection_synopsis",
             },
+          ),
+        {
+          file: "ai/runModelStream.ts",
+          fn: "runModelStream",
+          await: "client.responses.create",
+          model: ENV.OPENAI_SMART_MODEL,
+        },
+      );
+    } else {
+      const result = await profileTime(
+        "semantic_connection.runModel",
+        () =>
+          runModel(
+            [
+              {
+                role: "system",
+                content: SEMANTIC_CONNECTION_V2.buildSystem(),
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
             {
-              role: "user",
-              content: prompt,
+              model: ENV.OPENAI_SMART_MODEL,
+              verbosity: "low",
+              maxOutputTokens: 64,
             },
-          ],
-          {
-            model: ENV.OPENAI_FAST_MODEL,
-            verbosity: "medium",
-          },
-        ),
-      {
-        file: "ai/runModel.ts",
-        fn: "runModel",
-        await: "client.responses.create",
-        model: ENV.OPENAI_FAST_MODEL,
-      },
-    );
+          ),
+        {
+          file: "ai/runModel.ts",
+          fn: "runModel",
+          await: "client.responses.create",
+          model: ENV.OPENAI_SMART_MODEL,
+        },
+      );
 
-    const rawText = result.text || "";
-    const titleMatch = rawText.match(/^\s*Title:\s*(.+)$/im);
-    const synopsisMatch = rawText.match(/^\s*Synopsis:\s*([\s\S]+)$/im);
-    const title = titleMatch?.[1]?.trim() || "";
-    const synopsis =
-      synopsisMatch?.[1]?.trim() || rawText || "Unable to generate synopsis.";
+      rawText = result.text || "";
 
-    // Log token usage for telemetry
-    const tokenUsage = extractTokenUsage(
-      result,
-      "/api/semantic-connection/synopsis",
-      ENV.OPENAI_FAST_MODEL,
-      "semantic-connection-v1",
-    );
-    if (tokenUsage) {
-      logTokenUsage(tokenUsage);
+      const tokenUsage = extractTokenUsage(
+        result,
+        "/api/semantic-connection/synopsis",
+        ENV.OPENAI_SMART_MODEL,
+        "semantic-connection-v1",
+      );
+      if (tokenUsage) {
+        logTokenUsage(tokenUsage);
+      }
     }
+
+    const { title, synopsis } = parseSemanticSynopsis(rawText);
 
     console.log(
       `[Semantic Connection] Synopsis generated for ${sortedVerses.length} verses: ${synopsis.substring(0, 100)}...`,
     );
 
-    return res.json({
+    const payload = {
       title,
       synopsis,
       verses: sortedVerses.map(
@@ -413,9 +483,28 @@ Synopsis: <34 words or less>`;
       connectionType,
       similarity,
       verseCount: sortedVerses.length,
-    });
+    };
+
+    if (wantsStream) {
+      sendSseEvent(res, "done", payload);
+      res.end();
+      return;
+    }
+
+    return res.json(payload);
   } catch (error) {
     console.error("[Semantic Connection] Error generating synopsis:", error);
+    if (wantsStream && (res.headersSent || res.writableEnded)) {
+      if (!res.writableEnded) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Failed to generate synopsis";
+        sendSseEvent(res, "error", { message });
+        res.end();
+      }
+      return;
+    }
     return res.status(500).json({ error: "Failed to generate synopsis" });
   }
 });

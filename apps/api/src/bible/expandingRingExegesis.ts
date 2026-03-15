@@ -51,6 +51,7 @@ import {
   selectCoreVerses,
   type DiscoveredConnection,
 } from "./connectionDiscovery";
+import { buildWitnessPacket } from "./witnessPackets";
 import { ensureVersesHaveText } from "./verseText";
 import {
   buildChainDataFromBundleAndResponse,
@@ -1448,79 +1449,79 @@ function generateGenealogyUserMessage(
 No cross-reference data was found for this anchor.`;
   }
 
-  const nodesByDepth: Record<number, ReferenceTreeNode[]> = {};
-  for (const node of visualBundle.nodes) {
-    (nodesByDepth[node.depth] ??= []).push(node);
-  }
+  const witnessPacket = buildWitnessPacket(
+    visualBundle.nodes.map((node, index) => {
+      const similarityTier =
+        node.similarity !== undefined
+          ? node.similarity >= 0.75
+            ? "high_similarity"
+            : node.similarity >= 0.55
+              ? "mid_similarity"
+              : "low_similarity"
+          : undefined;
+      const parallelNote =
+        node.parallelPassages && node.parallelPassages.length > 0
+          ? `Parallel echoes: ${node.parallelPassages
+              .slice(0, 2)
+              .map(
+                (p) =>
+                  `${p.book_name} ${p.chapter}:${p.verse} (${Math.round(
+                    p.similarity * 100,
+                  )}%)`,
+              )
+              .join("; ")}`
+          : undefined;
 
-  const depths = Object.keys(nodesByDepth).map(Number);
-  const maxDepth = depths.length ? Math.max(...depths) : 0;
-
-  const formatBlock = (label: string, verses: ReferenceTreeNode[]) =>
-    verses.length
-      ? `${label}\n${verses
-          .map((v) => {
-            const similarityTier =
-              v.similarity !== undefined
-                ? v.similarity >= 0.75
-                  ? "HIGH"
-                  : v.similarity >= 0.55
-                    ? "MID"
-                    : "LOW"
-                : "";
-            const similarity =
-              v.similarity !== undefined
-                ? ` [${similarityTier} ${(v.similarity * 100).toFixed(0)}%]`
-                : "";
-            const parallels =
-              v.parallelPassages && v.parallelPassages.length > 0
-                ? v.parallelPassages
-                    .slice(0, 2)
-                    .map(
-                      (p) =>
-                        `${p.book_name} ${p.chapter}:${p.verse} (${Math.round(
-                          p.similarity * 100,
-                        )}%)`,
-                    )
-                    .join("; ")
-                : "";
-            const parallelNote = parallels ? ` (Parallels: ${parallels})` : "";
-            return `ID:${v.id} [${v.book_name} ${v.chapter}:${v.verse}]${similarity} "${v.text}"${parallelNote}`;
-          })
-          .join("\n")}\n\n`
-      : "";
-
-  let genealogyData = "";
-
-  genealogyData += formatBlock("[ANCHOR (Depth 0)]", nodesByDepth[0] ?? []);
-  genealogyData += formatBlock(
-    `[CLOSE WITNESSES (Depth 1 - ${(nodesByDepth[1] ?? []).length} verses)]`,
-    nodesByDepth[1] ?? [],
+      return {
+        id: node.id,
+        reference: `${node.book_name} ${node.chapter}:${node.verse}`,
+        text: node.text,
+        role:
+          node.depth === 0
+            ? "anchor"
+            : node.isSpine
+              ? "principal"
+              : node.depth <= 1
+                ? "lead"
+                : typeof node.centrality === "number" && node.centrality >= 0.6
+                  ? "hub"
+                  : "supporting",
+        depth: node.depth,
+        centrality: node.centrality,
+        importance:
+          (node.isSpine ? 3 : 0) +
+          (typeof node.similarity === "number" ? node.similarity * 2 : 0) +
+          Math.max(0, 3 - node.depth) +
+          (visualBundle.nodes.length - index) /
+            Math.max(1, visualBundle.nodes.length),
+        rationale:
+          parallelNote ||
+          similarityTier ||
+          (node.depth === 0
+            ? "Anchor witness for the study"
+            : node.isSpine
+              ? "Spine witness on the main graph path"
+              : node.depth <= 1
+                ? "Close witness near the anchor"
+                : "Broader canonical witness kept in scope"),
+      };
+    }),
+    {
+      principalCount:
+        visualBundle.nodes.length <= 5
+          ? visualBundle.nodes.length
+          : Math.min(5, Math.ceil(visualBundle.nodes.length * 0.3)),
+      rosterExcerptChars: 72,
+      principalTextChars: 220,
+    },
   );
-  genealogyData += formatBlock(
-    `[EXTENDED WITNESSES (Depth 2 - ${(nodesByDepth[2] ?? []).length} verses)]`,
-    nodesByDepth[2] ?? [],
-  );
-
-  const deeper: ReferenceTreeNode[] = [];
-  for (let depth = 3; depth <= maxDepth; depth++) {
-    deeper.push(...(nodesByDepth[depth] ?? []));
-  }
-  if (deeper.length) {
-    genealogyData += formatBlock(
-      `[BROADER CANONICAL ECHOES (Depth 3+ - ${deeper.length} verses)]`,
-      deeper,
-    );
-  }
 
   return `USER QUERY: "${userPrompt}"
 
 === THE CLOUD OF WITNESSES (Available Data) ===
 
 This genealogy tree shows connected KJV cross-references.
-Depth indicates how many steps away a verse is from the anchor, but you are NOT required to follow this depth order when teaching.
-
-Use depth only as a hint of closeness, not as a script.
+Every witness below remains in scope, but the principal witnesses are the ones to read most closely first.
 
 Total verses in tree: ${visualBundle.nodes.length}
 Total reference connections: ${visualBundle.edges.length}
@@ -1533,11 +1534,16 @@ ${
     : ""
 }
 
-${genealogyData}
+[ALL WITNESSES]
+${witnessPacket.roster}
+
+[PRINCIPAL WITNESSES]
+${witnessPacket.principalWitnesses}
 
 GUIDANCE FOR HOW TO USE THIS DATA:
 - These verses are the ONLY allowed sources. Do not cite anything outside this list.
 - If MAP SESSION RULES are provided above, follow them exactly.
+- Read the principal witnesses closely, then use the full witness roster to confirm the broader pattern.
 - Choose the verses that best clarify the anchor and the user's question.`;
 }
 
@@ -2407,6 +2413,16 @@ export async function explainScriptureWithKernelStream(
 
   const treeStats = computeTreeStats(visualBundle);
   const anchor = buildAnchorFromTree(visualBundle, anchorId);
+  const sendSseEvent = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  const sendVerseSearchPreview = (bundle: ReferenceVisualBundle) => {
+    for (const node of bundle.nodes.slice(0, 15)) {
+      sendSseEvent("verse_search", {
+        verse: `${node.book_name} ${node.chapter}:${node.verse}`,
+      });
+    }
+  };
 
   // Attach resolution metadata
   visualBundle.resolutionType = resolutionType; // From Phase 1, line 889
@@ -2423,101 +2439,124 @@ export async function explainScriptureWithKernelStream(
   }
   if (pericopeBundle) {
     visualBundle.pericopeBundle = pericopeBundle;
-  } else if (pericopeContext) {
-    pericopeBundle = await pericopeBundlePromise;
-    if (pericopeBundle) {
-      visualBundle.pericopeBundle = pericopeBundle;
-    } else {
-      try {
-        const fallbackBundle = await profileTime(
-          "exegesis.buildPericopeBundleFallback",
-          () => buildPericopeScopeForVerse(anchorId, pericopeContext),
-          {
-            file: "bible/pericopeGraphWalker.ts",
-            fn: "buildPericopeScopeForVerse",
-            await: "buildPericopeScopeForVerse",
-          },
-        );
-        if (fallbackBundle?.pericopeBundle) {
-          visualBundle.pericopeBundle =
-            fallbackBundle.pericopeBundle as PericopeBundle;
+  }
+  const enrichmentPromise = (async (): Promise<ReferenceVisualBundle> => {
+    let nextVisualBundle = visualBundle;
+    let shouldEmitUpdatedMap = false;
+
+    if (!pericopeBundle && pericopeContext) {
+      pericopeBundle = await pericopeBundlePromise;
+      if (pericopeBundle) {
+        nextVisualBundle = {
+          ...nextVisualBundle,
+          pericopeBundle,
+        };
+        shouldEmitUpdatedMap = true;
+      } else {
+        try {
+          const fallbackBundle = await profileTime(
+            "exegesis.buildPericopeBundleFallback",
+            () => buildPericopeScopeForVerse(anchorId, pericopeContext),
+            {
+              file: "bible/pericopeGraphWalker.ts",
+              fn: "buildPericopeScopeForVerse",
+              await: "buildPericopeScopeForVerse",
+            },
+          );
+          if (fallbackBundle?.pericopeBundle) {
+            pericopeBundle = fallbackBundle.pericopeBundle as PericopeBundle;
+            nextVisualBundle = {
+              ...nextVisualBundle,
+              pericopeBundle,
+            };
+            shouldEmitUpdatedMap = true;
+          }
+        } catch (error) {
+          console.warn(
+            "[Expanding Ring] Pericope bundle build failed:",
+            error instanceof Error ? error.message : error,
+          );
         }
-      } catch (error) {
-        console.warn(
-          "[Expanding Ring] Pericope bundle build failed:",
-          error instanceof Error ? error.message : error,
-        );
       }
     }
-  }
 
-  if (!isFastMap) {
-    visualBundle = await profileTime(
-      "exegesis.discoverConnections",
-      async () => {
-        const bundleForDiscovery =
-          visualBundle as unknown as VisualContextBundle;
-        const coreVerses = selectCoreVerses(bundleForDiscovery);
-        if (coreVerses.length === 0) return visualBundle;
+    if (!isFastMap) {
+      const discoveredBundle = await profileTime(
+        "exegesis.discoverConnections",
+        async () => {
+          const bundleForDiscovery =
+            nextVisualBundle as unknown as VisualContextBundle;
+          const coreVerses = selectCoreVerses(bundleForDiscovery);
+          if (coreVerses.length === 0) return nextVisualBundle;
 
-        const discoveryGate = shouldRunDiscovery(visualBundle, treeStats);
-        if (!discoveryGate.run) {
-          console.log(
-            `[Connection Discovery] Proceeding despite low-yield gate (${discoveryGate.reasons.join(", ")})`,
+          const discoveryGate = shouldRunDiscovery(nextVisualBundle, treeStats);
+          if (!discoveryGate.run) {
+            console.log(
+              `[Connection Discovery] Proceeding despite low-yield gate (${discoveryGate.reasons.join(", ")})`,
+            );
+          }
+
+          const coreIds = coreVerses.map((v) => v.id);
+          const cached = await fetchPersistedConnections(coreIds);
+          if (cached.length > 0) {
+            console.log(
+              `[Connection Discovery] Using ${cached.length} cached connection(s)`,
+            );
+            return mergeDiscoveredEdges(nextVisualBundle, cached, "llm_cached");
+          }
+
+          if (!ENV.AI_API_KEY) {
+            return nextVisualBundle;
+          }
+
+          const discovered = await discoverConnections(
+            coreVerses.map((v) => ({
+              id: v.id,
+              reference: `${v.book_name} ${v.chapter}:${v.verse}`,
+              text: v.text,
+              book: v.book_name,
+              depth: v.depth,
+              centrality: v.centrality,
+              isAnchor: v.id === bundleForDiscovery.rootId,
+              pericopeTitle: v.pericopeTitle,
+              pericopeType: v.pericopeType,
+              pericopeThemes: v.pericopeThemes,
+            })),
           );
-        }
 
-        const coreIds = coreVerses.map((v) => v.id);
-        const cached = await fetchPersistedConnections(coreIds);
-        if (cached.length > 0) {
-          console.log(
-            `[Connection Discovery] Using ${cached.length} cached connection(s)`,
-          );
-          return mergeDiscoveredEdges(visualBundle, cached, "llm_cached");
-        }
+          if (discovered.length > 0) {
+            await persistDiscoveredConnections(discovered);
+            return mergeDiscoveredEdges(
+              nextVisualBundle,
+              discovered,
+              "llm_discovered",
+            );
+          }
 
-        if (!ENV.AI_API_KEY) {
-          return visualBundle;
-        }
+          return nextVisualBundle;
+        },
+        {
+          file: "bible/expandingRingExegesis.ts",
+          fn: "discoverConnections",
+          await: "discoverConnections",
+        },
+      );
 
-        const discovered = await discoverConnections(
-          coreVerses.map((v) => ({
-            id: v.id,
-            reference: `${v.book_name} ${v.chapter}:${v.verse}`,
-            text: v.text,
-            book: v.book_name,
-          })),
-        );
+      if (discoveredBundle !== nextVisualBundle) {
+        nextVisualBundle = discoveredBundle;
+        shouldEmitUpdatedMap = true;
+      }
+    }
 
-        if (discovered.length > 0) {
-          await persistDiscoveredConnections(discovered);
-          return mergeDiscoveredEdges(
-            visualBundle,
-            discovered,
-            "llm_discovered",
-          );
-        }
+    if (shouldEmitUpdatedMap && !res.writableEnded && !res.destroyed) {
+      sendSseEvent("map_data", nextVisualBundle);
+    }
 
-        return visualBundle;
-      },
-      {
-        file: "bible/expandingRingExegesis.ts",
-        fn: "discoverConnections",
-        await: "discoverConnections",
-      },
-    );
-  }
+    return nextVisualBundle;
+  })();
 
-  // Stream verses being explored to the client for visual feedback
-  for (const node of visualBundle.nodes.slice(0, 15)) {
-    const verseRef = `${node.book_name} ${node.chapter}:${node.verse}`;
-    res.write(`event: verse_search\n`);
-    res.write(`data: ${JSON.stringify({ verse: verseRef })}\n\n`);
-  }
-
-  // Send map data first
-  res.write("event: map_data\n");
-  res.write(`data: ${JSON.stringify(visualBundle)}\n\n`);
+  sendVerseSearchPreview(visualBundle);
+  sendSseEvent("map_data", visualBundle);
 
   // === SINGLE-PASS STREAMING: Read tree, deliver teaching immediately ===
   console.log("[Fast Stream] Starting single-pass teaching generation...");
@@ -2553,7 +2592,7 @@ export async function explainScriptureWithKernelStream(
 
   // Stream with validation and guardrails enabled
   const requestId = generateRequestId();
-  const streamedResponse = await profileTime(
+  const streamedResponsePromise = profileTime(
     "exegesis.runModelStream",
     () =>
       runModelStream(
@@ -2580,6 +2619,11 @@ export async function explainScriptureWithKernelStream(
       await: "client.responses.create",
     },
   );
+  const [streamedResponse, enrichedVisualBundle] = await Promise.all([
+    streamedResponsePromise,
+    enrichmentPromise,
+  ]);
+  visualBundle = enrichedVisualBundle;
 
   const anchorReference = `${anchor.book_name} ${anchor.chapter}:${anchor.verse}`;
   let citations = [anchorReference];

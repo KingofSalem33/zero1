@@ -275,3 +275,129 @@
 - [x] Create a feature branch from `biblelot` for the graph-pipeline work
 - [ ] Stage the deploy-relevant files and create the commit
 - [ ] Push the feature branch and open a PR targeting `biblelot`
+
+## Graph Pipeline UX Follow-Up 2026-03-14
+
+- [x] Restore the preferred 4-char streamed-text cadence on web and mobile
+- [x] Remove the completion-time mobile chat auto-scroll snap
+- [x] Start streaming the first map and first answer before optional graph enrichment finishes
+- [x] Re-run targeted API/web/mobile verification and update review notes
+
+## Graph Pipeline UX Follow-Up Review 2026-03-14
+
+- Restored the fixed 4-char release cadence in `apps/web/src/hooks/useChatStream.ts` and `apps/mobile/src/screens/ChatMapScreens.tsx` so streamed text once again lands at the slower reading pace the user preferred.
+- Removed the mobile completion-time `scrollToEnd()` call so the chat no longer snaps the reader to the bottom as soon as the answer finishes.
+- Reworked the non-prebuilt `explainScriptureWithKernelStream()` path in `apps/api/src/bible/expandingRingExegesis.ts` so it now emits the initial `verse_search` preview and first `map_data` bundle immediately after ranking/dedupe, starts `runModelStream()` right away, and lets pericope-bundle attachment plus connection discovery finish in parallel.
+- If the optional enrichment work materially improves the bundle, the server now emits a later `map_data` update during the same stream instead of blocking the first map and first token on that work.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+  - `npm run typecheck` in `apps/web`: passed on 2026-03-14.
+  - `npm run typecheck` in `apps/mobile`: passed on 2026-03-14.
+
+## Synopsis Latency Analysis 2026-03-14
+
+- [x] Trace Reader synopsis from UI selection through `/api/synopsis`
+- [x] Trace Map semantic synopsis from UI edge/topic open through `/api/semantic-connection/synopsis`
+- [x] Compare existing profiler data with the live code paths
+- [x] Record the dominant latency contributors and next non-cache fixes
+
+## Synopsis Latency Analysis Review 2026-03-14
+
+- Reader synopsis is a synchronous request/response path with no partial delivery, so the user waits for the entire model completion before any text appears.
+- `/api/synopsis` currently hard-codes `ENV.OPENAI_SMART_MODEL` even though the model router classifies `synopsis` as a fast task; existing profiler data shows the route is dominated by `synopsis.runModel` / `llm.responses_create` at about 947ms mean and 1473ms p90.
+- Single-verse Reader synopsis can be slower than multi-verse selection because `/api/synopsis` does an additional serial verse -> pericope_map -> pericope lookup to enrich the prompt when the client does not provide pericope metadata.
+- Mobile Reader adds a small artificial minimum loader of 220ms in `ReaderScreen.tsx`, which is not the primary bottleneck but does add a visible floor.
+- Map semantic synopsis is also synchronous and non-streaming; the user sees loading until the full JSON response returns.
+- `/api/semantic-connection/synopsis` builds a much heavier prompt than Reader synopsis: multiple verses, optional pericope metadata per verse, connection type framing, and topic-overlap context, all before calling the model.
+- Existing profiler data shows `semantic_connection.runModel` / `llm.responses_create` dominating at about 1297ms mean, 1757ms p90, and a very heavy long tail.
+- Current web and mobile map paths usually send verse preview text with the request, so the old `fetch_verses` DB stage is less important for the current UI than the model/prompt cost; the main live bottleneck is the model call itself plus prompt size variability.
+
+## Model Routing Follow-Up 2026-03-14
+
+- [x] Move `connectionDiscovery` from `OPENAI_FAST_MODEL` to `OPENAI_SMART_MODEL`
+- [x] Move `/api/semantic-connection/synopsis` from `OPENAI_FAST_MODEL` to `OPENAI_SMART_MODEL`
+- [x] Re-run `npm run build` in `apps/api`
+
+## Model Routing Follow-Up Review 2026-03-14
+
+- `apps/api/src/bible/connectionDiscovery.ts` now routes the heavy multi-verse discovery prompt through `ENV.OPENAI_SMART_MODEL` instead of the fast tier.
+- `apps/api/src/routes/semantic-connection.ts` now routes the heavy semantic synopsis prompt through `ENV.OPENAI_SMART_MODEL` instead of the fast tier.
+- The lower-cost topic-title helper in `semantic-connection.ts` was left on the fast tier because it is short-form and not the problematic path.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Witness Packet Refactor 2026-03-14
+
+- [x] Add a shared witness-packet builder that preserves the full verse roster while promoting a smaller principal-witness set
+- [x] Feed graph-derived metadata into connection discovery witness packets where available
+- [x] Refactor semantic connection synopsis prompts to use the witness-packet format and shorter route-specific instructions
+- [x] Refactor connection discovery prompts to use the witness-packet format and remove duplicated taxonomy prose
+- [x] Re-run `npm run build` in `apps/api` and update review notes
+
+## Witness Packet Refactor Review 2026-03-14
+
+- Added `apps/api/src/bible/witnessPackets.ts` as a shared prompt-compilation helper. It preserves the full witness roster, ranks witnesses by role/depth/centrality/ordering, and emits a smaller principal-witness block with full text plus rationale.
+- `apps/api/src/routes/semantic-connection.ts` now compiles the active topic into a witness packet before the model call. The model still receives every verse, but only the top witnesses get the expensive full-text treatment. The route also now uses a shorter packet-driven prompt and a tighter `maxOutputTokens` cap for the title/synopsis response.
+- `apps/api/src/bible/connectionDiscovery.ts` now compiles discovery prompts from the same witness-packet structure. The prompt keeps every verse in scope but swaps the old duplicated prose taxonomy for a roster-plus-principal-witness packet and a shorter instruction block.
+- `apps/api/src/bible/expandingRingExegesis.ts` now threads graph metadata such as depth, centrality, anchor status, and pericope labels into `discoverConnections()` so the discovery witness packet can distinguish anchors, hubs, and supporting witnesses.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Chat Witness Packet Follow-Up 2026-03-14
+
+- [x] Refactor the main chat genealogy block to use the witness-packet format
+- [x] Preserve full-graph verse scope while promoting principal witnesses for close reading
+- [x] Re-run `npm run build` in `apps/api`
+
+## Chat Witness Packet Follow-Up Review 2026-03-14
+
+- `generateGenealogyUserMessage()` in `apps/api/src/bible/expandingRingExegesis.ts` now emits the same full-roster-plus-principal-witness structure used by the map-side helper prompts instead of dumping the graph as depth-grouped full text blocks.
+- Main chat still sees the whole graph, but the prompt now gives the model a stronger hierarchy: anchor/principal/lead/hub/supporting witnesses, plus a smaller set of full-text principal witnesses for close reading.
+- This keeps the “AI reads the whole graph” product feel while reducing the amount of full-text prompt mass the chat path has to digest before answering.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Prompt Performance Tuning 2026-03-14
+
+- [x] Fix GPT-5 Responses API token telemetry extraction and pricing fallbacks
+- [x] Tighten witness-packet budgets for semantic synopsis, connection discovery, and main chat
+- [x] Allow explicit GPT-5 nano reasoning controls in `runModel`
+- [x] Re-run `npm run build` in `apps/api`
+
+## Prompt Performance Tuning Review 2026-03-14
+
+- `apps/api/src/utils/telemetry.ts` now reads GPT-5 Responses API usage from `input_tokens` / `output_tokens` and adds `gpt-5`, `gpt-5-mini`, and `gpt-5-nano` pricing entries, so telemetry should stop logging misleading `0 in / 0 out` splits and unknown-model pricing warnings for the live GPT-5 models.
+- `apps/api/src/ai/runModel.ts` now normalizes Responses API usage fields for internal model-usage tracking and cache logging, and it no longer blocks explicit `reasoningEffort` on `gpt-5-nano`.
+- `apps/api/src/routes/semantic-connection.ts` now uses a smaller principal-witness set, shorter roster excerpts, shorter principal text blocks, and a tighter `maxOutputTokens` cap for the synopsis/title response.
+- `apps/api/src/bible/connectionDiscovery.ts` now uses a smaller principal-witness set, shorter witness excerpts, lower verbosity, and a bounded dynamic `maxOutputTokens` cap on the smart-model discovery call.
+- `apps/api/src/bible/expandingRingExegesis.ts` now uses a slightly tighter witness budget for the main chat genealogy block so the full roster remains visible while the expensive full-text principal block stays smaller.
+- Follow-up cleanup completed: `apps/api/src/routes/semantic-connection.ts` now contains only the live witness-packet prompt path for semantic synopsis.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Streamed Synopsis Delivery 2026-03-14
+
+- [x] Add streamed SSE delivery to `/api/synopsis` and `/api/semantic-connection/synopsis` while preserving the existing final payloads
+- [x] Extend web synopsis consumers to render partial streamed text instead of waiting for full JSON
+- [x] Extend mobile Reader and map-edge synopsis consumers to render partial streamed text instead of waiting for full JSON
+- [x] Re-run targeted build/typecheck verification and record review notes
+
+## Streamed Synopsis Delivery Review 2026-03-14
+
+- `apps/api/src/routes/synopsis.ts` now supports `Accept: text/event-stream`, streams synopsis deltas via `runModelStream()`, preserves the existing final payload on the `done` event, and keeps the existing JSON path for non-stream callers.
+- `apps/api/src/routes/semantic-connection.ts` now supports the same SSE path for semantic synopsis, streams title/synopsis text as it arrives, and still finishes with the exact structured payload the modal and mobile map already expect.
+- `apps/api/src/ai/runModelStream.ts` now accepts route-level `maxOutputTokens`, so short-form synopsis streams no longer inherit the chat-sized output ceiling; the stale GPT-5 nano reasoning gate was also removed from the streaming path for consistency with the documented GPT-5 behavior.
+- `apps/web/src/hooks/useAIRequest.ts` and `apps/web/src/components/TextHighlightTooltip.tsx` now consume SSE synopsis output and render partial text instead of holding the loading shell until full JSON arrives.
+- `apps/web/src/components/golden-thread/SemanticConnectionModal.tsx` now requests streamed semantic synopsis output, parses partial `Title:` / `Synopsis:` content during the stream, and shows the live draft while the analysis is still finishing.
+- `apps/mobile/src/lib/api.ts`, `apps/mobile/src/screens/ReaderScreen.tsx`, and `apps/mobile/src/screens/ChatMapScreens.tsx` now consume streamed synopsis output, render partial text in Reader and the map edge inspector, and no longer impose the old 220ms minimum loader on selection synopsis.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+  - `npm run typecheck` in `apps/web`: passed on 2026-03-14.
+  - `npm run typecheck` in `apps/mobile`: passed on 2026-03-14.
+
+## Deploy PR 2026-03-14
+
+- [ ] Create a feature branch from the current `biblelot` worktree state
+- [ ] Commit the graph speed, witness-packet, and streamed synopsis changes with the current task log updates
+- [ ] Push the branch, open a PR targeting `biblelot`, and merge it
+- [ ] Verify local `biblelot` and `origin/biblelot` match the merged commit
