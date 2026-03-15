@@ -83,6 +83,58 @@ function extractAssistantTextFromOutputItems(outputItems: any[]): string {
     .join("");
 }
 
+function extractTextFromResponsePayload(response: any): string {
+  const outputText = response?.output_text;
+  if (typeof outputText === "string" && outputText.trim().length > 0) {
+    return outputText;
+  }
+
+  if (Array.isArray(outputText)) {
+    const joined = outputText
+      .map((item: any) => extractTextFromContentPart(item))
+      .filter(Boolean)
+      .join("");
+    if (joined.trim().length > 0) return joined;
+  }
+
+  if (Array.isArray(response?.output)) {
+    const fromOutputItems = extractAssistantTextFromOutputItems(
+      response.output,
+    );
+    if (fromOutputItems.trim().length > 0) {
+      return fromOutputItems;
+    }
+  }
+
+  return "";
+}
+
+function assignOutputItem(outputItems: any[], event: any): void {
+  const outputIndex =
+    typeof event?.output_index === "number" ? event.output_index : undefined;
+  if (outputIndex === undefined) {
+    outputItems.push(event?.item);
+    return;
+  }
+  outputItems[outputIndex] = event?.item;
+}
+
+function extractFinalizedEventText(event: any): string {
+  if (!event) return "";
+  if (typeof event.text === "string") return event.text;
+  if (typeof event.output_text === "string") return event.output_text;
+  if (Array.isArray(event.output_text)) {
+    return event.output_text
+      .map((item: any) => extractTextFromContentPart(item))
+      .filter(Boolean)
+      .join("");
+  }
+  if (event.item) {
+    return extractAssistantTextFromOutputItems([event.item]);
+  }
+  return "";
+}
+
 function extractSearchKeywords(context: any[]): string[] {
   const keywords: string[] = [];
   const keywordPatterns = [
@@ -531,6 +583,8 @@ export async function runModelStream(
 
       let currentIterationContent = ""; // Content from THIS iteration only
       const outputItems: any[] = [];
+      const finalizedTextEvents: string[] = [];
+      let completedResponseText = "";
       let firstDeltaLogged = false;
       let deltaEventCount = 0;
       let deltaCharCount = 0;
@@ -547,11 +601,22 @@ export async function runModelStream(
 
         // Collect all output items as they're added
         if (event.type === "response.output_item.added") {
-          outputItems.push(event.item);
+          assignOutputItem(outputItems, event);
           if (STREAM_DEBUG) {
             logger.debug(
               { iteration: iterations, itemType: event.item.type },
               "Responses API output item added",
+            );
+          }
+        }
+
+        // Replace placeholder output items with finalized ones when available.
+        if (event.type === "response.output_item.done") {
+          assignOutputItem(outputItems, event);
+          if (STREAM_DEBUG) {
+            logger.debug(
+              { iteration: iterations, itemType: event.item.type },
+              "Responses API output item finalized",
             );
           }
         }
@@ -594,6 +659,19 @@ export async function runModelStream(
           }
         }
 
+        if (event.type === "response.output_text.done") {
+          const finalizedText = extractFinalizedEventText(event);
+          if (finalizedText) {
+            finalizedTextEvents.push(finalizedText);
+          }
+        }
+
+        if (event.type === "response.completed") {
+          completedResponseText = extractTextFromResponsePayload(
+            event.response,
+          );
+        }
+
         // Note: We don't need to manually assemble tool calls from deltas
         // The outputItems will contain complete function_tool_call objects
       }
@@ -614,8 +692,12 @@ export async function runModelStream(
 
       // Fallback: If no text deltas were emitted, try to recover text
       // from assistant message output items and emit a single content chunk.
+      const finalizedOutputItems = outputItems.filter(Boolean);
       if (!currentIterationContent) {
-        const fallbackText = extractAssistantTextFromOutputItems(outputItems);
+        const fallbackText =
+          finalizedTextEvents.join("") ||
+          completedResponseText ||
+          extractAssistantTextFromOutputItems(finalizedOutputItems);
         if (fallbackText) {
           if (STREAM_DEBUG) {
             logger.debug(
@@ -626,17 +708,28 @@ export async function runModelStream(
           currentIterationContent = fallbackText;
           accumulatedResponse += fallbackText;
           sendEvent("content", { delta: fallbackText });
+        } else {
+          logger.warn(
+            {
+              iteration: iterations,
+              outputItemCount: finalizedOutputItems.length,
+              outputTypes: finalizedOutputItems
+                .map((item: any) => item?.type)
+                .slice(0, 8),
+            },
+            "Stream completed without text deltas or recoverable assistant text",
+          );
         }
       }
 
       // Add all output items to conversation for context
-      for (const outputItem of outputItems) {
+      for (const outputItem of finalizedOutputItems) {
         conversationMessages.push(outputItem);
       }
 
       // Extract tool calls from output items (these are already complete)
       // Note: OpenAI uses "function_call" not "function_tool_call"
-      const toolCallItems = outputItems.filter(
+      const toolCallItems = finalizedOutputItems.filter(
         (item: any) =>
           item.type === "function_call" || item.type === "function_tool_call",
       );
