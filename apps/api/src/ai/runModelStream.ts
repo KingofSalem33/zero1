@@ -55,6 +55,34 @@ function extractTextFromItem(msg: any): string {
   return "";
 }
 
+function extractTextFromContentPart(part: any): string {
+  if (!part) return "";
+  if (typeof part === "string") return part;
+  if (typeof part.text === "string") return part.text;
+  if (typeof part.text?.value === "string") return part.text.value;
+  return "";
+}
+
+function extractTextFromContentArray(content: any): string {
+  if (!Array.isArray(content)) return "";
+  return content.map((part: any) => extractTextFromContentPart(part)).join("");
+}
+
+function extractAssistantTextFromOutputItems(outputItems: any[]): string {
+  return outputItems
+    .map((item: any) => {
+      if (!item) return "";
+      if (typeof item.text === "string") return item.text;
+      if (typeof item.text?.value === "string") return item.text.value;
+      if (Array.isArray(item.content)) {
+        return extractTextFromContentArray(item.content);
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+}
+
 function extractSearchKeywords(context: any[]): string[] {
   const keywords: string[] = [];
   const keywordPatterns = [
@@ -587,26 +615,7 @@ export async function runModelStream(
       // Fallback: If no text deltas were emitted, try to recover text
       // from assistant message output items and emit a single content chunk.
       if (!currentIterationContent) {
-        const assistantTexts: string[] = [];
-        for (const item of outputItems) {
-          if (
-            item.type === "message" &&
-            item.role === "assistant" &&
-            Array.isArray(item.content)
-          ) {
-            for (const c of item.content) {
-              if (
-                c &&
-                c.type === "text" &&
-                typeof c.text === "string" &&
-                c.text.length > 0
-              ) {
-                assistantTexts.push(c.text);
-              }
-            }
-          }
-        }
-        const fallbackText = assistantTexts.join("");
+        const fallbackText = extractAssistantTextFromOutputItems(outputItems);
         if (fallbackText) {
           if (STREAM_DEBUG) {
             logger.debug(
