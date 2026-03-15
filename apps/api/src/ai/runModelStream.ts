@@ -18,6 +18,9 @@ import {
 } from "../feedback";
 
 const logger = pino({ name: "runModelStream" });
+const STREAM_DEBUG =
+  !ENV.IS_PRODUCTION &&
+  (process.env.STREAM_DEBUG === "1" || process.env.STREAM_DEBUG === "true");
 
 function resolveModelVerbosity(
   model: string,
@@ -313,17 +316,11 @@ export async function runModelStream(
 
   // Helper to send SSE event
   const sendEvent = (event: string, data: unknown) => {
-    const eventStr = `event: ${event}\n`;
-    // For strings, send as-is; for objects, stringify
-    const dataStr =
-      typeof data === "string"
-        ? `data: ${data}\n\n`
-        : `data: ${JSON.stringify(data)}\n\n`;
-    console.log(
-      `[SSE] Sending event: ${event}, data: ${typeof data === "string" ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100)}...`,
-    );
-    res.write(eventStr);
-    res.write(dataStr);
+    const payload = typeof data === "string" ? data : JSON.stringify(data);
+    if (STREAM_DEBUG && event !== "content") {
+      logger.debug({ event }, "Sending SSE event");
+    }
+    res.write(`event: ${event}\ndata: ${payload}\n\n`);
 
     // ✅ CRITICAL: Flush immediately to prevent Node.js buffering
     // This ensures each SSE event is sent to the client right away
@@ -454,21 +451,19 @@ export async function runModelStream(
     while (iterations < maxIterations) {
       iterations++;
 
-      // Debug: Log the input messages being sent to the API
-      console.log(
-        "[runModelStream] Sending to Responses API:",
-        JSON.stringify(conversationMessages, null, 2),
-      );
-
-      console.log(
-        "[runModelStream] Model config:",
-        JSON.stringify({
-          model,
-          verbosity: effectiveVerbosity,
-          effectiveReasoningEffort,
-          willSendReasoning: !!effectiveReasoningEffort,
-        }),
-      );
+      if (STREAM_DEBUG) {
+        logger.debug(
+          {
+            iteration: iterations,
+            conversationMessageCount: conversationMessages.length,
+            toolCount: toolSpecs.length,
+            model,
+            verbosity: effectiveVerbosity,
+            effectiveReasoningEffort,
+          },
+          "Starting Responses API iteration",
+        );
+      }
 
       streamStartNs = process.hrtime.bigint();
       const stream = await profileTime(
@@ -510,21 +505,28 @@ export async function runModelStream(
       let currentIterationContent = ""; // Content from THIS iteration only
       const outputItems: any[] = [];
       let firstDeltaLogged = false;
+      let deltaEventCount = 0;
+      let deltaCharCount = 0;
 
       // Process stream chunks - Responses API has different event structure
       for await (const event of stream) {
         // 🔍 DEBUG: Log EVERY event type to understand what's being emitted
-        console.log(
-          `[runModelStream] 🔍 EVENT: type="${event.type}" | full event:`,
-          JSON.stringify(event, null, 2),
-        );
+        if (STREAM_DEBUG) {
+          console.log(
+            `[runModelStream] 🔍 EVENT: type="${event.type}" | full event:`,
+            JSON.stringify(event, null, 2),
+          );
+        }
 
         // Collect all output items as they're added
         if (event.type === "response.output_item.added") {
           outputItems.push(event.item);
-          console.log(
-            `[runModelStream] Iteration ${iterations}: Added output item type=${event.item.type}`,
-          );
+          if (STREAM_DEBUG) {
+            logger.debug(
+              { iteration: iterations, itemType: event.item.type },
+              "Responses API output item added",
+            );
+          }
         }
 
         // Stream text deltas to the user in real-time
@@ -538,9 +540,13 @@ export async function runModelStream(
           if (delta) {
             currentIterationContent += delta;
             accumulatedResponse += delta; // Also accumulate across iterations
-            console.log(
-              `[runModelStream] Iteration ${iterations}: ✅ ${event.type} delta received (${delta.length} chars)`,
-            );
+            if (STREAM_DEBUG) {
+              console.log(
+                `[runModelStream] Iteration ${iterations}: ✅ ${event.type} delta received (${delta.length} chars)`,
+              );
+            }
+            deltaEventCount += 1;
+            deltaCharCount += delta.length;
             if (!firstDeltaLogged) {
               firstDeltaLogged = true;
               if (streamStartNs) {
@@ -565,22 +571,19 @@ export async function runModelStream(
         // The outputItems will contain complete function_tool_call objects
       }
 
-      console.log(
-        `[runModelStream] Iteration ${iterations} stream complete. This iteration: ${currentIterationContent.length} chars, Total accumulated: ${accumulatedResponse.length} chars, Output items: ${outputItems.length}`,
-      );
-      outputItems.forEach((item, idx) => {
-        const isTool =
-          item.type === "function_call" || item.type === "function_tool_call";
-        console.log(
-          `  Item ${idx}: type=${item.type}${isTool ? `, name=${item.name}` : ""}`,
+      if (STREAM_DEBUG) {
+        logger.debug(
+          {
+            iteration: iterations,
+            outputItemCount: outputItems.length,
+            deltaEventCount,
+            deltaCharCount,
+            iterationChars: currentIterationContent.length,
+            totalChars: accumulatedResponse.length,
+          },
+          "Responses API iteration complete",
         );
-      });
-
-      // DEBUG: Log all output items to understand what API is returning
-      console.log(
-        "[runModelStream] Output items received:",
-        JSON.stringify(outputItems, null, 2),
-      );
+      }
 
       // Fallback: If no text deltas were emitted, try to recover text
       // from assistant message output items and emit a single content chunk.
@@ -606,9 +609,12 @@ export async function runModelStream(
         }
         const fallbackText = assistantTexts.join("");
         if (fallbackText) {
-          console.log(
-            `[runModelStream] Fallback extracted ${fallbackText.length} chars from output items`,
-          );
+          if (STREAM_DEBUG) {
+            logger.debug(
+              { iteration: iterations, fallbackChars: fallbackText.length },
+              "Recovered assistant text from output items",
+            );
+          }
           currentIterationContent = fallbackText;
           accumulatedResponse += fallbackText;
           sendEvent("content", { delta: fallbackText });
@@ -627,15 +633,8 @@ export async function runModelStream(
           item.type === "function_call" || item.type === "function_tool_call",
       );
 
-      console.log(
-        `[runModelStream] Found ${toolCallItems.length} tool call items`,
-      );
-
       // If no tool calls, we're done
       if (toolCallItems.length === 0) {
-        console.log(
-          `[runModelStream] No tool calls in iteration ${iterations}. Ending stream with ${accumulatedResponse.length} total chars.`,
-        );
         if (streamStartNs) {
           profileSpan(
             "llm.stream_total",
@@ -753,9 +752,6 @@ export async function runModelStream(
             continue;
           }
 
-          // Log if args were modified (fallback query added)
-          console.log(`[Tool Execution] ${toolName} with args:`, args);
-
           // Emit user-friendly status message
           const statusMessages: Record<string, string> = {
             web_search: "Searching the web...",
@@ -835,15 +831,9 @@ export async function runModelStream(
       logger.info(
         "Tool calls completed, requesting model response in next iteration",
       );
-      console.log(
-        `[runModelStream] Iteration ${iterations} complete. Tool results added to conversation. Looping for AI response...`,
-      );
     }
 
     logger.warn({ maxIterations }, "Maximum iterations reached");
-    console.log(
-      `[runModelStream] Max iterations reached. Returning ${accumulatedResponse.length} total chars.`,
-    );
     if (streamStartNs) {
       profileSpan("llm.stream_total", streamStartNs, process.hrtime.bigint(), {
         file: "ai/runModelStream.ts",
@@ -902,8 +892,9 @@ export function sendCompletionDetectedEvent(
   detection: { message: string; confidence: string; score: number },
 ): void {
   try {
-    res.write(`event: completion_detected\n`);
-    res.write(`data: ${JSON.stringify(detection)}\n\n`);
+    res.write(
+      `event: completion_detected\ndata: ${JSON.stringify(detection)}\n\n`,
+    );
     // Flush to ensure immediate delivery
     if (typeof (res as any).flush === "function") {
       (res as any).flush();
@@ -923,8 +914,7 @@ export function sendCompletionNudgeEvent(
   },
 ): void {
   try {
-    res.write(`event: completion_nudge\n`);
-    res.write(`data: ${JSON.stringify(nudge)}\n\n`);
+    res.write(`event: completion_nudge\ndata: ${JSON.stringify(nudge)}\n\n`);
     // Flush to ensure immediate delivery
     if (typeof (res as any).flush === "function") {
       (res as any).flush();

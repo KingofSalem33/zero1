@@ -47,6 +47,7 @@ export const DEFAULT_GRAVITY: GravityConfig = {
 const DEFAULT_CROSS_PERICOPE_THRESHOLD = 0.9;
 const EMBEDDING_MODEL = ENV.EMBEDDING_MODEL_NAME || "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
+const VERSE_SELECT_FIELDS = "id, book_abbrev, book_name, chapter, verse, text";
 
 const DEFAULT_EDGE_OPTIONS = {
   includeDEEPER: true,
@@ -127,6 +128,7 @@ export async function rankByQueryRelevance<T extends { id: number }>(
 ): Promise<{
   scoredCount: number;
   similarityMap: Map<number, number>;
+  embeddingMap: Map<number, number[]>;
 }> {
   const profileLabel = options?.profileLabel ?? "rank_similarity";
   const logLabel = options?.logLabel;
@@ -135,7 +137,11 @@ export async function rankByQueryRelevance<T extends { id: number }>(
     if (logLabel) {
       console.log(`[${logLabel}] Skipping ranking (no items or no API key)`);
     }
-    return { scoredCount: 0, similarityMap: new Map() };
+    return {
+      scoredCount: 0,
+      similarityMap: new Map(),
+      embeddingMap: new Map(),
+    };
   }
 
   if (logLabel) {
@@ -183,7 +189,11 @@ export async function rankByQueryRelevance<T extends { id: number }>(
         "[Relevance Ranking] Failed to fetch verse embeddings:",
         error,
       );
-      return { scoredCount: 0, similarityMap: new Map() };
+      return {
+        scoredCount: 0,
+        similarityMap: new Map(),
+        embeddingMap: new Map(),
+      };
     }
 
     const embeddingMap = new Map<number, number[]>();
@@ -231,10 +241,14 @@ export async function rankByQueryRelevance<T extends { id: number }>(
       },
     );
 
-    return { scoredCount, similarityMap };
+    return { scoredCount, similarityMap, embeddingMap };
   } catch (error) {
     console.error("[Relevance Ranking] Ranking failed:", error);
-    return { scoredCount: 0, similarityMap: new Map() };
+    return {
+      scoredCount: 0,
+      similarityMap: new Map(),
+      embeddingMap: new Map(),
+    };
   }
 }
 
@@ -755,7 +769,10 @@ export async function fetchHybridLayer(
       ? scope.crossThreshold
       : DEFAULT_CROSS_PERICOPE_THRESHOLD;
 
-  const baseEdges = await fetchAllEdges(sourceIds, edgeOptions);
+  const [baseEdges, pericopeMapping] = await Promise.all([
+    fetchAllEdges(sourceIds, edgeOptions),
+    fetchPericopeIdsForVerses(sourceIds),
+  ]);
   const coherenceSourceSet =
     coherenceSourceIds.length > 0 ? new Set(coherenceSourceIds) : null;
   const coherenceCounts = new Map<number, number>();
@@ -805,23 +822,15 @@ export async function fetchHybridLayer(
   });
 
   const edgeCandidateList = Array.from(edgeCandidateIds);
-  const edgeSimilarityMap =
+  const edgeSimilarityPromise =
     edgeCandidateList.length > 0
-      ? await scoreVerseIdsByEmbedding(
+      ? scoreVerseIdsByEmbedding(
           edgeCandidateList,
           queryEmbedding,
           "hybrid_ring.edge_pool",
         )
-      : new Map<number, number>();
+      : Promise.resolve(new Map<number, number>());
 
-  const edgePoolIds = edgeCandidateList
-    .sort(
-      (a, b) =>
-        (edgeSimilarityMap.get(b) ?? 0) - (edgeSimilarityMap.get(a) ?? 0),
-    )
-    .slice(0, versePoolSize);
-
-  const pericopeMapping = await fetchPericopeIdsForVerses(sourceIds);
   const sourcePericopeIds = new Set<number>(pericopeMapping.values());
   const pericopeToSourceVerse = new Map<number, number>();
   sourceIds.forEach((id) => {
@@ -866,6 +875,13 @@ export async function fetchHybridLayer(
       });
     });
   }
+  const edgeSimilarityMap = await edgeSimilarityPromise;
+  const edgePoolIds = edgeCandidateList
+    .sort(
+      (a, b) =>
+        (edgeSimilarityMap.get(b) ?? 0) - (edgeSimilarityMap.get(a) ?? 0),
+    )
+    .slice(0, versePoolSize);
 
   const pericopeCandidates = Array.from(pericopeConnectionByTarget.values())
     .sort((a, b) => b.similarity_score - a.similarity_score)
@@ -956,10 +972,12 @@ export async function fetchHybridLayer(
     };
   }
 
-  const embeddingMap = await buildVerseEmbeddingMap(
-    candidateList,
-    "hybrid_ring.candidate_scores",
-  );
+  const [embeddingMap, centralityMap] = await Promise.all([
+    buildVerseEmbeddingMap(candidateList, "hybrid_ring.candidate_scores"),
+    centralityBonus > 0
+      ? fetchCentralityScores(candidateList)
+      : Promise.resolve(new Map<number, number>()),
+  ]);
   const similarityMap = scoreByEmbeddingMap(
     candidateList,
     embeddingMap,
@@ -968,11 +986,6 @@ export async function fetchHybridLayer(
   const anchorSimMap = anchorEmbedding
     ? scoreByEmbeddingMap(candidateList, embeddingMap, anchorEmbedding)
     : new Map<number, number>();
-
-  const centralityMap =
-    centralityBonus > 0
-      ? await fetchCentralityScores(candidateList)
-      : new Map<number, number>();
   const maxCoherence =
     coherenceCounts.size > 0 ? Math.max(...coherenceCounts.values()) : 0;
 
@@ -1118,7 +1131,7 @@ const fetchVersesByIds = async (ids: number[]): Promise<Verse[]> => {
   if (ids.length === 0) return [];
   const { data, error } = await supabase
     .from("verses")
-    .select("*")
+    .select(VERSE_SELECT_FIELDS)
     .in("id", ids);
 
   if (error) {
@@ -1177,7 +1190,7 @@ export async function buildLightContext(
 
   const { data: ring0Data, error: ring0Error } = await supabase
     .from("verses")
-    .select("*")
+    .select(VERSE_SELECT_FIELDS)
     .gte("id", anchorId - ring0Radius)
     .lte("id", anchorId + ring0Radius)
     .order("id", { ascending: true });

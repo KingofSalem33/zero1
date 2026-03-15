@@ -245,7 +245,16 @@ const CHAT_QUICK_PROMPTS_FALLBACK = [
       "Give me a New Testament passage to study with context and key themes.",
   },
 ] as const;
-const STREAM_CHARS_PER_FRAME = 4;
+const STREAM_MIN_CHARS_PER_FRAME = 12;
+const STREAM_MAX_CHARS_PER_FRAME = 48;
+const resolveStreamCharsPerFrame = (remainingChars: number) =>
+  Math.min(
+    remainingChars,
+    Math.min(
+      STREAM_MAX_CHARS_PER_FRAME,
+      Math.max(STREAM_MIN_CHARS_PER_FRAME, Math.ceil(remainingChars / 6)),
+    ),
+  );
 const MAP_MIN_SCALE = 0.2;
 const MAP_MAX_SCALE = 2.8;
 const MAP_VIEWPORT_PADDING = 60;
@@ -2004,8 +2013,7 @@ export function ChatScreen({
         return;
       }
 
-      const charsToAdd = Math.min(
-        STREAM_CHARS_PER_FRAME,
+      const charsToAdd = resolveStreamCharsPerFrame(
         buffered.length - displayed.length,
       );
       const nextContent = buffered.slice(0, displayed.length + charsToAdd);
@@ -2034,7 +2042,8 @@ export function ChatScreen({
       );
       const expectedMs =
         Math.ceil(
-          (bufferedAtStart / Math.max(1, STREAM_CHARS_PER_FRAME * 60)) * 1000,
+          (bufferedAtStart / Math.max(1, STREAM_MIN_CHARS_PER_FRAME * 60)) *
+            1000,
         ) + 220;
       const maxWaitMs = Math.min(10000, Math.max(1800, expectedMs));
 

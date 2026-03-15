@@ -53,6 +53,10 @@ export type PericopeSearchResult = {
   rangeRef: string;
 };
 
+const PERICOPE_SELECT =
+  "id, title, title_generated, subtitle, range_start_id, range_end_id, source, pericope_type, full_text, summary, themes, archetypes, shadows, key_figures, metadata_model, metadata_updated_at, testament";
+const VERSE_REF_SELECT = "id, book_abbrev, book_name, chapter, verse";
+
 const formatReference = (verse: PericopeVerseRef) =>
   `${verse.book_name} ${verse.chapter}:${verse.verse}`;
 
@@ -61,28 +65,77 @@ const buildRangeRef = (
   endVerse: PericopeVerseRef,
 ) => `${formatReference(startVerse)} - ${formatReference(endVerse)}`;
 
-const getVerseById = async (id: number): Promise<PericopeVerseRef | null> => {
+const getVerseRefsByIds = async (
+  verseIds: number[],
+): Promise<Map<number, PericopeVerseRef>> => {
+  const refs = new Map<number, PericopeVerseRef>();
+  if (verseIds.length === 0) return refs;
+
   const { data, error } = await supabase
     .from("verses")
-    .select("id, book_abbrev, book_name, chapter, verse")
-    .eq("id", id)
-    .single();
+    .select(VERSE_REF_SELECT)
+    .in("id", Array.from(new Set(verseIds)));
 
-  if (error || !data) return null;
-  return data as PericopeVerseRef;
+  if (error || !data) return refs;
+
+  (data as PericopeVerseRef[]).forEach((row) => {
+    refs.set(row.id, row);
+  });
+
+  return refs;
 };
 
-const getVerseIdsForPericope = async (
-  pericopeId: number,
-): Promise<number[]> => {
+const getVerseIdsForPericopes = async (
+  pericopeIds: number[],
+): Promise<Map<number, number[]>> => {
+  const verseIdsByPericope = new Map<number, number[]>();
+  if (pericopeIds.length === 0) return verseIdsByPericope;
+
   const { data, error } = await supabase
     .from("verse_pericope_map")
-    .select("verse_id, position_in_pericope")
-    .eq("pericope_id", pericopeId)
+    .select("pericope_id, verse_id, position_in_pericope")
+    .in("pericope_id", Array.from(new Set(pericopeIds)))
     .order("position_in_pericope", { ascending: true });
 
-  if (error || !data) return [];
-  return data.map((row) => row.verse_id);
+  if (error || !data) return verseIdsByPericope;
+
+  data.forEach((row) => {
+    const verseIds = verseIdsByPericope.get(row.pericope_id) ?? [];
+    verseIds.push(row.verse_id);
+    verseIdsByPericope.set(row.pericope_id, verseIds);
+  });
+
+  return verseIdsByPericope;
+};
+
+const hydratePericopeDetails = async (
+  records: PericopeRecord[],
+): Promise<PericopeDetail[]> => {
+  if (records.length === 0) return [];
+
+  const [verseRefsById, verseIdsByPericope] = await Promise.all([
+    getVerseRefsByIds(
+      records.flatMap((record) => [record.range_start_id, record.range_end_id]),
+    ),
+    getVerseIdsForPericopes(records.map((record) => record.id)),
+  ]);
+
+  const details: PericopeDetail[] = [];
+  records.forEach((record) => {
+    const startVerse = verseRefsById.get(record.range_start_id);
+    const endVerse = verseRefsById.get(record.range_end_id);
+    if (!startVerse || !endVerse) return;
+
+    details.push({
+      ...record,
+      rangeRef: buildRangeRef(startVerse, endVerse),
+      verseIds: verseIdsByPericope.get(record.id) ?? [],
+      startVerse,
+      endVerse,
+    });
+  });
+
+  return details;
 };
 
 export const buildPericopeContextBlock = (pericope: PericopeDetail): string => {
@@ -117,35 +170,36 @@ ${shadows}
 Context: ${summary}`;
 };
 
+export const getPericopesByIds = async (
+  pericopeIds: number[],
+): Promise<PericopeDetail[]> => {
+  const uniqueIds = Array.from(new Set(pericopeIds));
+  if (uniqueIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("pericopes")
+    .select(PERICOPE_SELECT)
+    .in("id", uniqueIds);
+
+  if (error || !data) return [];
+
+  const recordsById = new Map<number, PericopeRecord>();
+  (data as PericopeRecord[]).forEach((record) => {
+    recordsById.set(record.id, record);
+  });
+
+  const orderedRecords = uniqueIds
+    .map((id) => recordsById.get(id))
+    .filter((record): record is PericopeRecord => !!record);
+
+  return hydratePericopeDetails(orderedRecords);
+};
+
 export const getPericopeById = async (
   pericopeId: number,
 ): Promise<PericopeDetail | null> => {
-  const { data, error } = await supabase
-    .from("pericopes")
-    .select("*")
-    .eq("id", pericopeId)
-    .single();
-
-  if (error || !data) return null;
-
-  const record = data as PericopeRecord;
-  const [startVerse, endVerse] = await Promise.all([
-    getVerseById(record.range_start_id),
-    getVerseById(record.range_end_id),
-  ]);
-
-  if (!startVerse || !endVerse) return null;
-
-  const verseIds = await getVerseIdsForPericope(record.id);
-  const rangeRef = buildRangeRef(startVerse, endVerse);
-
-  return {
-    ...record,
-    rangeRef,
-    verseIds,
-    startVerse,
-    endVerse,
-  };
+  const [detail] = await getPericopesByIds([pericopeId]);
+  return detail ?? null;
 };
 
 export const getPericopeForVerse = async (

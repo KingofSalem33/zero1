@@ -83,6 +83,9 @@
 - Resolved intermittent ROOT request failures by retrying one transient root-translation error before surfacing the unavailable state.
 - Resolved API ROOT 500s for recoverable model failures by returning Strong's-backed lexical fallback summaries instead of failing the entire request; the same fallback now covers missing AI configuration.
 - Resolved model drift between ROOT and synopsis by moving ROOT onto the same smart-model selection path the synopsis route uses.
+- Tuned ROOT sheet spacing again by moving the extra bottom breathing room to the ROOT-specific scroll container instead of padding the panel body, which keeps the lower controls aligned with other sheets while preserving reachability.
+- Tightened the Reader header control row so the chapter picker can shrink and truncate cleanly, keeping the bookmark button fully on-screen on narrower devices.
+- Updated the ROOT panel to use a selection-style skeleton loader and removed the lost-context swipe capture so long ROOT analysis can scroll normally inside the sheet.
 - Added regression coverage in `apps/mobile/src/hooks/__tests__/useMobileAppController.test.tsx` and `apps/mobile/src/screens/__tests__/DetailScreens.test.tsx`.
 - Added regression coverage in `apps/mobile/src/hooks/__tests__/useRootTranslationMobile.test.tsx` for transient retry and final failure behavior.
 - Validation:
@@ -177,3 +180,98 @@
 - Validation:
   - `npx tsc -p apps/mobile/tsconfig.json --noEmit`
   - `npm test -- --runInBand` in `apps/mobile`
+
+## Graph Pipeline Speed Analysis 2026-03-14
+
+- [x] Trace the graph pipeline from `/api/trace` and `/api/chat/stream` ingress through graph construction, SSE delivery, and client rendering
+- [x] Validate the existing profiler hotspots against the current source in `graphWalker.ts`, `graphEngine.ts`, `pericopeGraphWalker.ts`, `pericopeSearch.ts`, `expandingRingExegesis.ts`, `runModelStream.ts`, `useChatStream.ts`, `forceLayout.ts`, and `narrativeMapGraph.ts`
+- [x] Cross-reference confirmed findings with `SPEED_PLAN.md` and isolate additional bottlenecks visible only in the code path
+- [x] Produce a phased implementation plan with sequencing, expected wins, and verification targets
+
+## Graph Pipeline Review 2026-03-14
+
+- Scope: end-to-end graph pipeline analysis only, covering request ingress, anchor/pericope resolution, verse graph construction, pericope graph construction, ranking, dedupe, SSE output, and client-side map/text rendering
+- Primary deliverable: `tasks/graph-pipeline-implementation-plan.md`
+- Validation: source audit plus `apps/api/profiling/report.md` and `SPEED_PLAN.md`; no runtime code changes or test execution were needed for this analysis task
+
+## Graph Pipeline Safe Implementation 2026-03-14
+
+- [x] Split cheap pericope scope resolution from optional pericope bundle construction
+- [x] Batch pericope bundle hydration to remove serial `getPericopeById()` loops
+- [x] Narrow hot-path verse selects to avoid overfetching unused columns
+- [x] Reuse fetched verse embeddings across ranking and dedupe
+- [x] Run `npm run build` in `apps/api` and update review notes
+
+## Graph Pipeline Safe Implementation Review 2026-03-14
+
+- Added `resolvePericopeScopeForVerse()` so `/api/trace`, `/api/chat/stream`, and multi-anchor graph setup can get pericope scope IDs without eagerly building the full narrative bundle.
+- Reworked `buildPericopeBundle()` around batched pericope hydration and parallel ring-2 connection fetches, removing the serial `getPericopeById()` loop pattern from ring expansion.
+- Added batched `getPericopesByIds()` hydration in `apps/api/src/bible/pericopeSearch.ts`, and moved `getPericopeById()` onto that batched path.
+- Started pericope-bundle work in parallel with verse-graph construction on the single-anchor `/api/trace` and `/api/chat/stream` paths so the response payload stays the same while reducing critical-path idle time.
+- Reused the ranking pass embedding map inside dedupe with a module-local `WeakMap`, removing the second verse-embedding fetch when ranking has already loaded the same rows.
+- Narrowed hot-path `verses` selects in `graphWalker.ts` and `graphEngine.ts` to explicit fields, with hybrid anchor fetches only including `embedding` where needed.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Graph Pipeline Throughput Follow-Up 2026-03-14
+
+- [x] Overlap Ring 1 hydration with Ring 2 fetch in `graphWalker.ts`
+- [x] Overlap bridge-verse lookup with Ring 3 hydration in `graphWalker.ts`
+- [x] Overlap independent hybrid-layer fetches and scoring work in `graphEngine.ts`
+- [x] Remove hot stream-loop logging from the steady-state SSE path in `runModelStream.ts`
+- [x] Raise web and mobile streamed-text release throughput without changing output content
+- [x] Re-run API build plus web/mobile typecheck
+
+## Graph Pipeline Throughput Follow-Up Review 2026-03-14
+
+- Reworked `buildContextBundle()` so Ring 1 verse hydration no longer blocks Ring 2 candidate fetch, and bridge-verse lookup now runs in parallel with Ring 3 verse hydration.
+- Reworked `fetchHybridLayer()` so base edge fetch and source pericope mapping start together, edge-pool embedding scoring overlaps the pericope-neighbor branch, and candidate embedding fetch now runs in parallel with centrality fetch.
+- Reduced streaming overhead in `runModelStream.ts` by moving the per-event and per-delta debug path behind `STREAM_DEBUG`, while keeping the existing SSE delivery behavior and tool execution flow intact.
+- Increased web and mobile text release throughput by switching from a fixed 4 chars/frame cap to an adaptive 12-48 chars/frame release window, which reduces post-model display lag without changing generated text.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+  - `npm run typecheck` in `apps/web`: passed on 2026-03-14.
+  - `npm run typecheck` in `apps/mobile`: passed on 2026-03-14.
+
+## Graph Pipeline Reuse Slice 2026-03-14
+
+- [x] Start pericope-validation prerequisites as soon as the final visual-node set is known
+- [x] Reuse verse-to-pericope mappings inside `applyPericopeValidation()` instead of re-querying after additional edge fetch
+- [x] Pre-resolve multi-anchor pericope scopes before the serial budgeted tree-build loop
+- [x] Replace multi-anchor merge-time edge duplicate scans with a `Set`
+- [x] Re-run `npm run build` in `apps/api`
+
+## Graph Pipeline Reuse Slice Review 2026-03-14
+
+- Added a shared `fetchPericopeIdsByVerse()` helper in `graphWalker.ts` and moved the verse-to-pericope mapping fetch up to the point where `buildVisualBundle()` already knows the complete node set.
+- `buildVisualBundle()` now fetches additional edges and verse-to-pericope mappings together, then passes the mapping into `applyPericopeValidation()` so the validation pass no longer issues its own duplicate verse-map query.
+- `buildMultiAnchorTree()` now resolves all per-anchor pericope scopes before entering the serial budget-allocation loop, preserving the existing budget behavior while removing a repeated scope-resolution stall from inside that loop.
+- Multi-anchor merge now uses a `Set` for edge duplicate detection instead of repeated `allEdges.some(...)` scans.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Graph Pipeline Ingress Slice 2026-03-14
+
+- [x] Collapse SSE event delivery to a single `res.write()` per event
+- [x] Batch the structured multi-anchor source/target verse-ID lookups
+- [x] Batch LLM reference-range verse-ID lookups inside `resolveAnchorFromReferences()`
+- [x] Replace the remaining LLM anchor candidate membership scan with a `Set`
+- [x] Re-run `npm run build` in `apps/api`
+
+## Graph Pipeline Ingress Slice Review 2026-03-14
+
+- `runModelStream.ts` now serializes each SSE event once and writes it once, instead of splitting the same event across two `res.write()` calls.
+- `resolveMultipleAnchors()` now resolves structured source/target anchor references concurrently, preserving the same fallback order while removing an avoidable serial pair of verse lookups.
+- `resolveAnchorFromReferences()` now launches the bounded verse-range `getVerseId()` lookups in parallel, then rebuilds the candidate list in the same deterministic order as before.
+- LLM anchor candidate hydration now uses a `Set` for membership filtering instead of repeated `Array.some(...)` scans.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Deploy PR Prep 2026-03-14
+
+- [x] Confirm the deploy workflow uses a PR branch merged back into `biblelot`
+- [x] Mark `SPEED_PLAN.md` as legacy and remove it from the repo state
+- [x] Include `AGENTS.md` and `CLAUDE.md` in the intended commit scope
+- [x] Create a feature branch from `biblelot` for the graph-pipeline work
+- [ ] Stage the deploy-relevant files and create the commit
+- [ ] Push the feature branch and open a PR targeting `biblelot`

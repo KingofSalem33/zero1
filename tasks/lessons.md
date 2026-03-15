@@ -2,6 +2,8 @@
 
 ## 2026-03-11
 
+- When Render deployment is driven by merges into `biblelot`, do not commit directly on `biblelot`; create a PR branch, push it, and merge back into `biblelot` for deployment.
+- When the user clarifies commit scope, include the explicitly named files and remove any explicitly retired legacy files before preparing the commit.
 - Do not claim an audit or verification was run unless the inventory and findings were actually produced.
 - If a user asks whether a review happened, answer directly first, then offer to run it.
 - When adjusting dense modal/tab layouts, prefer a minimal spacing or label-change pass first; do not switch row structure or tab architecture without validating the visual result.
@@ -16,3 +18,6 @@
 - For large-screen map parity, keep the breakpoint and row-layout decision in the parent screen, but keep the adaptive inspector component thin; the parent must own available canvas width and centering, while the surface component should only switch between compact sheet and expanded rail shells.
 - When a Reader subview swaps a bottom-sheet body from rich content to a smaller tool panel like ROOT, keep the sheet height stable and use the bottom-sheet-native scroll container; otherwise the sheet can collapse toward the bottom and make the final controls hard to reach.
 - When an API route has already resolved deterministic Bible/Strong's data, do not let an LLM enrichment failure turn the whole request into a 500; return the resolved data with a clear fallback summary instead.
+- For ROOT-sheet spacing, put the extra breathing room on the ROOT-specific scroll container, not inside the panel body; inner padding makes the layout feel visually off while still not matching the spacing rhythm of the other sheets.
+- For dense Reader header rows, do not give the central picker a hard minimum width if the row also contains multiple fixed-size icon buttons; let the picker shrink and truncate or the trailing bookmark control will clip off-screen on smaller phones.
+- In the ROOT panel, do not attach swipe handlers directly to the long “Lost in translation” text region; that gesture ownership conflicts with bottom-sheet scrolling and makes the analysis feel stuck instead of readable.
