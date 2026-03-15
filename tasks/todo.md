@@ -413,3 +413,29 @@
 - The deployed API was streaming correctly; the failure was on the native client path. iOS `CFNetwork` returned `text/event-stream` for `/api/synopsis`, but the React Native fetch response did not expose `response.body.getReader()`, so the mobile client threw `Streaming response body unavailable` before it could parse the final payload.
 - `apps/mobile/src/lib/api.ts` now falls back to `response.text()` plus SSE-line parsing when a readable stream body is unavailable. That preserves compatibility with transports that buffer the event stream instead of exposing incremental reads.
 - The streamed path still uses incremental parsing when `response.body.getReader()` exists, so platforms with proper readable-stream support keep the lower time-to-first-visible-text behavior.
+
+## Render Rate Limit Proxy Fix 2026-03-14
+
+- [x] Trace the Render `X-Forwarded-For` warning to the API rate limiter configuration
+- [x] Replace proxy-sensitive limiter key generation with a header-first client IP resolver
+- [x] Re-run targeted API build verification and record the review note
+
+## Render Rate Limit Proxy Fix Review 2026-03-14
+
+- `apps/api/src/middleware/rateLimit.ts` now resolves rate-limit identity from `True-Client-IP` first, then falls back to `CF-Connecting-IP`, `X-Real-IP`, and finally local socket/request IPs. This avoids relying on Express `trust proxy` behavior on Render while still giving stable per-user limiter keys behind the platform proxy.
+- The global `apiLimiter` now uses the same explicit key generator as the route-specific limiters, which removes the default `express-rate-limit` IP validation path that was throwing `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` on Render.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.
+
+## Streamed Synopsis Fallback Text Fix 2026-03-14
+
+- [x] Trace the `"Unable to generate synopsis."` result to the streamed synopsis completion path
+- [x] Teach `runModelStream()` fallback text recovery to read GPT-5 `output_text`-shaped output items
+- [x] Re-run targeted API build verification and record the review note
+
+## Streamed Synopsis Fallback Text Fix Review 2026-03-14
+
+- `apps/api/src/ai/runModelStream.ts` now uses a shared output-item text extractor that handles both plain `text` payloads and GPT-5-style `output_text`/nested `text.value` payloads when a stream finishes without delta events.
+- This keeps the streamed synopsis and semantic synopsis routes from collapsing to the route-level fallback string even when the Responses API returns a completed assistant message without incremental text deltas.
+- Validation:
+  - `npm run build` in `apps/api`: passed on 2026-03-14.

@@ -4,6 +4,7 @@
  */
 
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import type { Request } from "express";
 
 // ✅ Fix #11: Named constants for rate limit configuration
 const RATE_LIMIT_WINDOWS = {
@@ -21,6 +22,28 @@ const RATE_LIMIT_MAX_REQUESTS = {
   VERSE_READ: 900, // Verse lookups can burst from reader/reference UIs
 } as const;
 
+function readHeaderValue(
+  value: string | string[] | undefined,
+): string | undefined {
+  if (Array.isArray(value)) {
+    return value.find((entry) => typeof entry === "string" && entry.trim());
+  }
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function resolveRateLimitClientIp(req: Request): string {
+  const headerIp =
+    readHeaderValue(req.headers["true-client-ip"]) ||
+    readHeaderValue(req.headers["cf-connecting-ip"]) ||
+    readHeaderValue(req.headers["x-real-ip"]);
+
+  return headerIp || req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function buildRateLimitKey(prefix: string, req: Request): string {
+  return `${prefix}:${ipKeyGenerator(resolveRateLimitClientIp(req))}`;
+}
+
 /**
  * General API rate limiter
  * Applied to all /api routes
@@ -36,6 +59,7 @@ export const apiLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  keyGenerator: (req) => buildRateLimitKey("api", req),
   // Skip read-only traffic here; GET endpoints are protected by route-level
   // `readOnlyLimiter` where needed, which avoids accidental double-limiting.
   skip: (req) => {
@@ -67,10 +91,7 @@ export const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   // Use a different store key to track AI requests separately
-  keyGenerator: (req) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    return `ai:${ipKeyGenerator(ip)}`;
-  },
+  keyGenerator: (req) => buildRateLimitKey("ai", req),
 });
 
 /**
@@ -88,10 +109,7 @@ export const strictLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    return `strict:${ipKeyGenerator(ip)}`;
-  },
+  keyGenerator: (req) => buildRateLimitKey("strict", req),
 });
 
 /**
@@ -109,10 +127,7 @@ export const uploadLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    return `upload:${ipKeyGenerator(ip)}`;
-  },
+  keyGenerator: (req) => buildRateLimitKey("upload", req),
 });
 
 /**
@@ -131,10 +146,7 @@ export const readOnlyLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    return `readonly:${ipKeyGenerator(ip)}`;
-  },
+  keyGenerator: (req) => buildRateLimitKey("readonly", req),
 });
 
 /**
@@ -152,8 +164,5 @@ export const verseReadLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    return `verse:${ipKeyGenerator(ip)}`;
-  },
+  keyGenerator: (req) => buildRateLimitKey("verse", req),
 });
